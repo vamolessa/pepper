@@ -67,6 +67,8 @@ impl ServerApplication {
     }
 
     pub fn run(args: Args, mut platform: Platform) -> mpsc::Sender<ApplicationEvent> {
+        eprintln!("start server");
+    
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let editor = Editor::new(current_dir);
         let clients = ClientManager::new();

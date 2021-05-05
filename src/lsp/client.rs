@@ -2695,6 +2695,7 @@ impl ClientManager {
         handle: ClientHandle,
         process_handle: ProcessHandle,
     ) {
+        eprintln!("on lsp spawned");
         if let ClientEntry::Occupied(ref mut client) = editor.lsp.entries[handle.0 as usize] {
             client.protocol.set_process_handle(process_handle);
             client.initialize(platform);
@@ -2753,6 +2754,8 @@ impl ClientManager {
     }
 
     pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
+        eprintln!("on lsp exit");
+
         let index = handle.0 as usize;
         if let ClientEntry::Occupied(ref mut client) = editor.lsp.entries[index] {
             client.write_to_log_buffer(|buf, _| {
@@ -2812,10 +2815,10 @@ impl ClientManager {
                     recipe.root.clone()
                 };
 
-                let log_buffer_handle = if !recipe.log_buffer_name.is_empty() {
+                let log_buffer_name = editor.string_pool.acquire_with(&recipe.log_buffer_name);
+                let log_buffer_handle = if !log_buffer_name.is_empty() {
                     let mut buffer = editor.buffers.add_new();
                     buffer.capabilities = BufferCapabilities::log();
-                    buffer.set_path(Path::new(&recipe.log_buffer_name));
                     Some(buffer.handle())
                 } else {
                     None
@@ -2823,6 +2826,15 @@ impl ClientManager {
 
                 let client_handle = editor.lsp.start(platform, command, root, log_buffer_handle);
                 editor.lsp.recipes[index].running_client = Some(client_handle);
+
+                let mut path = editor.string_pool.acquire();
+                if let Some(buffer) = log_buffer_handle.and_then(|h| editor.buffers.get_mut(h)) {
+                    use fmt::Write;
+                    let _ = write!(path, "{}.{}", log_buffer_name, client_handle);
+                    buffer.set_path(Path::new(&path));
+                }
+                editor.string_pool.release(path);
+                editor.string_pool.release(log_buffer_name);
             }
         }
 
@@ -2834,3 +2846,4 @@ impl ClientManager {
         }
     }
 }
+

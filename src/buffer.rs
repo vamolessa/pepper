@@ -848,6 +848,7 @@ impl Buffer {
         self.handle
     }
 
+    // TODO: remove and make path public
     pub fn path(&self) -> &Path {
         &self.path
     }
