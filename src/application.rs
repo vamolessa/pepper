@@ -1,7 +1,8 @@
-use std::{env, fmt, io, sync::mpsc, time::Duration};
+use std::{env, fmt, io, path::Path, sync::mpsc, time::Duration};
 
 use crate::{
     buffer::parse_path_and_position,
+    command::{CommandOperation, CommandManager},
     client::{ClientHandle, ClientManager},
     editor::{Editor, EditorControlFlow},
     events::{ClientEvent, ClientEventReceiver, ServerEvent},
@@ -95,6 +96,21 @@ impl ServerApplication {
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
         let mut client_event_receiver = ClientEventReceiver::default();
+
+        if true {
+            let source = include_str!("default_config.pp");
+            match CommandManager::eval_commands_then_output(
+                &mut editor,
+                platform,
+                &mut clients,
+                None,
+                source,
+                Some(Path::new("default_config.pp")),
+            ) {
+                Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) => return Ok(()),
+                _ => (),
+            }
+        }
 
         'event_loop: loop {
             let mut event = event_receiver.recv()?;

@@ -1,7 +1,6 @@
 use std::{
+    io, fs::File,
     any, fmt,
-    fs::File,
-    io,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -791,11 +790,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             use io::Read;
             let mut file = File::open(path)
                 .map_err(|e| CommandError::OpenFileError { path: path_token, error: e })?;
-            let mut source = String::new();
-            file.read_to_string(&mut source).map_err(|e| CommandError::OpenFileError {
-                path: path_token,
-                error: e,
-            })?;
+            let mut source = ctx.editor.string_pool.acquire();
+            file.read_to_string(&mut source)
+                .map_err(|e| CommandError::OpenFileError { path: path_token, error: e })?;
 
             let op = CommandManager::eval_commands_then_output(
                 ctx.editor,
@@ -805,6 +802,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &source,
                 Some(path),
             );
+            ctx.editor.string_pool.release(source);
+
             Ok(op)
         },
     },

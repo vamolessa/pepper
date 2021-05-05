@@ -23,6 +23,7 @@ struct KeyMap {
     to: Vec<Key>,
 }
 
+#[derive(Default)]
 pub struct KeyMapCollection {
     maps: HashMap<ModeKind, Vec<KeyMap>>,
 }
@@ -87,60 +88,3 @@ impl KeyMapCollection {
     }
 }
 
-impl Default for KeyMapCollection {
-    fn default() -> Self {
-        let mut this = Self {
-            maps: HashMap::default(),
-        };
-
-        let all_modes = [
-            ModeKind::Normal,
-            ModeKind::Insert,
-            ModeKind::Command,
-            ModeKind::ReadLine,
-            ModeKind::Picker,
-        ];
-
-        for mode in &all_modes {
-            let mode = *mode;
-            this.parse_and_map(mode, "<c-c>", "<esc>").unwrap();
-            this.parse_and_map(mode, "<c-m>", "<enter>").unwrap();
-        }
-
-        this.parse_and_map(ModeKind::Normal, "<esc>", "cdcVs<esc>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "<c-c>", "cdcVs<esc>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, ".", "Qa").unwrap();
-
-        this.parse_and_map(ModeKind::Normal, "I", "dgii").unwrap();
-        this.parse_and_map(ModeKind::Normal, "<c-i>", "dgli")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "o", "dgli<enter>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "O", "dgii<enter><up>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "J", "djgivkgli<space><esc>")
-            .unwrap();
-
-        this.parse_and_map(ModeKind::Insert, "<c-h>", "<backspace>")
-            .unwrap();
-
-        this.parse_and_map(ModeKind::Normal, "K", ": lsp-hover<enter>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "gd", ": lsp-definition<enter>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "gr", ": lsp-references -context=2<enter>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "gs", ": lsp-document-symbols<enter>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "rr", ": lsp-rename<enter>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "ra", ": lsp-code-action<enter>")
-            .unwrap();
-        this.parse_and_map(ModeKind::Normal, "rf", ": lsp-format<enter>")
-            .unwrap();
-
-        this
-    }
-}

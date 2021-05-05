@@ -44,8 +44,8 @@ impl ReadLine {
         keys_iter: &mut KeysIterator,
     ) -> ReadLinePoll {
         match keys_iter.next(buffered_keys) {
-            Key::Esc => ReadLinePoll::Canceled,
-            Key::Enter => ReadLinePoll::Submitted,
+            Key::Esc | Key::Ctrl('c') => ReadLinePoll::Canceled,
+            Key::Enter | Key::Ctrl('m') => ReadLinePoll::Submitted,
             Key::Home | Key::Ctrl('u') => {
                 self.input.clear();
                 ReadLinePoll::Pending

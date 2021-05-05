@@ -70,7 +70,7 @@ impl ModeState for State {
         let _ = write!(register, "{}", key);
 
         match key {
-            Key::Esc => {
+            Key::Esc | Key::Ctrl('c') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 ctx.editor
                     .buffers
@@ -138,7 +138,7 @@ impl ModeState for State {
                         &mut ctx.editor.events,
                     );
             }
-            Key::Enter => {
+            Key::Enter | Key::Ctrl('m') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
@@ -178,7 +178,7 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Backspace => {
+            Key::Backspace | Key::Ctrl('h') => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,

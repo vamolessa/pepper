@@ -7,6 +7,8 @@ use crate::{
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
 
+//mod builtin;
+
 const MAX_HIGHLIGHT_COUNT: usize = 2048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
