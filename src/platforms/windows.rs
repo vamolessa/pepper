@@ -1167,18 +1167,20 @@ impl ConnectionToServer {
 fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Option<Handle>) {
     let mut connection = ConnectionToServer::connect(pipe_path);
 
-    let mut client_index = 0;
-    match connection.read(std::slice::from_mut(&mut client_index)) {
-        Ok(1) => (),
+    let mut buf = [0; 2];
+    match connection.read(&mut buf) {
+        Ok(2) => (),
         _ => return,
     }
+    let is_first_client = buf[0] != 0;
+    let client_index = buf[1];
 
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let is_pipped = is_pipped(&input_handle);
 
     let stdout = io::stdout();
     let mut application = ClientApplication::new(client_handle, stdout.lock(), is_pipped);
-    let bytes = application.init(args);
+    let bytes = application.init(args, is_first_client);
     if !connection.write(bytes) {
         return;
     }

@@ -2,8 +2,8 @@ use std::{env, fmt, io, path::Path, sync::mpsc, time::Duration};
 
 use crate::{
     buffer::parse_path_and_position,
-    command::{CommandOperation, CommandManager},
     client::{ClientHandle, ClientManager},
+    command::{CommandManager, CommandOperation},
     editor::{Editor, EditorControlFlow},
     events::{ClientEvent, ClientEventReceiver, ServerEvent},
     platform::{Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
@@ -98,6 +98,7 @@ impl ServerApplication {
         event_sender: mpsc::Sender<ApplicationEvent>,
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
+        let mut is_first_client = true;
         let mut client_event_receiver = ClientEventReceiver::default();
 
         if source_default_config {
@@ -124,11 +125,13 @@ impl ServerApplication {
                     ApplicationEvent::ConnectionOpen { handle } => {
                         clients.on_client_joined(handle);
                         let mut buf = platform.buf_pool.acquire();
-                        let write = buf.write();
+                        let write = buf.write_with_len(2);
+                        write.push(is_first_client as _);
                         write.push(handle.into_index() as _);
                         let buf = buf.share();
                         platform.buf_pool.release(buf.clone());
                         platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+                        is_first_client = false;
                     }
                     ApplicationEvent::ConnectionClose { handle } => {
                         clients.on_client_left(handle);
@@ -225,7 +228,11 @@ impl<'stdout> ClientApplication<'stdout> {
         2 * 1024
     }
 
-    pub fn new(handle: ClientHandle, stdout: io::StdoutLock<'stdout>, is_pipped: bool) -> Self {
+    pub fn new(
+        handle: ClientHandle,
+        stdout: io::StdoutLock<'stdout>,
+        is_pipped: bool,
+    ) -> Self {
         Self {
             handle,
             is_pipped,
@@ -236,7 +243,7 @@ impl<'stdout> ClientApplication<'stdout> {
         }
     }
 
-    pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
+    pub fn init<'a>(&'a mut self, args: Args, is_first_client: bool) -> &'a [u8] {
         self.server_write_buf.clear();
 
         if let Some(handle) = args.as_client {
@@ -244,12 +251,14 @@ impl<'stdout> ClientApplication<'stdout> {
         }
 
         let mut commands = String::new();
-        for config in &args.configs {
-            use fmt::Write;
-            if config.throw_error {
-                writeln!(commands, "source '{}'", &config.path).unwrap();
-            } else {
-                writeln!(commands, "try {{ source '{}' }}", &config.path).unwrap();
+        if is_first_client {
+            for config in &args.configs {
+                use fmt::Write;
+                if config.throw_error {
+                    writeln!(commands, "source '{}'", &config.path).unwrap();
+                } else {
+                    writeln!(commands, "try {{ source '{}' }}", &config.path).unwrap();
+                }
             }
         }
         for path in &args.files {
@@ -360,3 +369,4 @@ impl<'stdout> Drop for ClientApplication<'stdout> {
         }
     }
 }
+

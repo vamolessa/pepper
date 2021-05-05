@@ -1,5 +1,4 @@
 use crate::{
-    buffer::BufferHandle,
     command::{replace_to_between_text_markers, CommandManager},
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
@@ -114,17 +113,13 @@ pub mod buffer {
                 }
             }
 
-            let buffer_handle = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
-                Some((EntrySource::Custom(i), _)) => BufferHandle(i as _),
+            let path = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
+                Some((_, entry)) => entry,
                 _ => {
                     Mode::change_to(ctx, ModeKind::default());
                     return None;
                 }
             };
-            if ctx.editor.buffers.get(buffer_handle).is_none() {
-                Mode::change_to(ctx, ModeKind::default());
-                return None;
-            }
 
             NavigationHistory::save_client_snapshot(
                 ctx.clients,
@@ -132,10 +127,11 @@ pub mod buffer {
                 &ctx.editor.buffer_views,
             );
 
+            let path = ctx.editor.string_pool.acquire_with(path);
             let buffer_view_handle = ctx
                 .editor
-                .buffer_views
-                .buffer_view_handle_from_buffer_handle(ctx.client_handle, buffer_handle);
+                .buffer_view_handle_from_path(ctx.client_handle, Path::new(&path));
+            ctx.editor.string_pool.release(path);
 
             if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
                 client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
@@ -342,3 +338,4 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
+

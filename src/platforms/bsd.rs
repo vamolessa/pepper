@@ -398,18 +398,20 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
 fn run_client(args: Args, mut connection: UnixStream) {
     use io::{Read, Write};
 
-    let mut client_index = 0;
-    match connection.read(std::slice::from_mut(&mut client_index)) {
-        Ok(1) => (),
+    let mut buf = [0; 2];
+    match connection.read_exact(&mut buf) {
+        Ok(()) => (),
         _ => return,
     }
+    let is_first_client = buf[0] != 0;
+    let client_index = buf[1];
 
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let is_pipped = is_pipped();
 
     let stdout = io::stdout();
     let mut application = ClientApplication::new(client_handle, stdout.lock(), is_pipped);
-    let bytes = application.init(args);
+    let bytes = application.init(args, is_first_client);
     if connection.write(bytes).is_err() {
         return;
     }
