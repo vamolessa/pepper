@@ -163,7 +163,8 @@ impl Editor {
         } else {
             let path = path.strip_prefix(&self.current_directory).unwrap_or(path);
             let buffer = self.buffers.add_new();
-            buffer.set_path(path);
+            buffer.path.clear();
+            buffer.path.push(path);
             buffer.capabilities = BufferCapabilities::text();
             let _ = buffer.discard_and_reload_from_file(&mut self.word_database, &mut self.events);
 

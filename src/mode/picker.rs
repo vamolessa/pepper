@@ -96,7 +96,7 @@ pub mod buffer {
 
     use std::path::Path;
 
-    use crate::{buffer::Buffer, navigation_history::NavigationHistory};
+    use crate::navigation_history::NavigationHistory;
 
     pub fn enter_mode(ctx: &mut ModeContext) {
         fn on_client_keys(
@@ -144,13 +144,7 @@ pub mod buffer {
         ctx.editor.read_line.set_prompt("buffer:");
         ctx.editor.picker.clear();
 
-        for path in ctx
-            .editor
-            .buffers
-            .iter()
-            .map(Buffer::path)
-            .filter_map(Path::to_str)
-        {
+        for path in ctx.editor.buffers.iter().filter_map(|b| b.path.to_str()) {
             ctx.editor.picker.add_custom_entry(path);
         }
 

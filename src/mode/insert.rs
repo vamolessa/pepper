@@ -258,7 +258,7 @@ fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandl
     let main_cursor_position = buffer_view.cursors.main_cursor().position;
     let word = content.word_at(content.position_before(main_cursor_position));
 
-    let lsp_client_handle = state.get_lsp_client_handle(&ctx.editor.lsp, buffer.path());
+    let lsp_client_handle = state.get_lsp_client_handle(&ctx.editor.lsp, &buffer.path);
 
     let mut force_trigger_completion = false;
     if let Some(last_char) = word.text.chars().next_back() {
@@ -373,11 +373,11 @@ fn apply_completion(
                 None => return,
             };
             let state = &mut ctx.editor.mode.insert_state;
-            let lsp_client_handle =
-                match state.get_lsp_client_handle(&ctx.editor.lsp, buffer.path()) {
-                    Some(handle) => handle,
-                    None => return,
-                };
+            let lsp_client_handle = match state.get_lsp_client_handle(&ctx.editor.lsp, &buffer.path)
+            {
+                Some(handle) => handle,
+                None => return,
+            };
 
             let content = buffer.content();
             state.completion_positions.clear();

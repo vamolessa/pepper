@@ -949,7 +949,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.editor
                 .status_bar
                 .write(MessageKind::Info)
-                .fmt(format_args!("buffer saved to {:?}", buffer.path()));
+                .fmt(format_args!("buffer saved to {:?}", &buffer.path));
             Ok(None)
         },
     },
@@ -1807,7 +1807,7 @@ fn find_lsp_client_for_buffer(
     editor: &Editor,
     buffer_handle: BufferHandle,
 ) -> Option<lsp::ClientHandle> {
-    let buffer_path = editor.buffers.get(buffer_handle)?.path().to_str()?;
+    let buffer_path = editor.buffers.get(buffer_handle)?.path.to_str()?;
     let client = editor.lsp.clients().find(|c| c.handles_path(buffer_path))?;
     Some(client.handle())
 }

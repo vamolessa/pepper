@@ -805,7 +805,7 @@ impl<'a> fmt::Display for BufferErrorDisplay<'a> {
 pub struct Buffer {
     alive: bool,
     handle: BufferHandle,
-    path: PathBuf,
+    pub path: PathBuf,
     content: BufferContent,
     syntax_handle: SyntaxHandle,
     highlighted: HighlightedBuffer,
@@ -857,16 +857,6 @@ impl Buffer {
 
     pub fn handle(&self) -> BufferHandle {
         self.handle
-    }
-
-    // TODO: remove and make path public
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    pub fn set_path(&mut self, path: &Path) {
-        self.path.clear();
-        self.path.push(path);
     }
 
     pub fn highlighted(&self) -> &HighlightedBuffer {
@@ -1173,7 +1163,8 @@ impl Buffer {
         let new_path = match new_path {
             Some(path) => {
                 self.capabilities.can_save = true;
-                self.set_path(path);
+                self.path.clear();
+                self.path.push(path);
                 true
             }
             None => false,
@@ -1183,7 +1174,7 @@ impl Buffer {
             return Ok(());
         }
 
-        let file = File::create(self.path()).map_err(|_| BufferError::CouldNotCreateFile)?;
+        let file = File::create(&self.path).map_err(|_| BufferError::CouldNotCreateFile)?;
         let mut writer = io::BufWriter::new(file);
 
         self.content
@@ -1221,7 +1212,7 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if let Ok(file) = File::open(self.path()) {
+        if let Ok(file) = File::open(&self.path) {
             let mut reader = io::BufReader::new(file);
             self.content
                 .read(&mut reader)

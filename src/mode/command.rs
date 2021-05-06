@@ -228,7 +228,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             }
             CompletionSource::Buffers => {
                 for buffer in ctx.editor.buffers.iter() {
-                    if let Some(path) = buffer.path().to_str() {
+                    if let Some(path) = buffer.path.to_str() {
                         ctx.editor.picker.add_custom_entry(path);
                     }
                 }
