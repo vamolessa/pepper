@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    buffer_position::{BufferPosition, BufferRange},
+    buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     events::{EditorEvent, EditorEventQueue},
     history::{Edit, EditKind, History},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
@@ -148,7 +148,7 @@ impl<'a> WordRefWithIndex<'a> {
         WordRefWithPosition {
             kind: self.kind,
             text: self.text,
-            position: BufferPosition::line_col(line_index, self.index),
+            position: BufferPosition::line_col(line_index as _, self.index as _),
         }
     }
 }
@@ -162,7 +162,7 @@ impl<'a> WordRefWithPosition<'a> {
     pub fn end_position(&self) -> BufferPosition {
         BufferPosition::line_col(
             self.position.line_index,
-            self.position.column_byte_index + self.text.len(),
+            self.position.column_byte_index + self.text.len() as BufferPositionIndex,
         )
     }
 }
@@ -353,7 +353,10 @@ impl BufferContent {
 
     pub fn end(&self) -> BufferPosition {
         let last_line_index = self.lines.len() - 1;
-        BufferPosition::line_col(last_line_index, self.lines[last_line_index].as_str().len())
+        BufferPosition::line_col(
+            last_line_index as _,
+            self.lines[last_line_index].as_str().len() as _,
+        )
     }
 
     pub fn read<R>(&mut self, read: &mut R) -> io::Result<()>
@@ -407,10 +410,10 @@ impl BufferContent {
     }
 
     pub fn saturate_position(&self, mut position: BufferPosition) -> BufferPosition {
-        position.line_index = position.line_index.min(self.line_count() - 1);
-        let line = self.line_at(position.line_index).as_str();
-        position.column_byte_index = line.len().min(position.column_byte_index);
-        while !line.is_char_boundary(position.column_byte_index) {
+        position.line_index = position.line_index.min((self.line_count() - 1) as _);
+        let line = self.line_at(position.line_index as _).as_str();
+        position.column_byte_index = position.column_byte_index.min(line.len() as _);
+        while !line.is_char_boundary(position.column_byte_index as _) {
             position.column_byte_index += 1;
         }
         position
@@ -420,13 +423,14 @@ impl BufferContent {
         let from = self.clamp_position(range.from);
         let to = self.clamp_position(range.to);
 
-        let first_line = self.lines[from.line_index].as_str();
+        let first_line = self.lines[from.line_index as usize].as_str();
         if from.line_index == to.line_index {
-            let range_text = &first_line[from.column_byte_index..to.column_byte_index];
+            let range_text =
+                &first_line[from.column_byte_index as usize..to.column_byte_index as usize];
             text.push_str(range_text);
         } else {
-            text.push_str(&first_line[from.column_byte_index..]);
-            let lines_range = (from.line_index + 1)..to.line_index;
+            text.push_str(&first_line[from.column_byte_index as usize..]);
+            let lines_range = (from.line_index as usize + 1)..to.line_index as usize;
             if lines_range.start < lines_range.end {
                 for line in &self.lines[lines_range] {
                     text.push('\n');
@@ -434,9 +438,9 @@ impl BufferContent {
                 }
             }
 
-            let to_line = &self.lines[to.line_index];
+            let to_line = &self.lines[to.line_index as usize];
             text.push('\n');
-            text.push_str(&to_line.as_str()[..to.column_byte_index]);
+            text.push_str(&to_line.as_str()[..to.column_byte_index as usize]);
         }
     }
 
@@ -450,8 +454,8 @@ impl BufferContent {
             for (i, line) in self.lines.iter().enumerate() {
                 for (j, _) in line.as_str().match_indices(text) {
                     ranges.push(BufferRange::between(
-                        BufferPosition::line_col(i, j),
-                        BufferPosition::line_col(i, j + text.len()),
+                        BufferPosition::line_col(i as _, j as _),
+                        BufferPosition::line_col(i as _, (j + text.len()) as _),
                     ));
                 }
             }
@@ -468,9 +472,9 @@ impl BufferContent {
                         .zip(bytes.iter())
                         .all(|(a, b)| a.eq_ignore_ascii_case(b))
                     {
-                        let from = BufferPosition::line_col(i, column_index);
-                        column_index += bytes_len;
-                        let to = BufferPosition::line_col(i, column_index);
+                        let from = BufferPosition::line_col(i as _, column_index);
+                        column_index += bytes_len as BufferPositionIndex;
+                        let to = BufferPosition::line_col(i as _, column_index);
                         ranges.push(BufferRange::between(from, to));
                         line = &line[bytes_len..];
                     } else {
@@ -483,52 +487,54 @@ impl BufferContent {
     }
 
     fn clamp_position(&self, mut position: BufferPosition) -> BufferPosition {
-        position.line_index = position.line_index.min(self.line_count() - 1);
+        position.line_index = position.line_index.min((self.line_count() - 1) as _);
         position.column_byte_index = position
             .column_byte_index
-            .min(self.lines[position.line_index].as_str().len());
+            .min(self.lines[position.line_index as usize].as_str().len() as _);
 
         position
     }
 
     pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
         if let None = text.find('\n') {
-            let line = &mut self.lines[position.line_index];
+            let line = &mut self.lines[position.line_index as usize];
             let previous_len = line.as_str().len();
-            line.insert_text(position.column_byte_index, text);
+            line.insert_text(position.column_byte_index as _, text);
             let len_diff = line.as_str().len() - previous_len;
 
             let end_position = BufferPosition::line_col(
                 position.line_index,
-                position.column_byte_index + len_diff,
+                position.column_byte_index + len_diff as BufferPositionIndex,
             );
             BufferRange::between(position, end_position)
         } else {
             let mut split_line = self.line_pool.acquire();
-            self.lines[position.line_index].split_off(&mut split_line, position.column_byte_index);
+            self.lines[position.line_index as usize]
+                .split_off(&mut split_line, position.column_byte_index as _);
 
-            let mut line_count = 0;
+            let mut line_count = 0 as BufferPositionIndex;
             let mut lines = text.lines();
             if let Some(line) = lines.next() {
-                self.lines[position.line_index].push_text(&line);
+                self.lines[position.line_index as usize].push_text(&line);
             }
             for line_text in lines {
                 line_count += 1;
 
                 let mut line = self.line_pool.acquire();
                 line.push_text(line_text);
-                self.lines.insert(position.line_index + line_count, line);
+                self.lines
+                    .insert((position.line_index + line_count) as _, line);
             }
 
             let end_position = if text.ends_with('\n') {
                 line_count += 1;
                 self.lines
-                    .insert(position.line_index + line_count, split_line);
+                    .insert((position.line_index + line_count) as usize, split_line);
 
                 BufferPosition::line_col(position.line_index + line_count, 0)
             } else {
-                let line = &mut self.lines[position.line_index + line_count];
-                let column_byte_index = line.as_str().len();
+                let line = &mut self.lines[(position.line_index + line_count) as usize];
+                let column_byte_index = line.as_str().len() as _;
                 line.push_text(split_line.as_str());
 
                 BufferPosition::line_col(position.line_index + line_count, column_byte_index)
@@ -543,20 +549,21 @@ impl BufferContent {
         let to = range.to;
 
         if from.line_index == to.line_index {
-            let line = &mut self.lines[from.line_index];
-            line.delete_range(from.column_byte_index..to.column_byte_index);
+            let line = &mut self.lines[from.line_index as usize];
+            line.delete_range(from.column_byte_index as usize..to.column_byte_index as usize);
         } else {
-            self.lines[from.line_index].delete_range(from.column_byte_index..);
-            let lines_range = (from.line_index + 1)..to.line_index;
+            self.lines[from.line_index as usize].delete_range(from.column_byte_index as usize..);
+            let lines_range = (from.line_index as usize + 1)..to.line_index as usize;
             if lines_range.start < lines_range.end {
                 for line in self.lines.drain(lines_range) {
                     self.line_pool.release(line);
                 }
             }
             let to_line_index = from.line_index + 1;
-            if to_line_index < self.lines.len() {
-                let to_line = self.lines.remove(to_line_index);
-                self.lines[from.line_index].push_text(&to_line.as_str()[to.column_byte_index..]);
+            if (to_line_index as usize) < self.lines.len() {
+                let to_line = self.lines.remove(to_line_index as _);
+                self.lines[from.line_index as usize]
+                    .push_text(&to_line.as_str()[to.column_byte_index as usize..]);
             }
         }
     }
@@ -576,13 +583,12 @@ impl BufferContent {
         impl Iterator<Item = WordRefWithPosition<'a>>,
         impl Iterator<Item = WordRefWithPosition<'a>>,
     ) {
-        let BufferPosition {
-            line_index,
-            column_byte_index,
-        } = self.clamp_position(position);
+        let position = self.clamp_position(position);
+        let line_index = position.line_index as _;
+        let column_byte_index = position.column_byte_index as _;
 
         let (mid_word, left_words, right_words) =
-            self.line_at(line_index).words_from(column_byte_index);
+            self.line_at(line_index as _).words_from(column_byte_index);
 
         (
             mid_word.to_word_ref_with_position(line_index),
@@ -593,17 +599,17 @@ impl BufferContent {
 
     pub fn word_at(&self, position: BufferPosition) -> WordRefWithPosition {
         let position = self.clamp_position(position);
-        self.line_at(position.line_index)
-            .word_at(position.column_byte_index)
-            .to_word_ref_with_position(position.line_index)
+        self.line_at(position.line_index as _)
+            .word_at(position.column_byte_index as _)
+            .to_word_ref_with_position(position.line_index as _)
     }
 
     pub fn position_before(&self, mut position: BufferPosition) -> BufferPosition {
-        position.column_byte_index = self.line_at(position.line_index).as_str()
-            [..position.column_byte_index]
+        position.column_byte_index = self.line_at(position.line_index as _).as_str()
+            [..position.column_byte_index as usize]
             .char_indices()
             .next_back()
-            .map(|(i, _)| i)
+            .map(|(i, _)| i as _)
             .unwrap_or(0);
         position
     }
@@ -614,11 +620,11 @@ impl BufferContent {
         delimiter: char,
     ) -> Option<BufferRange> {
         let position = self.clamp_position(position);
-        let line = self.line_at(position.line_index).as_str();
-        let range = find_delimiter_pair_at(line, position.column_byte_index, delimiter)?;
+        let line = self.line_at(position.line_index as _).as_str();
+        let range = find_delimiter_pair_at(line, position.column_byte_index as _, delimiter)?;
         Some(BufferRange::between(
-            BufferPosition::line_col(position.line_index, range.0),
-            BufferPosition::line_col(position.line_index, range.1),
+            BufferPosition::line_col(position.line_index, range.0 as _),
+            BufferPosition::line_col(position.line_index, range.1 as _),
         ))
     }
 
@@ -650,8 +656,8 @@ impl BufferContent {
         }
 
         let position = self.clamp_position(position);
-        let line = self.line_at(position.line_index).as_str();
-        let (before, after) = line.split_at(position.column_byte_index);
+        let line = self.line_at(position.line_index as _).as_str();
+        let (before, after) = line.split_at(position.column_byte_index as _);
 
         let mut balance = 0;
 
@@ -661,27 +667,30 @@ impl BufferContent {
         let mut after_chars = after.char_indices();
         if let Some((i, c)) = after_chars.next() {
             if c == left {
-                left_position = Some(position.column_byte_index + i + c.len_utf8());
+                left_position = Some(position.column_byte_index as usize + i + c.len_utf8());
             } else if c == right {
-                right_position = Some(position.column_byte_index + i);
+                right_position = Some(position.column_byte_index as usize + i);
             }
         }
 
         let right_position = match right_position {
-            Some(column_index) => BufferPosition::line_col(position.line_index, column_index),
+            Some(column_index) => BufferPosition::line_col(position.line_index, column_index as _),
             None => match find(after_chars, right, left, &mut balance) {
                 Some(column_byte_index) => {
-                    let column_byte_index = position.column_byte_index + column_byte_index;
-                    BufferPosition::line_col(position.line_index, column_byte_index)
+                    let column_byte_index = position.column_byte_index as usize + column_byte_index;
+                    BufferPosition::line_col(position.line_index, column_byte_index as _)
                 }
                 None => {
                     let mut pos = None;
-                    for line_index in (position.line_index + 1)..self.line_count() {
+                    for line_index in (position.line_index as usize + 1)..self.line_count() {
                         let line = self.line_at(line_index).as_str();
                         if let Some(column_byte_index) =
                             find(line.char_indices(), right, left, &mut balance)
                         {
-                            pos = Some(BufferPosition::line_col(line_index, column_byte_index));
+                            pos = Some(BufferPosition::line_col(
+                                line_index as _,
+                                column_byte_index as _,
+                            ));
                             break;
                         }
                     }
@@ -693,21 +702,22 @@ impl BufferContent {
         balance = 0;
 
         let left_position = match left_position {
-            Some(column_index) => BufferPosition::line_col(position.line_index, column_index),
+            Some(column_index) => BufferPosition::line_col(position.line_index, column_index as _),
             None => match find(before.char_indices().rev(), left, right, &mut balance) {
                 Some(column_byte_index) => {
                     let column_byte_index = column_byte_index + left.len_utf8();
-                    BufferPosition::line_col(position.line_index, column_byte_index)
+                    BufferPosition::line_col(position.line_index, column_byte_index as _)
                 }
                 None => {
                     let mut pos = None;
                     for line_index in (0..position.line_index).rev() {
-                        let line = self.line_at(line_index).as_str();
+                        let line = self.line_at(line_index as _).as_str();
                         if let Some(column_byte_index) =
                             find(line.char_indices().rev(), left, right, &mut balance)
                         {
                             let column_byte_index = column_byte_index + left.len_utf8();
-                            pos = Some(BufferPosition::line_col(line_index, column_byte_index));
+                            pos =
+                                Some(BufferPosition::line_col(line_index, column_byte_index as _));
                             break;
                         }
                     }
@@ -883,7 +893,7 @@ impl Buffer {
             self.highlighted.clear();
             self.highlighted.on_insert(BufferRange::between(
                 BufferPosition::zero(),
-                BufferPosition::line_col(self.content.line_count() - 1, 0),
+                BufferPosition::line_col((self.content.line_count() - 1) as _, 0),
             ));
         }
     }
@@ -942,7 +952,7 @@ impl Buffer {
         text: &str,
     ) -> BufferRange {
         if uses_word_database {
-            for word in WordIter(content.line_at(position.line_index).as_str())
+            for word in WordIter(content.line_at(position.line_index as _).as_str())
                 .of_kind(WordKind::Identifier)
             {
                 word_database.remove(word);
@@ -954,7 +964,7 @@ impl Buffer {
 
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
-            for line in content.lines().skip(range.from.line_index).take(line_count) {
+            for line in content.lines().skip(range.from.line_index as _).take(line_count as _) {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.add(word);
                 }
@@ -989,9 +999,9 @@ impl Buffer {
 
         if self.capabilities.has_history {
             fn add_history_delete_line(buffer: &mut Buffer, from: BufferPosition) {
-                let line = buffer.content.line_at(from.line_index).as_str();
+                let line = buffer.content.line_at(from.line_index as _).as_str();
                 let range = BufferRange::between(
-                    BufferPosition::line_col(from.line_index, line.len()),
+                    BufferPosition::line_col(from.line_index, line.len() as _),
                     BufferPosition::line_col(from.line_index + 1, 0),
                 );
                 buffer.history.add_edit(Edit {
@@ -1002,20 +1012,20 @@ impl Buffer {
                 buffer.history.add_edit(Edit {
                     kind: EditKind::Delete,
                     range: BufferRange::between(from, range.from),
-                    text: &line[from.column_byte_index..],
+                    text: &line[from.column_byte_index as usize..],
                 });
             }
 
             if from.line_index == to.line_index {
-                let text = &self.content.line_at(from.line_index).as_str()
-                    [from.column_byte_index..to.column_byte_index];
+                let text = &self.content.line_at(from.line_index as _).as_str()
+                    [from.column_byte_index as usize..to.column_byte_index as usize];
                 self.history.add_edit(Edit {
                     kind: EditKind::Delete,
                     range,
                     text,
                 });
             } else {
-                let text = &self.content.line_at(to.line_index).as_str()[..to.column_byte_index];
+                let text = &self.content.line_at(to.line_index as _).as_str()[..to.column_byte_index as usize];
                 self.history.add_edit(Edit {
                     kind: EditKind::Delete,
                     range: BufferRange::between(BufferPosition::line_col(to.line_index, 0), to),
@@ -1046,7 +1056,7 @@ impl Buffer {
     ) {
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
-            for line in content.lines().skip(range.from.line_index).take(line_count) {
+            for line in content.lines().skip(range.from.line_index as _).take(line_count as _) {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.remove(word);
                 }
@@ -1054,7 +1064,7 @@ impl Buffer {
 
             content.delete_range(range);
 
-            for word in WordIter(content.line_at(range.from.line_index).as_str())
+            for word in WordIter(content.line_at(range.from.line_index as _).as_str())
                 .of_kind(WordKind::Identifier)
             {
                 word_database.add(word);
@@ -1210,7 +1220,7 @@ impl Buffer {
 
             self.highlighted.on_insert(BufferRange::between(
                 BufferPosition::zero(),
-                BufferPosition::line_col(self.content.line_count() - 1, 0),
+                BufferPosition::line_col((self.content.line_count() - 1) as _, 0),
             ));
 
             if self.capabilities.uses_word_database {
@@ -1648,7 +1658,7 @@ mod tests {
         assert_eq!(
             BufferRange::between(
                 BufferPosition::line_col(0, 2),
-                BufferPosition::line_col(0, 2 + 'ç'.len_utf8())
+                BufferPosition::line_col(0, (2 + 'ç'.len_utf8()) as _)
             ),
             range
         );
@@ -1870,7 +1880,7 @@ mod tests {
     #[test]
     fn buffer_content_word_at() {
         fn col(column: usize) -> BufferPosition {
-            BufferPosition::line_col(0, column)
+            BufferPosition::line_col(0, column as _)
         }
 
         fn assert_word(word: WordRefWithPosition, pos: BufferPosition, kind: WordKind, text: &str) {
@@ -1896,7 +1906,7 @@ mod tests {
     #[test]
     fn buffer_content_words_from() {
         fn col(column: usize) -> BufferPosition {
-            BufferPosition::line_col(0, column)
+            BufferPosition::line_col(0, column as _)
         }
 
         fn assert_word(word: WordRefWithPosition, pos: BufferPosition, kind: WordKind, text: &str) {
@@ -1979,3 +1989,4 @@ mod tests {
         );
     }
 }
+

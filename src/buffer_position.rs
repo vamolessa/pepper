@@ -4,10 +4,12 @@ use std::{
 };
 
 // TODO: change to u32
+pub type BufferPositionIndex = usize;
+
 #[derive(Default, Copy, Clone, PartialEq, Eq)]
 pub struct BufferPosition {
-    pub line_index: usize,
-    pub column_byte_index: usize,
+    pub line_index: BufferPositionIndex,
+    pub column_byte_index: BufferPositionIndex,
 }
 
 impl BufferPosition {
@@ -18,7 +20,7 @@ impl BufferPosition {
         }
     }
 
-    pub const fn line_col(line_index: usize, column_byte_index: usize) -> Self {
+    pub const fn line_col(line_index: BufferPositionIndex, column_byte_index: BufferPositionIndex) -> Self {
         Self {
             line_index,
             column_byte_index,
@@ -77,7 +79,7 @@ impl BufferPosition {
 
         let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
         let (line, s) = s.split_at(i);
-        let line = line.parse::<usize>().ok()?.saturating_sub(1);
+        let line = line.parse::<BufferPositionIndex>().ok()?.saturating_sub(1);
 
         let mut chars = s.chars();
         if !matches!(chars.next(), Some(',')) {
@@ -86,7 +88,7 @@ impl BufferPosition {
         let s = chars.as_str();
 
         let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
-        let column = match s[..i].parse::<usize>() {
+        let column = match s[..i].parse::<BufferPositionIndex>() {
             Ok(n) => n.saturating_sub(1),
             Err(_) => return Some(BufferPosition::line_col(line, 0)),
         };
@@ -172,7 +174,7 @@ impl fmt::Debug for BufferRange {
 mod tests {
     use super::*;
 
-    fn pos(line_index: usize, column_byte_index: usize) -> BufferPosition {
+    fn pos(line_index: BufferPositionIndex, column_byte_index: BufferPositionIndex) -> BufferPosition {
         BufferPosition::line_col(line_index, column_byte_index)
     }
 
