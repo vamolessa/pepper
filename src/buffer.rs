@@ -440,6 +440,7 @@ impl BufferContent {
         }
     }
 
+    // TODO: also search by Pattern
     pub fn find_search_ranges(&self, text: &str, ranges: &mut Vec<BufferRange>) {
         if text.is_empty() {
             return;
