@@ -410,6 +410,7 @@ impl Editor {
                     &EditorEvent::BufferLoad { handle } => {
                         if let Some(buffer) = self.buffers.get_mut(handle) {
                             buffer.refresh_syntax(&self.syntaxes);
+                            self.buffer_views.on_buffer_load(buffer);
                         }
                     }
                     &EditorEvent::BufferInsertText { handle, range, .. } => {

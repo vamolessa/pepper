@@ -1,7 +1,7 @@
 use std::{fmt, num::NonZeroU8, str::FromStr};
 
 use crate::{
-    buffer::{BufferCollection, BufferHandle, CharDisplayDistances},
+    buffer::{Buffer, BufferCollection, BufferHandle, CharDisplayDistances},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
@@ -526,24 +526,36 @@ impl BufferViewCollection {
         self.buffer_views[handle.0 as usize].as_mut()
     }
 
+    pub fn on_buffer_load(&mut self, buffer: &Buffer) {
+        let buffer_handle = buffer.handle();
+        let buffer = buffer.content();
+
+        for view in self.buffer_views.iter_mut().flatten() {
+            if view.buffer_handle == buffer_handle {
+                for c in &mut view.cursors.mut_guard()[..] {
+                    c.anchor = buffer.saturate_position(c.anchor);
+                    c.position = buffer.saturate_position(c.position);
+                }
+            }
+        }
+    }
+
     pub fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
         for view in self.buffer_views.iter_mut().flatten() {
-            if view.buffer_handle != buffer_handle {
-                continue;
-            }
-            for c in &mut view.cursors.mut_guard()[..] {
-                c.insert(range);
+            if view.buffer_handle == buffer_handle {
+                for c in &mut view.cursors.mut_guard()[..] {
+                    c.insert(range);
+                }
             }
         }
     }
 
     pub fn on_buffer_delete_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
         for view in self.buffer_views.iter_mut().flatten() {
-            if view.buffer_handle != buffer_handle {
-                continue;
-            }
-            for c in &mut view.cursors.mut_guard()[..] {
-                c.delete(range);
+            if view.buffer_handle == buffer_handle {
+                for c in &mut view.cursors.mut_guard()[..] {
+                    c.delete(range);
+                }
             }
         }
     }
@@ -711,3 +723,4 @@ mod tests {
         assert_movement(&mut ctx, (2, 0), (1, 9), CursorMovement::WordsBackward(1));
     }
 }
+
