@@ -8,7 +8,7 @@ use crate::{
     editor::Editor,
     editor_utils::MessageKind,
     mode::ModeKind,
-    syntax::{HighlightedBuffer, TokenKind},
+    syntax::{HighlightedBuffer, Token, TokenKind},
     theme::Color,
 };
 
@@ -244,6 +244,8 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut was_inside_diagnostic_range = false;
         let mut x = 0;
+        let mut last_line_token = Token::default();
+        let mut line_tokens = highlighted_buffer.line_tokens(line_index).iter();
 
         set_foreground_color(buf, editor.theme.token_text);
 
@@ -259,7 +261,15 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
             let token_kind = if c.is_ascii_whitespace() {
                 TokenKind::Whitespace
             } else {
-                highlighted_buffer.find_token_kind_at(line_index, char_index)
+                if !last_line_token.contains(char_index as _) {
+                    while let Some(token) = line_tokens.next() {
+                        if token.contains(char_index as _) {
+                            last_line_token = token.clone();
+                            break;
+                        }
+                    }
+                }
+                last_line_token.kind
             };
 
             text_color = match token_kind {
@@ -672,3 +682,4 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
 
     clear_until_new_line(buf);
 }
+

@@ -1,5 +1,3 @@
-use std::{cmp::Ordering, ops::Range};
-
 use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPositionIndex, BufferRange},
@@ -22,9 +20,25 @@ pub enum TokenKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Token {
+pub struct Token {
     pub kind: TokenKind,
-    pub range: Range<usize>,
+    pub from: BufferPositionIndex,
+    pub to: BufferPositionIndex,
+}
+impl Token {
+    #[inline]
+    pub fn contains(&self, column_byte_index: BufferPositionIndex) -> bool {
+        self.from <= column_byte_index && column_byte_index < self.to
+    }
+}
+impl Default for Token {
+    fn default() -> Self {
+        Self {
+            kind: TokenKind::Text,
+            from: 0,
+            to: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,7 +108,8 @@ impl Syntax {
                     MatchResult::Ok(len) => {
                         tokens.push(Token {
                             kind,
-                            range: 0..len,
+                            from: 0,
+                            to: len as _,
                         });
                         index += len;
                     }
@@ -102,7 +117,8 @@ impl Syntax {
                     MatchResult::Pending(state) => {
                         tokens.push(Token {
                             kind,
-                            range: 0..line_len,
+                            from: 0,
+                            to: line_len as _,
                         });
                         return LineParseState::Unfinished(kind, state);
                     }
@@ -144,7 +160,8 @@ impl Syntax {
                     MatchResult::Pending(state) => {
                         tokens.push(Token {
                             kind,
-                            range: index..line_len,
+                            from: index as _,
+                            to: line_len as _,
                         });
                         return LineParseState::Unfinished(kind, state);
                     }
@@ -173,7 +190,8 @@ impl Syntax {
 
             tokens.push(Token {
                 kind,
-                range: from..index,
+                from: from as _,
+                to: index as _,
             });
         }
 
@@ -377,24 +395,11 @@ impl HighlightedBuffer {
         HighlightResult::Complete
     }
 
-    // TODO: does not need to be binary search
-    pub fn find_token_kind_at(&self, line_index: usize, char_index: usize) -> TokenKind {
-        if line_index >= self.highlighted_len {
-            return TokenKind::Text;
-        }
-
-        let tokens = &self.lines[line_index].tokens;
-        match tokens.binary_search_by(|t| {
-            if char_index < t.range.start {
-                Ordering::Greater
-            } else if char_index >= t.range.end {
-                Ordering::Less
-            } else {
-                Ordering::Equal
-            }
-        }) {
-            Ok(index) => tokens[index].kind,
-            Err(_) => TokenKind::Text,
+    pub fn line_tokens(&self, line_index: usize) -> &[Token] {
+        if line_index < self.highlighted_len {
+            &self.lines[line_index].tokens
+        } else {
+            &[]
         }
     }
 }
@@ -403,13 +408,20 @@ impl HighlightedBuffer {
 mod tests {
     use super::*;
 
+    use std::ops::Range;
+
     use crate::buffer_position::BufferPosition;
 
     fn assert_next_token<'a, I>(iter: &mut I, kind: TokenKind, range: Range<usize>)
     where
         I: Iterator<Item = &'a Token>,
     {
-        assert_eq!(Some(Token { kind: kind, range }), iter.next().cloned(),);
+        let expect = Some(Token {
+            kind,
+            from: range.start as _,
+            to: range.end as _,
+        });
+        assert_eq!(expect, iter.next().cloned());
     }
 
     fn highlighted_tokens<'a>(
@@ -423,7 +435,7 @@ mod tests {
 
     fn assert_token(slice: &str, kind: TokenKind, line: &str, token: &Token) {
         assert_eq!(kind, token.kind);
-        assert_eq!(slice, &line[token.range.clone()]);
+        assert_eq!(slice, &line[token.from as usize..token.to as usize]);
     }
 
     #[test]
@@ -677,3 +689,4 @@ mod tests {
         }
     }
 }
+

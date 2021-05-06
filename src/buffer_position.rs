@@ -3,7 +3,6 @@ use std::{
     fmt,
 };
 
-// TODO: change to u32
 pub type BufferPositionIndex = u32;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq)]
