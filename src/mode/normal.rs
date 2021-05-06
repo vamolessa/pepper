@@ -339,6 +339,7 @@ impl State {
                     Key::Char('|') => delimiter_pair(buffer, &mut cursors[..], '|'),
                     Key::Char('"') => delimiter_pair(buffer, &mut cursors[..], '"'),
                     Key::Char('\'') => delimiter_pair(buffer, &mut cursors[..], '\''),
+                    Key::Char('`') => delimiter_pair(buffer, &mut cursors[..], '`'),
                     _ => (),
                 }
 
