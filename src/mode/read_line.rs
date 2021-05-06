@@ -1,4 +1,5 @@
 use crate::{
+    buffer_position::BufferPositionIndex,
     buffer_view::CursorMovementKind,
     client::Client,
     command::{replace_to_between_text_markers, CommandManager},
@@ -214,25 +215,25 @@ pub mod filter_cursors {
             pattern: &str,
         ) -> bool {
             if range.from.line_index == range.to.line_index {
-                let line = &buffer.line_at(range.from.line_index).as_str()
-                    [range.from.column_byte_index..range.to.column_byte_index];
+                let line = &buffer.line_at(range.from.line_index as _).as_str()
+                    [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
                 line.contains(pattern)
             } else {
                 let line =
-                    &buffer.line_at(range.from.line_index).as_str()[range.from.column_byte_index..];
+                    &buffer.line_at(range.from.line_index as _).as_str()[range.from.column_byte_index as usize..];
                 if line.contains(pattern) {
                     return true;
                 }
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
-                    let line = buffer.line_at(line_index).as_str();
+                    let line = buffer.line_at(line_index as _).as_str();
                     if line.contains(pattern) {
                         return true;
                     }
                 }
 
                 let line =
-                    &buffer.line_at(range.to.line_index).as_str()[..range.to.column_byte_index];
+                    &buffer.line_at(range.to.line_index as _).as_str()[..range.to.column_byte_index as usize];
                 line.contains(pattern)
             }
         }
@@ -295,9 +296,9 @@ pub mod split_cursors {
         ) {
             for (index, s) in line.match_indices(pattern) {
                 let mut anchor = start_position;
-                anchor.column_byte_index += index;
+                anchor.column_byte_index += index as BufferPositionIndex;
                 let mut position = anchor;
-                position.column_byte_index += s.len();
+                position.column_byte_index += s.len() as BufferPositionIndex;
                 cursors.add(Cursor { anchor, position });
             }
         }
@@ -323,9 +324,9 @@ pub mod split_cursors {
             for (i, s) in line.match_indices(pattern) {
                 if index != i {
                     let mut anchor = start_position;
-                    anchor.column_byte_index += index;
+                    anchor.column_byte_index += index as BufferPositionIndex;
                     let mut position = start_position;
-                    position.column_byte_index += i;
+                    position.column_byte_index += i as BufferPositionIndex;
                     cursors.add(Cursor { anchor, position });
                 }
 
@@ -336,11 +337,11 @@ pub mod split_cursors {
                 cursors.add(Cursor {
                     anchor: BufferPosition::line_col(
                         start_position.line_index,
-                        start_position.column_byte_index + index,
+                        start_position.column_byte_index + index as BufferPositionIndex,
                     ),
                     position: BufferPosition::line_col(
                         start_position.line_index,
-                        start_position.column_byte_index + line.len(),
+                        start_position.column_byte_index + line.len() as BufferPositionIndex,
                     ),
                 });
             }
@@ -385,16 +386,16 @@ pub mod split_cursors {
             let new_cursors_start_index = cursors[..].len();
 
             if range.from.line_index == range.to.line_index {
-                let line = &buffer.line_at(range.from.line_index).as_str()
-                    [range.from.column_byte_index..range.to.column_byte_index];
+                let line = &buffer.line_at(range.from.line_index as _).as_str()
+                    [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
                 add_matches(&mut cursors, line, pattern, range.from);
             } else {
                 let line =
-                    &buffer.line_at(range.from.line_index).as_str()[range.from.column_byte_index..];
+                    &buffer.line_at(range.from.line_index as _).as_str()[range.from.column_byte_index as usize..];
                 add_matches(&mut cursors, line, pattern, range.from);
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
-                    let line = buffer.line_at(line_index).as_str();
+                    let line = buffer.line_at(line_index as _).as_str();
                     add_matches(
                         &mut cursors,
                         line,
@@ -404,7 +405,7 @@ pub mod split_cursors {
                 }
 
                 let line =
-                    &buffer.line_at(range.to.line_index).as_str()[..range.to.column_byte_index];
+                    &buffer.line_at(range.to.line_index as _).as_str()[..range.to.column_byte_index as usize];
                 add_matches(
                     &mut cursors,
                     line,
@@ -461,7 +462,7 @@ pub mod goto {
                     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
                     let buffer = buffer.content();
 
-                    let mut position = BufferPosition::line_col(line_index, 0);
+                    let mut position = BufferPosition::line_col(line_index as _, 0);
                     position = buffer.saturate_position(position);
                     let word = buffer.word_at(position);
                     if word.kind == WordKind::Whitespace {

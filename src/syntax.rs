@@ -2,7 +2,7 @@ use std::{cmp::Ordering, ops::Range};
 
 use crate::{
     buffer::BufferContent,
-    buffer_position::BufferRange,
+    buffer_position::{BufferRange, BufferPositionIndex},
     glob::{Glob, InvalidGlobError},
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
@@ -236,7 +236,7 @@ pub enum HighlightResult {
 pub struct HighlightedBuffer {
     highlighted_len: usize,
     lines: Vec<HighlightedLine>,
-    dirty_line_indexes: Vec<usize>,
+    dirty_line_indexes: Vec<BufferPositionIndex>,
 }
 
 impl HighlightedBuffer {
@@ -266,7 +266,7 @@ impl HighlightedBuffer {
         let insert_line_count = range.to.line_index - range.from.line_index;
         if insert_line_count > 0 {
             let previous_highlighted_len = self.highlighted_len;
-            self.highlighted_len += insert_line_count;
+            self.highlighted_len += insert_line_count as usize;
             if self.highlighted_len > self.lines.len() {
                 for line in &mut self.lines[previous_highlighted_len..] {
                     line.parse_state = LineParseState::Dirty;
@@ -280,7 +280,8 @@ impl HighlightedBuffer {
             }
 
             let insert_index = range.from.line_index + 1;
-            self.lines[insert_index..self.highlighted_len].rotate_right(insert_line_count);
+            self.lines[insert_index as usize..self.highlighted_len as usize]
+                .rotate_right(insert_line_count as _);
 
             for index in &mut self.dirty_line_indexes {
                 if insert_index <= *index {
@@ -289,18 +290,18 @@ impl HighlightedBuffer {
             }
         }
 
-        self.lines[range.from.line_index].parse_state = LineParseState::Dirty;
+        self.lines[range.from.line_index as usize].parse_state = LineParseState::Dirty;
         self.dirty_line_indexes.push(range.from.line_index);
     }
 
     pub fn on_delete(&mut self, range: BufferRange) {
-        self.lines[range.from.line_index].parse_state = LineParseState::Dirty;
+        self.lines[range.from.line_index as usize].parse_state = LineParseState::Dirty;
 
         let delete_line_count = range.to.line_index - range.from.line_index;
         if delete_line_count > 0 {
-            self.highlighted_len -= delete_line_count;
+            self.highlighted_len -= delete_line_count as usize;
             let delete_index = range.from.line_index + 1;
-            self.lines[delete_index..].rotate_left(delete_line_count);
+            self.lines[delete_index as usize..].rotate_left(delete_line_count as _);
 
             for index in &mut self.dirty_line_indexes {
                 if range.to.line_index <= *index {
@@ -328,7 +329,7 @@ impl HighlightedBuffer {
         let mut last_dirty_index = usize::MAX;
 
         let mut previous_parse_state = match index.checked_sub(1) {
-            Some(i) => self.lines[i].parse_state,
+            Some(i) => self.lines[i as usize].parse_state,
             None => LineParseState::Finished,
         };
 
@@ -338,16 +339,16 @@ impl HighlightedBuffer {
             let dirty_index = self.dirty_line_indexes[i];
             i += 1;
 
-            if dirty_index < index || dirty_index == last_dirty_index {
+            if dirty_index < index || dirty_index == last_dirty_index as _ {
                 continue;
             }
 
             index = dirty_index;
-            last_dirty_index = dirty_index;
+            last_dirty_index = dirty_index as _;
 
-            while index < self.highlighted_len {
-                let bline = buffer.line_at(index).as_str();
-                let hline = &mut self.lines[index];
+            while index < self.highlighted_len as _ {
+                let bline = buffer.line_at(index as _).as_str();
+                let hline = &mut self.lines[index as usize];
 
                 let previous_state = hline.parse_state;
                 previous_parse_state =
@@ -676,3 +677,4 @@ mod tests {
         }
     }
 }
+

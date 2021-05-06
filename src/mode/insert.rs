@@ -153,8 +153,8 @@ impl ModeState for State {
                         .word_at(BufferPosition::line_col(position.line_index, 0));
                     if indentation_word.kind == WordKind::Whitespace {
                         let indentation_len =
-                            position.column_byte_index.min(indentation_word.text.len());
-                        buf.push_str(&indentation_word.text[..indentation_len]);
+                            position.column_byte_index.min(indentation_word.text.len() as _);
+                        buf.push_str(&indentation_word.text[..indentation_len as usize]);
                     }
 
                     buffer.insert_text(

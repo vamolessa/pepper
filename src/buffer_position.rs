@@ -4,7 +4,7 @@ use std::{
 };
 
 // TODO: change to u32
-pub type BufferPositionIndex = usize;
+pub type BufferPositionIndex = u32;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq)]
 pub struct BufferPosition {

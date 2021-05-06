@@ -462,8 +462,8 @@ mod tests {
 
     fn buffer_range(from: (usize, usize), to: (usize, usize)) -> BufferRange {
         BufferRange::between(
-            BufferPosition::line_col(from.0, from.1),
-            BufferPosition::line_col(to.0, to.1),
+            BufferPosition::line_col(from.0 as _, from.1 as _),
+            BufferPosition::line_col(to.0 as _, to.1 as _),
         )
     }
 

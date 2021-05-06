@@ -186,8 +186,8 @@ impl<'a> CursorCollectionMutGuard<'a> {
         self.clear_display_distances = false;
         if self.inner.saved_display_distances_len == 0 {
             for c in &self.inner.cursors[..self.inner.len as usize] {
-                let line =
-                    &buffer.line_at(c.position.line_index).as_str()[..c.position.column_byte_index];
+                let line = &buffer.line_at(c.position.line_index as _).as_str()
+                    [..c.position.column_byte_index as usize];
                 let distance = CharDisplayDistances::new(line, tab_size)
                     .last()
                     .map(|d| d.distance)
@@ -422,3 +422,4 @@ mod tests {
         assert!(cursors.next().is_none());
     }
 }
+

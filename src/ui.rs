@@ -254,7 +254,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
             }
 
             let buf_len = buf.len();
-            let char_position = BufferPosition::line_col(line_index, char_index);
+            let char_position = BufferPosition::line_col(line_index as _, char_index as _);
 
             let token_kind = if c.is_ascii_whitespace() {
                 TokenKind::Whitespace
