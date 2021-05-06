@@ -17,7 +17,10 @@ use pepper::{
     Args,
 };
 
-pub fn run(server_fn: fn(Args, UnixListener) -> Result<(), AnyError>, client_fn: fn(Args, UnixStream)) {
+pub fn run(
+    server_fn: fn(Args, UnixListener) -> Result<(), AnyError>,
+    client_fn: fn(Args, UnixStream),
+) {
     let args = Args::parse();
 
     let mut session_path = String::new();
@@ -287,4 +290,3 @@ pub fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
         keys.push(key);
     }
 }
-

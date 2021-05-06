@@ -219,8 +219,8 @@ pub mod filter_cursors {
                     [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
                 line.contains(pattern)
             } else {
-                let line =
-                    &buffer.line_at(range.from.line_index as _).as_str()[range.from.column_byte_index as usize..];
+                let line = &buffer.line_at(range.from.line_index as _).as_str()
+                    [range.from.column_byte_index as usize..];
                 if line.contains(pattern) {
                     return true;
                 }
@@ -232,8 +232,8 @@ pub mod filter_cursors {
                     }
                 }
 
-                let line =
-                    &buffer.line_at(range.to.line_index as _).as_str()[..range.to.column_byte_index as usize];
+                let line = &buffer.line_at(range.to.line_index as _).as_str()
+                    [..range.to.column_byte_index as usize];
                 line.contains(pattern)
             }
         }
@@ -390,8 +390,8 @@ pub mod split_cursors {
                     [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
                 add_matches(&mut cursors, line, pattern, range.from);
             } else {
-                let line =
-                    &buffer.line_at(range.from.line_index as _).as_str()[range.from.column_byte_index as usize..];
+                let line = &buffer.line_at(range.from.line_index as _).as_str()
+                    [range.from.column_byte_index as usize..];
                 add_matches(&mut cursors, line, pattern, range.from);
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
@@ -404,8 +404,8 @@ pub mod split_cursors {
                     );
                 }
 
-                let line =
-                    &buffer.line_at(range.to.line_index as _).as_str()[..range.to.column_byte_index as usize];
+                let line = &buffer.line_at(range.to.line_index as _).as_str()
+                    [..range.to.column_byte_index as usize];
                 add_matches(
                     &mut cursors,
                     line,
@@ -597,4 +597,3 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 }
-

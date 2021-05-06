@@ -2,7 +2,7 @@ use std::{fmt, num::NonZeroU8, str::FromStr};
 
 use crate::{
     buffer::{BufferCollection, BufferHandle, CharDisplayDistances},
-    buffer_position::{BufferPosition, BufferRange, BufferPositionIndex},
+    buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     events::EditorEventQueue,
@@ -75,7 +75,10 @@ impl BufferView {
                 let last_line_index = buffer.line_count() - 1;
                 for c in &mut cursors[..] {
                     let line = buffer.line_at(c.position.line_index as _).as_str();
-                    match try_nth(line[c.position.column_byte_index as usize..].char_indices(), n) {
+                    match try_nth(
+                        line[c.position.column_byte_index as usize..].char_indices(),
+                        n,
+                    ) {
                         Ok((i, _)) => c.position.column_byte_index += i as BufferPositionIndex,
                         Err(0) => c.position.column_byte_index = line.len() as _,
                         Err(mut n) => {
@@ -113,7 +116,12 @@ impl BufferView {
 
                 for c in &mut cursors[..] {
                     let line = buffer.line_at(c.position.line_index as _).as_str();
-                    match try_nth(line[..c.position.column_byte_index as usize].char_indices().rev(), n) {
+                    match try_nth(
+                        line[..c.position.column_byte_index as usize]
+                            .char_indices()
+                            .rev(),
+                        n,
+                    ) {
                         Ok((i, _)) => c.position.column_byte_index = i as _,
                         Err(0) => {
                             if c.position.line_index == 0 {
@@ -147,7 +155,8 @@ impl BufferView {
                                             c.position.column_byte_index = buffer
                                                 .line_at(c.position.line_index as _)
                                                 .as_str()
-                                                .len() as _;
+                                                .len()
+                                                as _;
                                         }
                                         break;
                                     }
@@ -166,14 +175,16 @@ impl BufferView {
                     c.position.line_index = buffer
                         .line_count()
                         .saturating_sub(1)
-                        .min(c.position.line_index as usize + n) as _;
+                        .min(c.position.line_index as usize + n)
+                        as _;
                     if let Some(distance) = saved_display_distance {
                         let line = buffer.line_at(c.position.line_index as _).as_str();
                         c.position.column_byte_index = CharDisplayDistances::new(line, tab_size)
                             .skip_while(|d| d.distance <= distance as _)
                             .next()
                             .map(|d| d.char_index)
-                            .unwrap_or(line.len()) as _;
+                            .unwrap_or(line.len())
+                            as _;
                     }
                     c.position = buffer.saturate_position(c.position);
                 }
@@ -190,7 +201,8 @@ impl BufferView {
                             .skip_while(|d| d.distance <= distance as _)
                             .next()
                             .map(|d| d.char_index)
-                            .unwrap_or(line.len()) as _;
+                            .unwrap_or(line.len())
+                            as _;
                     }
                     c.position = buffer.saturate_position(c.position);
                 }
@@ -215,13 +227,16 @@ impl BufferView {
                         }
 
                         let words = WordIter(&line[c.position.column_byte_index as usize..])
-                            .inspect(|w| c.position.column_byte_index += w.text.len() as BufferPositionIndex)
+                            .inspect(|w| {
+                                c.position.column_byte_index += w.text.len() as BufferPositionIndex
+                            })
                             .skip(1)
                             .filter(|w| w.kind != WordKind::Whitespace);
 
                         match try_nth(words, n - 1) {
                             Ok(word) => {
-                                c.position.column_byte_index -= word.text.len() as BufferPositionIndex;
+                                c.position.column_byte_index -=
+                                    word.text.len() as BufferPositionIndex;
                                 break;
                             }
                             Err(rest) => {

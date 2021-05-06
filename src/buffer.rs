@@ -964,7 +964,11 @@ impl Buffer {
 
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
-            for line in content.lines().skip(range.from.line_index as _).take(line_count as _) {
+            for line in content
+                .lines()
+                .skip(range.from.line_index as _)
+                .take(line_count as _)
+            {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.add(word);
                 }
@@ -1025,7 +1029,8 @@ impl Buffer {
                     text,
                 });
             } else {
-                let text = &self.content.line_at(to.line_index as _).as_str()[..to.column_byte_index as usize];
+                let text = &self.content.line_at(to.line_index as _).as_str()
+                    [..to.column_byte_index as usize];
                 self.history.add_edit(Edit {
                     kind: EditKind::Delete,
                     range: BufferRange::between(BufferPosition::line_col(to.line_index, 0), to),
@@ -1056,7 +1061,11 @@ impl Buffer {
     ) {
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
-            for line in content.lines().skip(range.from.line_index as _).take(line_count as _) {
+            for line in content
+                .lines()
+                .skip(range.from.line_index as _)
+                .take(line_count as _)
+            {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.remove(word);
                 }
@@ -1989,4 +1998,3 @@ mod tests {
         );
     }
 }
-

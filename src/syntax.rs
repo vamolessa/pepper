@@ -2,7 +2,7 @@ use std::{cmp::Ordering, ops::Range};
 
 use crate::{
     buffer::BufferContent,
-    buffer_position::{BufferRange, BufferPositionIndex},
+    buffer_position::{BufferPositionIndex, BufferRange},
     glob::{Glob, InvalidGlobError},
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
@@ -677,4 +677,3 @@ mod tests {
         }
     }
 }
-

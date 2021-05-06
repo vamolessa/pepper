@@ -20,7 +20,10 @@ impl BufferPosition {
         }
     }
 
-    pub const fn line_col(line_index: BufferPositionIndex, column_byte_index: BufferPositionIndex) -> Self {
+    pub const fn line_col(
+        line_index: BufferPositionIndex,
+        column_byte_index: BufferPositionIndex,
+    ) -> Self {
         Self {
             line_index,
             column_byte_index,
@@ -174,7 +177,10 @@ impl fmt::Debug for BufferRange {
 mod tests {
     use super::*;
 
-    fn pos(line_index: BufferPositionIndex, column_byte_index: BufferPositionIndex) -> BufferPosition {
+    fn pos(
+        line_index: BufferPositionIndex,
+        column_byte_index: BufferPositionIndex,
+    ) -> BufferPosition {
         BufferPosition::line_col(line_index, column_byte_index)
     }
 

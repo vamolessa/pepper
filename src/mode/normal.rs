@@ -2,7 +2,7 @@ use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
     buffer::{find_path_and_position_at, parse_path_and_position, BufferContent},
-    buffer_position::{BufferPosition, BufferRange, BufferPositionIndex},
+    buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::Client,
     cursor::{Cursor, CursorCollection},
@@ -321,7 +321,10 @@ impl State {
                         cursors.clear();
                         cursors.add(Cursor {
                             anchor: BufferPosition::zero(),
-                            position: BufferPosition::line_col(last_line_index as _, last_line_len as _),
+                            position: BufferPosition::line_col(
+                                last_line_index as _,
+                                last_line_len as _,
+                            ),
                         });
                     }
                     Key::Char('(') | Key::Char(')') => {
@@ -357,11 +360,13 @@ impl State {
                         if let Some(range) = range {
                             cursor.anchor = BufferPosition::line_col(
                                 range.from.line_index,
-                                range.from.column_byte_index - left.len_utf8() as BufferPositionIndex,
+                                range.from.column_byte_index
+                                    - left.len_utf8() as BufferPositionIndex,
                             );
                             cursor.position = BufferPosition::line_col(
                                 range.to.line_index,
-                                range.to.column_byte_index + right.len_utf8() as BufferPositionIndex,
+                                range.to.column_byte_index
+                                    + right.len_utf8() as BufferPositionIndex,
                             );
                         }
                     }
@@ -373,11 +378,13 @@ impl State {
                         if let Some(range) = range {
                             cursor.anchor = BufferPosition::line_col(
                                 range.from.line_index,
-                                range.from.column_byte_index - delimiter.len_utf8() as BufferPositionIndex,
+                                range.from.column_byte_index
+                                    - delimiter.len_utf8() as BufferPositionIndex,
                             );
                             cursor.position = BufferPosition::line_col(
                                 range.to.line_index,
-                                range.to.column_byte_index + delimiter.len_utf8() as BufferPositionIndex,
+                                range.to.column_byte_index
+                                    + delimiter.len_utf8() as BufferPositionIndex,
                             );
                         }
                     }
@@ -412,7 +419,10 @@ impl State {
                         cursors.clear();
                         cursors.add(Cursor {
                             anchor: BufferPosition::zero(),
-                            position: BufferPosition::line_col(last_line_index as _, last_line_len as _),
+                            position: BufferPosition::line_col(
+                                last_line_index as _,
+                                last_line_len as _,
+                            ),
                         });
                     }
                     Key::Char('(') | Key::Char(')') => {
@@ -721,16 +731,22 @@ impl State {
                             cursor.position.column_byte_index = 0;
                         } else {
                             cursor.position.line_index = last_line_index as _;
-                            cursor.position.column_byte_index =
-                                buffer.line_at(cursor.position.line_index as _).as_str().len() as _;
+                            cursor.position.column_byte_index = buffer
+                                .line_at(cursor.position.line_index as _)
+                                .as_str()
+                                .len()
+                                as _;
                         }
                     } else {
                         cursor.anchor.column_byte_index =
                             buffer.line_at(cursor.anchor.line_index as _).as_str().len() as _;
                         if cursor.position.line_index >= count as _ {
                             cursor.position.line_index -= count as BufferPositionIndex;
-                            cursor.position.column_byte_index =
-                                buffer.line_at(cursor.position.line_index as _).as_str().len() as _;
+                            cursor.position.column_byte_index = buffer
+                                .line_at(cursor.position.line_index as _)
+                                .as_str()
+                                .len()
+                                as _;
                         } else {
                             cursor.position.line_index = 0;
                             cursor.position.column_byte_index = 0;
@@ -776,7 +792,9 @@ impl State {
                         .filter(|(_, l)| l.as_str().chars().all(|c| c.is_whitespace()))
                         .nth(state.count.max(1).saturating_sub(1) as _)
                     {
-                        Some((i, line)) => BufferPosition::line_col(i as _, line.as_str().len() as _),
+                        Some((i, line)) => {
+                            BufferPosition::line_col(i as _, line.as_str().len() as _)
+                        }
                         None => {
                             let line_index = buffer.line_count() - 1;
                             let column_byte_index = buffer
@@ -807,7 +825,9 @@ impl State {
                         .filter(|(_, l)| l.as_str().chars().all(|c| c.is_whitespace()))
                         .nth(state.count.max(1).saturating_sub(1) as _)
                     {
-                        Some((i, line)) => BufferPosition::line_col(i as _, line.as_str().len() as _),
+                        Some((i, line)) => {
+                            BufferPosition::line_col(i as _, line.as_str().len() as _)
+                        }
                         None => {
                             let column_byte_index = buffer
                                 .line_at(0)
@@ -1653,4 +1673,3 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     None
 }
-

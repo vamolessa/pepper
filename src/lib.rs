@@ -68,7 +68,9 @@ fn print_help() {
     println!("  --server                 only run as server (ignores files and configs arguments)");
     println!("  -c, --config             sources config file at path (repeatable)");
     println!("  --try-config             tries to source a config file at path, throws no error if fails (repeatable)");
-    println!("  --no-default-config      does not source the default config included in the editor");
+    println!(
+        "  --no-default-config      does not source the default config included in the editor"
+    );
 }
 
 impl Args {

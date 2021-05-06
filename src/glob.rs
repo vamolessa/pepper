@@ -429,4 +429,3 @@ mod tests {
         assert_glob(&mut glob, false, "**/*.{a,b,cd}", "m/n/p.x");
     }
 }
-

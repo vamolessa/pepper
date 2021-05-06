@@ -228,11 +228,7 @@ impl<'stdout> ClientApplication<'stdout> {
         2 * 1024
     }
 
-    pub fn new(
-        handle: ClientHandle,
-        stdout: io::StdoutLock<'stdout>,
-        is_pipped: bool,
-    ) -> Self {
+    pub fn new(handle: ClientHandle, stdout: io::StdoutLock<'stdout>, is_pipped: bool) -> Self {
         Self {
             handle,
             is_pipped,
@@ -369,4 +365,3 @@ impl<'stdout> Drop for ClientApplication<'stdout> {
         }
     }
 }
-
