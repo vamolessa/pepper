@@ -31,7 +31,7 @@ impl State {
             return self.lsp_client_handle;
         }
 
-        let buffer_path = buffer_path.to_str()?.as_bytes();
+        let buffer_path = buffer_path.to_str()?;
         let handle = lsp_clients
             .clients()
             .find(|c| c.handles_path(buffer_path))

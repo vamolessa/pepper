@@ -7,8 +7,6 @@ use crate::{
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
 
-//mod builtin;
-
 const MAX_HIGHLIGHT_COUNT: usize = 2048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +41,7 @@ impl Default for LineParseState {
 }
 
 pub struct Syntax {
-    raw_glob: Vec<u8>,
+    raw_glob: String,
     glob: Glob,
     rules: [Pattern; 7],
 }
@@ -53,7 +51,7 @@ impl Syntax {
         let mut text_pattern = Pattern::new();
         let _ = text_pattern.compile("%a{%w_}|_{%w_}");
         Self {
-            raw_glob: Vec::new(),
+            raw_glob: String::new(),
             glob: Glob::default(),
             rules: [
                 Pattern::new(),
@@ -67,9 +65,9 @@ impl Syntax {
         }
     }
 
-    pub fn set_glob(&mut self, pattern: &[u8]) -> Result<(), InvalidGlobError> {
+    pub fn set_glob(&mut self, pattern: &str) -> Result<(), InvalidGlobError> {
         self.raw_glob.clear();
-        self.raw_glob.extend_from_slice(pattern);
+        self.raw_glob.push_str(pattern);
         self.glob.compile(pattern)
     }
 
@@ -92,7 +90,7 @@ impl Syntax {
             LineParseState::Dirty => unreachable!(),
             LineParseState::Finished => (),
             LineParseState::Unfinished(kind, state) => {
-                match self.rules[kind as usize].matches_with_state(line, &state) {
+                match self.rules[kind as usize].matches_with_state(line, state) {
                     MatchResult::Ok(len) => {
                         tokens.push(Token {
                             kind,
@@ -197,7 +195,7 @@ impl SyntaxCollection {
         Self { syntaxes }
     }
 
-    pub fn find_handle_by_path(&self, path: &[u8]) -> Option<SyntaxHandle> {
+    pub fn find_handle_by_path(&self, path: &str) -> Option<SyntaxHandle> {
         let mut iter = self.syntaxes.iter().enumerate();
         iter.next();
         for (i, syntax) in iter {
@@ -378,6 +376,7 @@ impl HighlightedBuffer {
         HighlightResult::Complete
     }
 
+    // TODO: does not need to be binary search
     pub fn find_token_kind_at(&self, line_index: usize, char_index: usize) -> TokenKind {
         if line_index >= self.highlighted_len {
             return TokenKind::Text;

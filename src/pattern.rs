@@ -69,13 +69,13 @@ impl Pattern {
     pub fn matches(&self, text: &str) -> MatchResult {
         self.matches_with_state(
             text,
-            &PatternState {
+            PatternState {
                 op_index: self.start_jump.0 as _,
             },
         )
     }
 
-    pub fn matches_with_state(&self, text: &str, state: &PatternState) -> MatchResult {
+    pub fn matches_with_state(&self, text: &str, state: PatternState) -> MatchResult {
         let mut bytes = text.as_bytes();
         let ops = &self.ops;
         let mut op_index = state.op_index;
@@ -1077,22 +1077,22 @@ mod tests {
         );
         assert_eq!(
             MatchResult::Ok(1),
-            p.matches_with_state("b", &PatternState { op_index: 4 })
+            p.matches_with_state("b", PatternState { op_index: 4 })
         );
 
         let p = new_pattern("a{.!$}b");
         match p.matches("axyz") {
             MatchResult::Pending(state) => {
-                assert_eq!(MatchResult::Ok(1), p.matches_with_state("b", &state))
+                assert_eq!(MatchResult::Ok(1), p.matches_with_state("b", state))
             }
             _ => assert!(false),
         }
 
         let p = new_pattern("a{b$!c}{c!d}");
         match p.matches("abb") {
-            MatchResult::Pending(state) => match p.matches_with_state("bb", &state) {
+            MatchResult::Pending(state) => match p.matches_with_state("bb", state) {
                 MatchResult::Pending(state) => {
-                    assert_eq!(MatchResult::Ok(4), p.matches_with_state("bccd", &state));
+                    assert_eq!(MatchResult::Ok(4), p.matches_with_state("bccd", state));
                 }
                 _ => assert!(false),
             },

@@ -1246,7 +1246,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             let mut syntax = Syntax::new();
             syntax
-                .set_glob(glob.as_bytes())
+                .set_glob(glob)
                 .map_err(|_| CommandError::InvalidGlob(glob.into()))?;
 
             let mut definition_tokens = CommandTokenIter(definition);
@@ -1437,7 +1437,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx
                 .editor
                 .lsp
-                .add_recipe(glob.as_bytes(), command, env, root.map(Path::new), log_buffer)
+                .add_recipe(glob, command, env, root.map(Path::new), log_buffer)
                 .map_err(|_| CommandError::InvalidGlob(glob.into()))?;
             Ok(None)
         }
@@ -1807,16 +1807,8 @@ fn find_lsp_client_for_buffer(
     editor: &Editor,
     buffer_handle: BufferHandle,
 ) -> Option<lsp::ClientHandle> {
-    let buffer_path_bytes = editor
-        .buffers
-        .get(buffer_handle)?
-        .path()
-        .to_str()?
-        .as_bytes();
-    let client = editor
-        .lsp
-        .clients()
-        .find(|c| c.handles_path(buffer_path_bytes))?;
+    let buffer_path = editor.buffers.get(buffer_handle)?.path().to_str()?;
+    let client = editor.lsp.clients().find(|c| c.handles_path(buffer_path))?;
     Some(client.handle())
 }
 

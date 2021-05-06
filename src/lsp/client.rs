@@ -612,7 +612,7 @@ impl Client {
         self.handle
     }
 
-    pub fn handles_path(&self, path: &[u8]) -> bool {
+    pub fn handles_path(&self, path: &str) -> bool {
         if self.document_selectors.is_empty() {
             true
         } else {
@@ -1257,7 +1257,7 @@ impl Client {
                                     None => continue,
                                 };
                                 let mut glob = Glob::default();
-                                glob.compile(pattern.as_bytes())?;
+                                glob.compile(pattern)?;
                                 self.document_selectors.push(glob);
                             }
                         }
@@ -2523,7 +2523,7 @@ impl FromStr for ClientHandle {
 }
 
 struct ClientRecipe {
-    raw_glob: Vec<u8>,
+    raw_glob: String,
     glob: Glob,
     command: String,
     environment: String,
@@ -2567,7 +2567,7 @@ impl ClientManager {
 
     pub fn add_recipe(
         &mut self,
-        glob: &[u8],
+        glob: &str,
         command: &str,
         environment: &str,
         root: Option<&Path>,
@@ -2805,7 +2805,7 @@ impl ClientManager {
                     .recipes
                     .iter_mut()
                     .enumerate()
-                    .find(|(_, r)| r.glob.matches(buffer_path.as_bytes()))
+                    .find(|(_, r)| r.glob.matches(buffer_path))
                 {
                     Some(recipe) => recipe,
                     None => continue,

@@ -868,7 +868,7 @@ impl Buffer {
     }
 
     pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) {
-        let path = self.path.to_str().unwrap_or("").as_bytes();
+        let path = self.path.to_str().unwrap_or("");
         if path.is_empty() {
             return;
         }
