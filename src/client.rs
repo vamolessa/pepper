@@ -166,13 +166,22 @@ impl Client {
 
             if column_index < scroll_x {
                 scroll_x = column_index
-            } else if let Some(d) =
-                CharDisplayDistances::new(&line[..column_index as usize], editor.config.tab_size)
+            } else {
+                let index = column_index as usize;
+                let char_len = line[index..]
+                    .chars()
+                    .next()
+                    .map(|c| c.len_utf8())
+                    .unwrap_or(0);
+                let text = &line[..index + char_len];
+
+                if let Some(d) = CharDisplayDistances::new(text, editor.config.tab_size)
                     .rev()
-                    .take_while(|d| d.distance < width as _)
+                    .take_while(|d| d.distance <= width as _)
                     .last()
-            {
-                scroll_x = scroll_x.max(d.char_index as _);
+                {
+                    scroll_x = scroll_x.max(d.char_index as _);
+                }
             }
 
             if line_index < scroll_y.saturating_sub(half_height) {
@@ -271,3 +280,4 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
+

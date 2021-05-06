@@ -264,9 +264,10 @@ impl<'stdout> ClientApplication<'stdout> {
                 Some(position) => {
                     writeln!(
                         commands,
-                        "open '{}' -line={}",
+                        "open '{}' -line={} -column={}",
                         path,
-                        position.line_index + 1
+                        position.line_index + 1,
+                        position.column_byte_index + 1,
                     )
                     .unwrap();
                 }

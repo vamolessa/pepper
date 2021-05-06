@@ -857,22 +857,16 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => return Ok(None),
             };
 
-            let position = match (line, column) {
-                (Some(line), Some(column)) => {
-                    let line = line.saturating_sub(1) as _;
-                    let column = column.saturating_sub(1) as _;
-                    Some(BufferPosition::line_col(line, column))
-                }
-                (Some(line), None) => {
-                    let line = line.saturating_sub(1) as _;
-                    Some(BufferPosition::line_col(line, 0))
-                }
-                (None, Some(column)) => {
-                    let column = column.saturating_sub(1) as _;
-                    Some(BufferPosition::line_col(0, column))
-                }
-                (None, None) => None,
-            };
+            let mut has_position = false;
+            let mut position = BufferPosition::zero();
+            if let Some(line) = line {
+                has_position = true;
+                position.line_index = line.saturating_sub(1);
+            }
+            if let Some(column) = column {
+                has_position = true;
+                position.column_byte_index = column.saturating_sub(1);
+            }
 
             NavigationHistory::save_client_snapshot(
                 ctx.clients,
@@ -886,7 +880,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             );
 
             if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
-                if let Some(position) = position {
+                if has_position {
                     let mut cursors = buffer_view.cursors.mut_guard();
                     cursors.clear();
                     cursors.add(Cursor {

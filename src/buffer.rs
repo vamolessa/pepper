@@ -104,23 +104,13 @@ impl<'a> CharDisplayDistances<'a> {
 }
 impl<'a> CharDisplayDistances<'a> {
     fn calc_next(&mut self, char_index: usize, c: char) -> CharDisplayDistance {
-        match c {
-            '\t' => {
-                let tab_size = self.tab_size.get() as usize;
-                let next_tab_stop = (tab_size - 1) - self.len % tab_size;
-                self.len += next_tab_stop + 1;
-                CharDisplayDistance {
-                    distance: self.len,
-                    char_index,
-                }
-            }
-            _ => {
-                self.len += 1;
-                CharDisplayDistance {
-                    distance: self.len,
-                    char_index,
-                }
-            }
+        self.len += match c {
+            '\t' => self.tab_size.get() as _,
+            _ => 1,
+        };
+        CharDisplayDistance {
+            distance: self.len,
+            char_index,
         }
     }
 }
@@ -1989,3 +1979,4 @@ mod tests {
         );
     }
 }
+

@@ -356,12 +356,11 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
                     buf.push(editor.config.visual_space);
                 }
                 '\t' => {
-                    buf.push(editor.config.visual_tab_first);
                     let tab_size = editor.config.tab_size.get() as usize;
-                    let next_tab_stop = (tab_size - 1) - x % tab_size;
-                    x += next_tab_stop + 1;
+                    x += tab_size;
 
-                    for _ in 0..next_tab_stop {
+                    buf.push(editor.config.visual_tab_first);
+                    for _ in 0..tab_size - 1 {
                         buf.push(editor.config.visual_tab_repeat);
                     }
                 }
