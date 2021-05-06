@@ -241,6 +241,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     {
         lines_drawn_count += 1;
 
+        let line = line.as_str();
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut was_inside_diagnostic_range = false;
         let mut x = 0;
@@ -249,7 +250,6 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
 
         set_foreground_color(buf, editor.theme.token_text);
 
-        let line = line.as_str();
         for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
             if char_index < view.scroll.0 as _ {
                 continue;
