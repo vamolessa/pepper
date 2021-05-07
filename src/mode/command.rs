@@ -93,9 +93,7 @@ impl ModeState for State {
             ReadLinePoll::Canceled => Mode::change_to(ctx, ModeKind::default()),
             ReadLinePoll::Submitted => {
                 let input = ctx.editor.read_line.input();
-                if !input.starts_with(|c: char| c.is_ascii_whitespace()) {
-                    ctx.editor.commands.add_to_history(input);
-                }
+                ctx.editor.commands.add_to_history(input);
 
                 let command = ctx.editor.string_pool.acquire_with(input);
                 let operation = CommandManager::eval_commands_then_output(

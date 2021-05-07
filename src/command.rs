@@ -872,8 +872,13 @@ impl CommandManager {
     }
 
     pub fn add_to_history(&mut self, entry: &str) {
-        if entry.is_empty() {
+        if entry.is_empty() || entry.starts_with(|c: char| c.is_ascii_whitespace()) {
             return;
+        }
+        if let Some(back) = self.history.back() {
+            if back == entry {
+                return;
+            }
         }
 
         let mut s = if self.history.len() == self.history.capacity() {
@@ -1570,3 +1575,4 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
+
