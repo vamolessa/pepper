@@ -168,12 +168,10 @@ impl Client {
                 scroll_x = column_index
             } else {
                 let index = column_index as usize;
-                let char_len = line[index..]
-                    .chars()
-                    .next()
-                    .map(|c| c.len_utf8())
-                    .unwrap_or(0);
-                let text = &line[..index + char_len];
+                let (width, text) = match line[index..].chars().next() {
+                    Some(c) => (width, &line[..index + c.len_utf8()]),
+                    None => (width - 1, line),
+                };
 
                 if let Some(d) = CharDisplayDistances::new(text, editor.config.tab_size)
                     .rev()

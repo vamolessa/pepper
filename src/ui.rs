@@ -133,14 +133,6 @@ impl<'a> View<'a> {
 }
 
 fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool) {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    enum DrawState {
-        Token(TokenKind),
-        Selection(TokenKind),
-        Highlight,
-        Cursor,
-    }
-
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let cursor_color = if has_focus {
@@ -239,6 +231,14 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         .skip(view.scroll.1 as _)
         .take(view.size.1 as _)
     {
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum DrawState {
+            Token(TokenKind),
+            Selection(TokenKind),
+            Highlight,
+            Cursor,
+        }
+
         lines_drawn_count += 1;
 
         let line = line.as_str();
@@ -248,6 +248,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         let mut last_line_token = Token::default();
         let mut line_tokens = highlighted_buffer.line_tokens(line_index).iter();
 
+        set_background_color(buf, editor.theme.background);
         set_foreground_color(buf, editor.theme.token_text);
 
         for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
@@ -681,3 +682,4 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
 
     clear_until_new_line(buf);
 }
+
