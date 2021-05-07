@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
@@ -25,7 +23,7 @@ struct KeyMap {
 
 #[derive(Default)]
 pub struct KeyMapCollection {
-    maps: HashMap<ModeKind, Vec<KeyMap>>,
+    maps: [Vec<KeyMap>; 5]
 }
 
 impl KeyMapCollection {
@@ -51,8 +49,7 @@ impl KeyMapCollection {
             to: parse_keys(to).map_err(|e| ParseKeyMapError::To(e))?,
         };
 
-        let maps = self.maps.entry(mode_kind).or_insert_with(Vec::new);
-
+        let maps = &mut self.maps[mode_kind as usize];
         for m in maps.iter_mut() {
             if m.from == map.from {
                 m.to = map.to;
@@ -65,10 +62,7 @@ impl KeyMapCollection {
     }
 
     pub fn matches<'a>(&'a self, mode_kind: ModeKind, keys: &[Key]) -> MatchResult<'a> {
-        let maps = match self.maps.get(&mode_kind) {
-            Some(maps) => maps,
-            None => return MatchResult::None,
-        };
+        let maps = &self.maps[mode_kind as usize];
 
         let mut has_prefix = false;
         for map in maps {
