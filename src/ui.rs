@@ -147,11 +147,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         editor.theme.inactive_cursor
     };
 
-    let mut text_color = editor.theme.token_text;
-
     move_cursor_to(buf, 0, 0);
-    set_background_color(buf, editor.theme.background);
-    set_foreground_color(buf, text_color);
     set_not_underlined(buf);
 
     let cursors = &view.cursors[..];
@@ -248,7 +244,6 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         let mut last_line_token = Token::default();
         let mut line_tokens = highlighted_buffer.line_tokens(line_index).iter();
 
-        set_background_color(buf, editor.theme.background);
         set_foreground_color(buf, editor.theme.token_text);
 
         for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
@@ -273,7 +268,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
                 last_line_token.kind
             };
 
-            text_color = match token_kind {
+            let text_color = match token_kind {
                 TokenKind::Keyword => editor.theme.token_keyword,
                 TokenKind::Type => editor.theme.token_type,
                 TokenKind::Symbol => editor.theme.token_symbol,
@@ -378,8 +373,9 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
             }
         }
 
+        set_background_color(buf, editor.theme.background);
+
         if x < view.size.0 as _ {
-            set_background_color(buf, editor.theme.background);
             clear_until_new_line(buf);
         }
 
