@@ -1217,7 +1217,7 @@ impl CommandManager {
     fn parse<'a>(&self, raw_command: &'a str) -> Result<(CommandSource, CommandArgs<'a>), CommandError> {
         let mut tokens = CommandTokenIter::new(raw_command);
 
-        let command_token = match tokens.next() {
+        let mut command_token = match tokens.next() {
             Some((CommandTokenKind::Text, token)) => token,
             Some((_, token)) => return Err(CommandError::InvalidCommandName(token)),
             None => {
@@ -1227,7 +1227,10 @@ impl CommandManager {
         let command_name = command_token.as_str(raw_command);
 
         let (command_name, bang) = match command_name.strip_suffix('!') {
-            Some(command_name) => (command_name, true),
+            Some(command_name) => {
+                command_token.to -= 1;
+                (command_name, true)
+            }
             None => (command_name, false),
         };
         if command_name.is_empty() {
@@ -1338,25 +1341,27 @@ mod tests {
 
     #[test]
     fn command_tokens() {
-        let mut tokens = CommandTokenIter("value -flag");
+        let command = "value -flag";
+        let mut tokens = CommandTokenIter::new(command);
         assert!(matches!(
             tokens.next(),
-            Some((CommandTokenKind::Text, "value"))
+            Some((CommandTokenKind::Text, token)) if token.as_str(command) == "value",
         ));
         assert!(matches!(
             tokens.next(),
-            Some((CommandTokenKind::Flag, "-flag"))
+            Some((CommandTokenKind::Flag, token)) if token.as_str(command) == "-flag",
         ));
         assert!(tokens.next().is_none());
 
-        let mut tokens = CommandTokenIter("value --long-flag");
+        let command = "value --long-flag";
+        let mut tokens = CommandTokenIter::new(command);
         assert!(matches!(
             tokens.next(),
-            Some((CommandTokenKind::Text, "value"))
+            Some((CommandTokenKind::Text, token)) if token.as_str(command) == "value",
         ));
         assert!(matches!(
             tokens.next(),
-            Some((CommandTokenKind::Flag, "--long-flag"))
+            Some((CommandTokenKind::Flag, token)) if token.as_str(command) == "--long-flag",
         ));
         assert!(tokens.next().is_none());
     }
@@ -1392,7 +1397,7 @@ mod tests {
             let mut values = Vec::new();
             loop {
                 match args.try_next() {
-                    Ok(Some(arg)) => values.push(arg),
+                    Ok(Some(arg)) => values.push(arg.text),
                     Ok(None) => break,
                     Err(error) => {
                         let discriminant = std::mem::discriminant(&error);
@@ -1402,7 +1407,7 @@ mod tests {
             }
             values
         }
-
+        
         let commands = create_commands();
         let args = parse_args(&commands, "c  aaa  bbb  ccc  ");
         assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
@@ -1415,13 +1420,17 @@ mod tests {
         let args = parse_args(&commands, "c  {aaa}{{bb}b}ccc  ");
         assert_eq!(["aaa", "{bb}b", "ccc"], &collect(args)[..]);
 
+        fn flag_value<'a>(flags: &[(&str, Option<CommandValue<'a>>)], index: usize) -> Option<&'a str> {
+            flags[index].1.as_ref().map(|f| f.text)
+        }
+
         let args = parse_args(&commands, "c -option=value aaa");
         let mut flags = [("switch", None), ("option", None)];
         if args.get_flags(&mut flags).is_err() {
             panic!("error parsing args");
         }
-        assert_eq!(None, flags[0].1);
-        assert_eq!(Some("value"), flags[1].1);
+        assert_eq!(None, flag_value(&flags, 0));
+        assert_eq!(Some("value"), flag_value(&flags, 1));
         assert_eq!(["aaa"], &collect(args)[..]);
 
         let args = parse_args(&commands, "c 'aaa' -option=value");
@@ -1429,8 +1438,8 @@ mod tests {
         if args.get_flags(&mut flags).is_err() {
             panic!("error parsing args");
         }
-        assert_eq!(None, flags[0].1);
-        assert_eq!(Some("value"), flags[1].1);
+        assert_eq!(None, flag_value(&flags, 0));
+        assert_eq!(Some("value"), flag_value(&flags, 1));
         assert_eq!(["aaa"], &collect(args)[..]);
 
         let args = parse_args(&commands, "c aaa -switch bbb -option=value ccc");
@@ -1438,8 +1447,8 @@ mod tests {
         if args.get_flags(&mut flags).is_err() {
             panic!("error parsing args");
         }
-        assert_eq!(Some(""), flags[0].1);
-        assert_eq!(Some("value"), flags[1].1);
+        assert_eq!(Some(""), flag_value(&flags, 0));
+        assert_eq!(Some("value"), flag_value(&flags, 1));
         assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
 
         let args = parse_args(&commands, "c -switch -option=value aaa");
@@ -1447,8 +1456,8 @@ mod tests {
         if args.get_flags(&mut flags).is_err() {
             panic!("error parsing args");
         }
-        assert_eq!(Some(""), flags[0].1);
-        assert_eq!(Some("value"), flags[1].1);
+        assert_eq!(Some(""), flag_value(&flags, 0));
+        assert_eq!(Some("value"), flag_value(&flags, 1));
         assert_eq!(["aaa"], &collect(args)[..]);
     }
 
@@ -1459,10 +1468,9 @@ mod tests {
         macro_rules! assert_fail {
             ($command:expr, $error_pattern:pat => $value:ident == $expect:expr) => {
                 let command = $command;
-                let location = command.as_ptr() as _;
                 match commands.parse(command) {
                     Ok(_) => panic!("command parsed successfully"),
-                    Err($error_pattern) => assert_eq!($expect, $value.as_str_at(command, location)),
+                    Err($error_pattern) => assert_eq!($expect, $value.as_str(command)),
                     Err(_) => panic!("other error occurred"),
                 }
             };
@@ -1476,8 +1484,9 @@ mod tests {
 
         fn assert_unterminated(args: &str) {
             let mut args = CommandArgs {
+                raw_command: args,
                 bang: false,
-                tokens: CommandTokenIter(args),
+                tokens: CommandTokenIter::new(args),
                 len: 0,
             };
             loop {

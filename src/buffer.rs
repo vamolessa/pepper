@@ -1629,9 +1629,9 @@ mod tests {
         assert_eq!(4, display_len("\t"));
         assert_eq!(8, display_len("\t\t"));
         assert_eq!(8, display_len("    \t"));
-        assert_eq!(4, display_len("x\t"));
-        assert_eq!(4, display_len("xx\t"));
-        assert_eq!(4, display_len("xxx\t"));
+        assert_eq!(5, display_len("x\t"));
+        assert_eq!(6, display_len("xx\t"));
+        assert_eq!(7, display_len("xxx\t"));
         assert_eq!(8, display_len("xxxx\t"));
     }
 
