@@ -2,7 +2,7 @@ use crate::{
     buffer_position::BufferPositionIndex,
     buffer_view::CursorMovementKind,
     client::Client,
-    command::{replace_to_between_text_markers, CommandManager},
+    command::{CommandManager},
     editor::KeysIterator,
     editor_utils::ReadLinePoll,
     lsp,
@@ -557,11 +557,14 @@ pub mod custom {
                 ReadLinePoll::Submitted => {
                     let mut continuation =
                         ctx.editor.mode.read_line_state.continuation.take().unwrap();
+                    // TODO: line param
+                    /*
                     replace_to_between_text_markers(
                         &mut continuation,
                         &ctx.editor.mode.read_line_state.line_var_name,
                         ctx.editor.read_line.input(),
                     );
+                    */
                     let operation = CommandManager::eval_commands_then_output(
                         ctx.editor,
                         ctx.platform,

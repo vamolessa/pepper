@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::{
-    command::{CommandManager, CommandTokenIter, CommandTokenKind, CompletionSource},
+    command::{CommandManager, CommandToken, CommandTokenIter, CommandTokenKind, CompletionSource},
     editor::KeysIterator,
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -132,10 +132,10 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     let state = &mut ctx.editor.mode.command_state;
 
     let input = ctx.editor.read_line.input();
-    let mut tokens = CommandTokenIter(input);
+    let mut tokens = CommandTokenIter::new(input);
 
     let command_name = match tokens.next() {
-        Some((_, token)) => token.trim_end_matches('!'),
+        Some((_, token)) => token.as_str(input).trim_end_matches('!'),
         None => {
             ctx.editor.picker.clear();
             state.read_state =
@@ -168,7 +168,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             Some((CommandTokenKind::Unterminated, _)) => (),
             None => {
                 arg_count += 1;
-                last_token = Some((CommandTokenKind::Text, &input[input.len()..]));
+                last_token = Some((CommandTokenKind::Text, CommandToken { from: 0, to: 0 }));
             }
             _ => arg_count += 1,
         }
@@ -189,7 +189,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
                     }
                 }
             }
-            (completion_source, token)
+            (completion_source, token.as_str(input))
         }
         None => (CompletionSource::Commands, command_name),
         _ => {
@@ -280,3 +280,4 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
+

@@ -11,7 +11,7 @@ use crate::{
     buffer_position::BufferPosition,
     client::ClientManager,
     command::{
-        parse_process_command, BuiltinCommand, CommandContext, CommandError, CommandIter,
+        BuiltinCommand, CommandContext, CommandError, CommandIter,
         CommandManager, CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind,
         CompletionSource, MacroCommand, RequestCommand,
     },

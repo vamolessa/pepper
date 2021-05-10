@@ -1,5 +1,5 @@
 use crate::{
-    command::{replace_to_between_text_markers, CommandManager},
+    command::CommandManager,
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     lsp,
@@ -292,7 +292,8 @@ pub mod custom {
 
                     let mut operation = None;
                     if let Some((_, entry)) = entry {
-                        replace_to_between_text_markers(&mut continuation, entry_var_name, entry);
+                        // TODO: entry param
+                        //replace_to_between_text_markers(&mut continuation, entry_var_name, entry);
                         operation = CommandManager::eval_commands_then_output(
                             ctx.editor,
                             ctx.platform,
@@ -332,3 +333,4 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
+
