@@ -588,7 +588,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
     }
 }
 pub struct CommandArgs<'a> {
-    raw_command: &'a str,
+    raw: &'a str,
     pub bang: bool,
     tokens: CommandTokenIter<'a>,
     len: u8,
@@ -605,7 +605,7 @@ impl<'a> CommandArgs<'a> {
     fn literal(&self, token: CommandToken) -> CommandValue<'a> {
         CommandValue {
             token,
-            text: &self.raw_command[token.from..token.to]
+            text: &self.raw[token.from..token.to]
         }
     }
 
@@ -613,7 +613,7 @@ impl<'a> CommandArgs<'a> {
         &self,
         flags: &mut [(&'static str, Option<CommandValue<'a>>)],
     ) -> Result<(), CommandError> {
-        let mut tokens = CommandTokenIter::new(self.raw_command);
+        let mut tokens = CommandTokenIter::new(self.raw);
         loop {
             let (kind, token) = match tokens.next() {
                 Some(token) => token,
@@ -622,7 +622,7 @@ impl<'a> CommandArgs<'a> {
             match kind {
                 CommandTokenKind::Text => (),
                 CommandTokenKind::Flag => {
-                    let key = &token.as_str(self.raw_command)[1..];
+                    let key = &token.as_str(self.raw)[1..];
                     let value = match flags.iter_mut().find(|(k, _)| *k == key) {
                         Some((_, value)) => value,
                         None => break Err(CommandError::UnknownFlag(token)),
@@ -1243,7 +1243,7 @@ impl CommandManager {
         };
 
         let args = CommandArgs {
-            raw_command,
+            raw: raw_command,
             bang,
             tokens,
             len: 0,
@@ -1484,7 +1484,7 @@ mod tests {
 
         fn assert_unterminated(args: &str) {
             let mut args = CommandArgs {
-                raw_command: args,
+                raw: args,
                 bang: false,
                 tokens: CommandTokenIter::new(args),
                 len: 0,
