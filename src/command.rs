@@ -552,7 +552,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     Some(i) => {
                         let from = self.current_from_index();
                         self.rest = &self.rest[i + 1..];
-                        Some((CommandTokenKind::Text, CommandToken { from, to: i }))
+                        Some((CommandTokenKind::Text, CommandToken { from, to: from + i }))
                     }
                     None => {
                         let from = self.current_from_index();
@@ -630,12 +630,12 @@ impl<'a> CommandArgs<'a> {
 
                     let previous_state = tokens.rest;
                     *value = match tokens.next() {
-                        Some((CommandTokenKind::Text, token)) => Some(self.literal(token)),
-                        Some((CommandTokenKind::Flag, token)) => {
+                        Some((CommandTokenKind::Text, _)) => Some(self.literal(token)),
+                        Some((CommandTokenKind::Flag, _)) => {
                             tokens.rest = previous_state;
                             Some(self.literal(token))
                         }
-                        Some((CommandTokenKind::Equals, token)) => match tokens.next() {
+                        Some((CommandTokenKind::Equals, _)) => match tokens.next() {
                             Some((CommandTokenKind::Text, token)) => {
                                 Some(self.literal(token))
                             }
@@ -1447,7 +1447,7 @@ mod tests {
         if args.get_flags(&mut flags).is_err() {
             panic!("error parsing args");
         }
-        assert_eq!(Some(""), flag_value(&flags, 0));
+        assert_eq!(Some("-switch"), flag_value(&flags, 0));
         assert_eq!(Some("value"), flag_value(&flags, 1));
         assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
 
@@ -1456,7 +1456,7 @@ mod tests {
         if args.get_flags(&mut flags).is_err() {
             panic!("error parsing args");
         }
-        assert_eq!(Some(""), flag_value(&flags, 0));
+        assert_eq!(Some("-switch"), flag_value(&flags, 0));
         assert_eq!(Some("value"), flag_value(&flags, 1));
         assert_eq!(["aaa"], &collect(args)[..]);
     }
