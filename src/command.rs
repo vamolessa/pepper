@@ -779,7 +779,7 @@ struct Process {
     pub input: Option<SharedBuf>,
     pub output: Vec<u8>,
     pub split_on_byte: Option<u8>,
-    pub output_var_name: String,
+    pub output_register: Option<RegisterKey>,
     pub on_output: String,
 }
 
@@ -985,9 +985,7 @@ impl CommandManager {
 
                 for &key in &macro_command.params {
                     let value = args.next()?.text;
-                    let register = editor.registers.get_mut(key);
-                    register.clear();
-                    register.push_str(value);
+                    editor.registers.set(key, value);
                 }
                 args.assert_empty()?;
 
@@ -1041,7 +1039,7 @@ impl CommandManager {
         client_handle: Option<ClientHandle>,
         mut command: Command,
         stdin: Option<&str>,
-        output_name: Option<&str>,
+        output_register: Option<RegisterKey>,
         on_output: Option<&str>,
         split_on_byte: Option<u8>,
     ) {
@@ -1066,12 +1064,8 @@ impl CommandManager {
         process.client_handle = client_handle;
         process.output.clear();
         process.split_on_byte = split_on_byte;
-        process.output_var_name.clear();
+        process.output_register = output_register;
         process.on_output.clear();
-
-        if let Some(output_name) = output_name {
-            process.output_var_name.push_str(output_name);
-        }
 
         match stdin {
             Some(stdin) => {
@@ -1134,8 +1128,13 @@ impl CommandManager {
             Some(b) => b,
             None => return,
         };
+        let output_register = match process.output_register {
+            Some(key) => key,
+            None => return,
+        };
 
-        let mut commands = editor.string_pool.acquire();
+        let client_handle = process.client_handle;
+        let commands = editor.string_pool.acquire_with(&process.on_output);
         let mut output_index = 0;
 
         loop {
@@ -1155,10 +1154,8 @@ impl CommandManager {
 
             match std::str::from_utf8(slice) {
                 Ok(slice) => {
-                    commands.clear();
-                    commands.push_str(&process.on_output);
-                    // TODO: output param
-                    let client_handle = process.client_handle;
+                    editor.registers.set(output_register, slice);
+                    
                     Self::eval_commands_then_output(
                         editor,
                         platform,
@@ -1196,21 +1193,23 @@ impl CommandManager {
             return;
         }
 
-        let stdout = match std::str::from_utf8(&process.output) {
-            Ok(stdout) => stdout,
-            Err(error) => {
-                editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("{}", error));
-                return;
+        if let Some(output_register) = process.output_register {
+            match std::str::from_utf8(&process.output) {
+                Ok(stdout) => {
+                    editor.registers.set(output_register, stdout)
+                },
+                Err(error) => {
+                    editor
+                        .status_bar
+                        .write(MessageKind::Error)
+                        .fmt(format_args!("{}", error));
+                    return;
+                }
             }
-        };
+        }
 
-        let mut commands = editor.string_pool.acquire_with(&process.on_output);
-        // TODO: output param
-        //replace_to_between_text_markers(&mut commands, &process.output_var_name, stdout);
         let client_handle = process.client_handle;
+        let commands = editor.string_pool.acquire_with(&process.on_output);
         Self::eval_commands_then_output(editor, platform, clients, client_handle, &commands, None);
         editor.string_pool.release(commands);
     }

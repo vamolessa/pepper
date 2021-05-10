@@ -2,18 +2,18 @@ use crate::{
     buffer_position::BufferPositionIndex,
     buffer_view::CursorMovementKind,
     client::Client,
-    command::{CommandManager},
+    command::CommandManager,
     editor::KeysIterator,
     editor_utils::ReadLinePoll,
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
-    register::SEARCH_REGISTER,
+    register::{RegisterKey, SEARCH_REGISTER},
 };
 
 pub struct State {
     on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
     continuation: Option<String>,
-    line_var_name: String,
+    line_register: RegisterKey,
     lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
@@ -22,7 +22,7 @@ impl Default for State {
         Self {
             on_client_keys: |_, _, _| None,
             continuation: None,
-            line_var_name: String::new(),
+            line_register: RegisterKey::from_char('a').unwrap(),
             lsp_client_handle: None,
         }
     }
@@ -546,7 +546,7 @@ pub mod lsp_rename {
 pub mod custom {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str, line_var_name: &str) {
+    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str, line_register: RegisterKey) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -555,16 +555,12 @@ pub mod custom {
             match poll {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
-                    let mut continuation =
-                        ctx.editor.mode.read_line_state.continuation.take().unwrap();
-                    // TODO: line param
-                    /*
-                    replace_to_between_text_markers(
-                        &mut continuation,
-                        &ctx.editor.mode.read_line_state.line_var_name,
-                        ctx.editor.read_line.input(),
-                    );
-                    */
+                    let continuation = ctx.editor.mode.read_line_state.continuation.take().unwrap();
+                    let line_register = ctx.editor.mode.read_line_state.line_register;
+
+                    ctx.editor
+                        .registers
+                        .set(line_register, ctx.editor.read_line.input());
                     let operation = CommandManager::eval_commands_then_output(
                         ctx.editor,
                         ctx.platform,
@@ -594,9 +590,9 @@ pub mod custom {
         let state = &mut ctx.editor.mode.read_line_state;
         state.on_client_keys = on_client_keys;
         state.continuation = Some(ctx.editor.string_pool.acquire_with(continuation));
-        state.line_var_name.clear();
-        state.line_var_name.push_str(line_var_name);
+        state.line_register = line_register;
 
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 }
+

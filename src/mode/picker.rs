@@ -7,13 +7,14 @@ use crate::{
     picker::EntrySource,
     platform::Key,
     word_database::WordIndicesIter,
+    register::RegisterKey,
 };
 
 pub struct State {
     on_client_keys:
         fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
     continuation: Option<String>,
-    entry_var_name: String,
+    entry_register: RegisterKey,
     lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
@@ -22,7 +23,7 @@ impl Default for State {
         Self {
             on_client_keys: |_, _, _| None,
             continuation: None,
-            entry_var_name: String::new(),
+            entry_register: RegisterKey::from_char('a').unwrap(),
             lsp_client_handle: None,
         }
     }
@@ -276,7 +277,7 @@ pub mod lsp_document_symbol {
 pub mod custom {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str, entry_var_name: &str) {
+    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str, entry_register: RegisterKey) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -285,15 +286,14 @@ pub mod custom {
             match poll {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
-                    let mut continuation =
+                    let continuation =
                         ctx.editor.mode.picker_state.continuation.take().unwrap();
-                    let entry_var_name = &ctx.editor.mode.picker_state.entry_var_name;
+                    let entry_register = ctx.editor.mode.picker_state.entry_register;
                     let entry = ctx.editor.picker.current_entry(&ctx.editor.word_database);
 
                     let mut operation = None;
                     if let Some((_, entry)) = entry {
-                        // TODO: entry param
-                        //replace_to_between_text_markers(&mut continuation, entry_var_name, entry);
+                        ctx.editor.registers.set(entry_register, entry);
                         operation = CommandManager::eval_commands_then_output(
                             ctx.editor,
                             ctx.platform,
@@ -327,8 +327,7 @@ pub mod custom {
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
         state.continuation = Some(ctx.editor.string_pool.acquire_with(continuation));
-        state.entry_var_name.clear();
-        state.entry_var_name.push_str(entry_var_name);
+        state.entry_register = entry_register;
 
         Mode::change_to(ctx, ModeKind::Picker);
     }

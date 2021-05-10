@@ -46,4 +46,10 @@ impl RegisterCollection {
     pub fn get_mut(&mut self, key: RegisterKey) -> &mut String {
         &mut self.registers[key.0 as usize]
     }
+    
+    pub fn set(&mut self, key: RegisterKey, value: &str) {
+        let register = &mut self.registers[key.0 as usize];
+        register.clear();
+        register.push_str(value);
+    }
 }
