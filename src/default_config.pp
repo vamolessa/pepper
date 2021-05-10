@@ -39,8 +39,8 @@ syntax "**/*.refs" {
 syntax "**/*.rs" {
 	keywords = {as|break|const|continue|crate|else|enum|extern|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|static|struct|super|trait|type|unsafe|use|where|while|async|await|dyn|abstract|become|box|do|final|macro|override|priv|typeof|unsized|virtual|yield|try|union}
 	types = {bool|u8|u16|u32|u64|usize|i8|i16|i32|i64|isize|f32|f64|str|char|%u{%w_}}
-	symbols = {%(|%)|%[|%]|%{|%}|:|;|,|=|<|>|+|-|/|*|%%|%!|?|&|%||@}
-	literals = {true|false|self|'.'|'..'|'...'|'....'|'\{!'.}|b'{\'!'.}|%d{%d_}%.{%w_}|%d{%w_}|'%a{%w_}}
+	symbols = {%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%!|?|&|%||@}
+	literals = {true|false|self|'.'|'..'|'...'|'....'|'\{!'.}|b'{(\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|'%a{%w_}}
 	strings = {"{(\")!".}|b"{(\")!".}}
 	comments = {//{.}|/*{!(*/).$}}
 }
@@ -49,8 +49,8 @@ syntax "**/*.rs" {
 syntax "**/*.{c,h,cpp,hpp}" {
 	keywords = {alignas|alignof|and|and_eq|asm|auto|bitand|bitor|bool|break|case|catch|class|compl|concept|const|const_cast|consteval|constexpr|constinit|continue|co_await|co_return|co_yield|decltype|default|delete|do|dynamic_cast|else|enum|explicit|export|extern|for|friend|goto|if|inline|mutable|namespace|new|noexcept|not|not_eq|operator|or|or_eq|private|protected|public|register|reinterpret_cast|requires|return|sizeof|static|static_assert|static_cast|struct|switch|template|thread_local|throw|try|typedef|typeid|typename|union|using|virtual|volatile|while|xor|xor_eq}
 	types = {char|char8_t|char16_t|char32_t|double|float|int|long|short|signed|unsigned|void|wchar_t|%u{%w_}}
-	symbols = {%(|%)|%[|%]|%{|%}|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@}
-	literals = "true|false|this|nullptr|'{(\')!'.}|%d{%d_}%.{%w_}|%d{%w_}|#{ }{%a}"
+	symbols = {%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@}
+	literals = "true|false|this|nullptr|'{(\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{ }{%a}"
 	strings = {"{(\")!".}}
 	comments = {//{.}|/*{!(*/).$}}
 }
@@ -59,8 +59,8 @@ syntax "**/*.{c,h,cpp,hpp}" {
 syntax "**/*.cs" {
 	keywords = {abstract|as|base|break|case|catch|checked|class|const|continue|default|delegate|do|else|enum|event|explicit|extern|finally|fixed|for|foreach|goto|if|implicit|in|interface|internal|is|lock|namespace|new|operator|out|override|params|private|protected|public|readonly|ref|return|sealed|sizeof|stackalloc|static|struct|switch|throw|try|typeof|unchecked|unsafe|using|virtual|volatile|while|add|alias|ascending|async|await|by|descending|dynamic|equals|from|get|global|group|into|join|let|nameof|not|on|orderby|partial|remove|select|set|unmanaged|value|var|when|where|yield}
 	types = {bool|byte|char|decimal|double|float|int|long|object|sbyte|short|string|uint|ulong|ushort|void|%u{%w_}}
-	symbols = {%(|%)|%[|%]|%{|%}|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@}
-	literals = "true|false|this|null|'{(\')!'.}|%d{%d_}%.{%w_}|%d{%w_}|#{%a}"
+	symbols = {%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@}
+	literals = "true|false|this|null|'{(\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{%a}"
 	strings = {"{(\")!".}}
 	comments = {//{.}|/*{!(*/).$}}
 }
@@ -68,8 +68,8 @@ syntax "**/*.cs" {
 # https://www.lua.org/manual/5.1/manual.html#2
 syntax "**/*.lua" {
 	keywords = {and|break|do|else|elseif|end|for|function|if|in|local|not|or|repeat|return|then|until|while}
-	symbols = {+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|:|,|%.|%.%.|%.%.%.}
-	literals = {nil|false|true|_G|_ENV|%d{%d_}%.{%w_}|%d{%w_}}
+	symbols = {+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.}
+	literals = {nil|false|true|_G|_ENV|%d{%d_}%.%w{%w_}|%d{%w_}}
 	strings = {'{(\')!'.}|"{(\")!".}|%[%[{!(%]%]).}}
 	comments = {--{.}|--%[%[{!(%]%]).$}}
 }
@@ -95,8 +95,8 @@ syntax "**/*.html" {
 syntax "**/*.{js,ts}" {
 	keywords = {break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|new|return|super|switch|this|throw|try|typeof|var|void|while|witch|yield|enum|implements|interface|let|package|private|protected|public|static|yield|await}
 	types = {%u{%w_}}
-	symbols = {%(|%)|%[|%]|%{|%}|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@}
-	literals = {null|undefined|this|true|false|%d{%d_}%.{%w_}|%d{%w_}}
+	symbols = {%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@}
+	literals = {null|undefined|this|true|false|%d{%d_}%.%w{%w_}|%d{%w_}}
 	strings = {'{(\')!'.}|"{(\")!".}|`{(\`)!`.}}
 	comments = {//{.}|/*{!(*/).$}}
 }
