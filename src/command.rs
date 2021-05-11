@@ -14,7 +14,7 @@ use crate::{
     events::{KeyParseError, ServerEvent},
     pattern::PatternError,
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
-    register::{RegisterCollection, RegisterKey},
+    register::{RegisterCollection, RegisterKey, RETURN_REGISTER},
     serialization::Serialize,
 };
 
@@ -876,7 +876,6 @@ struct Process {
     pub input: Option<SharedBuf>,
     pub output: Vec<u8>,
     pub split_on_byte: Option<u8>,
-    pub output_register: Option<RegisterKey>,
     pub on_output: String,
 }
 
@@ -1147,7 +1146,6 @@ impl CommandManager {
         client_handle: Option<ClientHandle>,
         mut command: Command,
         stdin: Option<&str>,
-        output_register: Option<RegisterKey>,
         on_output: Option<&str>,
         split_on_byte: Option<u8>,
     ) {
@@ -1172,7 +1170,6 @@ impl CommandManager {
         process.client_handle = client_handle;
         process.output.clear();
         process.split_on_byte = split_on_byte;
-        process.output_register = output_register;
         process.on_output.clear();
 
         match stdin {
@@ -1236,10 +1233,6 @@ impl CommandManager {
             Some(b) => b,
             None => return,
         };
-        let output_register = match process.output_register {
-            Some(key) => key,
-            None => return,
-        };
 
         let client_handle = process.client_handle;
         let commands = editor.string_pool.acquire_with(&process.on_output);
@@ -1262,7 +1255,7 @@ impl CommandManager {
 
             match std::str::from_utf8(slice) {
                 Ok(slice) => {
-                    editor.registers.set(output_register, slice);
+                    editor.registers.set(RETURN_REGISTER, slice);
 
                     Self::eval_commands_then_output(
                         editor,
@@ -1301,16 +1294,14 @@ impl CommandManager {
             return;
         }
 
-        if let Some(output_register) = process.output_register {
-            match std::str::from_utf8(&process.output) {
-                Ok(stdout) => editor.registers.set(output_register, stdout),
-                Err(error) => {
-                    editor
-                        .status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!("{}", error));
-                    return;
-                }
+        match std::str::from_utf8(&process.output) {
+            Ok(stdout) => editor.registers.set(RETURN_REGISTER, stdout),
+            Err(error) => {
+                editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!("{}", error));
+                return;
             }
         }
 

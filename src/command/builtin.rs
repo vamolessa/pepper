@@ -148,7 +148,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "Try executing commands without propagating errors.\n",
-            "Then optionally executes commands if there was an error.\n",
+            "Then optionally executes <commands> if there was an error.\n",
             "\n",
             "try { <commands...> } [catch { <commands...> }]",
         ),
@@ -293,7 +293,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "set",
         alias: "",
         help: concat!(
-            "Save the last result from commands to an register.\n",
+            "Save the last result from <commands> to an register.\n",
             "\n",
             "set <register> { <commands...> }",
         ),
@@ -374,9 +374,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "Spawns a new process and then optionally executes commands on its output.\n",
             "Those commands will be executed on every splitted output if `-split-on-byte` is set\n",
             "or on its etirety when the process exits otherwise.\n",
-            "`<output-var-name>` will be text replaced in `<commands-on-output>` with the process' output.\n",
+            "Output can be accessed from the %z register in <commands-on-output>.\n",
             "\n",
-            "spawn [<flags>] <spawn-command> [<output-var-name> <commands-on-output>]\n",
+            "spawn [<flags>] <spawn-command> [<commands-on-output...>]\n",
             " -input=<text> : sends <text> to the stdin\n",
             " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...\n",
             " -split-on-byte=<number> : splits process output at every <number> byte",
@@ -400,14 +400,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             let command = args.next()?.text;
-            let output_register = match args.try_next()? {
-                Some(register) => Some(parse_register_key(register)?),
-                None => None,
-            };
-            let on_output = match output_register {
-                Some(_) => Some(args.next()?.text),
-                None => None,
-            };
+            let on_output = args.try_next()?.as_ref().map(|a| a.text);
             args.assert_empty()?;
 
             let command = parse_process_command(&ctx.editor.registers, command, env)?;
@@ -416,7 +409,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 ctx.client_handle,
                 command,
                 input,
-                output_register,
                 on_output,
                 split_on_byte
             );
@@ -424,7 +416,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    /*
     BuiltinCommand {
         name: "replace-with-text",
         alias: "",
@@ -436,10 +427,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            let text = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            let text = args.next()?.text;
+            args.assert_empty()?;
 
             let buffer_view_handle = ctx.current_buffer_view_handle()?;
             let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
@@ -451,22 +443,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &mut ctx.editor.word_database,
                 &mut ctx.editor.events,
             );
+            
+            let text = ctx.editor.string_pool.acquire_with(text);
             ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
-
-            let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
-                Some(buffer_view) => buffer_view,
-                None => return Ok(None),
-            };
-            buffer_view.insert_text_at_cursor_positions(
-                &mut ctx.editor.buffers,
-                &mut ctx.editor.word_database,
-                text,
-                &mut ctx.editor.events,
-            );
+            if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+                buffer_view.insert_text_at_cursor_positions(
+                    &mut ctx.editor.buffers,
+                    &mut ctx.editor.word_database,
+                    &text,
+                    &mut ctx.editor.events,
+                );
+            }
+            ctx.editor.string_pool.release(text);
 
             Ok(None)
         },
     },
+    /*
     BuiltinCommand {
         name: "replace-with-output",
         alias: "",

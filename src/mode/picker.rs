@@ -6,7 +6,7 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     picker::EntrySource,
     platform::Key,
-    register::RegisterKey,
+    register::RETURN_REGISTER,
     word_database::WordIndicesIter,
 };
 
@@ -14,7 +14,6 @@ pub struct State {
     on_client_keys:
         fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
     continuation: Option<String>,
-    entry_register: RegisterKey,
     lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
@@ -23,7 +22,6 @@ impl Default for State {
         Self {
             on_client_keys: |_, _, _| None,
             continuation: None,
-            entry_register: RegisterKey::from_char('a').unwrap(),
             lsp_client_handle: None,
         }
     }
@@ -278,7 +276,7 @@ pub mod lsp_document_symbol {
 pub mod custom {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str, entry_register: RegisterKey) {
+    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -288,12 +286,11 @@ pub mod custom {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
                     let continuation = ctx.editor.mode.picker_state.continuation.take().unwrap();
-                    let entry_register = ctx.editor.mode.picker_state.entry_register;
                     let entry = ctx.editor.picker.current_entry(&ctx.editor.word_database);
 
                     let mut operation = None;
                     if let Some((_, entry)) = entry {
-                        ctx.editor.registers.set(entry_register, entry);
+                        ctx.editor.registers.set(RETURN_REGISTER, entry);
                         operation = CommandManager::eval_commands_then_output(
                             ctx.editor,
                             ctx.platform,
@@ -327,8 +324,8 @@ pub mod custom {
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
         state.continuation = Some(ctx.editor.string_pool.acquire_with(continuation));
-        state.entry_register = entry_register;
 
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
+

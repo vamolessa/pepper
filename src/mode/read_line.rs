@@ -7,13 +7,12 @@ use crate::{
     editor_utils::ReadLinePoll,
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
-    register::{RegisterKey, SEARCH_REGISTER},
+    register::{SEARCH_REGISTER, RETURN_REGISTER},
 };
 
 pub struct State {
     on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
     continuation: Option<String>,
-    line_register: RegisterKey,
     lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
@@ -22,7 +21,6 @@ impl Default for State {
         Self {
             on_client_keys: |_, _, _| None,
             continuation: None,
-            line_register: RegisterKey::from_char('a').unwrap(),
             lsp_client_handle: None,
         }
     }
@@ -547,7 +545,7 @@ pub mod lsp_rename {
 pub mod custom {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str, line_register: RegisterKey) {
+    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -557,11 +555,10 @@ pub mod custom {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
                     let continuation = ctx.editor.mode.read_line_state.continuation.take().unwrap();
-                    let line_register = ctx.editor.mode.read_line_state.line_register;
 
                     ctx.editor
                         .registers
-                        .set(line_register, ctx.editor.read_line.input());
+                        .set(RETURN_REGISTER, ctx.editor.read_line.input());
                     let operation = CommandManager::eval_commands_then_output(
                         ctx.editor,
                         ctx.platform,
@@ -591,7 +588,6 @@ pub mod custom {
         let state = &mut ctx.editor.mode.read_line_state;
         state.on_client_keys = on_client_keys;
         state.continuation = Some(ctx.editor.string_pool.acquire_with(continuation));
-        state.line_register = line_register;
 
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
