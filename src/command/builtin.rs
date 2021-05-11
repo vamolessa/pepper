@@ -1547,7 +1547,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    /*
     BuiltinCommand {
         name: "lsp-hover",
         alias: "",
@@ -1559,9 +1558,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |mut ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
@@ -1581,9 +1581,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |mut ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             let client_handle = match ctx.client_handle {
                 Some(handle) => handle,
@@ -1609,14 +1610,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |mut ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("context", None), ("auto-close", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let context_len = flags[0].1.map(parse_command_value).transpose()?.unwrap_or(0);
+            args.get_flags(&mut flags)?;
+            let context_len = flags[0].1.as_ref().map(parse_command_value).transpose()?.unwrap_or(0);
             let auto_close_buffer = flags[1].1.is_some();
 
-            ctx.args.assert_empty()?;
+            args.assert_empty()?;
 
             let client_handle = match ctx.client_handle {
                 Some(handle) => handle,
@@ -1648,9 +1650,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |mut ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             let client_handle = match ctx.client_handle {
                 Some(handle) => handle,
@@ -1681,9 +1684,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |mut ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             let client_handle = match ctx.client_handle {
                 Some(handle) => handle,
@@ -1713,9 +1717,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |mut ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             let client_handle = match ctx.client_handle {
                 Some(handle) => handle,
@@ -1743,23 +1748,27 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |mut ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("auto-close", None)];
-            ctx.args.get_flags(&mut flags)?;
+            args.get_flags(&mut flags)?;
             let auto_close_buffer = flags[0].1.is_some();
 
-            let query = ctx.args.try_next()?.unwrap_or("");
-            ctx.args.assert_empty()?;
+            let query = args.try_next()?.map(|a| a.text).unwrap_or("");
+            args.assert_empty()?;
 
             let client_handle = match ctx.client_handle {
                 Some(handle) => handle,
                 None => return Ok(None),
             };
             let buffer_handle = ctx.current_buffer_handle()?;
-            access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
-                client.workspace_symbols(editor, platform, client_handle, query, auto_close_buffer)
-            })?;
+            let query = ctx.editor.string_pool.acquire_with(query);
+            let result = access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
+                client.workspace_symbols(editor, platform, client_handle, &query, auto_close_buffer)
+            });
+            ctx.editor.string_pool.release(query);
+            result?;
             Ok(None)
         },
     },
@@ -1774,9 +1783,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |mut ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             let buffer_handle = ctx.current_buffer_handle()?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
@@ -1796,9 +1806,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             use fmt::Write;
             let mut message = ctx.editor.string_pool.acquire();
@@ -1816,7 +1827,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    */
 ];
 
 fn current_buffer_and_main_cursor<'state, 'command>(
