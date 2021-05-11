@@ -18,7 +18,7 @@ use crate::{
     serialization::Serialize,
 };
 
-//mod builtin;
+mod builtin;
 
 pub const HISTORY_CAPACITY: usize = 10;
 
@@ -84,8 +84,8 @@ pub enum CommandError {
     NoBufferOpened,
     InvalidBufferHandle(BufferHandle),
     InvalidPath(CommandToken),
-    ParseArgError {
-        arg: CommandToken,
+    ParseCommandValueError {
+        value: CommandToken,
         type_name: &'static str,
     },
     OpenFileError {
@@ -249,11 +249,11 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 path,
                 format_args!("invalid path '{}'", path.as_str(c)),
             ),
-            CommandError::ParseArgError { arg, type_name } => write(
+            CommandError::ParseCommandValueError { value, type_name } => write(
                 self,
                 f,
-                arg,
-                format_args!("could not parse '{}' as {}", arg.as_str(c), type_name),
+                value,
+                format_args!("could not parse '{}' as {}", value.as_str(c), type_name),
             ),
             CommandError::OpenFileError { path, error } => write(
                 self,
