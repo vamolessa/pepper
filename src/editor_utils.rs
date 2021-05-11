@@ -3,6 +3,7 @@ use std::fmt;
 use crate::{
     editor::{BufferedKeys, KeysIterator},
     platform::{Key, Platform},
+    register::RegisterCollection,
     word_database::{WordIter, WordKind},
 };
 
@@ -42,6 +43,7 @@ impl ReadLine {
         string_pool: &mut StringPool,
         buffered_keys: &BufferedKeys,
         keys_iter: &mut KeysIterator,
+        registers: &RegisterCollection,
     ) -> ReadLinePoll {
         match keys_iter.next(buffered_keys) {
             Key::Esc | Key::Ctrl('c') => ReadLinePoll::Canceled,
@@ -67,7 +69,7 @@ impl ReadLine {
             }
             Key::Ctrl('y') => {
                 let mut text = string_pool.acquire();
-                platform.read_from_clipboard(&mut text);
+                platform.read_from_clipboard(registers, &mut text);
                 self.input.push_str(&text);
                 string_pool.release(text);
                 ReadLinePoll::Pending

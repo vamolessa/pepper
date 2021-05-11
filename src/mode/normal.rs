@@ -1151,13 +1151,13 @@ impl State {
                 let mut text = ctx.editor.string_pool.acquire();
                 copy_text(ctx, handle, &mut text);
                 if !text.is_empty() {
-                    ctx.platform.write_to_clipboard(&text);
+                    ctx.platform.write_to_clipboard(&ctx.editor.registers, &text);
                 }
                 ctx.editor.string_pool.release(text);
             }
             Key::Char('Y') => {
                 let mut text = ctx.editor.string_pool.acquire();
-                ctx.platform.read_from_clipboard(&mut text);
+                ctx.platform.read_from_clipboard(&ctx.editor.registers, &mut text);
                 paste_text(ctx, handle, &text);
                 ctx.editor.string_pool.release(text);
                 return None;

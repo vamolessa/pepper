@@ -2807,7 +2807,7 @@ impl ClientManager {
                 if recipe.running_client.is_some() {
                     continue;
                 }
-                let command = match parse_process_command(&recipe.command, &recipe.environment) {
+                let command = match parse_process_command(&editor.registers, &recipe.command, &recipe.environment) {
                     Ok(command) => command,
                     Err(error) => {
                         let error =

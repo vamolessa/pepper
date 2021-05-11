@@ -58,6 +58,7 @@ impl ModeState for State {
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
             keys,
+            &ctx.editor.registers,
         ) {
             ReadLinePoll::Pending => {
                 keys.put_back();
@@ -156,6 +157,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     for token in tokens {
         match token.0 {
             CommandTokenKind::Text => arg_count += !is_flag_value as usize,
+            CommandTokenKind::Register => todo!(),
             CommandTokenKind::Flag => is_flag_value = false,
             CommandTokenKind::Equals => is_flag_value = true,
             CommandTokenKind::Unterminated => arg_count += 1,

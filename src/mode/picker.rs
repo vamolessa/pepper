@@ -46,6 +46,7 @@ impl ModeState for State {
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
             keys,
+            &ctx.editor.registers,
         );
         if let ReadLinePoll::Pending = poll {
             keys.put_back();
