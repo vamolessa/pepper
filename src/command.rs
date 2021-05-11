@@ -535,7 +535,7 @@ impl<'a> CommandTokenIter<'a> {
         }
     }
 
-    fn end_token(&self) -> CommandToken {
+    pub fn end_token(&self) -> CommandToken {
         let len = self.raw.len();
         CommandToken { from: len, to: len }
     }

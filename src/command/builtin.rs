@@ -11,7 +11,7 @@ use crate::{
     buffer_position::BufferPosition,
     client::ClientManager,
     command::{
-        CommandValue, parse_process_command,
+        CommandValue, parse_process_command, CommandToken,
         BuiltinCommand, CommandContext, CommandError, CommandIter,
         CommandManager, CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind,
         CompletionSource, MacroCommand, RequestCommand,
@@ -30,7 +30,7 @@ use crate::{
     theme::{Color, THEME_COLOR_NAMES},
 };
 
-fn parse_command_value<T>(value: CommandValue) -> Result<T, CommandError>
+fn parse_command_value<T>(value: &CommandValue) -> Result<T, CommandError>
 where
     T: 'static + FromStr,
 {
@@ -767,7 +767,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(Some(CommandOperation::QuitAll))
         },
     },
-    /*
     BuiltinCommand {
         name: "print",
         alias: "",
@@ -781,10 +780,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("error", None), ("dbg", None)];
-            ctx.args.get_flags(&mut flags)?;
+            args.get_flags(&mut flags)?;
             let error = flags[0].1.is_some();
             let dbg = flags[1].1.is_some();
 
@@ -795,14 +795,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             let mut write = ctx.editor.status_bar.write(message_kind);
-            while let Some(arg) = ctx.args.try_next()? {
-                write.str(arg);
-
+            while let Some(arg) = args.try_next()? {
+                write.str(arg.text);
                 if dbg {
-                    eprint!("{}", arg);
+                    eprint!("{}", arg.text);
                 }
             }
-
             if dbg {
                 eprintln!();
             }
@@ -821,24 +819,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[CompletionSource::Files],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
 
-            let path = ctx.args.next()?;
-            let path_token = path.into();
-            let path = Path::new(path);
-            ctx.args.assert_empty()?;
+            let path = args.next()?;
+            let path_token = path.token;
+            let path = Path::new(path.text);
+            args.assert_empty()?;
 
             let mut path_buf = PathBuf::new();
-            let path = if path.is_relative() {
+            if path.is_relative() {
                 if let Some(parent) = ctx.source_path.and_then(Path::parent) {
                     path_buf.push(parent);
                 }
-                path_buf.push(path);
-                path_buf.as_path()
-            } else {
-                path
-            };
+            }
+            path_buf.push(path);
+            let path = path_buf.as_path();
 
             use io::Read;
             let mut file = File::open(path)
@@ -877,7 +874,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[CompletionSource::Files],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [
                 ("line", None),
@@ -887,13 +885,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 ("no-word-database", None),
                 ("auto-close", None)
             ];
-            ctx.args.get_flags(&mut flags)?;
+            args.get_flags(&mut flags)?;
             let line = flags[0]
                 .1
+                .as_ref()
                 .map(parse_command_value::<u32>)
                 .transpose()?;
             let column = flags[1]
                 .1
+                .as_ref()
                 .map(parse_command_value::<u32>)
                 .transpose()?;
             let no_history = flags[2].1.is_some();
@@ -901,8 +901,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let no_word_database = flags[4].1.is_some();
             let auto_close = flags[5].1.is_some();
 
-            let path = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let path = args.next()?.text;
+            args.assert_empty()?;
 
             let client_handle = match ctx.client_handle {
                 Some(handle) => handle,
@@ -926,10 +926,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &ctx.editor.buffer_views,
             );
 
+            let path = ctx.editor.string_pool.acquire_with(path);
             let handle = ctx.editor.buffer_view_handle_from_path(
                 client_handle,
-                Path::new(path),
+                Path::new(&path),
             );
+            ctx.editor.string_pool.release(path);
 
             if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
                 if has_position {
@@ -968,14 +970,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("buffer", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let buffer_handle = flags[0].1.map(parse_command_value).transpose()?;
+            args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.as_ref().map(parse_command_value).transpose()?;
 
-            let path = ctx.args.try_next()?.map(Path::new);
-            ctx.args.assert_empty()?;
+            let path = args.try_next()?.map(|a| Path::new(a.text));
+            args.assert_empty()?;
 
             let buffer_handle = match buffer_handle {
                 Some(handle) => handle,
@@ -1010,9 +1013,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             let mut count = 0;
             for buffer in ctx.editor.buffers.iter_mut() {
@@ -1043,11 +1047,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
             let mut flags = [("buffer", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let buffer_handle = flags[0].1.map(parse_command_value).transpose()?;
+            args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.as_ref().map(parse_command_value).transpose()?;
 
-            ctx.args.assert_empty()?;
+            args.assert_empty()?;
 
             let buffer_handle = match buffer_handle {
                 Some(handle) => handle,
@@ -1084,8 +1089,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             ctx.assert_can_discard_all_buffers()?;
             let mut count = 0;
@@ -1119,12 +1125,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
             let mut flags = [("buffer", None), ("no-previous-buffer", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let buffer_handle = flags[0].1.map(parse_command_value).transpose()?;
+            args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.as_ref().map(parse_command_value).transpose()?;
             let no_previous_buffer = flags[1].1.is_some();
 
-            ctx.args.assert_empty()?;
+            args.assert_empty()?;
 
             let buffer_handle = match buffer_handle {
                 Some(handle) => handle,
@@ -1161,8 +1168,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             ctx.assert_can_discard_all_buffers()?;
             let mut count = 0;
@@ -1189,29 +1197,30 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[(CompletionSource::Custom(CONFIG_NAMES))],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
 
-            let key = ctx.args.next()?;
-            let value = ctx.args.try_next()?;
-            ctx.args.assert_empty()?;
+            let key = args.next()?;
+            let value = args.try_next()?;
+            args.assert_empty()?;
 
             match value {
-                Some(value) => match ctx.editor.config.parse_config(key, value) {
+                Some(value) => match ctx.editor.config.parse_config(key.text, value.text) {
                     Ok(()) => Ok(None),
-                    Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key.into())),
+                    Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key.token)),
                     Err(ParseConfigError::InvalidValue) => {
-                        Err(CommandError::InvalidConfigValue { key: key.into(), value: value.into() })
+                        Err(CommandError::InvalidConfigValue { key: key.token, value: value.token })
                     }
                 },
-                None => match ctx.editor.config.display_config(key) {
+                None => match ctx.editor.config.display_config(key.text) {
                     Some(display) => {
                         use fmt::Write;
                         ctx.output.clear();
                         let _ = write!(ctx.output, "{}", display);
                         Ok(None)
                     }
-                    None => Err(CommandError::ConfigNotFound(key.into())),
+                    None => Err(CommandError::ConfigNotFound(key.token)),
                 },
             }
         },
@@ -1227,23 +1236,24 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[CompletionSource::Custom(THEME_COLOR_NAMES)],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
 
-            let key = ctx.args.next()?;
-            let value = ctx.args.try_next()?;
-            ctx.args.assert_empty()?;
+            let key = args.next()?;
+            let value = args.try_next()?;
+            args.assert_empty()?;
 
             let color = ctx
                 .editor
                 .theme
-                .color_from_name(key)
-                .ok_or(CommandError::ColorNotFound(key.into()))?;
+                .color_from_name(key.text)
+                .ok_or(CommandError::ColorNotFound(key.token))?;
 
             match value {
                 Some(value) => {
-                    let encoded = u32::from_str_radix(value, 16)
-                        .map_err(|_| CommandError::InvalidColorValue { key: key.into(), value: value.into() })?;
+                    let encoded = u32::from_str_radix(value.text, 16)
+                        .map_err(|_| CommandError::InvalidColorValue { key: key.token, value: value.token })?;
                     *color = Color::from_u32(encoded);
                 }
                 None => {
@@ -1278,34 +1288,30 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: true,
         completions: &[],
         func: |ctx| {
-            fn slice_from_last_char(s: &str) -> &str {
-                let end = s.char_indices().next_back().map(|(i, _)| i).unwrap_or(0);
-                &s[end..]
-            }
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
 
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-
-            let glob = ctx.args.next()?;
-            let definition = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let glob = args.next()?;
+            let definition = args.next()?.text;
+            args.assert_empty()?;
 
             let mut syntax = Syntax::new();
             syntax
-                .set_glob(glob)
-                .map_err(|_| CommandError::InvalidGlob(glob.into()))?;
+                .set_glob(glob.text)
+                .map_err(|_| CommandError::InvalidGlob(glob.token))?;
 
-            let mut definition_tokens = CommandTokenIter(definition);
+            let mut definition_tokens = CommandTokenIter::new(definition);
             loop {
                 let token_kind = match definition_tokens.next() {
                     Some((CommandTokenKind::Text, token)) => token,
                     Some((CommandTokenKind::Unterminated, token)) => {
-                        return Err(CommandError::UnterminatedToken(token.into()))
+                        return Err(CommandError::UnterminatedToken(token))
                     }
-                    Some((_, token)) => return Err(CommandError::InvalidToken(token.into())),
+                    Some((_, token)) => return Err(CommandError::InvalidToken(token)),
                     None => break,
                 };
-                let token_kind = match token_kind {
+                let token_kind = match token_kind.as_str(definition) {
                     "keywords" => TokenKind::Keyword,
                     "types" => TokenKind::Type,
                     "symbols" => TokenKind::Symbol,
@@ -1313,35 +1319,35 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     "strings" => TokenKind::String,
                     "comments" => TokenKind::Comment,
                     "texts" => TokenKind::Text,
-                    _ => return Err(CommandError::InvalidToken(token_kind.into())),
+                    _ => return Err(CommandError::InvalidToken(token_kind)),
                 };
                 match definition_tokens.next() {
                     Some((CommandTokenKind::Equals, _)) => (),
                     Some((CommandTokenKind::Unterminated, token)) => {
-                        return Err(CommandError::UnterminatedToken(token.into()));
+                        return Err(CommandError::UnterminatedToken(token));
                     }
                     Some((_, token)) => {
-                        return Err(CommandError::InvalidToken(token.into()));
+                        return Err(CommandError::InvalidToken(token));
                     }
                     None => {
-                        let end = slice_from_last_char(definition);
-                        return Err(CommandError::SyntaxExpectedEquals(end.into()));
+                        let end = definition_tokens.end_token();
+                        return Err(CommandError::SyntaxExpectedEquals(end));
                     }
                 }
                 let pattern = match definition_tokens.next() {
                     Some((CommandTokenKind::Text, token)) => token,
                     Some((CommandTokenKind::Unterminated, token)) => {
-                        return Err(CommandError::UnterminatedToken(token.into()));
+                        return Err(CommandError::UnterminatedToken(token));
                     }
-                    Some((_, token)) => return Err(CommandError::InvalidToken(token.into())),
+                    Some((_, token)) => return Err(CommandError::InvalidToken(token)),
                     None => {
-                        let end = slice_from_last_char(definition);
-                        return Err(CommandError::SyntaxExpectedPattern(end.into()));
+                        let end = definition_tokens.end_token();
+                        return Err(CommandError::SyntaxExpectedPattern(end));
                     }
                 };
 
-                if let Err(error) = syntax.set_rule(token_kind, pattern) {
-                    return Err(CommandError::PatternError(pattern.into(), error));
+                if let Err(error) = syntax.set_rule(token_kind, pattern.as_str(definition)) {
+                    return Err(CommandError::PatternError(pattern, error));
                 }
             }
 
@@ -1369,7 +1375,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [
                 ("normal", None),
@@ -1378,11 +1385,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 ("picker", None),
                 ("command", None),
             ];
-            ctx.args.get_flags(&mut flags)?;
+            args.get_flags(&mut flags)?;
 
-            let from = ctx.args.next()?;
-            let to = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let from = args.next()?;
+            let to = args.next()?;
+            args.assert_empty()?;
 
             let modes = [
                 ModeKind::Normal,
@@ -1398,19 +1405,27 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
                 match ctx.editor
                     .keymaps
-                    .parse_and_map(mode, from, to)
+                    .parse_and_map(mode, from.text, to.text)
                 {
                     Ok(()) => (),
                     Err(ParseKeyMapError::From(e)) => {
-                        let token = &from[e.index..];
+                        let token = &from.text[e.index..];
                         let end = token.chars().next().map(char::len_utf8).unwrap_or(0);
-                        let token = token[..end].into();
+                        let from = to.token.from + e.index;
+                        let token = CommandToken {
+                            from,
+                            to: from + end,
+                        };
                         return Err(CommandError::KeyParseError(token, e.error))
                     }
                     Err(ParseKeyMapError::To(e)) => {
-                        let token = &to[e.index..];
+                        let token = &to.text[e.index..];
                         let end = token.chars().next().map(char::len_utf8).unwrap_or(0);
-                        let token = token[..end].into();
+                        let from = to.token.from + e.index;
+                        let token = CommandToken {
+                            from,
+                            to: from + end,
+                        };
                         return Err(CommandError::KeyParseError(token, e.error))
                     }
                 }
@@ -1433,22 +1448,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: true,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("root", None), ("log", None), ("env", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let root = flags[0].1;
-            let log_buffer = flags[1].1;
-            let env = flags[2].1.unwrap_or("");
+            args.get_flags(&mut flags)?;
+            let root = flags[0].1.as_ref().map(|f| Path::new(f.text));
+            let log_buffer = flags[1].1.as_ref().map(|f| f.text);
+            let env = flags[2].1.as_ref().map(|f| f.text).unwrap_or("");
 
-            let glob = ctx.args.next()?;
-            let command = ctx.args.next()?;
+            let glob = args.next()?;
+            let command = args.next()?.text;
 
             ctx
                 .editor
                 .lsp
-                .add_recipe(glob, command, env, root.map(Path::new), log_buffer)
-                .map_err(|_| CommandError::InvalidGlob(glob.into()))?;
+                .add_recipe(glob.text, command, env, root, log_buffer)
+                .map_err(|_| CommandError::InvalidGlob(glob.token))?;
             Ok(None)
         }
     },
@@ -1466,19 +1482,20 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("root", None), ("log", None), ("env", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let root = flags[0].1;
-            let log_buffer = flags[1].1;
-            let env = flags[2].1.unwrap_or("");
+            args.get_flags(&mut flags)?;
+            let root = flags[0].1.as_ref();
+            let log_buffer = flags[1].1.as_ref().map(|f| f.text);
+            let env = flags[2].1.as_ref().map(|f| f.text).unwrap_or("");
 
-            let command = ctx.args.next()?;
-            let command = parse_process_command(command, env)?;
+            let command = args.next()?.text;
+            let command = parse_process_command(&ctx.editor.registers, command, env)?;
 
             let root = match root {
-                Some(root) => PathBuf::from(root),
+                Some(root) => PathBuf::from(root.text),
                 None => ctx.editor.current_directory.clone(),
             };
 
@@ -1497,9 +1514,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             let buffer_handle = ctx.current_buffer_handle()?;
             match find_lsp_client_for_buffer(ctx.editor, buffer_handle) {
@@ -1520,14 +1538,16 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             ctx.editor.lsp.stop_all(ctx.platform);
             Ok(None)
         },
     },
+    /*
     BuiltinCommand {
         name: "lsp-hover",
         alias: "",
