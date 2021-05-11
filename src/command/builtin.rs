@@ -30,7 +30,7 @@ use crate::{
     theme::{Color, THEME_COLOR_NAMES},
 };
 
-pub fn parse_command_value<T>(value: CommandValue) -> Result<T, CommandError>
+fn parse_command_value<T>(value: CommandValue) -> Result<T, CommandError>
 where
     T: 'static + FromStr,
 {
@@ -41,6 +41,32 @@ where
             type_name: any::type_name::<T>(),
         }),
     }
+}
+
+fn parse_register_key(value: CommandValue) -> Result<RegisterKey, CommandError> {
+    match RegisterKey::from_str(value.text) {
+        Some(register) => Ok(register),
+        None => Err(CommandError::InvalidRegisterKey(value.token)),
+    }
+}
+
+fn run_commands(ctx: &mut CommandContext, commands: &str) -> Result<Option<CommandOperation>, CommandError> {
+    for command in CommandIter(commands) {
+        match CommandManager::eval(
+            ctx.editor,
+            ctx.platform,
+            ctx.clients,
+            ctx.client_handle,
+            command,
+            ctx.source_path,
+            ctx.output,
+        ) {
+            Ok(None) => (),
+            Ok(Some(op)) => return Ok(Some(op)),
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(None)
 }
 
 pub const COMMANDS: &[BuiltinCommand] = &[
@@ -129,28 +155,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            fn run_commands(
-                ctx: &mut CommandContext,
-                commands: &str
-            ) -> Result<Option<CommandOperation>, CommandError> {
-                for command in CommandIter(commands) {
-                    match CommandManager::eval(
-                        ctx.editor,
-                        ctx.platform,
-                        ctx.clients,
-                        ctx.client_handle,
-                        command,
-                        ctx.source_path,
-                        ctx.output,
-                    ) {
-                        Ok(None) => (),
-                        Ok(Some(op)) => return Ok(Some(op)),
-                        Err(error) => return Err(error),
-                    }
-                }
-                Ok(None)
-            }
-
             let mut args = ctx.args.with(&ctx.editor.registers);
             args.assert_no_bang()?;
             args.get_flags(&mut [])?;
@@ -183,7 +187,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             op
         },
     },
-    /*
     BuiltinCommand {
         name: "macro",
         alias: "",
@@ -197,37 +200,39 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("help", None), ("hidden", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let help = flags[0].1.unwrap_or("");
+            args.get_flags(&mut flags)?;
+            let help = flags[0].1.as_ref().map(|f| f.text).unwrap_or("");
             let hidden = flags[1].1.is_some();
 
-            let name = ctx.args.next()?;
+            let name = args.next()?;
 
             let mut params = Vec::new();
-            params.push(ctx.args.next()?.into());
-            while let Some(param) = ctx.args.try_next()? {
-                params.push(param.into());
+            let mut last_arg = args.next()?;
+            while let Some(arg) = args.try_next()? {
+                params.push(parse_register_key(args.next()?)?);
+                last_arg = arg;
             }
-            ctx.args.assert_empty()?;
+            args.assert_empty()?;
 
-            let commands = params.pop().unwrap();
+            let body = last_arg.text.into();
 
-            if name.is_empty() {
-                return Err(CommandError::InvalidCommandName(name.into()));
+            if name.text.is_empty() {
+                return Err(CommandError::InvalidCommandName(name.token));
             }
-            if !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
-                return Err(CommandError::InvalidCommandName(name.into()));
+            if !name.text.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+                return Err(CommandError::InvalidCommandName(name.token));
             }
 
             let command = MacroCommand {
-                name: name.into(),
+                name: name.text.into(),
                 help: help.into(),
                 hidden,
                 params,
-                commands,
+                body,
                 source_path: ctx.source_path.map(Into::into),
             };
             ctx.editor.commands.register_macro(command);
@@ -250,21 +255,22 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: true,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("help", None), ("hidden", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let help = flags[0].1.unwrap_or("");
+            args.get_flags(&mut flags)?;
+            let help = flags[0].1.as_ref().map(|f| f.text).unwrap_or("");
             let hidden = flags[1].1.is_some();
 
-            let name = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let name = args.next()?;
+            args.assert_empty()?;
 
-            if name.is_empty() {
-                return Err(CommandError::InvalidCommandName(name.into()));
+            if name.text.is_empty() {
+                return Err(CommandError::InvalidCommandName(name.token));
             }
-            if !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
-                return Err(CommandError::InvalidCommandName(name.into()));
+            if !name.text.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+                return Err(CommandError::InvalidCommandName(name.token));
             }
 
             let client_handle = match ctx.client_handle {
@@ -273,7 +279,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             let command = RequestCommand {
-                name: name.into(),
+                name: name.text.into(),
                 help: help.into(),
                 hidden,
                 client_handle,
@@ -287,38 +293,28 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "set",
         alias: "",
         help: concat!(
-            "Sets an register from the result of a command.\n",
+            "Save the last result from commands to an register.\n",
             "\n",
-            "set <register> [<command>]",
+            "set <register> { <commands...> }",
         ),
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
 
-            let register = ctx.args.next()?;
-            let command = ctx.args.try_next()?.as_str(&ctx.editor.registers);
-            ctx.args.assert_empty()?;
-
-            let register = match RegisterKey::from_str(register) {
-                Some(key) => ctx.editor.registers.get_mut(key),
-                None => return Err(CommandError::InvalidRegisterKey(key.into())),
-            };
-            match value {
-                Some(value) => {
-                    register.clear();
-                    register.push_str(value);
-                }
-                None => {
-                    ctx.output.clear();
-                    ctx.output.push_str(register);
-                }
-            }
-
+            let register = parse_register_key(args.next()?)?;
+            let commands = args.next()?.text;
+            args.assert_empty()?;
+            
+            let commands = ctx.editor.string_pool.acquire_with(commands);
+            let op = run_commands(ctx, &commands);
+            ctx.editor.string_pool.release(commands);
             Ok(None)
         },
     },
+    /*
     BuiltinCommand {
         name: "copy-command",
         alias: "",
