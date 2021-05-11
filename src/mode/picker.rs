@@ -328,4 +328,3 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
-

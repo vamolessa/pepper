@@ -11,10 +11,9 @@ use crate::{
     buffer_position::BufferPosition,
     client::ClientManager,
     command::{
-        CommandValue, parse_process_command, CommandToken,
-        BuiltinCommand, CommandContext, CommandError, CommandIter,
-        CommandManager, CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind,
-        CompletionSource, MacroCommand, RequestCommand,
+        parse_process_command, BuiltinCommand, CommandContext, CommandError, CommandIter,
+        CommandManager, CommandOperation, CommandSource, CommandToken, CommandTokenIter,
+        CommandTokenKind, CommandValue, CompletionSource, MacroCommand, RequestCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::{Cursor, CursorCollection},
@@ -50,7 +49,10 @@ fn parse_register_key(value: CommandValue) -> Result<RegisterKey, CommandError> 
     }
 }
 
-fn run_commands(ctx: &mut CommandContext, commands: &str) -> Result<Option<CommandOperation>, CommandError> {
+fn run_commands(
+    ctx: &mut CommandContext,
+    commands: &str,
+) -> Result<Option<CommandOperation>, CommandError> {
     for command in CommandIter(commands) {
         match CommandManager::eval(
             ctx.editor,
@@ -307,13 +309,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let register = parse_register_key(args.next()?)?;
             let commands = args.next()?.text;
             args.assert_empty()?;
-            
+
             let commands = ctx.editor.string_pool.acquire_with(commands);
             let mut output = ctx.editor.string_pool.acquire();
             std::mem::swap(&mut output, ctx.output);
             let op = run_commands(ctx, &commands);
             std::mem::swap(&mut output, ctx.output);
-            
+
             ctx.editor.registers.set(register, &output);
 
             ctx.editor.string_pool.release(commands);
@@ -443,7 +445,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &mut ctx.editor.word_database,
                 &mut ctx.editor.events,
             );
-            
+
             let text = ctx.editor.string_pool.acquire_with(text);
             ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
             if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(buffer_view_handle) {
@@ -528,7 +530,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &mut ctx.editor.word_database,
                 &mut ctx.editor.events,
             );
-            
+
             let command = ctx.editor.string_pool.acquire_with(command);
             let env = ctx.editor.string_pool.acquire_with(env);
             ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
@@ -537,7 +539,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
                     let range = cursor.to_range();
                     let command = parse_process_command(&ctx.editor.registers, &command, &env)?;
-    
+
                     ctx.editor.buffers.spawn_insert_process(
                         ctx.platform,
                         command,

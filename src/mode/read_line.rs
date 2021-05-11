@@ -7,7 +7,7 @@ use crate::{
     editor_utils::ReadLinePoll,
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
-    register::{SEARCH_REGISTER, RETURN_REGISTER},
+    register::{RETURN_REGISTER, SEARCH_REGISTER},
 };
 
 pub struct State {

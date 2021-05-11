@@ -79,7 +79,7 @@ impl RegisterCollection {
         } else {
             return;
         }
-        
+
         to.clear();
         to.push_str(from);
     }
