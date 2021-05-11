@@ -18,7 +18,7 @@ use crate::{
     serialization::Serialize,
 };
 
-//mod builtin;
+mod builtin;
 
 pub const HISTORY_CAPACITY: usize = 10;
 
@@ -833,7 +833,7 @@ pub struct CommandManager {
 impl CommandManager {
     pub fn new() -> Self {
         Self {
-            builtin_commands: &[], //builtin::COMMANDS,
+            builtin_commands: builtin::COMMANDS,
             macro_commands: Vec::new(),
             request_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
