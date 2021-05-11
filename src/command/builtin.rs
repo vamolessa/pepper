@@ -11,7 +11,7 @@ use crate::{
     buffer_position::BufferPosition,
     client::ClientManager,
     command::{
-        CommandValue,
+        CommandValue, parse_process_command,
         BuiltinCommand, CommandContext, CommandError, CommandIter,
         CommandManager, CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind,
         CompletionSource, MacroCommand, RequestCommand,
@@ -309,12 +309,18 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             args.assert_empty()?;
             
             let commands = ctx.editor.string_pool.acquire_with(commands);
+            let mut output = ctx.editor.string_pool.acquire();
+            std::mem::swap(&mut output, ctx.output);
             let op = run_commands(ctx, &commands);
+            std::mem::swap(&mut output, ctx.output);
+            
+            ctx.editor.registers.set(register, &output);
+
             ctx.editor.string_pool.release(commands);
-            Ok(None)
+            ctx.editor.string_pool.release(output);
+            op
         },
     },
-    /*
     BuiltinCommand {
         name: "copy-command",
         alias: "",
@@ -329,9 +335,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            let command = ctx.args.next()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            let command = args.next()?.text;
             ctx.platform.copy_command.clear();
             ctx.platform.copy_command.push_str(command);
             Ok(None)
@@ -351,9 +358,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            let command = ctx.args.next()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            let command = args.next()?.text;
             ctx.platform.paste_command.clear();
             ctx.platform.paste_command.push_str(command);
             Ok(None)
@@ -376,35 +384,39 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("input", None), ("env", None), ("split-on-byte", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let input = flags[0].1;
-            let env = flags[1].1.unwrap_or("");
+            args.get_flags(&mut flags)?;
+            let input = flags[0].1.as_ref().map(|f| f.text);
+            let env = flags[1].1.as_ref().map(|f| f.text).unwrap_or("");
             let split_on_byte = match flags[2].1 {
-                Some(token) => match token.parse() {
+                Some(ref flag) => match flag.text.parse() {
                     Ok(b) => Some(b),
-                    Err(_) => return Err(CommandError::InvalidToken(token.into())),
+                    Err(_) => return Err(CommandError::InvalidToken(flag.token)),
                 }
                 None => None,
             };
 
-            let command = ctx.args.next()?;
-            let output_name = ctx.args.try_next()?;
-            let on_output = match output_name {
-                Some(_) => Some(ctx.args.next()?),
+            let command = args.next()?.text;
+            let output_register = match args.try_next()? {
+                Some(register) => Some(parse_register_key(register)?),
                 None => None,
             };
-            ctx.args.assert_empty()?;
+            let on_output = match output_register {
+                Some(_) => Some(args.next()?.text),
+                None => None,
+            };
+            args.assert_empty()?;
 
-            let command = parse_process_command(command, env)?;
+            let command = parse_process_command(&ctx.editor.registers, command, env)?;
             ctx.editor.commands.spawn_process(
                 ctx.platform,
                 ctx.client_handle,
                 command,
                 input,
-                output_name,
+                output_register,
                 on_output,
                 split_on_byte
             );
@@ -412,6 +424,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
+    /*
     BuiltinCommand {
         name: "replace-with-text",
         alias: "",
