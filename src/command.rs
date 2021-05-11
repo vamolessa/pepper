@@ -76,8 +76,8 @@ pub enum CommandError {
     CommandDoesNotAcceptBang,
     UnterminatedToken(CommandToken),
     InvalidToken(CommandToken),
-    TooFewArguments(u8),
-    TooManyArguments(CommandToken, u8),
+    TooFewArguments(usize),
+    TooManyArguments(CommandToken, usize),
     InvalidRegisterKey(CommandToken),
     UnknownFlag(CommandToken),
     UnsavedChanges,
@@ -749,7 +749,7 @@ fn try_next_raw_value(
     }
 }
 
-fn assert_empty(tokens: &mut CommandTokenIter, max: u8) -> Result<(), CommandError> {
+fn assert_empty(tokens: &mut CommandTokenIter, max: usize) -> Result<(), CommandError> {
     loop {
         match tokens.next() {
             Some((CommandTokenKind::Text, token)) | Some((CommandTokenKind::Register, token)) => {
@@ -798,7 +798,7 @@ impl<'a> CommandArgsBuilder<'a> {
 pub struct CommandArgs<'a> {
     tokens: CommandTokenIter<'a>,
     bang: bool,
-    len: u8,
+    len: usize,
     registers: &'a RegisterCollection,
 }
 impl<'a> CommandArgs<'a> {
@@ -1094,14 +1094,7 @@ impl CommandManager {
                         None => return Err(CommandError::TooFewArguments(arg_count)),
                     }
                 }
-                if let Some(value) = try_next_raw_value(&mut tokens)? {
-                    let token = match value {
-                        RawCommandValue::Literal(token) => token,
-                        RawCommandValue::Register(token, _) => token,
-                    };
-                    let max = macro_command.params.len() as _;
-                    return Err(CommandError::TooManyArguments(token, max));
-                }
+                assert_empty(&mut tokens, macro_command.params.len() as _)?;
 
                 for command in CommandIter(&body) {
                     match Self::eval(
