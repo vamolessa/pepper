@@ -60,4 +60,26 @@ impl RegisterCollection {
         register.clear();
         register.push_str(value);
     }
+
+    pub fn copy(&mut self, from: RegisterKey, to: RegisterKey) {
+        let from_index = from.0 as usize;
+        let to_index = to.0 as usize;
+
+        let from;
+        let to;
+        if from_index < to_index {
+            let (a, b) = self.registers.split_at_mut(to_index);
+            from = &a[from_index];
+            to = &mut b[0];
+        } else if to_index < from_index {
+            let (a, b) = self.registers.split_at_mut(from_index);
+            from = &b[0];
+            to = &mut a[to_index];
+        } else {
+            return;
+        }
+        
+        to.clear();
+        to.push_str(from);
+    }
 }
