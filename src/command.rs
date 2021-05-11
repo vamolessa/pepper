@@ -1351,6 +1351,8 @@ pub fn parse_process_command(registers: &RegisterCollection, command: &str, envi
 #[cfg(test)]
 mod tests {
     use super::*;
+    
+    static EMPTY_REGISTERS : RegisterCollection = RegisterCollection::new();
 
     fn create_commands() -> CommandManager {
         let builtin_commands = &[BuiltinCommand {
@@ -1434,7 +1436,7 @@ mod tests {
         fn collect<'a>(mut args: CommandArgs<'a>) -> Vec<&'a str> {
             let mut values = Vec::new();
             loop {
-                match args.try_next() {
+                match args.try_next(&EMPTY_REGISTERS) {
                     Ok(Some(arg)) => values.push(arg.text),
                     Ok(None) => break,
                     Err(error) => {
@@ -1462,11 +1464,9 @@ mod tests {
             flags[index].1.as_ref().map(|f| f.text)
         }
 
-        let registers = RegisterCollection::default();
-    
         let args = parse_args(&commands, "c -option=value aaa");
         let mut flags = [("switch", None), ("option", None)];
-        if args.get_flags(&registers, &mut flags).is_err() {
+        if args.get_flags(&EMPTY_REGISTERS, &mut flags).is_err() {
             panic!("error parsing args");
         }
         assert_eq!(None, flag_value(&flags, 0));
@@ -1475,7 +1475,7 @@ mod tests {
 
         let args = parse_args(&commands, "c 'aaa' -option=value");
         let mut flags = [("switch", None), ("option", None)];
-        if args.get_flags(&registers, &mut flags).is_err() {
+        if args.get_flags(&EMPTY_REGISTERS, &mut flags).is_err() {
             panic!("error parsing args");
         }
         assert_eq!(None, flag_value(&flags, 0));
@@ -1484,7 +1484,7 @@ mod tests {
 
         let args = parse_args(&commands, "c aaa -switch bbb -option=value ccc");
         let mut flags = [("switch", None), ("option", None)];
-        if args.get_flags(&registers, &mut flags).is_err() {
+        if args.get_flags(&EMPTY_REGISTERS, &mut flags).is_err() {
             panic!("error parsing args");
         }
         assert_eq!(Some("-switch"), flag_value(&flags, 0));
@@ -1493,7 +1493,7 @@ mod tests {
 
         let args = parse_args(&commands, "c -switch -option=value aaa");
         let mut flags = [("switch", None), ("option", None)];
-        if args.get_flags(&registers, &mut flags).is_err() {
+        if args.get_flags(&EMPTY_REGISTERS, &mut flags).is_err() {
             panic!("error parsing args");
         }
         assert_eq!(Some("-switch"), flag_value(&flags, 0));
@@ -1530,7 +1530,7 @@ mod tests {
                 len: 0,
             };
             loop {
-                match args.try_next() {
+                match args.try_next(&EMPTY_REGISTERS) {
                     Ok(Some(_)) => (),
                     Ok(None) => panic!("no unterminated token"),
                     Err(CommandError::UnterminatedToken(_)) => return,

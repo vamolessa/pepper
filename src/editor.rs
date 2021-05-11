@@ -139,7 +139,7 @@ impl Editor {
 
             buffered_keys: BufferedKeys::default(),
             recording_macro: None,
-            registers: RegisterCollection::default(),
+            registers: RegisterCollection::new(),
             read_line: ReadLine::default(),
             picker: Picker::default(),
             string_pool: StringPool::default(),

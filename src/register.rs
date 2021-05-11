@@ -33,12 +33,20 @@ impl RegisterKey {
     }
 }
 
-#[derive(Default)]
+const REGISTERS_LEN : usize = (b'z' - b'a' + 1) as _;
+
 pub struct RegisterCollection {
-    registers: [String; (b'z' - b'a' + 1) as usize],
+    registers: [String; REGISTERS_LEN],
 }
 
 impl RegisterCollection {
+    pub const fn new() -> Self {
+        const DEFAULT_STRING: String = String::new();
+        Self {
+            registers: [DEFAULT_STRING; REGISTERS_LEN],
+        }
+    }
+
     pub fn get(&self, key: RegisterKey) -> &str {
         &self.registers[key.0 as usize]
     }
