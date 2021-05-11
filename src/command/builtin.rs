@@ -554,7 +554,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    /*
     BuiltinCommand {
         name: "execute-keys",
         alias: "",
@@ -567,23 +566,24 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("client", None)];
-            ctx.args.get_flags(&mut flags)?;
+            args.get_flags(&mut flags)?;
             let client = match flags[0].1 {
-                Some(token) => match token.parse() {
+                Some(ref flag) => match flag.text.parse() {
                     Ok(handle) => Some(handle),
-                    Err(_) => return Err(CommandError::InvalidToken(token.into())),
+                    Err(_) => return Err(CommandError::InvalidToken(flag.token)),
                 }
                 None => ctx.client_handle,
             };
 
-            let keys = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let keys = args.next()?;
+            args.assert_empty()?;
 
             match client {
-                Some(client_handle) => match ctx.editor.buffered_keys.parse(keys) {
+                Some(client_handle) => match ctx.editor.buffered_keys.parse(keys.text) {
                     Ok(keys) => {
                         let mut ctx = ModeContext {
                             editor: ctx.editor,
@@ -606,7 +606,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         Mode::change_to(&mut ctx, mode);
                         op
                     }
-                    Err(_) => Err(CommandError::BufferedKeysParseError(keys.into())),
+                    Err(_) => Err(CommandError::BufferedKeysParseError(keys.token)),
                 }
                 None => Ok(None)
             }
@@ -617,23 +617,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "Prompts for a line read and then executes commands.\n",
-            "<line-var-name> will be text replaced in `<commands>` with the line read value.\n",
+            "The line read can be accessed from the %z register in <commands>\n",
             "\n",
-            "read-line [<flags>] <line-var-name> <commands>\n",
+            "read-line [<flags>] <commands...>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `read-line:`)",
         ),
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("prompt", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let prompt = flags[0].1.unwrap_or("read-line:");
+            args.get_flags(&mut flags)?;
+            let prompt = flags[0].1.as_ref().map(|f| f.text).unwrap_or("read-line:");
 
-            let line_var_name = ctx.args.next()?;
-            let commands = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let commands = args.next()?.text;
+            args.assert_empty()?;
 
             let client_handle = match ctx.client_handle{
                 Some(handle) => handle,
@@ -642,13 +642,14 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             ctx.editor.read_line.set_prompt(prompt);
 
+            let commands = ctx.editor.string_pool.acquire_with(commands);
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
                 platform: ctx.platform,
                 clients: ctx.clients,
                 client_handle,
             };
-            read_line::custom::enter_mode(&mut mode_ctx, commands, line_var_name);
+            read_line::custom::enter_mode(&mut mode_ctx, commands);
 
             Ok(None)
         },
@@ -659,23 +660,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "Opens up a menu from where an option can be picked and then executes commands.\n",
             "Options can be added with the `add-picker-entry` command.\n",
-            "`<option-var-name>` will be text replaced in `<commands>` with the picked option value.\n",
+            "The picked entry can be accessed from the %z register in <commands>\n",
             "\n",
-            "pick [<flags>] <option-var-name> <commands>\n",
+            "pick [<flags>] <commands...>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
         ),
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("prompt", None)];
-            let prompt = flags[0].1.unwrap_or("pick:");
-            ctx.args.get_flags(&mut flags)?;
+            args.get_flags(&mut flags)?;
+            let prompt = flags[0].1.as_ref().map(|f| f.text).unwrap_or("pick:");
 
-            let option_var_name = ctx.args.next()?;
-            let commands = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let commands = args.next()?.text;
+            args.assert_empty()?;
 
             let client_handle = match ctx.client_handle{
                 Some(handle) => handle,
@@ -684,13 +685,14 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             ctx.editor.read_line.set_prompt(prompt);
 
+            let commands = ctx.editor.string_pool.acquire_with(commands);
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
                 platform: ctx.platform,
                 clients: ctx.clients,
                 client_handle,
             };
-            picker::custom::enter_mode(&mut mode_ctx, commands, option_var_name);
+            picker::custom::enter_mode(&mut mode_ctx, commands);
 
             Ok(None)
         },
@@ -706,10 +708,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            let name = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            let name = args.next()?.text;
+            args.assert_empty()?;
 
             if ModeKind::Picker == ctx.editor.mode.kind() {
                 ctx.editor.picker.add_custom_entry_filtered(
@@ -734,8 +737,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             if ctx.clients.iter().count() == 1 {
                 ctx.assert_can_discard_all_buffers()?;
@@ -755,13 +759,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
 
             ctx.assert_can_discard_all_buffers()?;
             Ok(Some(CommandOperation::QuitAll))
         },
     },
+    /*
     BuiltinCommand {
         name: "print",
         alias: "",

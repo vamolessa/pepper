@@ -276,7 +276,7 @@ pub mod lsp_document_symbol {
 pub mod custom {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str) {
+    pub fn enter_mode(ctx: &mut ModeContext, continuation: String) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -323,7 +323,7 @@ pub mod custom {
 
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
-        state.continuation = Some(ctx.editor.string_pool.acquire_with(continuation));
+        state.continuation = Some(continuation);
 
         Mode::change_to(ctx, ModeKind::Picker);
     }
