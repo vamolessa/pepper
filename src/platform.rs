@@ -4,7 +4,9 @@ use std::{
     sync::{mpsc, Arc},
 };
 
-use crate::{client::ClientHandle, command::parse_process_command, lsp, register::RegisterCollection};
+use crate::{
+    client::ClientHandle, command::parse_process_command, lsp, register::RegisterCollection,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {

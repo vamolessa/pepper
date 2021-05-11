@@ -23,7 +23,7 @@ struct KeyMap {
 
 #[derive(Default)]
 pub struct KeyMapCollection {
-    maps: [Vec<KeyMap>; 5]
+    maps: [Vec<KeyMap>; 5],
 }
 
 impl KeyMapCollection {

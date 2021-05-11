@@ -14,7 +14,7 @@ use crate::{
     events::{KeyParseError, ServerEvent},
     pattern::PatternError,
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
-    register::{RegisterKey, RegisterCollection},
+    register::{RegisterCollection, RegisterKey},
     serialization::Serialize,
 };
 
@@ -50,14 +50,14 @@ impl<'a> CommandValue<'a> {
     pub fn from_literal(token: CommandToken, raw: &'a str) -> Self {
         CommandValue {
             token,
-            text: token.as_str(raw)
+            text: token.as_str(raw),
         }
     }
 
     pub fn from_register(
         registers: &'a RegisterCollection,
         token: CommandToken,
-        raw: &str
+        raw: &str,
     ) -> Result<Self, CommandError> {
         let key = token.as_str(raw);
         match RegisterKey::from_str(key) {
@@ -65,7 +65,7 @@ impl<'a> CommandValue<'a> {
                 token,
                 text: registers.get(key),
             }),
-            None => Err(CommandError::InvalidRegisterKey(token))
+            None => Err(CommandError::InvalidRegisterKey(token)),
         }
     }
 }
@@ -625,7 +625,7 @@ impl<'a> CommandArgs<'a> {
             Ok(())
         }
     }
-    
+
     pub fn get_flags(
         &self,
         registers: &'a RegisterCollection,
@@ -676,7 +676,9 @@ impl<'a> CommandArgs<'a> {
                         None => Some(CommandValue::from_literal(token, self.raw)),
                     }
                 }
-                Some((CommandTokenKind::Equals, token)) => break Err(CommandError::InvalidToken(token)),
+                Some((CommandTokenKind::Equals, token)) => {
+                    break Err(CommandError::InvalidToken(token))
+                }
                 Some((CommandTokenKind::Unterminated, token)) => {
                     break Err(CommandError::UnterminatedToken(token))
                 }
@@ -685,7 +687,10 @@ impl<'a> CommandArgs<'a> {
         }
     }
 
-    pub fn try_next(&mut self, registers: &'a RegisterCollection) -> Result<Option<CommandValue<'a>>, CommandError> {
+    pub fn try_next(
+        &mut self,
+        registers: &'a RegisterCollection,
+    ) -> Result<Option<CommandValue<'a>>, CommandError> {
         self.len += 1;
         loop {
             match self.tokens.next() {
@@ -693,7 +698,9 @@ impl<'a> CommandArgs<'a> {
                     break Ok(Some(CommandValue::from_literal(token, self.raw)))
                 }
                 Some((CommandTokenKind::Register, token)) => {
-                    break Ok(Some(CommandValue::from_register(registers, token, self.raw)?))
+                    break Ok(Some(CommandValue::from_register(
+                        registers, token, self.raw,
+                    )?))
                 }
                 Some((CommandTokenKind::Flag, _)) => {
                     let previous_state = self.tokens.rest;
@@ -702,7 +709,9 @@ impl<'a> CommandArgs<'a> {
                             break Ok(Some(CommandValue::from_literal(token, self.raw)))
                         }
                         Some((CommandTokenKind::Register, token)) => {
-                            break Ok(Some(CommandValue::from_register(registers, token, self.raw)?))
+                            break Ok(Some(CommandValue::from_register(
+                                registers, token, self.raw,
+                            )?))
                         }
                         Some((CommandTokenKind::Flag, _)) => self.tokens.rest = previous_state,
                         Some((CommandTokenKind::Equals, _)) => {
@@ -725,7 +734,10 @@ impl<'a> CommandArgs<'a> {
         }
     }
 
-    pub fn next(&mut self, registers: &'a RegisterCollection) -> Result<CommandValue<'a>, CommandError> {
+    pub fn next(
+        &mut self,
+        registers: &'a RegisterCollection,
+    ) -> Result<CommandValue<'a>, CommandError> {
         match self.try_next(registers)? {
             Some(value) => Ok(value),
             None => Err(CommandError::TooFewArguments(
@@ -734,18 +746,20 @@ impl<'a> CommandArgs<'a> {
                     to: self.tokens.len,
                 },
                 self.len,
-            ))
+            )),
         }
     }
 
     pub fn assert_empty(&mut self) -> Result<(), CommandError> {
         loop {
             match self.tokens.next() {
-                Some((CommandTokenKind::Text, token)) | Some((CommandTokenKind::Register, token)) => {
+                Some((CommandTokenKind::Text, token))
+                | Some((CommandTokenKind::Register, token)) => {
                     break Err(CommandError::TooManyArguments(token, self.len))
                 }
                 Some((CommandTokenKind::Flag, _)) => match self.tokens.next() {
-                    Some((CommandTokenKind::Text, token)) | Some((CommandTokenKind::Register, token)) => {
+                    Some((CommandTokenKind::Text, token))
+                    | Some((CommandTokenKind::Register, token)) => {
                         break Err(CommandError::TooManyArguments(token, self.len))
                     }
                     Some((CommandTokenKind::Flag, _)) => (),
@@ -1012,6 +1026,7 @@ impl CommandManager {
                 let mut result = Ok(None);
                 let body = editor.string_pool.acquire_with(&macro_command.body);
 
+                // TODO: fix this
                 for &key in &macro_command.params {
                     let value = args.next(&editor.registers)?.text;
                     let value = editor.string_pool.acquire_with(value);
@@ -1186,7 +1201,7 @@ impl CommandManager {
             match std::str::from_utf8(slice) {
                 Ok(slice) => {
                     editor.registers.set(output_register, slice);
-                    
+
                     Self::eval_commands_then_output(
                         editor,
                         platform,
@@ -1226,9 +1241,7 @@ impl CommandManager {
 
         if let Some(output_register) = process.output_register {
             match std::str::from_utf8(&process.output) {
-                Ok(stdout) => {
-                    editor.registers.set(output_register, stdout)
-                },
+                Ok(stdout) => editor.registers.set(output_register, stdout),
                 Err(error) => {
                     editor
                         .status_bar
@@ -1245,15 +1258,16 @@ impl CommandManager {
         editor.string_pool.release(commands);
     }
 
-    fn parse<'a>(&self, raw_command: &'a str) -> Result<(CommandSource, CommandArgs<'a>), CommandError> {
+    fn parse<'a>(
+        &self,
+        raw_command: &'a str,
+    ) -> Result<(CommandSource, CommandArgs<'a>), CommandError> {
         let mut tokens = CommandTokenIter::new(raw_command);
 
         let mut command_token = match tokens.next() {
             Some((CommandTokenKind::Text, token)) => token,
             Some((_, token)) => return Err(CommandError::InvalidCommandName(token)),
-            None => {
-                return Err(CommandError::InvalidCommandName(CommandToken::default()))
-            }
+            None => return Err(CommandError::InvalidCommandName(CommandToken::default())),
         };
         let command_name = command_token.as_str(raw_command);
 
@@ -1284,7 +1298,11 @@ impl CommandManager {
     }
 }
 
-pub fn parse_process_command(registers: &RegisterCollection, command: &str, environment: &str) -> Result<Command, CommandError> {
+pub fn parse_process_command(
+    registers: &RegisterCollection,
+    command: &str,
+    environment: &str,
+) -> Result<Command, CommandError> {
     let mut command_tokens = CommandTokenIter::new(command);
     let command_name = match command_tokens.next() {
         Some((CommandTokenKind::Text, token))
@@ -1351,8 +1369,8 @@ pub fn parse_process_command(registers: &RegisterCollection, command: &str, envi
 #[cfg(test)]
 mod tests {
     use super::*;
-    
-    static EMPTY_REGISTERS : RegisterCollection = RegisterCollection::new();
+
+    static EMPTY_REGISTERS: RegisterCollection = RegisterCollection::new();
 
     fn create_commands() -> CommandManager {
         let builtin_commands = &[BuiltinCommand {
@@ -1447,7 +1465,7 @@ mod tests {
             }
             values
         }
-        
+
         let commands = create_commands();
         let args = parse_args(&commands, "c  aaa  bbb  ccc  ");
         assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
@@ -1460,7 +1478,10 @@ mod tests {
         let args = parse_args(&commands, "c  {aaa}{{bb}b}ccc  ");
         assert_eq!(["aaa", "{bb}b", "ccc"], &collect(args)[..]);
 
-        fn flag_value<'a>(flags: &[(&str, Option<CommandValue<'a>>)], index: usize) -> Option<&'a str> {
+        fn flag_value<'a>(
+            flags: &[(&str, Option<CommandValue<'a>>)],
+            index: usize,
+        ) -> Option<&'a str> {
             flags[index].1.as_ref().map(|f| f.text)
         }
 
@@ -1606,4 +1627,3 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
-

@@ -678,4 +678,3 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
 
     clear_until_new_line(buf);
 }
-

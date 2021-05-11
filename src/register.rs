@@ -33,7 +33,7 @@ impl RegisterKey {
     }
 }
 
-const REGISTERS_LEN : usize = (b'z' - b'a' + 1) as _;
+const REGISTERS_LEN: usize = (b'z' - b'a' + 1) as _;
 
 pub struct RegisterCollection {
     registers: [String; REGISTERS_LEN],
@@ -54,7 +54,7 @@ impl RegisterCollection {
     pub fn get_mut(&mut self, key: RegisterKey) -> &mut String {
         &mut self.registers[key.0 as usize]
     }
-    
+
     pub fn set(&mut self, key: RegisterKey, value: &str) {
         let register = &mut self.registers[key.0 as usize];
         register.clear();

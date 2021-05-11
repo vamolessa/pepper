@@ -6,8 +6,8 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     picker::EntrySource,
     platform::Key,
-    word_database::WordIndicesIter,
     register::RegisterKey,
+    word_database::WordIndicesIter,
 };
 
 pub struct State {
@@ -287,8 +287,7 @@ pub mod custom {
             match poll {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
-                    let continuation =
-                        ctx.editor.mode.picker_state.continuation.take().unwrap();
+                    let continuation = ctx.editor.mode.picker_state.continuation.take().unwrap();
                     let entry_register = ctx.editor.mode.picker_state.entry_register;
                     let entry = ctx.editor.picker.current_entry(&ctx.editor.word_database);
 
@@ -333,4 +332,3 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
-
