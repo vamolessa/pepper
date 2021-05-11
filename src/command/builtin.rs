@@ -63,9 +63,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let commands = &ctx.editor.commands;
             match command_name {
                 Some(command_name) => {
-                    let source = match commands.find_command(command_name) {
+                    let source = match commands.find_command(command_name.as_str(&ctx.editor.registers)) {
                         Some(source) => source,
-                        None => return Err(CommandError::CommandNotFound(command_name.into())),
+                        None => return Err(CommandError::CommandNotFound(command_name.token)),
                     };
 
                     let (alias, help) = match source {
@@ -152,7 +152,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_no_bang()?;
             ctx.args.get_flags(&mut [])?;
 
-            let try_commands = ctx.args.next()?;
+            let try_commands = ctx.args.next()?.as_str(&ctx.editor.registers);
             let catch_keyword = ctx.args.try_next()?;
             let catch_commands = if let Some(catch_keyword) = catch_keyword {
                 if catch_keyword != "catch" {
@@ -268,6 +268,42 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 client_handle,
             };
             ctx.editor.commands.register_request(command);
+
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "set",
+        alias: "",
+        help: concat!(
+            "Sets an register from the result of a command.\n",
+            "\n",
+            "set <register> [<command>]",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+
+            let register = ctx.args.next()?;
+            let command = ctx.args.try_next()?.as_str(&ctx.editor.registers);
+            ctx.args.assert_empty()?;
+
+            let register = match RegisterKey::from_str(register) {
+                Some(key) => ctx.editor.registers.get_mut(key),
+                None => return Err(CommandError::InvalidRegisterKey(key.into())),
+            };
+            match value {
+                Some(value) => {
+                    register.clear();
+                    register.push_str(value);
+                }
+                None => {
+                    ctx.output.clear();
+                    ctx.output.push_str(register);
+                }
+            }
 
             Ok(None)
         },
@@ -1361,42 +1397,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         let token = token[..end].into();
                         return Err(CommandError::KeyParseError(token, e.error))
                     }
-                }
-            }
-
-            Ok(None)
-        },
-    },
-    BuiltinCommand {
-        name: "register",
-        alias: "",
-        help: concat!(
-            "Accesses an editor register.\n",
-            "\n",
-            "register <key> [<value>]",
-        ),
-        hidden: false,
-        completions: &[],
-        func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-
-            let key = ctx.args.next()?;
-            let value = ctx.args.try_next()?;
-            ctx.args.assert_empty()?;
-
-            let register = match RegisterKey::from_str(key) {
-                Some(key) => ctx.editor.registers.get_mut(key),
-                None => return Err(CommandError::InvalidRegisterKey(key.into())),
-            };
-            match value {
-                Some(value) => {
-                    register.clear();
-                    register.push_str(value);
-                }
-                None => {
-                    ctx.output.clear();
-                    ctx.output.push_str(register);
                 }
             }
 
