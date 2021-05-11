@@ -381,7 +381,7 @@ pub struct CommandContext<'state, 'command> {
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
     pub source_path: Option<&'command Path>,
-    pub args: RawCommandArgs<'command>,
+    pub args: CommandArgsBuilder<'command>,
     pub output: &'state mut String,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
@@ -680,11 +680,11 @@ fn try_next_raw_value(
     }
 }
 
-pub struct RawCommandArgs<'a> {
+pub struct CommandArgsBuilder<'a> {
     tokens: CommandTokenIter<'a>,
     bang: bool,
 }
-impl<'a> RawCommandArgs<'a> {
+impl<'a> CommandArgsBuilder<'a> {
     pub fn with(
         &self,
         registers: &'a RegisterCollection,
@@ -1309,7 +1309,7 @@ impl CommandManager {
         editor.string_pool.release(commands);
     }
 
-    fn parse<'a>(&self, raw: &'a str) -> Result<(CommandSource, RawCommandArgs<'a>), CommandError> {
+    fn parse<'a>(&self, raw: &'a str) -> Result<(CommandSource, CommandArgsBuilder<'a>), CommandError> {
         let mut tokens = CommandTokenIter::new(raw);
 
         let mut command_token = match tokens.next() {
@@ -1335,7 +1335,7 @@ impl CommandManager {
             None => return Err(CommandError::CommandNotFound(command_token)),
         };
 
-        let args = RawCommandArgs {
+        let args = CommandArgsBuilder {
             tokens,
             bang,
         };
@@ -1601,7 +1601,7 @@ mod tests {
         assert_fail!("  a \"bb\"", CommandError::CommandNotFound(s) => s == "a");
 
         fn assert_unterminated(args: &str) {
-            let args = RawCommandArgs {
+            let args = CommandArgsBuilder {
                 tokens: CommandTokenIter::new(args),
                 bang: false,
             };
