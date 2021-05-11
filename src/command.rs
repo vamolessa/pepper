@@ -58,10 +58,7 @@ impl<'a> CommandValue<'a> {
         }
     }
 
-    pub fn from_register(
-        token: CommandToken,
-        raw: &str,
-    ) -> Result<Self, CommandError> {
+    pub fn from_register(token: CommandToken, raw: &str) -> Result<Self, CommandError> {
         let register = token.as_str(raw);
         match RegisterKey::from_str(register) {
             Some(register) => Ok(CommandValue {
@@ -696,9 +693,7 @@ impl<'a> CommandArgs<'a> {
         }
     }
 
-    pub fn try_next(
-        &mut self,
-    ) -> Result<Option<CommandValue<'a>>, CommandError> {
+    pub fn try_next(&mut self) -> Result<Option<CommandValue<'a>>, CommandError> {
         self.len += 1;
         loop {
             match self.tokens.next() {
@@ -706,9 +701,7 @@ impl<'a> CommandArgs<'a> {
                     break Ok(Some(CommandValue::from_literal(token, self.raw)))
                 }
                 Some((CommandTokenKind::Register, token)) => {
-                    break Ok(Some(CommandValue::from_register(
-                        token, self.raw,
-                    )?))
+                    break Ok(Some(CommandValue::from_register(token, self.raw)?))
                 }
                 Some((CommandTokenKind::Flag, _)) => {
                     let previous_state = self.tokens.rest;
@@ -717,9 +710,7 @@ impl<'a> CommandArgs<'a> {
                             break Ok(Some(CommandValue::from_literal(token, self.raw)))
                         }
                         Some((CommandTokenKind::Register, token)) => {
-                            break Ok(Some(CommandValue::from_register(
-                                token, self.raw,
-                            )?))
+                            break Ok(Some(CommandValue::from_register(token, self.raw)?))
                         }
                         Some((CommandTokenKind::Flag, _)) => self.tokens.rest = previous_state,
                         Some((CommandTokenKind::Equals, _)) => {
@@ -742,9 +733,7 @@ impl<'a> CommandArgs<'a> {
         }
     }
 
-    pub fn next(
-        &mut self,
-    ) -> Result<CommandValue<'a>, CommandError> {
+    pub fn next(&mut self) -> Result<CommandValue<'a>, CommandError> {
         match self.try_next()? {
             Some(value) => Ok(value),
             None => Err(CommandError::TooFewArguments(
@@ -1033,12 +1022,21 @@ impl CommandManager {
                 let mut result = Ok(None);
                 let body = editor.string_pool.acquire_with(&macro_command.body);
 
-                // TODO: fix this
                 for &key in &macro_command.params {
-                    let value = args.next()?.as_str(&editor.registers);
-                    let value = editor.string_pool.acquire_with(value);
-                    //editor.registers.set(key, &value);
-                    editor.string_pool.release(value);
+                    let value = args.next()?;
+                    match value.source {
+                        CommandValueSource::Literal(raw) => {
+                            editor.registers.set(key, value.token.as_str(raw))
+                        }
+                        CommandValueSource::Register(register) => {
+                            if key != register {
+                                let value = editor.registers.get(register);
+                                let value = editor.string_pool.acquire_with(value);
+                                editor.registers.set(key, &value);
+                                editor.string_pool.release(value);
+                            }
+                        }
+                    }
                 }
                 args.assert_empty()?;
 
