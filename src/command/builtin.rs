@@ -459,7 +459,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    /*
     BuiltinCommand {
         name: "replace-with-output",
         alias: "",
@@ -474,22 +473,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         hidden: false,
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
 
             let mut flags = [("pipe", None), ("env", None), ("split-on-byte", None)];
-            ctx.args.get_flags(&mut flags)?;
+            args.get_flags(&mut flags)?;
             let pipe = flags[0].1.is_some();
-            let env = flags[1].1.unwrap_or("");
+            let env = flags[1].1.as_ref().map(|f| f.text).unwrap_or("");
             let split_on_byte = match flags[2].1 {
-                Some(token) => match token.parse() {
+                Some(ref flag) => match flag.text.parse() {
                     Ok(b) => Some(b),
-                    Err(_) => return Err(CommandError::InvalidToken(token.into())),
+                    Err(_) => return Err(CommandError::InvalidToken(flag.token)),
                 }
                 None => None,
             };
 
-            let text_or_command = ctx.args.next()?;
-            ctx.args.assert_empty()?;
+            let command = args.next()?.text;
+            args.assert_empty()?;
 
             let buffer_view_handle = ctx.current_buffer_view_handle()?;
             let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
@@ -528,36 +528,33 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &mut ctx.editor.word_database,
                 &mut ctx.editor.events,
             );
+            
+            let command = ctx.editor.string_pool.acquire_with(command);
+            let env = ctx.editor.string_pool.acquire_with(env);
             ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
-            let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
-                Some(buffer_view) => buffer_view,
-                None => return Ok(None),
-            };
-
-            for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-                let range = cursor.to_range();
-                let command = parse_process_command(text_or_command, env)?;
-
-                let buffer = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
-                    Some(buffer) => buffer,
-                    None => return Ok(None),
-                };
-
-                let buffer_handle = buffer.handle();
-                ctx.editor.buffers.spawn_insert_process(
-                    ctx.platform,
-                    command,
-                    buffer_handle,
-                    range.from,
-                    stdins[i].take(),
-                    split_on_byte,
-                );
+            if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+                for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
+                    let range = cursor.to_range();
+                    let command = parse_process_command(&ctx.editor.registers, &command, &env)?;
+    
+                    ctx.editor.buffers.spawn_insert_process(
+                        ctx.platform,
+                        command,
+                        buffer_view.buffer_handle,
+                        range.from,
+                        stdins[i].take(),
+                        split_on_byte,
+                    );
+                }
             }
 
+            ctx.editor.string_pool.release(command);
+            ctx.editor.string_pool.release(env);
             Ok(None)
         },
     },
+    /*
     BuiltinCommand {
         name: "execute-keys",
         alias: "",
