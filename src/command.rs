@@ -1212,7 +1212,7 @@ impl CommandManager {
         platform.enqueue_request(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Command(index),
             command,
-            buf_len: if on_output.is_some() { 1024 } else { 0 },
+            buf_len: if on_output.is_some() { 4 * 1024 } else { 0 },
         });
     }
 
