@@ -635,7 +635,11 @@ impl<'a> Iterator for CommandTokenIter<'a> {
 }
 
 fn parse_register_key(raw: &str, token: CommandToken) -> Result<RegisterKey, CommandError> {
-    let register = token.as_str(raw);
+    let name_token = CommandToken {
+        from: token.from + 1,
+        to: token.to,
+    };
+    let register = name_token.as_str(raw);
     match RegisterKey::from_str(register) {
         Some(key) => Ok(key),
         None => Err(CommandError::InvalidRegisterKey(token)),
@@ -1692,4 +1696,3 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
-

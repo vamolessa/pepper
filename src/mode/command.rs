@@ -156,8 +156,9 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     let mut last_token = None;
     for token in tokens {
         match token.0 {
-            CommandTokenKind::Text => arg_count += !is_flag_value as usize,
-            CommandTokenKind::Register => todo!(),
+            CommandTokenKind::Text | CommandTokenKind::Register => {
+                arg_count += !is_flag_value as usize
+            }
             CommandTokenKind::Flag => is_flag_value = false,
             CommandTokenKind::Equals => is_flag_value = true,
             CommandTokenKind::Unterminated => arg_count += 1,

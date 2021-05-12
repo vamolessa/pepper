@@ -324,6 +324,28 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "return",
+        alias: "",
+        help: concat!(
+            "Write <values> to output\n",
+            "\n",
+            "return <values...>\n",
+        ),
+        hidden: true,
+        completions: &[],
+        func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+
+            ctx.output.clear();
+            while let Some(arg) = args.try_next()? {
+                ctx.output.push_str(arg.text);
+            }
+            Ok(None)
+        }
+    },
+    BuiltinCommand {
         name: "copy-command",
         alias: "",
         help: concat!(
@@ -773,7 +795,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "print",
         alias: "",
         help: concat!(
-            "Prints arguments to the status bar\n",
+            "Prints <values> to the status bar\n",
             "\n",
             "print [<flags>] <values...>\n",
             " -error : will print as an error",
