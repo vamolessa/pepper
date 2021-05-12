@@ -1459,6 +1459,58 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "buffer-id",
+        alias: "",
+        help: concat!(
+            "", // TODO: help
+        ),
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
+            let buffer_handle = ctx.current_buffer_handle()?;
+            ctx.output.clear();
+            use fmt::Write;
+            let _ = write!(ctx.output, "{}", buffer_handle);
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "buffer-path",
+        alias: "",
+        help: concat!(
+            "", // TODO: help
+        ),
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+
+            let mut flags = [("buffer", None)];
+            args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.as_ref().map(parse_command_value).transpose()?;
+
+            args.assert_empty()?;
+
+            let buffer_handle = match buffer_handle {
+                Some(handle) => handle,
+                None => ctx.current_buffer_handle()?,
+            };
+
+            ctx.output.clear();
+            if let Some(path) = ctx.editor.buffers.get(buffer_handle).and_then(|b| b.path.to_str()) {
+                use fmt::Write;
+                let _ = write!(ctx.output, "{}", path);
+            }
+
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
         name: "lsp",
         alias: "",
         help: concat!(

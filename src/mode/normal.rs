@@ -985,6 +985,13 @@ impl State {
             Key::Char('c') | Key::Char('C') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char('c') => {
+                    for cursor in
+                        &mut ctx.editor.buffer_views.get_mut(handle)?.cursors.mut_guard()[..]
+                    {
+                        std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+                    }
+                }
+                Key::Char('l') => {
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
 
@@ -1038,7 +1045,6 @@ impl State {
                             });
                         }
                     }
-                    state.movement_kind = CursorMovementKind::PositionOnly;
                 }
                 Key::Char('d') => {
                     let cursors = &mut ctx.editor.buffer_views.get_mut(handle)?.cursors;
@@ -1058,13 +1064,6 @@ impl State {
                         cursor.anchor = cursor.position;
                     }
                     state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                }
-                Key::Char('o') => {
-                    for cursor in
-                        &mut ctx.editor.buffer_views.get_mut(handle)?.cursors.mut_guard()[..]
-                    {
-                        std::mem::swap(&mut cursor.anchor, &mut cursor.position);
-                    }
                 }
                 Key::Char('j') => {
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
