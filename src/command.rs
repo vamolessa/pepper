@@ -1266,7 +1266,6 @@ impl CommandManager {
             match std::str::from_utf8(slice) {
                 Ok(slice) => {
                     editor.registers.set(RETURN_REGISTER, slice);
-
                     Self::eval_commands_then_output(
                         editor,
                         platform,

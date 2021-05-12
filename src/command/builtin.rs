@@ -521,8 +521,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => return Err(CommandError::NoBufferOpened),
             };
 
-            const NONE_BUF : Option<SharedBuf> = None;
-            let mut stdins = [NONE_BUF; CursorCollection::capacity()];
+            const DEFAULT_SHARED_BUF : Option<SharedBuf> = None;
+            let mut stdins = [DEFAULT_SHARED_BUF; CursorCollection::capacity()];
 
             if pipe {
                 let mut text = ctx.editor.string_pool.acquire();
