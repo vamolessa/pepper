@@ -215,7 +215,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut params = Vec::new();
             let mut last_arg = args.next()?;
             while let Some(arg) = args.try_next()? {
-                params.push(parse_register_key(&arg)?);
+                params.push(parse_register_key(&last_arg)?);
                 last_arg = arg;
             }
             args.assert_empty()?;
