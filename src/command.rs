@@ -1377,11 +1377,17 @@ pub fn parse_process_command(
 
     let mut process_command = Command::new(command_name);
     while let Some((kind, token)) = command_tokens.next() {
-        if let CommandTokenKind::Unterminated = kind {
-            return Err(CommandError::InvalidToken(token));
-        } else {
-            process_command.arg(token.as_str(command));
-        }
+        let arg = match kind {
+            CommandTokenKind::Text | CommandTokenKind::Flag | CommandTokenKind::Equals => {
+                token.as_str(command)
+            }
+            CommandTokenKind::Register => {
+                let register = parse_register_key(command, token)?;
+                registers.get(register)
+            }
+            CommandTokenKind::Unterminated => return Err(CommandError::InvalidToken(token)),
+        };
+        process_command.arg(arg);
     }
 
     let mut environment_tokens = CommandTokenIter::new(environment);
@@ -1695,3 +1701,4 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
+
