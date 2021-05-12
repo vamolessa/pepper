@@ -42,7 +42,7 @@ where
     }
 }
 
-fn parse_register_key(value: CommandValue) -> Result<RegisterKey, CommandError> {
+fn parse_register_key(value: &CommandValue) -> Result<RegisterKey, CommandError> {
     match RegisterKey::from_str(value.text) {
         Some(register) => Ok(register),
         None => Err(CommandError::InvalidRegisterKey(value.token)),
@@ -215,7 +215,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut params = Vec::new();
             let mut last_arg = args.next()?;
             while let Some(arg) = args.try_next()? {
-                params.push(parse_register_key(args.next()?)?);
+                params.push(parse_register_key(&arg)?);
                 last_arg = arg;
             }
             args.assert_empty()?;
@@ -306,7 +306,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             args.assert_no_bang()?;
             args.get_flags(&mut [])?;
 
-            let register = parse_register_key(args.next()?)?;
+            let register = parse_register_key(&args.next()?)?;
             let commands = args.next()?.text;
             args.assert_empty()?;
 
