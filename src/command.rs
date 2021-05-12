@@ -604,6 +604,12 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     }
                 }
             }
+            b'%' => {
+                let from = current_from_index(self);
+                self.rest = trim_until_boundary(&self.rest);
+                let to = current_from_index(self);
+                Some((CommandTokenKind::Register, CommandToken { from, to }))
+            }
             b'-' => {
                 let from = current_from_index(self);
                 self.rest = trim_until_boundary(&self.rest);
@@ -1686,3 +1692,4 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
+
