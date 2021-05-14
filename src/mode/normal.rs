@@ -1,4 +1,8 @@
-use std::{cmp::Ordering, fmt::Write, path::Path};
+use std::{
+    cmp::Ordering,
+    fmt::Write,
+    path::{Path, MAIN_SEPARATOR},
+};
 
 use crate::{
     buffer::{find_path_and_position_at, parse_path_and_position, BufferContent},
@@ -593,13 +597,9 @@ impl State {
                                 continue;
                             }
 
-                            let line = ctx
-                                .editor
-                                .buffers
-                                .get(buffer_handle)?
-                                .content()
-                                .line_at(line_index as _)
-                                .as_str();
+                            let buffer = ctx.editor.buffers.get(buffer_handle)?;
+
+                            let line = buffer.content().line_at(line_index as _).as_str();
 
                             let from = range.from.column_byte_index;
                             let to = range.to.column_byte_index;
@@ -615,6 +615,10 @@ impl State {
                             };
 
                             path_buf.clear();
+                            if let Some(parent) = buffer.path.parent().and_then(Path::to_str) {
+                                path_buf.push_str(parent);
+                                path_buf.push(MAIN_SEPARATOR);
+                            }
                             path_buf.push_str(path);
                             let path = Path::new(&path_buf);
                             if !path.exists() {
@@ -1674,3 +1678,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     None
 }
+
