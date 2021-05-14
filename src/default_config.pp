@@ -20,7 +20,7 @@ map -normal rf :<space>lsp-format<enter>
 syntax "**/*.pp" {
 	keywords = {source|try|macro|syntax|spawn|read-line|pick|add-picker-option|map|lsp}
 	symbols = {=|%{|%}}
-	literals = {-{%w-_}|%%%a|{%u%d_}}
+	literals = {-{%w-_}|%%%l|{%u%d_}}
 	strings = {'{(\')!'.}|"{(\")!".}}
 	comments = "#{.}"
 	texts = {{%w-_}}

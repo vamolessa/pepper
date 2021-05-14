@@ -291,27 +291,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "return",
-        alias: "",
-        help: concat!(
-            "Write <values> to output\n",
-            "\n",
-            "return <values...>\n",
-        ),
-        hidden: true,
-        completions: &[],
-        func: |ctx| {
-            let mut args = ctx.args.with(&ctx.editor.registers);
-            args.assert_no_bang()?;
-            args.get_flags(&mut [])?;
-
-            while let Some(arg) = args.try_next()? {
-                ctx.output.push_str(arg.text);
-            }
-            Ok(None)
-        }
-    },
-    BuiltinCommand {
         name: "copy-command",
         alias: "",
         help: concat!(

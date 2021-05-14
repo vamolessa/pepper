@@ -130,19 +130,35 @@ fn apply_completion(ctx: &mut ModeContext, cursor_movement: isize) {
 }
 
 fn update_autocomplete_entries(ctx: &mut ModeContext) {
+    fn find_command_token(tokens: &mut CommandTokenIter) -> Option<CommandToken> {
+        match tokens.next() {
+            Some((CommandTokenKind::Identifier, token)) => Some(token),
+            Some((CommandTokenKind::Register, _)) => match tokens.next() {
+                Some((CommandTokenKind::Equals, _)) => match tokens.next() {
+                    Some((CommandTokenKind::Identifier, token)) => Some(token),
+                    _ => None,
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     let state = &mut ctx.editor.mode.command_state;
 
     let input = ctx.editor.read_line.input();
     let mut tokens = CommandTokenIter::new(input);
 
-    let command_name = match tokens.next() {
-        Some((_, token)) => token.as_str(input).trim_end_matches('!'),
+    let command_name = match find_command_token(&mut tokens) {
+        Some(token) => token.as_str(input).trim_end_matches('!'),
         None => {
             ctx.editor.picker.clear();
-            state.read_state =
-                ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
             state.completion_index = input.len();
             state.completion_source = CompletionSource::Custom(&[]);
+            if input.trim().is_empty() {
+                state.read_state =
+                    ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
+            }
             return;
         }
     };
@@ -181,7 +197,8 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         Some((CommandTokenKind::Identifier, token))
         | Some((CommandTokenKind::String, token))
         | Some((CommandTokenKind::Unterminated, token))
-        if !is_flag_value => {
+            if !is_flag_value =>
+        {
             let mut completion_source = CompletionSource::Custom(&[]);
             if arg_count > 0 {
                 for command in ctx.editor.commands.builtin_commands() {
