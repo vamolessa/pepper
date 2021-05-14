@@ -98,7 +98,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     };
 
                     let (alias, help) = match source {
-                        CommandSource::Literal(_) => unreachable!(),
                         CommandSource::Builtin(i) => {
                             let command = &commands.builtin_commands()[i];
                             (command.alias, command.help)
@@ -1293,7 +1292,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut definition_tokens = CommandTokenIter::new(definition);
             loop {
                 let token_kind = match definition_tokens.next() {
-                    Some((CommandTokenKind::Text, token)) => token,
+                    Some((CommandTokenKind::Identifier, token)) => token,
                     Some((CommandTokenKind::Unterminated, token)) => {
                         return Err(CommandError::UnterminatedToken(token))
                     }
@@ -1324,7 +1323,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     }
                 }
                 let pattern = match definition_tokens.next() {
-                    Some((CommandTokenKind::Text, token)) => token,
+                    Some((CommandTokenKind::String, token)) => token,
                     Some((CommandTokenKind::Unterminated, token)) => {
                         return Err(CommandError::UnterminatedToken(token));
                     }

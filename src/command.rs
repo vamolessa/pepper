@@ -24,7 +24,8 @@ pub const HISTORY_CAPACITY: usize = 10;
 
 #[derive(Clone, Copy)]
 pub enum CommandTokenKind {
-    Text,
+    Identifier,
+    String,
     Register,
     Flag,
     Equals,
@@ -581,7 +582,10 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     Some(i) => {
                         let from = current_from_index(self);
                         self.rest = &self.rest[i + 1..];
-                        Some((CommandTokenKind::Text, CommandToken { from, to: from + i }))
+                        Some((
+                            CommandTokenKind::String,
+                            CommandToken { from, to: from + i },
+                        ))
                     }
                     None => {
                         let from = current_from_index(self);
@@ -602,7 +606,10 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     Some(i) => {
                         let from = current_from_index(self);
                         self.rest = &self.rest[i + 1..];
-                        Some((CommandTokenKind::Text, CommandToken { from, to: from + i }))
+                        Some((
+                            CommandTokenKind::String,
+                            CommandToken { from, to: from + i },
+                        ))
                     }
                     None => {
                         let from = current_from_index(self);
@@ -641,7 +648,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                 let from = current_from_index(self);
                 self.rest = trim_until_boundary(&self.rest);
                 let to = current_from_index(self);
-                Some((CommandTokenKind::Text, CommandToken { from, to }))
+                Some((CommandTokenKind::Identifier, CommandToken { from, to }))
             }
         }
     }
@@ -675,7 +682,9 @@ fn get_flags<'a>(
     let raw = tokens.raw;
     loop {
         match tokens.next() {
-            Some((CommandTokenKind::Text, _)) | Some((CommandTokenKind::Register, _)) => (),
+            Some((CommandTokenKind::Identifier, _))
+            | Some((CommandTokenKind::String, _))
+            | Some((CommandTokenKind::Register, _)) => (),
             Some((CommandTokenKind::Flag, token)) => {
                 let key = &token.as_str(raw)[1..];
                 let value = match flags.iter_mut().find(|(k, _)| *k == key) {
@@ -685,7 +694,8 @@ fn get_flags<'a>(
 
                 let previous_state = tokens.rest;
                 let raw_value = match tokens.next() {
-                    Some((CommandTokenKind::Text, _)) => RawCommandValue::Literal(token),
+                    Some((CommandTokenKind::Identifier, _))
+                    | Some((CommandTokenKind::String, _)) => RawCommandValue::Literal(token),
                     Some((CommandTokenKind::Register, token)) => {
                         let register = parse_register_key(raw, token)?;
                         RawCommandValue::Register(token, register)
@@ -695,7 +705,10 @@ fn get_flags<'a>(
                         RawCommandValue::Literal(token)
                     }
                     Some((CommandTokenKind::Equals, _)) => match tokens.next() {
-                        Some((CommandTokenKind::Text, token)) => RawCommandValue::Literal(token),
+                        Some((CommandTokenKind::Identifier, token))
+                        | Some((CommandTokenKind::String, token)) => {
+                            RawCommandValue::Literal(token)
+                        }
                         Some((CommandTokenKind::Register, token)) => {
                             let register = parse_register_key(raw, token)?;
                             RawCommandValue::Register(token, register)
@@ -734,7 +747,8 @@ fn try_next_raw_value(
     let raw = tokens.raw;
     loop {
         match tokens.next() {
-            Some((CommandTokenKind::Text, token)) => {
+            Some((CommandTokenKind::Identifier, token))
+            | Some((CommandTokenKind::String, token)) => {
                 break Ok(Some(RawCommandValue::Literal(token)))
             }
             Some((CommandTokenKind::Register, token)) => {
@@ -744,7 +758,8 @@ fn try_next_raw_value(
             Some((CommandTokenKind::Flag, _)) => {
                 let previous_state = tokens.rest;
                 match tokens.next() {
-                    Some((CommandTokenKind::Text, token)) => {
+                    Some((CommandTokenKind::Identifier, token))
+                    | Some((CommandTokenKind::String, token)) => {
                         break Ok(Some(RawCommandValue::Literal(token)))
                     }
                     Some((CommandTokenKind::Register, token)) => {
@@ -775,11 +790,14 @@ fn try_next_raw_value(
 fn assert_empty(tokens: &mut CommandTokenIter, max: usize) -> Result<(), CommandError> {
     loop {
         match tokens.next() {
-            Some((CommandTokenKind::Text, token)) | Some((CommandTokenKind::Register, token)) => {
+            Some((CommandTokenKind::Identifier, token))
+            | Some((CommandTokenKind::String, token))
+            | Some((CommandTokenKind::Register, token)) => {
                 break Err(CommandError::TooManyArguments(token, max))
             }
             Some((CommandTokenKind::Flag, _)) => match tokens.next() {
-                Some((CommandTokenKind::Text, token))
+                Some((CommandTokenKind::Identifier, token))
+                | Some((CommandTokenKind::String, token))
                 | Some((CommandTokenKind::Register, token)) => {
                     break Err(CommandError::TooManyArguments(token, max))
                 }
@@ -861,8 +879,7 @@ impl<'a> CommandArgs<'a> {
 }
 
 #[derive(Clone, Copy)]
-pub enum CommandSource<'command> {
-    Literal(&'command str),
+pub enum CommandSource {
     Builtin(usize),
     Macro(usize),
     Request(usize),
@@ -893,10 +910,18 @@ pub struct RequestCommand {
     pub client_handle: ClientHandle,
 }
 
-struct ParsedCommand<'command> {
-    pub source: CommandSource<'command>,
-    pub args: CommandArgsBuilder<'command>,
+enum ParsedExpression<'command> {
+    Literal(&'command str),
+    Register(RegisterKey),
+    Command {
+        source: CommandSource,
+        args: CommandArgsBuilder<'command>,
+    },
+}
+
+struct ParsedStatement<'command> {
     pub target_register: Option<RegisterKey>,
+    pub expression: ParsedExpression<'command>,
 }
 
 #[derive(Default)]
@@ -928,7 +953,7 @@ impl CommandManager {
         }
     }
 
-    pub fn find_command<'a>(&self, name: &str) -> Option<CommandSource<'a>> {
+    pub fn find_command(&self, name: &str) -> Option<CommandSource> {
         if let Some(i) = self.macro_commands.iter().position(|c| c.name == name) {
             return Some(CommandSource::Macro(i));
         }
@@ -1106,18 +1131,24 @@ impl CommandManager {
         output: &mut String,
     ) -> Result<Option<CommandOperation>, CommandError> {
         output.clear();
-        let ParsedCommand {
-            source,
-            args,
+        let ParsedStatement {
             target_register,
-        } = editor.commands.parse(&editor.registers, command)?;
+            expression,
+        } = editor.commands.parse(command)?;
 
-        let result = match source {
-            CommandSource::Literal(value) => {
+        let result = match expression {
+            ParsedExpression::Literal(value) => {
                 output.push_str(value);
                 Ok(None)
             }
-            CommandSource::Builtin(i) => {
+            ParsedExpression::Register(register) => {
+                output.push_str(editor.registers.get(register));
+                Ok(None)
+            }
+            ParsedExpression::Command {
+                source: CommandSource::Builtin(i),
+                args,
+            } => {
                 let command = editor.commands.builtin_commands[i].func;
                 let mut ctx = CommandContext {
                     editor,
@@ -1130,7 +1161,10 @@ impl CommandManager {
                 };
                 command(&mut ctx)
             }
-            CommandSource::Macro(i) => {
+            ParsedExpression::Command {
+                source: CommandSource::Macro(i),
+                args,
+            } => {
                 assert_no_bang(args.bang)?;
                 let mut tokens = args.tokens.clone();
                 get_flags(tokens.clone(), &editor.registers, &mut [])?;
@@ -1173,7 +1207,10 @@ impl CommandManager {
                 editor.string_pool.release(body);
                 result
             }
-            CommandSource::Request(i) => {
+            ParsedExpression::Command {
+                source: CommandSource::Request(i),
+                args,
+            } => {
                 let args = args.with(&editor.registers);
                 args.assert_no_bang()?;
 
@@ -1188,6 +1225,7 @@ impl CommandManager {
                 Ok(None)
             }
         };
+
         if let Some(register) = target_register {
             editor.registers.set(register, output);
             output.clear();
@@ -1365,29 +1403,44 @@ impl CommandManager {
         editor.string_pool.release(commands);
     }
 
-    fn parse<'a>(
-        &self,
-        registers: &RegisterCollection,
-        raw: &'a str,
-    ) -> Result<ParsedCommand<'a>, CommandError> {
+    fn parse<'a>(&self, raw: &'a str) -> Result<ParsedStatement<'a>, CommandError> {
         let mut tokens = CommandTokenIter::new(raw);
 
         let mut target_register = None;
         let (command_token, command_name) = loop {
             match tokens.next() {
-                Some((CommandTokenKind::Text, token)) => break (token, token.as_str(raw)),
+                Some((CommandTokenKind::Identifier, token)) => break (token, token.as_str(raw)),
+                Some((CommandTokenKind::String, token)) => match tokens.next() {
+                    Some((_, token)) => return Err(CommandError::InvalidToken(token)),
+                    None => {
+                        return Ok(ParsedStatement {
+                            target_register,
+                            expression: ParsedExpression::Literal(token.as_str(raw)),
+                        })
+                    }
+                },
                 Some((CommandTokenKind::Register, token)) => {
                     let register = parse_register_key(raw, token)?;
-                    let mut expr_tokens = tokens.clone();
-                    match expr_tokens.next() {
-                        Some((CommandTokenKind::Equals, token)) => match target_register {
-                            Some(_) => return Err(CommandError::InvalidToken(token)),
+                    match target_register {
+                        Some(_) => match tokens.next() {
+                            Some((_, token)) => return Err(CommandError::InvalidToken(token)),
                             None => {
-                                target_register = Some(register);
-                                tokens = expr_tokens;
+                                return Ok(ParsedStatement {
+                                    target_register,
+                                    expression: ParsedExpression::Register(register),
+                                })
                             }
                         },
-                        _ => break (token, registers.get(register)),
+                        None => match tokens.next() {
+                            Some((CommandTokenKind::Equals, _)) => target_register = Some(register),
+                            Some((_, token)) => return Err(CommandError::InvalidToken(token)),
+                            None => {
+                                return Ok(ParsedStatement {
+                                    target_register,
+                                    expression: ParsedExpression::Register(register),
+                                })
+                            }
+                        },
                     }
                 }
                 Some((_, token)) => return Err(CommandError::InvalidCommandName(token)),
@@ -1407,13 +1460,12 @@ impl CommandManager {
             Some(source) => source,
             None => return Err(CommandError::CommandNotFound(command_token)),
         };
-
-        let args = CommandArgsBuilder { tokens, bang };
-
-        Ok(ParsedCommand {
-            source,
-            args,
+        Ok(ParsedStatement {
             target_register,
+            expression: ParsedExpression::Command {
+                source,
+                args: CommandArgsBuilder { tokens, bang },
+            },
         })
     }
 }
@@ -1425,7 +1477,8 @@ pub fn parse_process_command(
 ) -> Result<Command, CommandError> {
     let mut command_tokens = CommandTokenIter::new(command);
     let command_name = match command_tokens.next() {
-        Some((CommandTokenKind::Text, token))
+        Some((CommandTokenKind::Identifier, token))
+        | Some((CommandTokenKind::String, token))
         | Some((CommandTokenKind::Flag, token))
         | Some((CommandTokenKind::Equals, token)) => token.as_str(command),
         Some((CommandTokenKind::Register, token)) => {
@@ -1441,9 +1494,10 @@ pub fn parse_process_command(
     let mut process_command = Command::new(command_name);
     while let Some((kind, token)) = command_tokens.next() {
         let arg = match kind {
-            CommandTokenKind::Text | CommandTokenKind::Flag | CommandTokenKind::Equals => {
-                token.as_str(command)
-            }
+            CommandTokenKind::Identifier
+            | CommandTokenKind::String
+            | CommandTokenKind::Flag
+            | CommandTokenKind::Equals => token.as_str(command),
             CommandTokenKind::Register => {
                 let register = parse_register_key(command, token)?;
                 registers.get(register)
@@ -1456,7 +1510,8 @@ pub fn parse_process_command(
     let mut environment_tokens = CommandTokenIter::new(environment);
     loop {
         let key = match environment_tokens.next() {
-            Some((CommandTokenKind::Text, token)) => token.as_str(environment),
+            Some((CommandTokenKind::Identifier, token))
+            | Some((CommandTokenKind::String, token)) => token.as_str(environment),
             Some((CommandTokenKind::Register, token)) => {
                 let register = parse_register_key(environment, token)?;
                 registers.get(register)
@@ -1479,7 +1534,8 @@ pub fn parse_process_command(
             }
         }
         let value = match environment_tokens.next() {
-            Some((CommandTokenKind::Text, token)) => token.as_str(environment),
+            Some((CommandTokenKind::Identifier, token))
+            | Some((CommandTokenKind::String, token)) => token.as_str(environment),
             Some((CommandTokenKind::Register, token)) => {
                 let register = parse_register_key(environment, token)?;
                 registers.get(register)
@@ -1540,7 +1596,7 @@ mod tests {
         let mut tokens = CommandTokenIter::new(command);
         assert!(matches!(
             tokens.next(),
-            Some((CommandTokenKind::Text, token)) if token.as_str(command) == "value",
+            Some((CommandTokenKind::String, token)) if token.as_str(command) == "value",
         ));
         assert!(matches!(
             tokens.next(),
@@ -1552,7 +1608,7 @@ mod tests {
         let mut tokens = CommandTokenIter::new(command);
         assert!(matches!(
             tokens.next(),
-            Some((CommandTokenKind::Text, token)) if token.as_str(command) == "value",
+            Some((CommandTokenKind::String, token)) if token.as_str(command) == "value",
         ));
         assert!(matches!(
             tokens.next(),
@@ -1565,8 +1621,11 @@ mod tests {
     fn command_parsing() {
         fn assert_bang(commands: &CommandManager, command: &str, expect_bang: bool) {
             let (source, args) = match commands.parse(command) {
-                Ok(result) => result,
-                Err(_) => panic!("command parse error at '{}'", command),
+                Ok(ParsedStatement {
+                    expression: ParsedExpression::Command { source, args },
+                    ..
+                }) => (source, args),
+                _ => panic!("command parse error at '{}'", command),
             };
             assert!(matches!(source, CommandSource::Builtin(0)));
             assert_eq!(expect_bang, args.bang);
@@ -1583,8 +1642,11 @@ mod tests {
     fn arg_parsing() {
         fn parse_args<'a>(commands: &CommandManager, command: &'a str) -> CommandArgs<'a> {
             match commands.parse(command) {
-                Ok((_, args)) => args.with(&EMPTY_REGISTERS),
-                Err(_) => panic!("command '{}' parse error", command),
+                Ok(ParsedStatement {
+                    expression: ParsedExpression::Command { source, args },
+                    ..
+                }) => args.with(&EMPTY_REGISTERS),
+                _ => panic!("command '{}' parse error", command),
             }
         }
 

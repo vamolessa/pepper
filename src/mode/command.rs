@@ -156,9 +156,9 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     let mut last_token = None;
     for token in tokens {
         match token.0 {
-            CommandTokenKind::Text | CommandTokenKind::Register => {
-                arg_count += !is_flag_value as usize
-            }
+            CommandTokenKind::Identifier
+            | CommandTokenKind::String
+            | CommandTokenKind::Register => arg_count += !is_flag_value as usize,
             CommandTokenKind::Flag => is_flag_value = false,
             CommandTokenKind::Equals => is_flag_value = true,
             CommandTokenKind::Unterminated => arg_count += 1,
@@ -171,14 +171,14 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             Some((CommandTokenKind::Unterminated, _)) => (),
             None => {
                 arg_count += 1;
-                last_token = Some((CommandTokenKind::Text, CommandToken { from: 0, to: 0 }));
+                last_token = Some((CommandTokenKind::String, CommandToken { from: 0, to: 0 }));
             }
             _ => arg_count += 1,
         }
     }
 
     let (completion_source, mut pattern) = match last_token {
-        Some((CommandTokenKind::Text, token)) | Some((CommandTokenKind::Unterminated, token))
+        Some((CommandTokenKind::String, token)) | Some((CommandTokenKind::Unterminated, token))
             if !is_flag_value =>
         {
             let mut completion_source = CompletionSource::Custom(&[]);
@@ -283,3 +283,4 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
+
