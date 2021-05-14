@@ -1596,7 +1596,7 @@ mod tests {
         let mut tokens = CommandTokenIter::new(command);
         assert!(matches!(
             tokens.next(),
-            Some((CommandTokenKind::String, token)) if token.as_str(command) == "value",
+            Some((CommandTokenKind::Identifier, token)) if token.as_str(command) == "value",
         ));
         assert!(matches!(
             tokens.next(),
@@ -1608,7 +1608,7 @@ mod tests {
         let mut tokens = CommandTokenIter::new(command);
         assert!(matches!(
             tokens.next(),
-            Some((CommandTokenKind::String, token)) if token.as_str(command) == "value",
+            Some((CommandTokenKind::Identifier, token)) if token.as_str(command) == "value",
         ));
         assert!(matches!(
             tokens.next(),
@@ -1643,7 +1643,7 @@ mod tests {
         fn parse_args<'a>(commands: &CommandManager, command: &'a str) -> CommandArgs<'a> {
             match commands.parse(command) {
                 Ok(ParsedStatement {
-                    expression: ParsedExpression::Command { source, args },
+                    expression: ParsedExpression::Command { args, .. },
                     ..
                 }) => args.with(&EMPTY_REGISTERS),
                 _ => panic!("command '{}' parse error", command),
@@ -1738,8 +1738,8 @@ mod tests {
 
         assert_fail!("", CommandError::InvalidCommandName(s) => s == "");
         assert_fail!("   ", CommandError::InvalidCommandName(s) => s == "");
-        assert_fail!(" !", CommandError::InvalidCommandName(s) => s == "");
-        assert_fail!("!  'aa'", CommandError::InvalidCommandName(s) => s == "");
+        assert_fail!(" !", CommandError::InvalidCommandName(s) => s == "!");
+        assert_fail!("!  'aa'", CommandError::InvalidCommandName(s) => s == "!");
         assert_fail!("  a \"bb\"", CommandError::CommandNotFound(s) => s == "a");
 
         fn assert_unterminated(args: &str) {
