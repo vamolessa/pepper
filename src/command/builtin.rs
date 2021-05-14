@@ -292,38 +292,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "set",
-        alias: "",
-        help: concat!(
-            "Save the last result from <commands> to an register.\n",
-            "\n",
-            "set <register> { <commands...> }",
-        ),
-        hidden: false,
-        completions: &[],
-        func: |ctx| {
-            let mut args = ctx.args.with(&ctx.editor.registers);
-            args.assert_no_bang()?;
-            args.get_flags(&mut [])?;
-
-            let register = parse_register_key(&args.next()?)?;
-            let commands = args.next()?.text;
-            args.assert_empty()?;
-
-            let commands = ctx.editor.string_pool.acquire_with(commands);
-            let mut output = ctx.editor.string_pool.acquire();
-            std::mem::swap(&mut output, ctx.output);
-            let op = run_commands(ctx, &commands);
-            std::mem::swap(&mut output, ctx.output);
-
-            ctx.editor.registers.set(register, &output);
-
-            ctx.editor.string_pool.release(commands);
-            ctx.editor.string_pool.release(output);
-            op
-        },
-    },
-    BuiltinCommand {
         name: "return",
         alias: "",
         help: concat!(
