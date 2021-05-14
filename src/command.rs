@@ -476,7 +476,7 @@ fn find_balanced(bytes: &[u8], start: u8, end: u8) -> Option<usize> {
     }
 }
 
-pub struct CommandIter<'a>(pub &'a str);
+struct CommandIter<'a>(pub &'a str);
 impl<'a> Iterator for CommandIter<'a> {
     type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
@@ -861,7 +861,8 @@ impl<'a> CommandArgs<'a> {
 }
 
 #[derive(Clone, Copy)]
-pub enum CommandSource {
+pub enum CommandSource<'command> {
+    Literal(&'command str),
     Builtin(usize),
     Macro(usize),
     Request(usize),
@@ -890,6 +891,12 @@ pub struct RequestCommand {
     pub help: String,
     pub hidden: bool,
     pub client_handle: ClientHandle,
+}
+
+struct ParsedCommand<'command> {
+    pub source: CommandSource<'command>,
+    pub args: CommandArgsBuilder<'command>,
+    pub target_register: Option<RegisterKey>,
 }
 
 #[derive(Default)]
@@ -921,7 +928,7 @@ impl CommandManager {
         }
     }
 
-    pub fn find_command(&self, name: &str) -> Option<CommandSource> {
+    pub fn find_command<'a>(&self, name: &str) -> Option<CommandSource<'a>> {
         if let Some(i) = self.macro_commands.iter().position(|c| c.name == name) {
             return Some(CommandSource::Macro(i));
         }
@@ -1089,7 +1096,7 @@ impl CommandManager {
         Ok(None)
     }
 
-    pub fn eval_single_command<'command>(
+    fn eval_single_command<'command>(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
@@ -1098,8 +1105,18 @@ impl CommandManager {
         source_path: Option<&'command Path>,
         output: &mut String,
     ) -> Result<Option<CommandOperation>, CommandError> {
-        let (source, args) = editor.commands.parse(command)?;
-        match source {
+        output.clear();
+        let ParsedCommand {
+            source,
+            args,
+            target_register,
+        } = editor.commands.parse(&editor.registers, command)?;
+
+        let result = match source {
+            CommandSource::Literal(value) => {
+                output.push_str(value);
+                Ok(None)
+            }
             CommandSource::Builtin(i) => {
                 let command = editor.commands.builtin_commands[i].func;
                 let mut ctx = CommandContext {
@@ -1170,7 +1187,12 @@ impl CommandManager {
 
                 Ok(None)
             }
+        };
+        if let Some(register) = target_register {
+            editor.registers.set(register, output);
+            output.clear();
         }
+        result
     }
 
     pub fn spawn_process(
@@ -1345,22 +1367,36 @@ impl CommandManager {
 
     fn parse<'a>(
         &self,
+        registers: &RegisterCollection,
         raw: &'a str,
-    ) -> Result<(CommandSource, CommandArgsBuilder<'a>), CommandError> {
+    ) -> Result<ParsedCommand<'a>, CommandError> {
         let mut tokens = CommandTokenIter::new(raw);
 
-        let mut command_token = match tokens.next() {
-            Some((CommandTokenKind::Text, token)) => token,
-            Some((_, token)) => return Err(CommandError::InvalidCommandName(token)),
-            None => return Err(CommandError::InvalidCommandName(tokens.end_token())),
+        let mut target_register = None;
+        let (command_token, command_name) = loop {
+            match tokens.next() {
+                Some((CommandTokenKind::Text, token)) => break (token, token.as_str(raw)),
+                Some((CommandTokenKind::Register, token)) => {
+                    let register = parse_register_key(raw, token)?;
+                    let mut expr_tokens = tokens.clone();
+                    match expr_tokens.next() {
+                        Some((CommandTokenKind::Equals, token)) => match target_register {
+                            Some(_) => return Err(CommandError::InvalidToken(token)),
+                            None => {
+                                target_register = Some(register);
+                                tokens = expr_tokens;
+                            }
+                        },
+                        _ => break (token, registers.get(register)),
+                    }
+                }
+                Some((_, token)) => return Err(CommandError::InvalidCommandName(token)),
+                None => return Err(CommandError::InvalidCommandName(tokens.end_token())),
+            }
         };
-        let command_name = command_token.as_str(raw);
 
         let (command_name, bang) = match command_name.strip_suffix('!') {
-            Some(command_name) => {
-                command_token.to -= 1;
-                (command_name, true)
-            }
+            Some(command_name) => (command_name, true),
             None => (command_name, false),
         };
         if command_name.is_empty() {
@@ -1374,7 +1410,11 @@ impl CommandManager {
 
         let args = CommandArgsBuilder { tokens, bang };
 
-        Ok((source, args))
+        Ok(ParsedCommand {
+            source,
+            args,
+            target_register,
+        })
     }
 }
 

@@ -98,6 +98,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     };
 
                     let (alias, help) = match source {
+                        CommandSource::Literal(_) => unreachable!(),
                         CommandSource::Builtin(i) => {
                             let command = &commands.builtin_commands()[i];
                             (command.alias, command.help)
@@ -337,7 +338,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             args.assert_no_bang()?;
             args.get_flags(&mut [])?;
 
-            ctx.output.clear();
             while let Some(arg) = args.try_next()? {
                 ctx.output.push_str(arg.text);
             }
@@ -1239,7 +1239,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => match ctx.editor.config.display_config(key.text) {
                     Some(display) => {
                         use fmt::Write;
-                        ctx.output.clear();
                         let _ = write!(ctx.output, "{}", display);
                         Ok(None)
                     }
@@ -1281,7 +1280,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 }
                 None => {
                     use fmt::Write;
-                    ctx.output.clear();
                     let _ = write!(ctx.output, "0x{:0<6x}", color.into_u32());
                 }
             }
@@ -1470,7 +1468,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             args.assert_no_bang()?;
             args.get_flags(&mut [])?;
             args.assert_empty()?;
-            ctx.output.clear();
             if let Some(handle) = ctx.client_handle {
                 use fmt::Write;
                 let _ = write!(ctx.output, "{}", handle.into_index());
@@ -1492,7 +1489,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             args.get_flags(&mut [])?;
             args.assert_empty()?;
             let buffer_handle = ctx.current_buffer_handle()?;
-            ctx.output.clear();
             use fmt::Write;
             let _ = write!(ctx.output, "{}", buffer_handle);
             Ok(None)
@@ -1521,7 +1517,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => ctx.current_buffer_handle()?,
             };
 
-            ctx.output.clear();
             if let Some(path) = ctx.editor.buffers.get(buffer_handle).and_then(|b| b.path.to_str()) {
                 use fmt::Write;
                 let _ = write!(ctx.output, "{}", path);
