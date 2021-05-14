@@ -102,7 +102,7 @@ impl ServerApplication {
         let mut client_event_receiver = ClientEventReceiver::default();
 
         if source_default_config {
-            let source = include_str!("default_config.pp");
+            let source = include_str!("../rc/default_config.pp");
             match CommandManager::eval_and_then_output(
                 &mut editor,
                 platform,
