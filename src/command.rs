@@ -110,6 +110,10 @@ pub enum CommandError {
     PatternError(CommandToken, PatternError),
     KeyParseError(CommandToken, KeyParseError),
     LspServerNotRunning,
+    EvalCommandError {
+        command: String,
+        error: Box<CommandError>,
+    },
     MacroCommandError {
         index: usize,
         command: String,
@@ -328,6 +332,24 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 write(self, f, keys, format_args!("{}", error))
             }
             CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
+            CommandError::EvalCommandError { command, error } => {
+                let error_display = CommandErrorDisplay {
+                    command: &command,
+                    source_path: self.source_path,
+                    commands: self.commands,
+                    buffers: self.buffers,
+                    error: &error,
+                };
+                write(
+                    self,
+                    f,
+                    &CommandToken {
+                        from: 0,
+                        to: c.len(),
+                    },
+                    format_args!("\n@ eval \n{}", error_display),
+                )
+            }
             CommandError::MacroCommandError {
                 index,
                 command,
@@ -992,37 +1014,27 @@ impl CommandManager {
         source_path: Option<&'command Path>,
     ) -> Option<CommandOperation> {
         let mut output = editor.string_pool.acquire();
-        let mut operation = None;
 
-        for command in CommandIter(&commands) {
-            match Self::eval(
-                editor,
-                platform,
-                clients,
-                client_handle,
-                command,
-                source_path,
-                &mut output,
-            ) {
-                Ok(None) => (),
-                Ok(Some(op)) => {
-                    operation = Some(op);
-                    break;
-                }
-                Err(error) => {
-                    output.clear();
-                    let error =
-                        error.display(command, source_path, &editor.commands, &editor.buffers);
-                    editor
-                        .status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!("{}", error));
-                    break;
-                }
+        let operation = match Self::eval(
+            editor,
+            platform,
+            clients,
+            client_handle,
+            commands,
+            source_path,
+            &mut output,
+        ) {
+            Ok(op) => op,
+            Err((command, error)) => {
+                output.clear();
+                let error = error.display(command, source_path, &editor.commands, &editor.buffers);
+                editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!("{}", error));
+                None
             }
-
-            editor.trigger_event_handlers(platform, clients);
-        }
+        };
 
         match client_handle
             .and_then(|h| clients.get(h))
@@ -1053,6 +1065,35 @@ impl CommandManager {
         platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
+        commands: &'command str,
+        source_path: Option<&'command Path>,
+        output: &mut String,
+    ) -> Result<Option<CommandOperation>, (&'command str, CommandError)> {
+        for command in CommandIter(commands) {
+            let op = Self::eval_single_command(
+                editor,
+                platform,
+                clients,
+                client_handle,
+                command,
+                source_path,
+                output,
+            );
+            editor.trigger_event_handlers(platform, clients);
+            match op {
+                Ok(Some(op)) => return Ok(Some(op)),
+                Ok(None) => (),
+                Err(error) => return Err((command, error)),
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn eval_single_command<'command>(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: Option<ClientHandle>,
         command: &'command str,
         source_path: Option<&'command Path>,
         output: &mut String,
@@ -1078,7 +1119,6 @@ impl CommandManager {
                 get_flags(tokens.clone(), &editor.registers, &mut [])?;
 
                 let macro_command = &editor.commands.macro_commands[i];
-                let mut result = Ok(None);
                 let body = editor.string_pool.acquire_with(&macro_command.body);
 
                 let mut arg_count = 0;
@@ -1096,31 +1136,23 @@ impl CommandManager {
                 }
                 assert_empty(&mut tokens, macro_command.params.len() as _)?;
 
-                for command in CommandIter(&body) {
-                    match Self::eval(
-                        editor,
-                        platform,
-                        clients,
-                        client_handle,
-                        command,
-                        source_path,
-                        output,
-                    ) {
-                        Ok(None) => (),
-                        Ok(Some(op)) => {
-                            result = Ok(Some(op));
-                            break;
-                        }
-                        Err(error) => {
-                            result = Err(CommandError::MacroCommandError {
-                                index: i,
-                                command: command.into(),
-                                error: Box::new(error),
-                            });
-                            break;
-                        }
-                    }
-                }
+                let result = match Self::eval(
+                    editor,
+                    platform,
+                    clients,
+                    client_handle,
+                    &body,
+                    source_path,
+                    output,
+                ) {
+                    Ok(op) => Ok(op),
+                    Err((command, error)) => Err(CommandError::MacroCommandError {
+                        index: i,
+                        command: command.into(),
+                        error: Box::new(error),
+                    }),
+                };
+
                 editor.string_pool.release(body);
                 result
             }

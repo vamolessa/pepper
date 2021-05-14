@@ -77,7 +77,7 @@ impl Args {
     pub fn parse() -> Self {
         fn error(message: std::fmt::Arguments) -> ! {
             println!("{}", message);
-            std::process::exit(0);
+            std::process::exit(1);
         }
 
         fn arg_to_str(arg: &std::ffi::OsString) -> &str {

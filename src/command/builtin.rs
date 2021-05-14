@@ -11,9 +11,9 @@ use crate::{
     buffer_position::BufferPosition,
     client::ClientManager,
     command::{
-        parse_process_command, BuiltinCommand, CommandContext, CommandError, CommandIter,
-        CommandManager, CommandOperation, CommandSource, CommandToken, CommandTokenIter,
-        CommandTokenKind, CommandValue, CompletionSource, MacroCommand, RequestCommand,
+        parse_process_command, BuiltinCommand, CommandContext, CommandError, CommandManager,
+        CommandOperation, CommandSource, CommandToken, CommandTokenIter, CommandTokenKind,
+        CommandValue, CompletionSource, MacroCommand, RequestCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::{Cursor, CursorCollection},
@@ -53,22 +53,21 @@ fn run_commands(
     ctx: &mut CommandContext,
     commands: &str,
 ) -> Result<Option<CommandOperation>, CommandError> {
-    for command in CommandIter(commands) {
-        match CommandManager::eval(
-            ctx.editor,
-            ctx.platform,
-            ctx.clients,
-            ctx.client_handle,
-            command,
-            ctx.source_path,
-            ctx.output,
-        ) {
-            Ok(None) => (),
-            Ok(Some(op)) => return Ok(Some(op)),
-            Err(error) => return Err(error),
-        }
+    match CommandManager::eval(
+        ctx.editor,
+        ctx.platform,
+        ctx.clients,
+        ctx.client_handle,
+        commands,
+        ctx.source_path,
+        ctx.output,
+    ) {
+        Ok(op) => Ok(op),
+        Err((command, error)) => Err(CommandError::EvalCommandError {
+            command: command.into(),
+            error: Box::new(error),
+        }),
     }
-    Ok(None)
 }
 
 pub const COMMANDS: &[BuiltinCommand] = &[
@@ -1968,3 +1967,4 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
+
