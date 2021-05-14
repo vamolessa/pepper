@@ -178,9 +178,10 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     }
 
     let (completion_source, mut pattern) = match last_token {
-        Some((CommandTokenKind::String, token)) | Some((CommandTokenKind::Unterminated, token))
-            if !is_flag_value =>
-        {
+        Some((CommandTokenKind::Identifier, token))
+        | Some((CommandTokenKind::String, token))
+        | Some((CommandTokenKind::Unterminated, token))
+        if !is_flag_value => {
             let mut completion_source = CompletionSource::Custom(&[]);
             if arg_count > 0 {
                 for command in ctx.editor.commands.builtin_commands() {
