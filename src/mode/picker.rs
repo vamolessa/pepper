@@ -291,7 +291,7 @@ pub mod custom {
                     let mut operation = None;
                     if let Some((_, entry)) = entry {
                         ctx.editor.registers.set(RETURN_REGISTER, entry);
-                        operation = CommandManager::eval_commands_then_output(
+                        operation = CommandManager::eval_and_then_output(
                             ctx.editor,
                             ctx.platform,
                             ctx.clients,

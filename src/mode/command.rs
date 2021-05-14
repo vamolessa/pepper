@@ -97,7 +97,7 @@ impl ModeState for State {
                 ctx.editor.commands.add_to_history(input);
 
                 let command = ctx.editor.string_pool.acquire_with(input);
-                let operation = CommandManager::eval_commands_then_output(
+                let operation = CommandManager::eval_and_then_output(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,

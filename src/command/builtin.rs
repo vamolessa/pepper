@@ -868,7 +868,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             file.read_to_string(&mut source)
                 .map_err(|e| CommandError::OpenFileError { path: path_token, error: e })?;
 
-            let op = CommandManager::eval_commands_then_output(
+            let op = CommandManager::eval_and_then_output(
                 ctx.editor,
                 ctx.platform,
                 ctx.clients,

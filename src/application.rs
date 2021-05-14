@@ -103,7 +103,7 @@ impl ServerApplication {
 
         if source_default_config {
             let source = include_str!("default_config.pp");
-            match CommandManager::eval_commands_then_output(
+            match CommandManager::eval_and_then_output(
                 &mut editor,
                 platform,
                 &mut clients,

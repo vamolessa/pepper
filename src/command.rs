@@ -983,7 +983,7 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    pub fn eval_commands_then_output<'command>(
+    pub fn eval_and_then_output<'command>(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
@@ -1257,7 +1257,7 @@ impl CommandManager {
             match std::str::from_utf8(slice) {
                 Ok(slice) => {
                     editor.registers.set(RETURN_REGISTER, slice);
-                    Self::eval_commands_then_output(
+                    Self::eval_and_then_output(
                         editor,
                         platform,
                         clients,
@@ -1307,7 +1307,7 @@ impl CommandManager {
 
         let client_handle = process.client_handle;
         let commands = editor.string_pool.acquire_with(&process.on_output);
-        Self::eval_commands_then_output(editor, platform, clients, client_handle, &commands, None);
+        Self::eval_and_then_output(editor, platform, clients, client_handle, &commands, None);
         editor.string_pool.release(commands);
     }
 

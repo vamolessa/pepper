@@ -559,7 +559,7 @@ pub mod custom {
                     ctx.editor
                         .registers
                         .set(RETURN_REGISTER, ctx.editor.read_line.input());
-                    let operation = CommandManager::eval_commands_then_output(
+                    let operation = CommandManager::eval_and_then_output(
                         ctx.editor,
                         ctx.platform,
                         ctx.clients,

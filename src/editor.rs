@@ -281,7 +281,7 @@ impl Editor {
     ) -> EditorControlFlow {
         match event {
             ClientEvent::Command(client_handle, commands) => {
-                let result = CommandManager::eval_commands_then_output(
+                let result = CommandManager::eval_and_then_output(
                     self,
                     platform,
                     clients,
