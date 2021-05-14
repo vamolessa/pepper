@@ -475,25 +475,16 @@ impl<'a> Iterator for CommandIter<'a> {
                 }
 
                 match bytes[i] {
-                    b'\n' => {
-                        let (command, rest) = self.0.split_at(i);
-                        self.0 = rest;
-                        if command.is_empty() {
-                            break;
-                        } else {
-                            return Some(command);
-                        }
-                    }
-                    b';' => {
+                    b'\n' | b';' => {
                         let command = &self.0[..i];
-                        self.0 = &self.0[(i + 1)..];
+                        self.0 = &self.0[i + 1..];
                         if command.is_empty() {
                             break;
                         } else {
                             return Some(command);
                         }
                     }
-                    b'{' => match find_balanced(&bytes[(i + 1)..], b'{', b'}') {
+                    b'{' => match find_balanced(&bytes[i + 1..], b'{', b'}') {
                         Some(len) => i += len + 1,
                         None => {
                             let command = self.0;
