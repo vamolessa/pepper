@@ -1459,6 +1459,27 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "client-id",
+        alias: "",
+        help: concat!(
+            "", // TODO: help
+        ),
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
+            ctx.output.clear();
+            if let Some(handle) = ctx.client_handle {
+                use fmt::Write;
+                let _ = write!(ctx.output, "{}", handle.into_index());
+            }
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
         name: "buffer-id",
         alias: "",
         help: concat!(
