@@ -4,7 +4,7 @@
 
 ![main screenshot](.github/screenshots/main.png)
 
-[more screenshots](https://github.com/vamolessa/pepper/.github/screenshots/)
+[more screenshots](.github/screenshots/)
 
 Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
