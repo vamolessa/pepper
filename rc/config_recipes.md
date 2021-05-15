@@ -78,7 +78,7 @@ map -normal <c-o> :<space>fuzzy-open-file<enter>
 ```
 
 ## simple grep
-This defines a macro command that will invoke [ripgrep](https://github.com/BurntSushi/ripgrep) and then display its results in a new buffer
+This defines a macro command that will invoke [`ripgrep`](https://github.com/BurntSushi/ripgrep) and then display its results in a new buffer
 from where you can jump to the found locations.
 
 You can use it like `:rg MyStruct` and a buffer will open with all the results.
@@ -96,18 +96,21 @@ macro rg z {
 This will automatically close the ripgrep results buffer once you jump out of it.
 
 ## simple buffer format (rustfmt)
-This command will send the entire buffer's content to [rustfmt](https://github.com/rust-lang/rustfmt) (but it works for any other code formatter).
-Then it will replace the buffer's content with its output.
+This command will save the current buffer, then call [`rustfmt`](https://github.com/rust-lang/rustfmt) with
+its path as argument. Once `rustfmt` returns, it reloads the buffer contents from file to apply the formatting.
 The `ff` keybind will trigger the command while in normal mode.
 
 ```
 macro format {
+	save
 	%z = buffer-path
 	spawn "rustfmt %z" {
-		reload!
+		reload
 	}
 }
 map -normal ff :<space>format<enter>
 ```
 
-**NOTE**: this command may be most useful when defined from a project config since you probably want to use a different formatter per project.
+**NOTE**: this command may be most useful when defined from a project config
+since you probably want to use a different formatter per project.
+Also, since you're reloadin the buffer contents, you'll lose the buffer's history.

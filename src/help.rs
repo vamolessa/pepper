@@ -3,7 +3,6 @@ use std::{io, path::Path};
 pub static HELP_PREFIX: &str = "help://";
 
 static HELP_SOURCES: &[(&str, &str)] = &[
-    ("help://help.md", include_str!("../rc/help.md")),
     (
         "help://command_reference.md",
         include_str!("../rc/command_reference.md"),
@@ -17,10 +16,11 @@ static HELP_SOURCES: &[(&str, &str)] = &[
         "help://config_recipes.md",
         include_str!("../rc/config_recipes.md"),
     ),
+    ("help://help.md", include_str!("../rc/help.md")),
 ];
 
 pub fn main_help_path() -> &'static Path {
-    Path::new(HELP_SOURCES[0].0)
+    Path::new(HELP_SOURCES[HELP_SOURCES.len() - 1].0)
 }
 
 pub fn open(path: &Path) -> Option<impl io::BufRead> {
@@ -37,7 +37,7 @@ pub fn open(path: &Path) -> Option<impl io::BufRead> {
 }
 
 pub fn search(keyword: &str) -> Option<(&'static Path, usize)> {
-    let mut best_match = None;
+    let mut last_match = None;
     for &(path, source) in HELP_SOURCES {
         if keyword == path.trim_start_matches("help://").trim_end_matches(".md") {
             return Some((Path::new(path), 0));
@@ -48,12 +48,12 @@ pub fn search(keyword: &str) -> Option<(&'static Path, usize)> {
                 if line.starts_with('#') {
                     return Some((path, line_index));
                 } else {
-                    best_match = Some((path, line_index));
+                    last_match = Some((path, line_index));
                     break;
                 }
             }
         }
     }
-    best_match
+    last_match
 }
 
