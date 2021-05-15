@@ -1,8 +1,4 @@
-use std::{
-    cmp::Ordering,
-    fmt::Write,
-    path::{Path, MAIN_SEPARATOR},
-};
+use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
     buffer::{find_path_and_position_at, parse_path_and_position, BufferContent},
@@ -18,6 +14,7 @@ use crate::{
     platform::Key,
     register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
+    help::HELP_PREFIX,
 };
 
 enum CharJump {
@@ -615,13 +612,18 @@ impl State {
                             };
 
                             path_buf.clear();
-                            if let Some(parent) = buffer.path.parent().and_then(Path::to_str) {
-                                path_buf.push_str(parent);
-                                path_buf.push(MAIN_SEPARATOR);
+                            if Path::new(path).is_relative() {
+                                if buffer.path.starts_with(HELP_PREFIX) {
+                                    path_buf.push_str(HELP_PREFIX);
+                                } else if let Some(parent) = buffer.path.parent().and_then(Path::to_str) {
+                                    path_buf.push_str(parent);
+                                    path_buf.push('/');
+                                }
                             }
                             path_buf.push_str(path);
+
                             let path = Path::new(&path_buf);
-                            if !path.exists() {
+                            if !path.starts_with(HELP_PREFIX) && !path.exists() {
                                 continue;
                             }
 

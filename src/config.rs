@@ -7,7 +7,7 @@ pub enum ParseConfigError {
 
 macro_rules! config_values {
     ($($name:ident: $type:ty = $default:expr,)*) => {
-        pub const CONFIG_NAMES: &[&str] = &[$(stringify!($name),)*];
+        pub static CONFIG_NAMES: &[&str] = &[$(stringify!($name),)*];
 
         pub struct Config {
             $(pub $name: $type,)*

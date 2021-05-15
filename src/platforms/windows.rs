@@ -72,7 +72,7 @@ const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
 const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
-const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
+static PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
 pub fn main() {
     let args = Args::parse();

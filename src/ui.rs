@@ -12,16 +12,16 @@ use crate::{
     theme::Color,
 };
 
-pub const ENTER_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1b[?1049h";
-pub const EXIT_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1b[?1049l";
-pub const HIDE_CURSOR_CODE: &[u8] = b"\x1b[?25l";
-pub const SHOW_CURSOR_CODE: &[u8] = b"\x1b[?25h";
-pub const RESET_STYLE_CODE: &[u8] = b"\x1b[0;49m";
-pub const MODE_256_COLORS_CODE: &[u8] = b"\x1b[=19h";
-pub const BEGIN_TITLE_CODE: &[u8] = b"\x1b]0;";
-pub const END_TITLE_CODE: &[u8] = b"\x07";
+pub static ENTER_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1b[?1049h";
+pub static EXIT_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1b[?1049l";
+pub static HIDE_CURSOR_CODE: &[u8] = b"\x1b[?25l";
+pub static SHOW_CURSOR_CODE: &[u8] = b"\x1b[?25h";
+pub static RESET_STYLE_CODE: &[u8] = b"\x1b[0;49m";
+pub static MODE_256_COLORS_CODE: &[u8] = b"\x1b[=19h";
+pub static BEGIN_TITLE_CODE: &[u8] = b"\x1b]0;";
+pub static END_TITLE_CODE: &[u8] = b"\x07";
 
-const TOO_LONG_PREFIX: &[u8] = b"...";
+static TOO_LONG_PREFIX: &[u8] = b"...";
 
 #[inline]
 pub fn clear_line(buf: &mut Vec<u8>) {

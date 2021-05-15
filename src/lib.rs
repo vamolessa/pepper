@@ -10,6 +10,7 @@ pub mod editor;
 pub mod editor_utils;
 pub mod events;
 pub mod glob;
+pub mod help;
 pub mod history;
 pub mod json;
 pub mod keymap;
@@ -169,3 +170,4 @@ impl Args {
         parsed
     }
 }
+

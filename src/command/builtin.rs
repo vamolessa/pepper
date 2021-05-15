@@ -70,7 +70,7 @@ fn run_commands(
     }
 }
 
-pub const COMMANDS: &[BuiltinCommand] = &[
+pub static COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "help",
         alias: "h",

@@ -13,6 +13,7 @@ use std::{
 use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     events::{EditorEvent, EditorEventQueue},
+    help,
     history::{Edit, EditKind, History},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
@@ -1202,22 +1203,26 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if let Ok(file) = File::open(&self.path) {
+        if let Some(mut reader) = help::open(&self.path) {
+            self.content
+                .read(&mut reader)
+                .map_err(|_| BufferError::CouldNotReadFile)?;
+        } else if let Ok(file) = File::open(&self.path) {
             let mut reader = io::BufReader::new(file);
             self.content
                 .read(&mut reader)
                 .map_err(|_| BufferError::CouldNotReadFile)?;
+        }
 
-            self.highlighted.on_insert(BufferRange::between(
-                BufferPosition::zero(),
-                BufferPosition::line_col((self.content.line_count() - 1) as _, 0),
-            ));
+        self.highlighted.on_insert(BufferRange::between(
+            BufferPosition::zero(),
+            BufferPosition::line_col((self.content.line_count() - 1) as _, 0),
+        ));
 
-            if self.capabilities.uses_word_database {
-                for line in &self.content.lines {
-                    for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
-                        word_database.add(word);
-                    }
+        if self.capabilities.uses_word_database {
+            for line in &self.content.lines {
+                for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
+                    word_database.add(word);
                 }
             }
         }
@@ -1979,3 +1984,4 @@ mod tests {
         );
     }
 }
+

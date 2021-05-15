@@ -20,7 +20,7 @@ impl Color {
 
 macro_rules! theme_colors {
     ($($color:ident,)*) => {
-        pub const THEME_COLOR_NAMES: &[&str] = &[$(stringify!($color),)*];
+        pub static THEME_COLOR_NAMES: &[&str] = &[$(stringify!($color),)*];
 
         pub struct Theme {
             $(pub $color: Color,)*
