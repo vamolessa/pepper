@@ -44,7 +44,6 @@ pub enum ApplicationEvent {
     },
     ProcessExit {
         tag: ProcessTag,
-        success: bool,
     },
 }
 
@@ -161,8 +160,8 @@ impl ServerApplication {
                     ApplicationEvent::ProcessOutput { tag, buf } => {
                         editor.on_process_output(platform, &mut clients, tag, buf.as_bytes())
                     }
-                    ApplicationEvent::ProcessExit { tag, success } => {
-                        editor.on_process_exit(platform, &mut clients, tag, success)
+                    ApplicationEvent::ProcessExit { tag } => {
+                        editor.on_process_exit(platform, &mut clients, tag)
                     }
                 }
 
@@ -366,3 +365,4 @@ impl<'stdout> Drop for ClientApplication<'stdout> {
         }
     }
 }
+

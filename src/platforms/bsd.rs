@@ -267,12 +267,8 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                                 ApplicationEvent::ProcessSpawned { tag, handle },
                                             )?;
                                         }
-                                        Err(_) => {
-                                            event_sender.send(ApplicationEvent::ProcessExit {
-                                                tag,
-                                                success: false,
-                                            })?
-                                        }
+                                        Err(_) => event_sender
+                                            .send(ApplicationEvent::ProcessExit { tag })?,
                                     }
                                     break;
                                 }
@@ -287,10 +283,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                         let tag = process.tag();
                                         process.kill();
                                         processes[index] = None;
-                                        event_sender.send(ApplicationEvent::ProcessExit {
-                                            tag,
-                                            success: false,
-                                        })?;
+                                        event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                                     }
                                 }
                             }
@@ -308,10 +301,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                     let tag = process.tag();
                                     process.kill();
                                     processes[index] = None;
-                                    event_sender.send(ApplicationEvent::ProcessExit {
-                                        tag,
-                                        success: false,
-                                    })?;
+                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                                 }
                             }
                         }
@@ -366,10 +356,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                             Ok(None) => (),
                             Ok(Some(buf)) => {
                                 if buf.as_bytes().is_empty() {
-                                    event_sender.send(ApplicationEvent::ProcessExit {
-                                        tag,
-                                        success: true,
-                                    })?;
+                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                                 } else {
                                     event_sender
                                         .send(ApplicationEvent::ProcessOutput { tag, buf })?;
@@ -381,10 +368,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                 }
                                 process.kill();
                                 processes[index] = None;
-                                event_sender.send(ApplicationEvent::ProcessExit {
-                                    tag,
-                                    success: false,
-                                })?;
+                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                             }
                         }
                     }
@@ -486,3 +470,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
+

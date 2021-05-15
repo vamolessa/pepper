@@ -376,7 +376,6 @@ impl Editor {
         platform: &mut Platform,
         clients: &mut ClientManager,
         tag: ProcessTag,
-        success: bool,
     ) {
         match tag {
             ProcessTag::Buffer(index) => {
@@ -387,7 +386,7 @@ impl Editor {
                 lsp::ClientManager::on_process_exit(self, client_handle)
             }
             ProcessTag::Command(index) => {
-                CommandManager::on_process_exit(self, platform, clients, index, success)
+                CommandManager::on_process_exit(self, platform, clients, index)
             }
         }
 
@@ -461,3 +460,4 @@ impl Editor {
         }
     }
 }
+

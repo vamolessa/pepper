@@ -955,10 +955,9 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                             handle,
                                         })?;
                                     }
-                                    Err(_) => event_sender.send(ApplicationEvent::ProcessExit {
-                                        tag,
-                                        success: false,
-                                    })?,
+                                    Err(_) => {
+                                        event_sender.send(ApplicationEvent::ProcessExit { tag })?
+                                    }
                                 }
                                 break;
                             }
@@ -969,10 +968,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                     let tag = process.tag;
                                     process.kill();
                                     processes[handle.0] = None;
-                                    event_sender.send(ApplicationEvent::ProcessExit {
-                                        tag,
-                                        success: false,
-                                    })?;
+                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                                 }
                             }
                         }
@@ -986,10 +982,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                 let tag = process.tag;
                                 process.kill();
                                 processes[handle.0] = None;
-                                event_sender.send(ApplicationEvent::ProcessExit {
-                                    tag,
-                                    success: false,
-                                })?;
+                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                             }
                         }
                     }
@@ -1034,10 +1027,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                             Ok(None) => (),
                             Ok(Some(buf)) => {
                                 if buf.as_bytes().is_empty() {
-                                    event_sender.send(ApplicationEvent::ProcessExit {
-                                        tag,
-                                        success: true,
-                                    })?;
+                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                                 } else {
                                     event_sender
                                         .send(ApplicationEvent::ProcessOutput { tag, buf })?;
@@ -1047,10 +1037,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                 process.stdout = None;
                                 process.kill();
                                 processes[i] = None;
-                                event_sender.send(ApplicationEvent::ProcessExit {
-                                    tag,
-                                    success: false,
-                                })?;
+                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                             }
                         }
                     }
@@ -1342,3 +1329,4 @@ fn parse_console_events(
         }
     }
 }
+

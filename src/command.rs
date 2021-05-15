@@ -1375,11 +1375,10 @@ impl CommandManager {
         platform: &mut Platform,
         clients: &mut ClientManager,
         index: usize,
-        success: bool,
     ) {
         let process = &mut editor.commands.spawned_processes[index];
         process.alive = false;
-        if !success || process.on_output.is_empty() || process.output.is_empty() {
+        if process.on_output.is_empty() || process.output.is_empty() {
             return;
         }
 
@@ -1822,3 +1821,4 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
+
