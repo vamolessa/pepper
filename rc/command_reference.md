@@ -1,5 +1,15 @@
-These are builtin commands that can be used to interact with the editor besides its main code editing features.
-Keep in mind that some of these commands are intended for interactive use and some others for use in configuration files.
+These are builtin commands that can be used to interact with the editor
+besides its main code editing features.
+Keep in mind that some of these commands are intended for interactive use
+and some others for use in configuration files.
+
+# registers
+register name | doc
+--- | ---
+`a` | Auto macro register. It contains the recorded keys from the last selection+edit action in normal mode
+`s` | Search register. It contains the pattern of the last search performed. Setting it will perform a new search the next time you try to move to next search result
+
+**NOTE**: when you record a macro, the recorded keys will be stored on the register of the key you press after `q`.
 
 ## `help`
 Searches the help pages for `<keyword>`.
@@ -26,7 +36,6 @@ Because of that, it only makes sense to use this if it's called from a custom cl
 - usage: `request [<flags>] <name>`
 - flags:
   - `-hidden` : whether this command is shown in completions or not
-
 
 ## `copy-command`
 Sets the command to be used when copying text to clipboard.
@@ -78,12 +87,11 @@ The line read can be accessed from the `%z` register in `<commands>`.
 - flags:
   - `-prompt=<prompt-text>` : the prompt text that shows just before user input (default: `read-line:`)
 
-// TODO: continue from there
 ## `pick`
 Opens up a menu from where an option can be picked and then executes commands.
 Options can be added with the `add-picker-option` command.
-`<entry-var-name>` will be text replaced in `<commands>` with the picked entry value.
-- usage: `pick [<flags>] <option-var-name> <commands>`
+The picked entry can be accessed from the `%z` register in `<commands>`.
+- usage: `pick [<flags>] <commands>`
 - flags:
   - `-prompt=<prompt-text>` : the prompt text that shows just before user input (default: `pick:`)
 
@@ -93,29 +101,30 @@ Adds a new picker option that will then be shown in the next call to the `pick` 
 
 ## `quit`
 Quits this client.
-With '!' will discard any unsaved changes.\n
+With '!' will discard any unsaved changes.
 - usage `quit[!]`
 - alias: `q`
 
-###`quit-all`
+## `quit-all`
 Quits all clients.
 With '!' will discard any unsaved changes.
 - usage: `quit-all[!]`
 - alias: `qa`
 
 ## `print`
-Prints arguments to the status bar.
+Prints `<values>` to the status bar.
 - usage: `print [<flags>] <values...>`
 - flags:
   - `-error` : will print as an error
   - `-dbg` : will also print to the stderr
 
 ## `source`
-Loads a source file and execute its commands.
+Sources file at `<path>` and executes its contents as commands.
 - usage: `source <path>`
 
 ## `open`
 Opens a buffer up for editting.
+If file `<path>` exists, it will be loaded into the buffer's content.
 - usage: `open [<flags>] <path>`
 - alias: `o`
 - flags:
@@ -127,24 +136,26 @@ Opens a buffer up for editting.
   - `-auto-close` : automatically closes buffer when no other client has it in focus
 
 ## `save`
-Save buffer to file.
+Saves buffer to file.
+If `<path>` is present, it will use that path so save the buffer's content,
+making it the new buffer's associated filepath.
 - usage: `save [<flags>] [<path>]`
 - alias: `s`
 - flags:
-  - `-buffer=<buffer-id>` : if not specified, the current buffer is used
+  - `-buffer=<buffer-id>` : if present, buffer with id `<buffer-id>` is used instead
 
 ## `save-all`
-Save all buffers to file.
+Saves all buffers to file.
 - usage: `save-all`
 - alias: `sa`
 
 ## `reload`
-Reload buffer from file.
+Reloads buffer from file.
 With '!' will discard any unsaved changes.
 - usage: `reload[!] [<flags>]`
 - alias: `r`
 - flags:
-  - `-buffer=<buffer-id>` : if not specified, the current buffer is used
+  - `-buffer=<buffer-id>` : if present, buffer with id `<buffer-id>` is used instead
 
 ## `reload-all`
 Reload all buffers from file.
@@ -153,22 +164,23 @@ With '!' will discard any unsaved changes
 - alias: `ra`
 
 ## `close`
-Close buffer and opens previous buffer in view if any.
+Closes current buffer and opens previous viewed buffer if any.
 With '!' will discard any unsaved changes.
 - usage: `close[!] [<flags>]`
 - alias: `c`
 - flags:
-  - `-buffer=<buffer-id>` : if not specified, the current buffer is used
+  - `-buffer=<buffer-id>` : if present, buffer with id `<buffer-id>` is used instead
   - `-no-previous-buffer` : does not try to open previous buffer
 
 ## `close-all`
-Close all buffers.
+Closes all buffers.
 With '!' will discard any unsaved changes.
 - usage: `close-all[!]`
 - alias: `ca`
 
 ## `config`
-Accesses an editor config.
+If `<value>` is present, it sets the editor config `<key>` to its value.
+Otherwise, it returns its current value.
 - usage: `config <key> [<value>]`
 
 key | type | doc
@@ -183,7 +195,8 @@ key | type | doc
 `picker_max_height` | `integer` | max number of lines that are shown at a time when a picker ui is opened
 
 ## `color`
-Accesses an editor theme color.
+If `<value>` is present, it sets the editor theme color `<key>` to that color.
+Otherwise, it returns its current color.
 - usage: `color <key> [<value>]`
 
 key |  doc
@@ -207,12 +220,12 @@ key |  doc
 
 ## `syntax`
 Creates a syntax definition from patterns for files that match a glob.
-Every line in `<definition>` should be of the form: `<token-kind> = <pattern>`
-Where `<token-kind>` is one of: `keywords`, `types`, `symbols`, `literals`, `strings`, `comments` or `texts`.
-And `<pattern>` is the pattern that matches that kind of token.
+Every line in `<definition>` should be of the form: `<token-kind> = <pattern>` where:
+- `<token-kind>` is one of: `keywords`, `types`, `symbols`, `literals`, `strings`, `comments` or `texts`;
+- `<pattern>` is the pattern that matches that kind of token;
 - usage: `syntax <glob> { <definition> }`
 
-Read more about [language syntax definitions](language-syntax-definitions).
+Read more about [language syntax definitions](language_syntax_definitions.md).
 
 ## `map`
 Creates a keyboard mapping for an editor mode.
@@ -224,16 +237,18 @@ Creates a keyboard mapping for an editor mode.
   - `-picker` : set mapping for picker mode
   - `-command` : set mapping for command mode
 
-## `register`
-Accesses an editor register.
-- usage: `register <key> [<value>]`
+## `client-id`
+Returns the current client's id.
+- usage: `client-id`
 
-register name | doc
---- | ---
-`a` | Auto macro register. It contains the recorded keys from the last selection+edit action in normal mode
-`s` | Search register. It contains the pattern of the last search performed. Setting it will perform a new search the next time you try to move to next search result
+## `buffer-id`
+Returns the current buffer's id.
+- usage: `buffer-id`
 
-**NOTE**: when you record a macro, the recorded keys will be stored on the register of the key you press after `q`.
+## `buffer-path`
+Returns the current buffer's associated filepath.
+- flags:
+  - `-buffer=<buffer-id>` : if present, buffer with id `<buffer-id>` is used instead
 
 ## `lsp`
 Automatically starts a lsp server when a buffer matching a glob is opened.
