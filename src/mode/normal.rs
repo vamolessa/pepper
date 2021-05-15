@@ -553,7 +553,7 @@ impl State {
                                 '[' | ']' => buffer.find_balanced_chars_at(position, '[', ']'),
                                 '{' | '}' => buffer.find_balanced_chars_at(position, '{', '}'),
                                 '<' | '>' => buffer.find_balanced_chars_at(position, '<', '>'),
-                                d @ '|' | d @ '"' | d @ '\'' => {
+                                d @ '|' | d @ '"' | d @ '\'' | d @ '`' => {
                                     buffer.find_delimiter_pair_at(position, d)
                                 }
                                 _ => continue,
