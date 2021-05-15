@@ -888,7 +888,6 @@ pub enum CommandSource {
 pub struct BuiltinCommand {
     pub name: &'static str,
     pub alias: &'static str,
-    pub help: &'static str,
     pub hidden: bool,
     pub completions: &'static [CompletionSource],
     pub func: CommandFn,
@@ -896,7 +895,6 @@ pub struct BuiltinCommand {
 
 pub struct MacroCommand {
     pub name: String,
-    pub help: String,
     pub hidden: bool,
     pub params: Vec<RegisterKey>,
     pub body: String,
@@ -905,7 +903,6 @@ pub struct MacroCommand {
 
 pub struct RequestCommand {
     pub name: String,
-    pub help: String,
     pub hidden: bool,
     pub client_handle: ClientHandle,
 }
@@ -1569,7 +1566,6 @@ mod tests {
         let builtin_commands = &[BuiltinCommand {
             name: "command-name",
             alias: "c",
-            help: "",
             hidden: false,
             completions: &[],
             func: |_| Ok(None),
