@@ -5,7 +5,7 @@ use crate::word_database::{WordIter, WordKind};
 pub static HELP_PREFIX: &str = "help://";
 
 pub static HELP_SOURCES: &[(&str, &str)] = &[
-    ("help://index.md", include_str!("../rc/index.md")),
+    ("help://help.md", include_str!("../rc/help.md")),
     ("help://bindings.md", include_str!("../rc/bindings.md")),
     ("help://command_reference.md", include_str!("../rc/command_reference.md")),
     ("help://language_syntax_definitions.md", include_str!("../rc/language_syntax_definitions.md")),

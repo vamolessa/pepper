@@ -148,6 +148,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     };
 
     move_cursor_to(buf, 0, 0);
+    set_background_color(buf, editor.theme.background);
     set_not_underlined(buf);
 
     let cursors = &view.cursors[..];

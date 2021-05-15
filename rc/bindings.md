@@ -60,9 +60,9 @@ It's also from where you do most of code navigation and seleciton manipulation.
 
 | keys | action |
 | --- | --- |
-| `cc` | splits all selection in lines |
+| `cc` | swap the anchor and position of all cursors |
 | `cd` | clear all extra cursors and keep only the main cursor |
-| `co` | swap the anchor and position of all cursors |
+| `cl` | splits all selection in lines |
 | `cj`, `ck` | add a new cursor to the line bellow/above the bottom/top cursor |
 | `cn`, `cp` | set next/previous cursor as main cursor |
 | `cs` | search inside selections and only keep those ranges |
@@ -124,4 +124,4 @@ When the input is empty, you can navigate through history with `<c-n>` and `<c-p
 
 Also, `<c-n>` and `<c-p>` will choose from the autocomplete entries.
 
-See the [command reference](command-reference).
+See the [command reference](command_reference).
