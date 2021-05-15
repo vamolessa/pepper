@@ -3,13 +3,26 @@ besides its main code editing features.
 Keep in mind that some of these commands are intended for interactive use
 and some others for use in configuration files.
 
-# registers
-register name | doc
+Commands have the form:
+`[%<register-key> =] <command-name> [<flags...>] [<arguments...>]`
+
+Where `<register-key>` is a lowercase letter (`[a-z]`), and `<flags>` and `<arguments>` depend on each command.
+
+Also, when passing literal text values, you can pass them between `"`, `'` or `{` and `}`.
+The latter being, correctly balanced. So writing `command { some { random } text }` will pass
+` some { random } text ` as a single argument to `command`.
+
+### registers
+
+register key | about
 --- | ---
 `a` | Auto macro register. It contains the recorded keys from the last selection+edit action in normal mode
 `s` | Search register. It contains the pattern of the last search performed. Setting it will perform a new search the next time you try to move to next search result
+`z` | Return register. It's a convention when writing pepper macros that this register is used when passing single values around (like all builtin commands with callbacks).
 
 **NOTE**: when you record a macro, the recorded keys will be stored on the register of the key you press after `q`.
+
+# builtin commands
 
 ## `help`
 Searches the help pages for `<keyword>`.

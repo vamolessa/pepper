@@ -1,13 +1,13 @@
 [package]
 name = "pepper"
-version = "0.8.10"
+version = "0.9.0"
 authors = ["Matheus Lessa"]
 edition = "2018"
 description = "A simple and opinionated modal code editor for your terminal"
 license = "GPL-3.0"
 resolver = "2"
 
-documentation = "https://github.com/vamolessa/pepper/wiki"
+documentation = "https://vamolessa.github.io/pepper/rc/help"
 homepage = "https://vamolessa.github.io/pepper"
 repository = "https://github.com/vamolessa/pepper"
 readme = "README.md"
