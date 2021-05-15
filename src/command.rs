@@ -1304,6 +1304,7 @@ impl CommandManager {
     ) {
         if let Some(buf) = self.spawned_processes[index].input.take() {
             platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
+            platform.enqueue_request(PlatformRequest::CloseProcessInput { handle });
         }
     }
 
@@ -1378,7 +1379,7 @@ impl CommandManager {
     ) {
         let process = &mut editor.commands.spawned_processes[index];
         process.alive = false;
-        if process.on_output.is_empty() || process.output.is_empty() {
+        if process.on_output.is_empty() {
             return;
         }
 

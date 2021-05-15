@@ -618,14 +618,20 @@ impl State {
                                 } else if let Some(parent) =
                                     buffer.path.parent().and_then(Path::to_str)
                                 {
-                                    path_buf.push_str(parent);
-                                    path_buf.push('/');
+                                    if !parent.is_empty() {
+                                        path_buf.push_str(parent);
+                                        path_buf.push('/');
+                                    }
                                 }
                             }
                             path_buf.push_str(path);
 
                             let path = Path::new(&path_buf);
                             if !path.starts_with(HELP_PREFIX) && !path.exists() {
+                                ctx.editor
+                                    .status_bar
+                                    .write(MessageKind::Error)
+                                    .fmt(format_args!("file {:?} does not exist", path));
                                 continue;
                             }
 
