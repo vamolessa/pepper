@@ -7,9 +7,18 @@ pub static HELP_PREFIX: &str = "help://";
 static HELP_SOURCES: &[(&str, &str)] = &[
     ("help://help.md", include_str!("../rc/help.md")),
     ("help://bindings.md", include_str!("../rc/bindings.md")),
-    ("help://command_reference.md", include_str!("../rc/command_reference.md")),
-    ("help://language_syntax_definitions.md", include_str!("../rc/language_syntax_definitions.md")),
-    ("help://config_recipes.md", include_str!("../rc/config_recipes.md")),
+    (
+        "help://command_reference.md",
+        include_str!("../rc/command_reference.md"),
+    ),
+    (
+        "help://language_syntax_definitions.md",
+        include_str!("../rc/language_syntax_definitions.md"),
+    ),
+    (
+        "help://config_recipes.md",
+        include_str!("../rc/config_recipes.md"),
+    ),
 ];
 
 pub fn main_help_path() -> &'static Path {
@@ -32,7 +41,13 @@ pub fn open(path: &Path) -> Option<impl io::BufRead> {
 pub fn search(keyword: &str) -> Option<(&'static Path, usize)> {
     let mut best_match = None;
     for &(path, source) in HELP_SOURCES {
-        if keyword == path.strip_prefix("help://").unwrap().strip_suffix(".md").unwrap() {
+        if keyword
+            == path
+                .strip_prefix("help://")
+                .unwrap()
+                .strip_suffix(".md")
+                .unwrap()
+        {
             return Some((Path::new(path), 0));
         }
         for (line_index, line) in source.lines().enumerate() {

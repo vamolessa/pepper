@@ -137,7 +137,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
                 Some((CommandTokenKind::Equals, _)) => match tokens.next() {
                     Some((CommandTokenKind::Identifier, token)) => Some(token),
                     _ => None,
-                }
+                },
                 _ => None,
             },
             _ => None,
@@ -301,4 +301,3 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
-

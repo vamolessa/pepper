@@ -12,8 +12,8 @@ use crate::{
     client::ClientManager,
     command::{
         parse_process_command, BuiltinCommand, CommandContext, CommandError, CommandManager,
-        CommandOperation, CommandToken, CommandTokenIter, CommandTokenKind,
-        CommandValue, CompletionSource, MacroCommand, RequestCommand,
+        CommandOperation, CommandToken, CommandTokenIter, CommandTokenKind, CommandValue,
+        CompletionSource, MacroCommand, RequestCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::{Cursor, CursorCollection},
@@ -1639,4 +1639,3 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
-
