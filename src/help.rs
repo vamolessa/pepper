@@ -1,7 +1,5 @@
 use std::{io, path::Path};
 
-use crate::word_database::{WordIter, WordKind};
-
 pub static HELP_PREFIX: &str = "help://";
 
 static HELP_SOURCES: &[(&str, &str)] = &[
@@ -45,15 +43,13 @@ pub fn search(keyword: &str) -> Option<(&'static Path, usize)> {
             return Some((Path::new(path), 0));
         }
         for (line_index, line) in source.lines().enumerate() {
-            for word in WordIter(line).of_kind(WordKind::Identifier) {
-                if keyword == word {
-                    let path = Path::new(path);
-                    if line.starts_with('#') {
-                        return Some((path, line_index));
-                    } else {
-                        best_match = Some((path, line_index));
-                        break;
-                    }
+            if line.contains(keyword) {
+                let path = Path::new(path);
+                if line.starts_with('#') {
+                    return Some((path, line_index));
+                } else {
+                    best_match = Some((path, line_index));
+                    break;
                 }
             }
         }

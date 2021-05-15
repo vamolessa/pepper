@@ -2,6 +2,7 @@ use std::{fmt, str::FromStr};
 
 use crate::{
     buffer::{BufferHandle, CharDisplayDistances},
+    buffer_position::BufferPositionIndex,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     events::{EditorEvent, EditorEventQueue},
@@ -65,7 +66,7 @@ pub struct Client {
     handle: ClientHandle,
 
     pub viewport_size: (u16, u16),
-    pub scroll: (u32, u32),
+    pub scroll: (BufferPositionIndex, BufferPositionIndex),
     pub height: u16,
     pub navigation_history: NavigationHistory,
 
@@ -149,17 +150,20 @@ impl Client {
     }
 
     pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
-        fn calculate_scroll(this: &Client, editor: &Editor) -> Option<(u32, u32)> {
+        fn calculate_scroll(
+            this: &Client,
+            editor: &Editor,
+        ) -> Option<(BufferPositionIndex, BufferPositionIndex)> {
             let buffer_view = editor.buffer_views.get(this.buffer_view_handle?)?;
             let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
 
             let position = buffer_view.cursors.main_cursor().position;
-            let line_index = position.line_index as u32;
+            let line_index = position.line_index;
             let line = buffer.line_at(line_index as _).as_str();
-            let column_index = position.column_byte_index as u32;
+            let column_index = position.column_byte_index;
 
-            let width = this.viewport_size.0 as u32;
-            let height = this.height as u32;
+            let width = this.viewport_size.0 as BufferPositionIndex;
+            let height = this.height as BufferPositionIndex;
             let half_height = height / 2;
 
             let (mut scroll_x, mut scroll_y) = this.scroll;
@@ -278,3 +282,4 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
+

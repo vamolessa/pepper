@@ -30,7 +30,7 @@ pub struct State {
     is_recording_auto_macro: bool,
     pub count: u32,
     last_copy_hash: u64,
-    last_copy_ranges: Vec<(u32, u32)>,
+    last_copy_ranges: Vec<(BufferPositionIndex, BufferPositionIndex)>,
 }
 
 impl State {
@@ -767,20 +767,19 @@ impl State {
             }
             Key::Char('z') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                let focused_line_index =
-                    buffer_view.cursors.main_cursor().position.line_index as u32;
+                let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
                 let client = ctx.clients.get_mut(ctx.client_handle)?;
-                let height = client.height as u32;
+                let height = client.height;
 
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char('z') => {
                         client.scroll.0 = 0;
-                        client.scroll.1 = focused_line_index.saturating_sub(height / 2);
+                        client.scroll.1 = focused_line_index.saturating_sub((height / 2) as _);
                     }
                     Key::Char('j') => {
                         client.scroll.0 = 0;
-                        client.scroll.1 = focused_line_index.saturating_sub(height);
+                        client.scroll.1 = focused_line_index.saturating_sub(height as _);
                     }
                     Key::Char('k') => {
                         client.scroll.0 = 0;
@@ -1684,3 +1683,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     None
 }
+
