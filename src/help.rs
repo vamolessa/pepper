@@ -4,11 +4,11 @@ pub static HELP_PREFIX: &str = "help://";
 
 static HELP_SOURCES: &[(&str, &str)] = &[
     ("help://help.md", include_str!("../rc/help.md")),
-    ("help://bindings.md", include_str!("../rc/bindings.md")),
     (
         "help://command_reference.md",
         include_str!("../rc/command_reference.md"),
     ),
+    ("help://bindings.md", include_str!("../rc/bindings.md")),
     (
         "help://language_syntax_definitions.md",
         include_str!("../rc/language_syntax_definitions.md"),

@@ -26,7 +26,7 @@ The only difference from `--try-config` to `--config` is that it won't report an
 Both `--config` and `--try-config` are repeatable and can be used to load configs from files in different locations. The files are sourced in the order they appear in the command line.
 
 ### multi-file config
-It's possible to recursively load config files from a config file by using the [`source`](command-reference#source) command.
+It's possible to recursively load config files from a config file by using the [`source`](command_reference.md#source) command.
 
 ```
 # in your `init.pp`
@@ -36,11 +36,11 @@ source "some-other-config.pp"
 ```
 
 ## keybindings
-You can remap keys with the [`keymap`](command-reference#map) command.
+You can remap keys with the [`keymap`](command_reference.md#map) command.
 
 With this, you can hit `<c-s>` to save a buffer to a file:
 ```
-# The <space> after ':' makes it so the 'save' command is not added to the command history
+# The `<space>` after `:` makes it so the `save` command is not added to the command history
 map -normal <c-s> :<space>save<enter>
 ```
 
@@ -52,9 +52,9 @@ Its output will be printed to the status bar.
 
 ```
 macro run-shell {
-	read-line -prompt="!" COMMAND {
-		spawn COMMAND OUTPUT {
-			print OUTPUT
+	read-line -prompt="!" {
+		spawn %z {
+			print %z
 		}
 	}
 }
@@ -67,11 +67,11 @@ While in normal mode, you can invoke it with `<c-o>`.
 
 ```
 macro fuzzy-open-file {
-	spawn "fd -tf -0 --path-separator / ." -split-on-byte=0 LINE {
-		add-picker-option LINE
+	spawn "fd -tf -0 --path-separator / ." -split-on-byte=0 {
+		add-picker-option %z
 	}
-	pick -prompt="open" OPTION {
-		open OPTION
+	pick -prompt="open:" {
+		open %z
 	}
 }
 map -normal <c-o> :<space>fuzzy-open-file<enter>
@@ -85,14 +85,14 @@ You can use it like `:rg MyStruct` and a buffer will open with all the results.
 Then you can use pepper's builtin `gf` to jump to a filepath under the cursor.
 
 ```
-macro rg PATTERN {
+macro rg z {
 	open -no-history -no-save -no-word-database "rg-find-results.refs"
 	execute-keys <esc>aad # clean the whole buffer
-	replace-with-output -split-on-byte=10 "rg --line-number --path-separator / --no-ignore-global PATTERN"
+	replace-with-output -split-on-byte=10 "rg --line-number --path-separator / --no-ignore-global %z"
 }
 ```
 
-**NOTE**: you also use the flag `-auto-close` for the [`open`](command-reference#open) command.
+**NOTE**: you also use the flag `-auto-close` for the [`open`](command_reference.md#open) command.
 This will automatically close the ripgrep results buffer once you jump out of it.
 
 ## simple buffer format (rustfmt)
@@ -102,8 +102,10 @@ The `ff` keybind will trigger the command while in normal mode.
 
 ```
 macro format {
-	execute-keys <esc>aa # selec the whole buffer
-	replace-with-output -pipe "rustfmt"
+	%z = buffer-path
+	spawn "rustfmt %z" {
+		reload!
+	}
 }
 map -normal ff :<space>format<enter>
 ```

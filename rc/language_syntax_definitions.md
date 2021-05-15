@@ -16,7 +16,7 @@ syntax "**/*.lua" {
 }
 ```
 
-You can see a full example of language definitions that [come out-of-the-box](https://github.com/vamolessa/pepper/tree/master/src/default_config.pp).
+You can see a full example of language definitions that [come out-of-the-box](default_config.pp).
 
 Note that it's not possible to break a pattern in multiple lines and a new syntax definition is loaded,
 the token pattern priorities are always:

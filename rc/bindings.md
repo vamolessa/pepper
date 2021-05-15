@@ -124,4 +124,4 @@ When the input is empty, you can navigate through history with `<c-n>` and `<c-p
 
 Also, `<c-n>` and `<c-p>` will choose from the autocomplete entries.
 
-See the [command reference](command_reference).
+See the [command reference](command_reference.md).
