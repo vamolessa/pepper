@@ -41,13 +41,7 @@ pub fn open(path: &Path) -> Option<impl io::BufRead> {
 pub fn search(keyword: &str) -> Option<(&'static Path, usize)> {
     let mut best_match = None;
     for &(path, source) in HELP_SOURCES {
-        if keyword
-            == path
-                .strip_prefix("help://")
-                .unwrap()
-                .strip_suffix(".md")
-                .unwrap()
-        {
+        if keyword == path.trim_start_matches("help://").trim_end_matches(".md") {
             return Some((Path::new(path), 0));
         }
         for (line_index, line) in source.lines().enumerate() {
@@ -66,3 +60,4 @@ pub fn search(keyword: &str) -> Option<(&'static Path, usize)> {
     }
     best_match
 }
+
