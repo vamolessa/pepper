@@ -8,13 +8,13 @@ use crate::{
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, MessageKind},
+    help::HELP_PREFIX,
     lsp,
     mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     platform::Key,
     register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
-    help::HELP_PREFIX,
 };
 
 enum CharJump {
@@ -615,7 +615,9 @@ impl State {
                             if Path::new(path).is_relative() {
                                 if buffer.path.starts_with(HELP_PREFIX) {
                                     path_buf.push_str(HELP_PREFIX);
-                                } else if let Some(parent) = buffer.path.parent().and_then(Path::to_str) {
+                                } else if let Some(parent) =
+                                    buffer.path.parent().and_then(Path::to_str)
+                                {
                                     path_buf.push_str(parent);
                                     path_buf.push('/');
                                 }
@@ -652,6 +654,8 @@ impl State {
                             }
                             jumped = true;
 
+                            ctx.editor.mode.normal_state.movement_kind =
+                                CursorMovementKind::PositionAndAnchor;
                             if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
                                 client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
                             }
