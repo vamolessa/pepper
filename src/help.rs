@@ -49,7 +49,6 @@ pub fn search(keyword: &str) -> Option<(&'static Path, usize)> {
                     return Some((path, line_index));
                 } else {
                     last_match = Some((path, line_index));
-                    break;
                 }
             }
         }
