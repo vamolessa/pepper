@@ -2,10 +2,10 @@ These are builtin commands that can be used to interact with the editor besides 
 Keep in mind that some of these commands are intended for interactive use and some others for use in configuration files.
 
 ## `help`
-Prints help about `<command-name>`.
-If <command-name> is not present, prints the name of all commands available.
+Searches the help pages for `<keyword>`.
+If `<keyword>` is not present, opens the main help page.
 - alias: `h`
-- usage: `help [<command>]`
+- usage: `help [<keyword>]`
 
 ## `try`
 Try executing commands without propagating errors.
@@ -14,9 +14,9 @@ Then optionally executes commands if there was an error.
 
 ## `macro`
 Defines a new macro command.
-- usage: `macro [<flags>] <name> <param-names...> { <commands> }`
+A `<param-register>` should be the register name that will contain the arg value.
+- usage: `macro [<flags>] <name> <param-registers...> { <commands> }`
 - flags:
-  - `-help=<help-text>` : the help text that shows when using `help` on this command
   - `-hidden` : whether this command is shown in completions or not
 
 ## `request`
@@ -25,7 +25,6 @@ The client needs to implement the editor protocol.
 Because of that, it only makes sense to use this if it's called from a custom client.
 - usage: `request [<flags>] <name>`
 - flags:
-  - `-help=<help-text>` : the help text that shows when using `help` with this command
   - `-hidden` : whether this command is shown in completions or not
 
 
@@ -47,8 +46,8 @@ If `<command>` is empty, no command is used.
 Spawns a new process and then optionally executes commands on its output.
 Those commands will be executed on every splitted output if `-split-on-byte` is set
 or on its etirety when the process exits otherwise.
-`<output-var-name>` will be text replaced in `<commands-on-output>` with the process' output.
-- usage: `spawn [<flags>] <spawn-command> [<output-var-name> <commands-on-output>]`
+Output can be accessed from the `%z` register in `<commands-on-output>`
+- usage: `spawn [<flags>] <spawn-command> [<commands-on-output...>]`
 - flags:
   - `-input=<text>` : sends `<text>` to the stdin
   - `-env=<vars>` : sets environment variables in the form `VAR=<value> VAR=<value>...`
@@ -74,11 +73,12 @@ Executes keys as if they were inputted manually.
 
 ## `read-line`
 Prompts for a line read and then executes commands.
-`<line-var-name>` will be text replaced in `<commands>` with the line read value.
-- usage: `read-line [<flags>] <line-var-name> <commands>`
+The line read can be accessed from the `%z` register in `<commands>`.
+- usage: `read-line [<flags>] <commands...>`
 - flags:
   - `-prompt=<prompt-text>` : the prompt text that shows just before user input (default: `read-line:`)
 
+// TODO: continue from there
 ## `pick`
 Opens up a menu from where an option can be picked and then executes commands.
 Options can be added with the `add-picker-option` command.

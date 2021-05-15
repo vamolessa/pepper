@@ -195,7 +195,6 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             "Defines a new macro command.\n",
             "\n",
             "macro [<flags>] <name> <param-names...> <commands>\n",
-            " -help=<help-text> : the help text that shows when using `help` with this command\n",
             " -hidden : whether this command is shown in completions or not",
         ),
         hidden: false,
@@ -204,10 +203,9 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let mut args = ctx.args.with(&ctx.editor.registers);
             args.assert_no_bang()?;
 
-            let mut flags = [("help", None), ("hidden", None)];
+            let mut flags = [("hidden", None)];
             args.get_flags(&mut flags)?;
-            let help = flags[0].1.as_ref().map(|f| f.text).unwrap_or("");
-            let hidden = flags[1].1.is_some();
+            let hidden = flags[0].1.is_some();
 
             let name = args.next()?;
 
@@ -230,7 +228,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
 
             let command = MacroCommand {
                 name: name.text.into(),
-                help: help.into(),
+                help: Default::default(),
                 hidden,
                 params,
                 body,
@@ -259,10 +257,9 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let mut args = ctx.args.with(&ctx.editor.registers);
             args.assert_no_bang()?;
 
-            let mut flags = [("help", None), ("hidden", None)];
+            let mut flags = [("hidden", None)];
             args.get_flags(&mut flags)?;
-            let help = flags[0].1.as_ref().map(|f| f.text).unwrap_or("");
-            let hidden = flags[1].1.is_some();
+            let hidden = flags[0].1.is_some();
 
             let name = args.next()?;
             args.assert_empty()?;
@@ -281,7 +278,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
 
             let command = RequestCommand {
                 name: name.text.into(),
-                help: help.into(),
+                help: Default::default(),
                 hidden,
                 client_handle,
             };
