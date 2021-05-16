@@ -40,14 +40,13 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | --- | --- |
 | `aw`, `aW` | select word object |
 | `a(`, `a)`, `a[`, `a]`, `a{`, `a}`, `a<`, `a>` | select region inside brackets (exclusive) |
-| `a<pipe>`, `a"`, `a'`, `a<backtick>` | select region delimited by a pair of these brackets on the same line (exclusive) |
+| `a<pipe>`, `a"`, `a'`, `` a` `` | select region delimited by a pair of these brackets on the same line (exclusive) |
 | `Aw`, `AW` | select word object including surrounding whitespace |
 | `A(`, `A)`, `A[`, `A]`, `A{`, `A}`, `A<`, `A>` | select region inside brackets (inclusive) |
-| `A<pipe>`, `A"`, `A'`, `A<backtick>` | select region delimited by a pair of these brackets on the same line (inclusive) |
+| `A<pipe>`, `A"`, `A'`, `` A` `` | select region delimited by a pair of these brackets on the same line (inclusive) |
 
 **NOTE**:
 - `<pipe>` is `|`
-- `<backtick>` is `` ` ``
 I had to write these like this because of markdown formatting rules.
 
 ### selection
