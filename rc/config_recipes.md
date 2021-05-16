@@ -53,12 +53,18 @@ Its output will be printed to the status bar.
 ```
 macro run-shell {
 	read-line -prompt="!" {
-		spawn %z {
-			print %z
+		# this block executes once read-line finishes,
+		# and register %z will contain the line read
+
+		spawn %z { # spawn the typed command
+			# this block executes once the process finishes,
+			# its stdout will also be placed on register %z
+
+			print %z # print process output
 		}
 	}
 }
-map -normal ! :<space>run-shell<enter>
+map -normal ! :<space>run-shell<enter> # bind run-shell macro to `!`
 ```
 
 ## simple fuzzy file opener
@@ -68,13 +74,21 @@ While in normal mode, you can invoke it with `<c-o>`.
 ```
 macro fuzzy-open-file {
 	spawn "fd -tf -0 --path-separator / ." -split-on-byte=0 {
-		add-picker-option %z
+		# this block executes whenever `fd` returns a new entry (separated by byte 0)
+		# those stdout bytes are placed in register %z
+
+		add-picker-option %z # as entries are found, populate the picker ui
 	}
+	
+	# open the picker ui with the prompt "open:"
 	pick -prompt="open:" {
-		open %z
+		# this block executes once the file is chosen,
+		# and register %z will contain its path
+	
+		open %z # open the chosen file
 	}
 }
-map -normal <c-o> :<space>fuzzy-open-file<enter>
+map -normal <c-o> :<space>fuzzy-open-file<enter> # bind fuzzy-open-file macro to `<c-o>`
 ```
 
 ## simple grep
@@ -86,8 +100,18 @@ Then you can use pepper's builtin `gf` to jump to a filepath under the cursor.
 
 ```
 macro rg z {
+	# when this macro is invoked, this block executes and
+	# the register %z will contain its argument
+
+	# open a temp buffer named "rg-find-results.refs"
+	# the ".refs" extension is useful for syntax highlighting
 	open -no-history -no-save -no-word-database "rg-find-results.refs"
-	execute-keys <esc>aad # clean the whole buffer
+	
+	# delete buffer contents
+	execute-keys <esc>aad
+	
+	# insert text from `rg` stdout when searching for the pattern
+	# given as argument to this macro (register %z)
 	replace-with-output -split-on-byte=10 "rg --line-number --path-separator / --no-ignore-global %z"
 }
 ```
@@ -102,13 +126,15 @@ The `ff` keybind will trigger the command while in normal mode.
 
 ```
 macro format {
-	save
-	%z = buffer-path
+	save # save buffer to make sure all changes go to the file system
+	%z = buffer-path # save the current buffer path to register %z
+	
+	# spawn `rustfmt` passing it the current buffer path
 	spawn "rustfmt %z" {
-		reload
+		reload # once rustfmt finishes, reload contents from the file system
 	}
 }
-map -normal ff :<space>format<enter>
+map -normal ff :<space>format<enter> # bind format macro to `ff`
 ```
 
 **NOTE**: this command may be most useful when defined from a project config
