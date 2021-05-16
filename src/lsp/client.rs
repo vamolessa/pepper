@@ -16,7 +16,7 @@ use crate::{
     command::parse_process_command,
     cursor::Cursor,
     editor::Editor,
-    editor_utils::{MessageKind, StatusBar},
+    editor_utils::{hash_bytes, MessageKind, StatusBar},
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
     json::{
@@ -2521,7 +2521,7 @@ impl FromStr for ClientHandle {
 }
 
 struct ClientRecipe {
-    raw_glob: String,
+    glob_hash: u64,
     glob: Glob,
     command: String,
     environment: String,
@@ -2571,8 +2571,9 @@ impl ClientManager {
         root: Option<&Path>,
         log_buffer_name: Option<&str>,
     ) -> Result<(), InvalidGlobError> {
+        let glob_hash = hash_bytes(glob.bytes());
         for recipe in &mut self.recipes {
-            if recipe.raw_glob == glob {
+            if recipe.glob_hash == glob_hash {
                 recipe.command.clear();
                 recipe.command.push_str(command);
                 recipe.environment.clear();
@@ -2593,7 +2594,7 @@ impl ClientManager {
         let mut recipe_glob = Glob::default();
         recipe_glob.compile(glob)?;
         self.recipes.push(ClientRecipe {
-            raw_glob: glob.into(),
+            glob_hash,
             glob: recipe_glob,
             command: command.into(),
             environment: environment.into(),
@@ -2858,3 +2859,4 @@ impl ClientManager {
         }
     }
 }
+

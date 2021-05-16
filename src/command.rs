@@ -1382,6 +1382,9 @@ impl CommandManager {
         if process.on_output.is_empty() {
             return;
         }
+        if process.output.is_empty() && process.split_on_byte.is_some() {
+            return;
+        }
 
         match std::str::from_utf8(&process.output) {
             Ok(stdout) => editor.registers.set(RETURN_REGISTER, stdout),

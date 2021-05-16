@@ -3,6 +3,7 @@ use crate::{
     buffer_position::{BufferPositionIndex, BufferRange},
     glob::{Glob, InvalidGlobError},
     pattern::{MatchResult, Pattern, PatternError, PatternState},
+    editor_utils::hash_bytes,
 };
 
 const MAX_HIGHLIGHT_COUNT: usize = 2048;
@@ -55,7 +56,7 @@ impl Default for LineParseState {
 }
 
 pub struct Syntax {
-    raw_glob: String,
+    glob_hash: u64,
     glob: Glob,
     rules: [Pattern; 7],
 }
@@ -65,7 +66,7 @@ impl Syntax {
         let mut text_pattern = Pattern::new();
         let _ = text_pattern.compile("%a{%w_}|_{%w_}");
         Self {
-            raw_glob: String::new(),
+            glob_hash: 0,
             glob: Glob::default(),
             rules: [
                 Pattern::new(),
@@ -80,8 +81,7 @@ impl Syntax {
     }
 
     pub fn set_glob(&mut self, pattern: &str) -> Result<(), InvalidGlobError> {
-        self.raw_glob.clear();
-        self.raw_glob.push_str(pattern);
+        self.glob_hash = hash_bytes(pattern.bytes());
         self.glob.compile(pattern)
     }
 
@@ -227,7 +227,7 @@ impl SyntaxCollection {
 
     pub fn add(&mut self, syntax: Syntax) {
         for s in &mut self.syntaxes {
-            if s.raw_glob == syntax.raw_glob {
+            if s.glob_hash == syntax.glob_hash {
                 *s = syntax;
                 return;
             }
