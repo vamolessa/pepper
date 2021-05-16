@@ -1,6 +1,6 @@
 [package]
 name = "pepper"
-version = "0.9.0"
+version = "0.9.1"
 authors = ["Matheus Lessa"]
 edition = "2018"
 description = "A simple and opinionated modal code editor for your terminal"
