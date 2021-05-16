@@ -1000,10 +1000,17 @@ impl State {
             Key::Char('c') | Key::Char('C') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char('c') => {
-                    for cursor in
-                        &mut ctx.editor.buffer_views.get_mut(handle)?.cursors.mut_guard()[..]
-                    {
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                         std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+                    }
+                }
+                Key::Char('C') => {
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
+                        if cursor.position < cursor.anchor {
+                            std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+                        }
                     }
                 }
                 Key::Char('l') => {

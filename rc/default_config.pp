@@ -5,6 +5,7 @@ map -normal . Qa
 
 map -normal I dgii
 map -normal <c-i> dgli
+map -normal ci cvcCglccgii
 map -normal o dgli<enter>
 map -normal O dgii<enter><up>
 map -normal J djgivkgli<space><esc>

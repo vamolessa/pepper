@@ -61,6 +61,7 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | keys | action |
 | --- | --- |
 | `cc` | swap the anchor and position of all cursors |
+| `cC`, `CC` | orientate all cursors such that their anchors come before their positions |
 | `cd` | clear all extra cursors and keep only the main cursor |
 | `cl` | splits all selection in lines |
 | `cj`, `ck` | add a new cursor to the line bellow/above the bottom/top cursor |
@@ -98,6 +99,7 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | binding | expands to | action |
 | --- | --- | --- |
 | `I`, `<c-i>`, | `dgii`, `dgli` | move cursors to first non-blank/last column and enter insert mode |
+| `ci` | `cvcCglccgii` | delete all lines touching a selection and enter insert mode |
 | `o`, `O` | `dgli<enter>`, `dgii<enter><up>` | create an empty line bellow/above each cursor and enter insert mode |
 | `J` | `djgivkgli<space><esc>` | join one line bellow each cursor |
 

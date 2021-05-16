@@ -114,3 +114,107 @@ map -normal ff :<space>format<enter>
 **NOTE**: this command may be most useful when defined from a project config
 since you probably want to use a different formatter per project.
 Also, since you're reloadin the buffer contents, you'll lose the buffer's history.
+
+## vim keybindings
+These mappings somewhat emulate basic vanilla vim keybindings.
+However please take note that this will not correctly emulate vim's visual mode,
+some builtin features may become inaccessible without further tweakings and, obviously,
+the experience will *not* be the same of using vim.
+
+If you need 100% vim compatibility, simply use vim.
+
+For more details, check the [builtin keybindigs](bindings.md).
+
+```
+map -normal gg gk
+map -normal G gj
+
+map -normal $ gl
+map -normal ^ gi
+map -normal 0 gh
+
+map -normal <c-o> <c-p>
+map -normal <c-i> <c-n>
+
+map -normal f ]]
+map -normal F [[
+map -normal t ][
+map -normal T []
+map -normal ; }
+map -normal , {
+
+map -normal { <c-k>
+map -normal } <c-j>
+
+map -normal / s
+map -normal ? s
+map -normal N p
+map -normal * Nn
+map -normal # Pp
+
+map -normal a li
+map -normal A gli
+map -normal <c-r> U
+
+map -normal p Y
+
+map -normal zt zk
+map -normal zb zj
+
+map -normal ys y
+map -normal yy Vy
+map -normal yiw Awy<esc>
+map -normal yaw awy<esc>
+map -normal yi( a(y<esc>
+map -normal ya( A(y<esc>
+map -normal yi[ a[y<esc>
+map -normal ya[ A[y<esc>
+map -normal yi{ a{y<esc>
+map -normal ya{ A{y<esc>
+map -normal yi< a<y<esc>
+map -normal ya< A<y<esc>
+map -normal yi" a"y<esc>
+map -normal ya" A"y<esc>
+map -normal yi' a'y<esc>
+map -normal ya' A'y<esc>
+map -normal yi` a`y<esc>
+map -normal ya` A`y<esc>
+
+map -normal ds d
+map -normal dd Vd
+map -normal diw Awd
+map -normal daw awd
+map -normal di( a(d
+map -normal da( A(d
+map -normal di[ a[d
+map -normal da[ A[d
+map -normal di{ a{d
+map -normal da{ A{d
+map -normal di< a<d
+map -normal da< A<d
+map -normal di" a"d
+map -normal da" A"d
+map -normal di' a'd
+map -normal da' A'd
+map -normal di` a`d
+map -normal da` A`d
+
+map -normal cs i
+map -normal cc ci
+map -normal ciw Awi
+map -normal caw awi
+map -normal ci( a(i
+map -normal ca( A(i
+map -normal ci[ a[i
+map -normal ca[ A[i
+map -normal ci{ a{i
+map -normal ca{ A{i
+map -normal ci< a<i
+map -normal ca< A<i
+map -normal ci" a"i
+map -normal ca" A"i
+map -normal ci' a'i
+map -normal ca' A'i
+map -normal ci` a`i
+map -normal ca` A`i
+```
