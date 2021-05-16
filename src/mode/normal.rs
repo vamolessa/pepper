@@ -1495,22 +1495,39 @@ fn search_word_or_move_to_it(
     let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
 
-    let main_position = buffer_view.cursors.main_cursor().position;
+    let main_cursor = &buffer_view.cursors.main_cursor();
+    let main_position = main_cursor.position;
+    let main_range = main_cursor.to_range();
+
+    let valid_range = main_range.from.line_index == main_range.to.line_index
+        && main_range.from.column_byte_index != main_range.to.column_byte_index;
     let search_ranges = buffer.search_ranges();
     let current_range_index = search_ranges.binary_search_by_key(&main_position, |r| r.from);
 
-    if search_ranges.is_empty() || current_range_index.is_err() {
-        let word = buffer.content().word_at(main_position);
+    if valid_range || search_ranges.is_empty() || current_range_index.is_err() {
+        let (position, text) = if valid_range {
+            let line = buffer
+                .content()
+                .line_at(main_position.line_index as _)
+                .as_str();
+            let text = &line[main_range.from.column_byte_index as usize
+                ..main_range.to.column_byte_index as usize];
+            (main_range.from, text)
+        } else {
+            let word = buffer.content().word_at(main_position);
+            (word.position, word.text)
+        };
+
         let mut cursors = buffer_view.cursors.mut_guard();
         cursors.clear();
         cursors.add(Cursor {
-            anchor: word.position,
-            position: word.position,
+            anchor: position,
+            position,
         });
 
         let register = ctx.editor.registers.get_mut(SEARCH_REGISTER);
         register.clear();
-        register.push_str(word.text);
+        register.push_str(text);
 
         buffer.set_search(register);
 
