@@ -153,6 +153,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
 
     let cursors = &view.cursors[..];
     let cursors_end_index = cursors.len().saturating_sub(1);
+    let active_line_index = view.main_cursor_position.line_index;
 
     let buffer_content;
     let highlighted_buffer;
@@ -245,6 +246,13 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         let mut last_line_token = Token::default();
         let mut line_tokens = highlighted_buffer.line_tokens(line_index).iter();
 
+        let background_color = if line_index == active_line_index as _ {
+            editor.theme.active_line_background
+        } else {
+            editor.theme.background
+        };
+
+        set_background_color(buf, background_color);
         set_foreground_color(buf, editor.theme.token_text);
 
         for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
@@ -328,17 +336,17 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
                 if draw_state != DrawState::Selection(token_kind) {
                     draw_state = DrawState::Selection(token_kind);
                     set_background_color(buf, text_color);
-                    set_foreground_color(buf, editor.theme.background);
+                    set_foreground_color(buf, background_color);
                 }
             } else if inside_search_range {
                 if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
                     set_background_color(buf, editor.theme.highlight);
-                    set_foreground_color(buf, editor.theme.background);
+                    set_foreground_color(buf, background_color);
                 }
             } else if draw_state != DrawState::Token(token_kind) {
                 draw_state = DrawState::Token(token_kind);
-                set_background_color(buf, editor.theme.background);
+                set_background_color(buf, background_color);
                 set_foreground_color(buf, text_color);
             }
 
@@ -374,7 +382,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
             }
         }
 
-        set_background_color(buf, editor.theme.background);
+        set_background_color(buf, background_color);
 
         if x < view.size.0 as _ {
             clear_until_new_line(buf);
@@ -679,3 +687,4 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
 
     clear_until_new_line(buf);
 }
+

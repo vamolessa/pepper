@@ -39,6 +39,7 @@ macro_rules! theme_colors {
 
 theme_colors! {
     background,
+    active_line_background,
     highlight,
     statusbar_active_background,
     statusbar_inactive_background,
@@ -66,6 +67,7 @@ impl Default for Theme {
 pub fn gruvbox_theme() -> Theme {
     Theme {
         background: Color::from_u32(0x1d2021),
+        active_line_background: Color::from_u32(0x282828),
         highlight: Color::from_u32(0xfabd2f),
         statusbar_active_background: Color::from_u32(0x504945),
         statusbar_inactive_background: Color::from_u32(0x282828),
