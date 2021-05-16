@@ -119,7 +119,7 @@ macro rg z {
 **NOTE**: you also use the flag `-auto-close` for the [`open`](command_reference.md#open) command.
 This will automatically close the ripgrep results buffer once you jump out of it.
 
-## simple buffer format (rustfmt)
+## simple buffer format
 This command will save the current buffer, then call [`rustfmt`](https://github.com/rust-lang/rustfmt) with
 its path as argument. Once `rustfmt` returns, it reloads the buffer contents from file to apply the formatting.
 The `ff` keybind will trigger the command while in normal mode.
@@ -141,7 +141,7 @@ map -normal ff :<space>format<enter> # bind format macro to `ff`
 since you probably want to use a different formatter per project.
 Also, since you're reloadin the buffer contents, you'll lose the buffer's history.
 
-## vim keybindings
+## vim bindings
 These mappings somewhat emulate basic vanilla vim keybindings.
 However please take note that this will not correctly emulate vim's visual mode,
 some builtin features may become inaccessible without further tweakings and, obviously,

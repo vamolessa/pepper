@@ -97,6 +97,9 @@ Pepper expands on Vim's editing capabilities by supporting multiple cursors.
 This enables you to make several text transformations at once.
 Also, cursors behave like carets instead of blocks and can always go one-past-last-character-in-line.
 
+In [config recipes](rc/config_recipes.md#vim-bindings) you'll find some basic "vim-like" keybindigns
+for more vim comparisons.
+
 # comparing to kakoune
 
 Like Kakoune, you can manipulate selections while in normal mode and actions always operate on selections.
