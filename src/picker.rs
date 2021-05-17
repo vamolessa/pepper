@@ -210,13 +210,12 @@ fn filtered_to_picker_entry<'a>(
 }
 
 const MIN_SCORE: i64 = i64::MIN;
-const RECURSION_LIMIT: u8 = 0;
-const BONUS_START_OF_WORD: i64 = 8;
-const BONUS_CAMEL_CASE: i64 = 8;
-const BONUS_CONSECUTIVE: i64 = 10;
-const PENALTY_LEADING_UNMATCHED: i64 = -6;
+const RECURSION_LIMIT: u8 = 8;
+const BONUS_WORD_BOUNDARY: i64 = 30;
+const BONUS_CONSECUTIVE: i64 = 15;
+const PENALTY_LEADING_UNMATCHED: i64 = -5;
 const PENALTY_LEADING_UNMATCHED_MAX: u8 = 3;
-const PENALTY_UNMATCHED: i64 = -2;
+const PENALTY_UNMATCHED: i64 = -1;
 
 fn fuzzy_match(text: &str, pattern: &str) -> i64 {
     fn recursive(mut text: Chars, mut pattern: Chars, mut last_text_char: char, depth: u8) -> i64 {
@@ -246,19 +245,18 @@ fn fuzzy_match(text: &str, pattern: &str) -> i64 {
                 had_match = true;
                 leading_unmatched_len = 0;
                 if !last_text_char.is_ascii_alphabetic() && text_char.is_ascii_alphabetic() {
-                    score += BONUS_START_OF_WORD;
+                    score += BONUS_WORD_BOUNDARY;
                 }
                 if last_text_char.is_ascii_lowercase() && text_char.is_ascii_uppercase() {
-                    score += BONUS_CAMEL_CASE;
+                    score += BONUS_WORD_BOUNDARY;
                 }
                 if last_was_matched {
                     score += BONUS_CONSECUTIVE;
                 }
 
                 if depth < RECURSION_LIMIT {
-                    best_score =
-                        recursive(text.clone(), pattern.clone(), last_text_char, depth + 1)
-                            .max(best_score);
+                    let score = recursive(text.clone(), pattern.clone(), last_text_char, depth + 1);
+                    best_score = best_score.max(score.saturating_add(PENALTY_UNMATCHED));
                 }
 
                 pattern_char = match pattern.next() {
@@ -282,7 +280,10 @@ fn fuzzy_match(text: &str, pattern: &str) -> i64 {
         }
 
         match pattern.next() {
-            None if had_match => score.max(best_score),
+            None if had_match => {
+                score += text.count() as i64 * PENALTY_UNMATCHED;
+                score.max(best_score)
+            }
             _ => best_score,
         }
     }
@@ -308,28 +309,37 @@ mod tests {
         assert_eq!(MIN_SCORE, fuzzy_match("a", "xyz"));
 
         assert_eq!(
-            BONUS_START_OF_WORD + BONUS_CONSECUTIVE * 3 + 1,
+            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE * 3 + 1,
             fuzzy_match("word", "word"),
         );
 
         assert_eq!(
-            BONUS_START_OF_WORD + BONUS_CONSECUTIVE * 2,
+            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE * 2 + PENALTY_UNMATCHED,
             fuzzy_match("word", "wor"),
         );
 
         assert_eq!(
-            BONUS_START_OF_WORD + PENALTY_UNMATCHED + BONUS_CONSECUTIVE,
+            BONUS_WORD_BOUNDARY + PENALTY_UNMATCHED + BONUS_CONSECUTIVE,
             fuzzy_match("word", "wrd"),
         );
 
         assert_eq!(
-            BONUS_START_OF_WORD
+            BONUS_WORD_BOUNDARY
                 + BONUS_CONSECUTIVE
                 + PENALTY_UNMATCHED * 3
-                + BONUS_CAMEL_CASE
+                + BONUS_WORD_BOUNDARY
                 + BONUS_CONSECUTIVE
                 + PENALTY_UNMATCHED * 2,
             fuzzy_match("camelCase", "caca"),
+        );
+
+        assert_eq!(
+            BONUS_WORD_BOUNDARY
+                + PENALTY_UNMATCHED * 3
+                + BONUS_WORD_BOUNDARY
+                + PENALTY_UNMATCHED
+                + BONUS_WORD_BOUNDARY,
+            fuzzy_match("ababAbA", "aaa"),
         );
     }
 }
