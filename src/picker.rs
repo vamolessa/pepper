@@ -10,7 +10,7 @@ pub enum EntrySource {
 
 struct FilteredEntry {
     pub source: EntrySource,
-    pub score: i64,
+    pub score: u32,
 }
 
 #[derive(Default)]
@@ -134,7 +134,7 @@ impl Picker {
 
         for (i, word) in word_indices {
             let score = fuzzy_match(word, pattern);
-            if score != MIN_SCORE {
+            if score != 0 {
                 self.filtered_entries.push(FilteredEntry {
                     source: EntrySource::WordDatabase(i),
                     score,
@@ -160,7 +160,7 @@ impl Picker {
     fn filter_custom_entry(&mut self, index: usize, pattern: &str) -> bool {
         let entry = &self.custom_entries_buffer[index];
         let score = fuzzy_match(entry, pattern);
-        if score == MIN_SCORE {
+        if score == 0 {
             return false;
         }
 
@@ -200,105 +200,88 @@ fn filtered_to_picker_entry<'a>(
     }
 }
 
-const MIN_SCORE: i64 = i64::MIN;
 const RECURSION_LIMIT: u8 = 8;
-const BONUS_WORD_BOUNDARY: i64 = 30;
-const BONUS_CONSECUTIVE: i64 = 15;
-const PENALTY_LEADING_UNMATCHED: i64 = -5;
-const PENALTY_LEADING_UNMATCHED_MAX: u8 = 3;
-const PENALTY_UNMATCHED: i64 = -1;
-
-fn fuzzy_match(text: &str, pattern: &str) -> i64 {
+const BONUS_WORD_BOUNDARY: u32 = 3;
+const BONUS_CONSECUTIVE: u32 = 1;
+fn fuzzy_match(text: &str, pattern: &str) -> u32 {
     fn recursive(
         mut text: Chars,
+        mut last_text_char: char,
         mut pattern: Chars,
         mut pattern_char: char,
-        mut last_text_char: char,
         depth: u8,
-    ) -> i64 {
+    ) -> u32 {
         let mut text_char = match text.next() {
             Some(c) => c,
-            None => return MIN_SCORE,
+            None => return 0,
         };
 
         let mut last_was_matched = false;
-        let mut leading_unmatched_len = if depth == 0 {
-            PENALTY_LEADING_UNMATCHED_MAX
-        } else {
-            0
-        };
-
-        let mut best_score = MIN_SCORE;
+        let mut best_score = 0;
         let mut score = 0;
 
         loop {
             let matched = text_char.eq_ignore_ascii_case(&pattern_char);
-            let consecutive = last_was_matched;
-            last_was_matched = matched;
-            
             if matched {
-                leading_unmatched_len = 0;
                 if !last_text_char.is_ascii_alphabetic() && text_char.is_ascii_alphabetic() {
                     score += BONUS_WORD_BOUNDARY;
                 } else if last_text_char.is_ascii_lowercase() && text_char.is_ascii_uppercase() {
                     score += BONUS_WORD_BOUNDARY;
-                }
-                if consecutive {
-                    score += BONUS_CONSECUTIVE;
-                }
-
-                if depth < RECURSION_LIMIT {
+                } else if depth < RECURSION_LIMIT {
                     let recursive_score = recursive(
                         text.clone(),
+                        last_text_char,
                         pattern.clone(),
                         pattern_char,
-                        last_text_char,
                         depth + 1,
                     );
-                    if recursive_score != MIN_SCORE {
-                        best_score = best_score.max(recursive_score + score + PENALTY_UNMATCHED);
+                    if recursive_score != 0 {
+                        best_score = best_score.max(recursive_score + score);
                     }
+                }
+
+                if last_was_matched {
+                    score += BONUS_CONSECUTIVE;
                 }
 
                 pattern_char = match pattern.next() {
                     Some(c) => c,
-                    None => break,
+                    None => {
+                        last_was_matched = true;
+                        break;
+                    }
                 };
-            } else {
-                if leading_unmatched_len > 0 {
-                    score += PENALTY_LEADING_UNMATCHED;
-                    leading_unmatched_len -= 1;
-                }
-                score += PENALTY_UNMATCHED;
             }
 
+            last_was_matched = matched;
             last_text_char = text_char;
             text_char = match text.next() {
                 Some(c) => c,
-                None => break,
+                None => {
+                    last_was_matched = last_was_matched && pattern.next().is_none();
+                    break;
+                }
             };
         }
 
-        match pattern.next() {
-            None if last_was_matched => {
-                score += text.count() as i64 * PENALTY_UNMATCHED;
-                score.max(best_score)
-            }
-            _ => best_score,
+        if last_was_matched {
+            score.max(best_score)
+        } else {
+            best_score
         }
     }
 
     let mut pattern_chars = pattern.chars();
     let pattern_char = match pattern_chars.next() {
         Some(c) => c,
-        None => return 0,
+        None => return 1,
     };
 
-    let score = recursive(text.chars(), pattern_chars, pattern_char, '\0', 0);
-    if score != MIN_SCORE {
-        score + (text.len() == pattern.len()) as i64
+    let score = recursive(text.chars(), '\0', pattern_chars, pattern_char, 0);
+    if score != 0 {
+        score + (text.len() == pattern.len()) as u32
     } else {
-        MIN_SCORE
+        0
     }
 }
 
@@ -308,11 +291,11 @@ mod tests {
 
     #[test]
     fn fuzzy_match_test() {
-        assert_eq!(0, fuzzy_match("", ""));
-        assert_eq!(0, fuzzy_match("abc", ""));
-        assert_eq!(MIN_SCORE, fuzzy_match("", "abc"));
-        assert_eq!(MIN_SCORE, fuzzy_match("abc", "z"));
-        assert_eq!(MIN_SCORE, fuzzy_match("a", "xyz"));
+        assert_eq!(1, fuzzy_match("", ""));
+        assert_eq!(1, fuzzy_match("abc", ""));
+        assert_eq!(0, fuzzy_match("", "abc"));
+        assert_eq!(0, fuzzy_match("abc", "z"));
+        assert_eq!(0, fuzzy_match("a", "xyz"));
 
         assert_eq!(
             BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE * 3 + 1,
@@ -320,48 +303,28 @@ mod tests {
         );
 
         assert_eq!(
-            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE * 2 + PENALTY_UNMATCHED,
+            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE * 2,
             fuzzy_match("word", "wor"),
         );
 
         assert_eq!(
-            BONUS_WORD_BOUNDARY + PENALTY_UNMATCHED + BONUS_CONSECUTIVE,
+            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE,
             fuzzy_match("word", "wrd"),
         );
 
         assert_eq!(
-            BONUS_WORD_BOUNDARY
-                + BONUS_CONSECUTIVE
-                + PENALTY_UNMATCHED * 3
-                + BONUS_WORD_BOUNDARY
-                + BONUS_CONSECUTIVE
-                + PENALTY_UNMATCHED * 2,
+            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE + BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE,
             fuzzy_match("camelCase", "caca"),
         );
 
-        assert_eq!(
-            BONUS_WORD_BOUNDARY
-                + PENALTY_UNMATCHED * 3
-                + BONUS_WORD_BOUNDARY
-                + PENALTY_UNMATCHED
-                + BONUS_WORD_BOUNDARY,
-            fuzzy_match("ababAbA", "aaa"),
-        );
+        assert_eq!(BONUS_WORD_BOUNDARY * 3, fuzzy_match("ababAbA", "aaa"));
 
         assert_eq!(
-            BONUS_WORD_BOUNDARY
-                + PENALTY_UNMATCHED * 3
-                + BONUS_WORD_BOUNDARY
-                + PENALTY_UNMATCHED * 2,
+            BONUS_WORD_BOUNDARY + BONUS_WORD_BOUNDARY,
             fuzzy_match("abc cde", "ac"),
         );
 
-        assert_eq!(
-            PENALTY_LEADING_UNMATCHED * 3 + PENALTY_UNMATCHED * 4 + BONUS_WORD_BOUNDARY,
-            fuzzy_match("abc x", "x"),
-        );
-
-        //assert_eq!(MIN_SCORE, fuzzy_match("rc/config_tecipes.md", "rea"),);
+        assert_eq!(BONUS_WORD_BOUNDARY, fuzzy_match("abc x", "x"));
     }
 }
 
