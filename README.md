@@ -57,7 +57,7 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 Instead clients can connect to each other and act together as if they're a single application)
 - undo tree
 - support for text encodings other than UTF-8
-- fuzzy file picker (you can integrate with fzf, skim, etc)
+- fuzzy file picker (you can integrate with fzf, skim, fd, etc)
 - workspace wide search (you can integrate with grep, ripgrep, etc)
 - having any other feature that could be implemented by integrating an external tool
 
@@ -115,10 +115,6 @@ That is, the cursor is not a one-char selection but only a visual cue to indicat
 # development thread
 It's possible to kinda follow Pepper's development history in this
 [twitter thread](https://twitter.com/ahvamolessa/status/1276978064166182913)
-
-# big features todo
-- mac/bsd platform layer
-- debug adapter protocol
 
 # support pepper development
 Pepper is open-source, which means you're free to build it and access all of its features.
