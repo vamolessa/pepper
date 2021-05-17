@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, str::Chars};
 
 #[derive(Debug)]
 pub struct InvalidGlobError;
@@ -9,133 +9,123 @@ impl fmt::Display for InvalidGlobError {
 }
 impl Error for InvalidGlobError {}
 
-#[derive(Debug)]
 pub enum Op {
     Slice { from: u16, to: u16 },
     Separator,
-    Skip { len: u16 },
+    Skip { count: u16 },
     Many,
     ManyComponents,
-    AnyWithinRanges { start: u16, count: u16 },
-    ExceptWithinRanges { start: u16, count: u16 },
+    AnyWithinRanges { from: u16, to: u16 },
+    ExceptWithinRanges { from: u16, to: u16 },
     SubPatternGroup { len: u16 },
     SubPattern { len: u16 },
 }
 
 #[derive(Default)]
 pub struct Glob {
-    pub bytes: Vec<u8>,
+    pub texts: String,
     pub ops: Vec<Op>,
 }
 
 impl Glob {
     pub fn compile(&mut self, pattern: &str) -> Result<(), InvalidGlobError> {
-        self.bytes.clear();
+        self.texts.clear();
         self.ops.clear();
 
-        match self.compile_recursive(pattern.as_bytes()) {
-            Ok(len) if len == pattern.len() => Ok(()),
+        match self.compile_recursive(pattern.chars()) {
+            Ok(rest) if rest.as_str().is_empty() => Ok(()),
             _ => {
-                self.bytes.clear();
+                self.texts.clear();
                 self.ops.clear();
                 Err(InvalidGlobError)
             }
         }
     }
 
-    fn compile_recursive(&mut self, pattern: &[u8]) -> Result<usize, InvalidGlobError> {
+    fn compile_recursive<'a>(
+        &mut self,
+        mut pattern: Chars<'a>,
+    ) -> Result<Chars<'a>, InvalidGlobError> {
         let mut start_ops_index = self.ops.len();
-        let mut index = 0;
-
-        #[inline]
-        fn next(pattern: &[u8], index: &mut usize) -> Option<u8> {
-            let i = *index;
-            if i < pattern.len() {
-                *index += 1;
-                Some(pattern[i])
-            } else {
-                None
-            }
-        }
-
-        #[inline]
-        fn peek(pattern: &[u8], index: usize) -> Option<u8> {
-            if index < pattern.len() {
-                Some(pattern[index])
-            } else {
-                None
-            }
-        }
-
         loop {
-            match next(pattern, &mut index) {
+            let previous_state = pattern.clone();
+            match pattern.next() {
                 None => break,
-                Some(b'?') => match self.ops[start_ops_index..].last_mut() {
-                    Some(Op::Skip { len }) => *len += 1,
-                    _ => self.ops.push(Op::Skip { len: 1 }),
+                Some('?') => match self.ops[start_ops_index..].last_mut() {
+                    Some(Op::Skip { count }) => *count += 1,
+                    _ => self.ops.push(Op::Skip { count: 1 }),
                 },
-                Some(b'*') => match peek(pattern, index) {
-                    Some(b'*') => {
-                        match self.ops.last() {
-                            None | Some(Op::Separator) => (),
-                            _ => return Err(InvalidGlobError),
-                        }
-
-                        index += 1;
-                        match peek(pattern, index) {
-                            None => self.ops.push(Op::ManyComponents),
-                            Some(b'/') => {
-                                index += 1;
-                                self.ops.push(Op::ManyComponents);
+                Some('*') => {
+                    let previous_state = pattern.clone();
+                    match pattern.next() {
+                        Some('*') => {
+                            match self.ops.last() {
+                                None | Some(Op::Separator) => (),
+                                _ => return Err(InvalidGlobError),
                             }
-                            _ => return Err(InvalidGlobError),
-                        }
-                    }
-                    _ => self.ops.push(Op::Many),
-                },
-                Some(b'[') => {
-                    let inverse = match peek(pattern, index) {
-                        Some(b'!') => {
-                            index += 1;
-                            true
-                        }
-                        _ => false,
-                    };
-                    let start = self.bytes.len();
-                    loop {
-                        let start = match next(pattern, &mut index) {
-                            None => return Err(InvalidGlobError),
-                            Some(b']') => break,
-                            Some(b) => b,
-                        };
-                        let end = match peek(pattern, index) {
-                            Some(b'-') => {
-                                index += 1;
-                                let end = match next(pattern, &mut index) {
-                                    None | Some(b']') => return Err(InvalidGlobError),
-                                    Some(b) => b,
-                                };
-                                if end < start {
-                                    return Err(InvalidGlobError);
+
+                            let previous_state = pattern.clone();
+                            match pattern.next() {
+                                None => {
+                                    pattern = previous_state;
+                                    self.ops.push(Op::ManyComponents);
                                 }
-                                end
+                                Some('/') => self.ops.push(Op::ManyComponents),
+                                _ => return Err(InvalidGlobError),
                             }
-                            _ => start,
-                        };
-
-                        self.bytes.push(start);
-                        self.bytes.push(end);
-                    }
-                    let count = ((self.bytes.len() - start) / 2) as _;
-                    let start = start as _;
-                    if inverse {
-                        self.ops.push(Op::ExceptWithinRanges { start, count })
-                    } else {
-                        self.ops.push(Op::AnyWithinRanges { start, count })
+                        }
+                        _ => {
+                            pattern = previous_state;
+                            self.ops.push(Op::Many);
+                        }
                     }
                 }
-                Some(b']') => return Err(InvalidGlobError),
-                Some(b'{') => {
+                Some('[') => {
+                    let previous_state = pattern.clone();
+                    let inverse = match pattern.next() {
+                        Some('!') => true,
+                        _ => {
+                            pattern = previous_state;
+                            false
+                        }
+                    };
+                    let from = self.texts.len() as _;
+                    loop {
+                        let from = match pattern.next() {
+                            None => return Err(InvalidGlobError),
+                            Some(']') => break,
+                            Some(c) => c,
+                        };
+                        let previous_state = pattern.clone();
+                        let to = match pattern.next() {
+                            Some('-') => {
+                                let to = match pattern.next() {
+                                    None | Some(']') => return Err(InvalidGlobError),
+                                    Some(b) => b,
+                                };
+                                if to < from {
+                                    return Err(InvalidGlobError);
+                                }
+                                to
+                            }
+                            _ => {
+                                pattern = previous_state;
+                                from
+                            }
+                        };
+
+                        self.texts.push(from);
+                        self.texts.push(to);
+                    }
+                    let to = self.texts.len() as _;
+                    if inverse {
+                        self.ops.push(Op::ExceptWithinRanges { from, to })
+                    } else {
+                        self.ops.push(Op::AnyWithinRanges { from, to })
+                    }
+                }
+                Some(']') => return Err(InvalidGlobError),
+                Some('{') => {
                     let fix_index = self.ops.len();
                     self.ops.push(Op::SubPatternGroup { len: 0 });
 
@@ -143,7 +133,7 @@ impl Glob {
                         let fix_index = self.ops.len();
                         self.ops.push(Op::SubPattern { len: 0 });
 
-                        index += self.compile_recursive(&pattern[index..])?;
+                        pattern = self.compile_recursive(pattern)?;
 
                         let ops_count = self.ops.len();
                         match &mut self.ops[fix_index] {
@@ -151,9 +141,9 @@ impl Glob {
                             _ => unreachable!(),
                         }
 
-                        match next(pattern, &mut index) {
-                            Some(b'}') => break,
-                            Some(b',') => continue,
+                        match pattern.next() {
+                            Some('}') => break,
+                            Some(',') => continue,
                             _ => return Err(InvalidGlobError),
                         }
                     }
@@ -166,31 +156,28 @@ impl Glob {
 
                     start_ops_index = self.ops.len();
                 }
-                Some(b'}') | Some(b',') => {
-                    index -= 1;
-                    break;
-                }
-                Some(b'/') => self.ops.push(Op::Separator),
-                Some(b) => match self.ops[start_ops_index..].last_mut() {
-                    Some(Op::Slice { to, .. }) if *to == self.bytes.len() as u16 => {
-                        self.bytes.push(b);
-                        *to += 1;
+                Some('}') | Some(',') => return Ok(previous_state),
+                Some('/') => self.ops.push(Op::Separator),
+                Some(c) => match self.ops[start_ops_index..].last_mut() {
+                    Some(Op::Slice { to, .. }) if *to == self.texts.len() as _ => {
+                        self.texts.push(c);
+                        *to = self.texts.len() as _;
                     }
                     _ => {
-                        let from = self.bytes.len() as _;
-                        let to = from + 1;
-                        self.bytes.push(b);
+                        let from = self.texts.len() as _;
+                        self.texts.push(c);
+                        let to = self.texts.len() as _;
                         self.ops.push(Op::Slice { from, to });
                     }
                 },
             }
         }
 
-        Ok(index)
+        Ok(pattern)
     }
 
     pub fn matches(&self, path: &str) -> bool {
-        matches_recursive(&self.ops, &self.bytes, path.as_bytes(), &Continuation::None)
+        matches_recursive(&self.ops, &self.texts, path.chars(), &Continuation::None)
     }
 }
 
@@ -201,15 +188,10 @@ enum Continuation<'this, 'ops> {
 
 fn matches_recursive<'data, 'cont>(
     mut ops: &'data [Op],
-    bytes: &'data [u8],
-    mut path: &'data [u8],
+    texts: &str,
+    mut path: Chars,
     continuation: &'cont Continuation<'cont, 'data>,
 ) -> bool {
-    #[inline]
-    fn is_path_separator(b: &u8) -> bool {
-        std::path::is_separator(*b as _)
-    }
-
     'op_loop: loop {
         let op = match ops.split_first() {
             Some((op, rest)) => {
@@ -217,80 +199,73 @@ fn matches_recursive<'data, 'cont>(
                 op
             }
             None => match continuation {
-                Continuation::None => return path.is_empty(),
+                Continuation::None => return path.next().is_none(),
                 Continuation::Next(ops, continuation) => {
-                    return matches_recursive(ops, bytes, path, continuation)
+                    return matches_recursive(ops, texts, path, continuation)
                 }
             },
         };
 
         match op {
             &Op::Slice { from, to } => {
-                let prefix = &bytes[(from as usize)..(to as usize)];
-                if !path.starts_with(prefix) {
-                    return false;
-                }
-                path = &path[prefix.len()..];
-            }
-            Op::Separator => {
-                if path.is_empty() || !is_path_separator(&path[0]) {
-                    return false;
-                }
-                path = &path[1..];
-            }
-            &Op::Skip { len } => {
-                let len = len as usize;
-                if path.len() < len || path[..len].iter().any(is_path_separator) {
-                    return false;
-                }
-                path = &path[len..];
-            }
-            Op::Many => loop {
-                if matches_recursive(ops, bytes, path, continuation) {
-                    return true;
-                }
-                if path.is_empty() || is_path_separator(&path[0]) {
-                    return false;
-                }
-                path = &path[1..];
-            },
-            Op::ManyComponents => loop {
-                if matches_recursive(ops, bytes, path, continuation) {
-                    return true;
-                }
-                if path.is_empty() {
-                    return false;
-                }
-                match path.iter().position(is_path_separator) {
-                    Some(i) => path = &path[(i + 1)..],
+                let prefix = &texts[(from as usize)..(to as usize)];
+                match path.as_str().strip_prefix(prefix) {
+                    Some(rest) => path = rest.chars(),
                     None => return false,
                 }
+            }
+            Op::Separator => match path.next() {
+                Some(c) if std::path::is_separator(c) => (),
+                _ => return false,
             },
-            &Op::AnyWithinRanges { start, count } => {
-                if path.is_empty() {
+            &Op::Skip { count } => {
+                for _ in 0..count {
+                    match path.next() {
+                        Some(c) if !std::path::is_separator(c) => (),
+                        _ => return false,
+                    }
+                }
+            }
+            Op::Many => loop {
+                if matches_recursive(ops, texts, path.clone(), continuation) {
+                    return true;
+                }
+                match path.next() {
+                    Some(c) if !std::path::is_separator(c) => (),
+                    _ => return false,
+                }
+            },
+            Op::ManyComponents => loop {
+                if matches_recursive(ops, texts, path.clone(), continuation) {
+                    return true;
+                }
+                if path.find(|&c| std::path::is_separator(c)).is_none() {
                     return false;
                 }
-                let b = path[0];
-                path = &path[1..];
-                for range in bytes[(start as usize)..].chunks(2).take(count as _) {
-                    let start = range[0];
-                    let end = range[1];
-                    if start <= b && b <= end {
+            },
+            &Op::AnyWithinRanges { from, to } => {
+                let c = match path.next() {
+                    Some(c) => c,
+                    None => return false,
+                };
+                let mut ranges = texts[from as usize..to as usize].chars();
+                while let Some(from) = ranges.next() {
+                    let to = ranges.next().unwrap();
+                    if from <= c && c <= to {
                         continue 'op_loop;
                     }
                 }
                 return false;
             }
-            &Op::ExceptWithinRanges { start, count } => {
-                if path.is_empty() {
-                    return false;
-                }
-                let b = path[0];
-                path = &path[1..];
-                for range in bytes[(start as usize)..].chunks(2).take(count as _) {
-                    let start = range[0];
-                    let end = range[1];
-                    if b < start || end < b {
+            &Op::ExceptWithinRanges { from, to } => {
+                let c = match path.next() {
+                    Some(c) => c,
+                    None => return false,
+                };
+                let mut ranges = texts[from as usize..to as usize].chars();
+                while let Some(from) = ranges.next() {
+                    let to = ranges.next().unwrap();
+                    if c < from || to < c {
                         continue 'op_loop;
                     }
                 }
@@ -305,7 +280,7 @@ fn matches_recursive<'data, 'cont>(
                     };
                     ops = &ops[1..];
                     let continuation = Continuation::Next(jump, continuation);
-                    if matches_recursive(&ops[..len], bytes, path, &continuation) {
+                    if matches_recursive(&ops[..len], texts, path.clone(), &continuation) {
                         return true;
                     }
                     ops = &ops[len..];
@@ -429,3 +404,4 @@ mod tests {
         assert_glob(&mut glob, false, "**/*.{a,b,cd}", "m/n/p.x");
     }
 }
+
