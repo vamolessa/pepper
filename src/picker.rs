@@ -1,7 +1,5 @@
 use std::{fmt, str::Chars};
 
-use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
-
 use crate::word_database::{WordDatabase, WordIndicesIter};
 
 #[derive(Clone, Copy)]
@@ -17,8 +15,6 @@ struct FilteredEntry {
 
 #[derive(Default)]
 pub struct Picker {
-    matcher: SkimMatcherV2,
-
     custom_entries_len: usize,
     custom_entries_buffer: Vec<String>,
     filtered_entries: Vec<FilteredEntry>,
@@ -38,12 +34,6 @@ impl Picker {
 
     pub fn len(&self) -> usize {
         self.filtered_entries.len()
-    }
-
-    pub fn fuzzy_match(&self, text: &str, pattern: &str) -> Option<i64> {
-        let score = self.matcher.fuzzy_match(text, pattern)?;
-        let score = score + (text.len() == pattern.len()) as i64;
-        Some(score)
     }
 
     pub fn move_cursor(&mut self, offset: isize) {
@@ -143,7 +133,8 @@ impl Picker {
         self.filtered_entries.clear();
 
         for (i, word) in word_indices {
-            if let Some(score) = self.fuzzy_match(word, pattern) {
+            let score = fuzzy_match(word, pattern);
+            if score != MIN_SCORE {
                 self.filtered_entries.push(FilteredEntry {
                     source: EntrySource::WordDatabase(i),
                     score,
@@ -168,10 +159,10 @@ impl Picker {
 
     fn filter_custom_entry(&mut self, index: usize, pattern: &str) -> bool {
         let entry = &self.custom_entries_buffer[index];
-        let score = match self.fuzzy_match(entry, pattern) {
-            Some(score) => score,
-            None => return false,
-        };
+        let score = fuzzy_match(entry, pattern);
+        if score == MIN_SCORE {
+            return false;
+        }
 
         self.filtered_entries.push(FilteredEntry {
             source: EntrySource::Custom(index),
@@ -230,7 +221,6 @@ fn fuzzy_match(text: &str, pattern: &str) -> i64 {
             None => return MIN_SCORE,
         };
 
-        let mut had_match = false;
         let mut last_was_matched = false;
         let mut leading_unmatched_len = if depth == 0 {
             PENALTY_LEADING_UNMATCHED_MAX
@@ -243,16 +233,17 @@ fn fuzzy_match(text: &str, pattern: &str) -> i64 {
 
         loop {
             let matched = text_char.eq_ignore_ascii_case(&pattern_char);
+            let consecutive = last_was_matched;
+            last_was_matched = matched;
+            
             if matched {
-                had_match = true;
                 leading_unmatched_len = 0;
                 if !last_text_char.is_ascii_alphabetic() && text_char.is_ascii_alphabetic() {
                     score += BONUS_WORD_BOUNDARY;
-                }
-                if last_text_char.is_ascii_lowercase() && text_char.is_ascii_uppercase() {
+                } else if last_text_char.is_ascii_lowercase() && text_char.is_ascii_uppercase() {
                     score += BONUS_WORD_BOUNDARY;
                 }
-                if last_was_matched {
+                if consecutive {
                     score += BONUS_CONSECUTIVE;
                 }
 
@@ -281,7 +272,6 @@ fn fuzzy_match(text: &str, pattern: &str) -> i64 {
                 score += PENALTY_UNMATCHED;
             }
 
-            last_was_matched = matched;
             last_text_char = text_char;
             text_char = match text.next() {
                 Some(c) => c,
@@ -290,7 +280,7 @@ fn fuzzy_match(text: &str, pattern: &str) -> i64 {
         }
 
         match pattern.next() {
-            None if had_match => {
+            None if last_was_matched => {
                 score += text.count() as i64 * PENALTY_UNMATCHED;
                 score.max(best_score)
             }
@@ -301,7 +291,7 @@ fn fuzzy_match(text: &str, pattern: &str) -> i64 {
     let mut pattern_chars = pattern.chars();
     let pattern_char = match pattern_chars.next() {
         Some(c) => c,
-        None => return MIN_SCORE,
+        None => return 0,
     };
 
     let score = recursive(text.chars(), pattern_chars, pattern_char, '\0', 0);
@@ -318,8 +308,8 @@ mod tests {
 
     #[test]
     fn fuzzy_match_test() {
-        assert_eq!(MIN_SCORE, fuzzy_match("", ""));
-        assert_eq!(MIN_SCORE, fuzzy_match("abc", ""));
+        assert_eq!(0, fuzzy_match("", ""));
+        assert_eq!(0, fuzzy_match("abc", ""));
         assert_eq!(MIN_SCORE, fuzzy_match("", "abc"));
         assert_eq!(MIN_SCORE, fuzzy_match("abc", "z"));
         assert_eq!(MIN_SCORE, fuzzy_match("a", "xyz"));
@@ -365,6 +355,13 @@ mod tests {
                 + PENALTY_UNMATCHED * 2,
             fuzzy_match("abc cde", "ac"),
         );
+
+        assert_eq!(
+            PENALTY_LEADING_UNMATCHED * 3 + PENALTY_UNMATCHED * 4 + BONUS_WORD_BOUNDARY,
+            fuzzy_match("abc x", "x"),
+        );
+
+        //assert_eq!(MIN_SCORE, fuzzy_match("rc/config_tecipes.md", "rea"),);
     }
 }
 
