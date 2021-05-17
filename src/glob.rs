@@ -402,6 +402,16 @@ mod tests {
         assert_glob(&mut glob, false, "**/*.{a,b,cd}", "n.x");
         assert_glob(&mut glob, false, "**/*.{a,b,cd}", "m/n.x");
         assert_glob(&mut glob, false, "**/*.{a,b,cd}", "m/n/p.x");
+
+        assert_glob(&mut glob, false, "**/*.{é,ç}", "");
+        assert_glob(&mut glob, true, "**/*.{é,ç}", "p.é");
+        assert_glob(&mut glob, true, "**/*.{é,ç}", "p.ç");
+        assert_glob(&mut glob, true, "**/*.{é,ç}", "n/p.é");
+        assert_glob(&mut glob, true, "**/*.{é,ç}", "n/p.ç");
+        assert_glob(&mut glob, true, "**/*.{é,ç}", "m/n/p.é");
+        assert_glob(&mut glob, true, "**/*.{é,ç}", "m/n/p.ç");
+        assert_glob(&mut glob, false, "**/*.{é,ç}", "p.e");
+        assert_glob(&mut glob, false, "**/*.{é,ç}", "p.c");
     }
 }
 
