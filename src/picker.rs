@@ -218,12 +218,14 @@ const PENALTY_LEADING_UNMATCHED_MAX: u8 = 3;
 const PENALTY_UNMATCHED: i64 = -1;
 
 fn fuzzy_match(text: &str, pattern: &str) -> i64 {
-    fn recursive(mut text: Chars, mut pattern: Chars, mut last_text_char: char, depth: u8) -> i64 {
+    fn recursive(
+        mut text: Chars,
+        mut pattern: Chars,
+        mut pattern_char: char,
+        mut last_text_char: char,
+        depth: u8,
+    ) -> i64 {
         let mut text_char = match text.next() {
-            Some(c) => c,
-            None => return MIN_SCORE,
-        };
-        let mut pattern_char = match pattern.next() {
             Some(c) => c,
             None => return MIN_SCORE,
         };
@@ -255,8 +257,16 @@ fn fuzzy_match(text: &str, pattern: &str) -> i64 {
                 }
 
                 if depth < RECURSION_LIMIT {
-                    let score = recursive(text.clone(), pattern.clone(), last_text_char, depth + 1);
-                    best_score = best_score.max(score.saturating_add(PENALTY_UNMATCHED));
+                    let recursive_score = recursive(
+                        text.clone(),
+                        pattern.clone(),
+                        pattern_char,
+                        last_text_char,
+                        depth + 1,
+                    );
+                    if recursive_score != MIN_SCORE {
+                        best_score = best_score.max(recursive_score + score + PENALTY_UNMATCHED);
+                    }
                 }
 
                 pattern_char = match pattern.next() {
@@ -288,7 +298,13 @@ fn fuzzy_match(text: &str, pattern: &str) -> i64 {
         }
     }
 
-    let score = recursive(text.chars(), pattern.chars(), '\0', 0);
+    let mut pattern_chars = pattern.chars();
+    let pattern_char = match pattern_chars.next() {
+        Some(c) => c,
+        None => return MIN_SCORE,
+    };
+
+    let score = recursive(text.chars(), pattern_chars, pattern_char, '\0', 0);
     if score != MIN_SCORE {
         score + (text.len() == pattern.len()) as i64
     } else {
@@ -340,6 +356,14 @@ mod tests {
                 + PENALTY_UNMATCHED
                 + BONUS_WORD_BOUNDARY,
             fuzzy_match("ababAbA", "aaa"),
+        );
+
+        assert_eq!(
+            BONUS_WORD_BOUNDARY
+                + PENALTY_UNMATCHED * 3
+                + BONUS_WORD_BOUNDARY
+                + PENALTY_UNMATCHED * 2,
+            fuzzy_match("abc cde", "ac"),
         );
     }
 }
