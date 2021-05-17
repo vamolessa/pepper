@@ -53,7 +53,8 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 - support every possible workflow (it will never ever get close to feature parity with vim or emacs)
 - complex ui (like breadcumbs, floating windows, extra status bars, etc)
-- multiple viewports (leave that to your window manager/terminal multiplexer. instead clients can connect to each other and act together as if they're a single application)
+- multiple viewports (leave that to your window manager/terminal multiplexer.
+Instead clients can connect to each other and act together as if they're a single application)
 - undo tree
 - support for text encodings other than UTF-8
 - fuzzy file picker (you can integrate with fzf, skim, etc)
@@ -65,7 +66,8 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 - everything is reachable through the keyboard
 - modal editing
 - multiple cursors
-- caret style cursors (like most text editors, cursors can move past last line character and text is always inserted to its left)
+- caret style cursors (like most text editors,
+cursors can move past last line character and text is always inserted to its left)
 - text-object selection
 - keyboard macros
 - client/server architecture
@@ -74,9 +76,9 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 # philosophy
 
-In the spirit of [Handmade](https://handmade.network/), almost all features are coded from scratch using simple stable Rust code.
+In the spirit of [Handmade](https://handmade.network/),
+all features are coded from scratch using simple stable Rust code.
 These are the only external crates being used in the project:
-- `fuzzy-matcher`: fuzzy matching for the picker ui. it could be replaced, however it's implementation does not get in the way and has minimal dependencies
 - `winapi` (windows-only): needed to implement windows platform layer
 - `libc` (unix-only): needed to implement unix platform layer
 
@@ -111,7 +113,8 @@ However its cursors behave like caret ranges instead of block selections.
 That is, the cursor is not a one-char selection but only a visual cue to indicate the caret location.
 
 # development thread
-It's possible to kinda follow Pepper's development history in this [twitter thread](https://twitter.com/ahvamolessa/status/1276978064166182913)
+It's possible to kinda follow Pepper's development history in this
+[twitter thread](https://twitter.com/ahvamolessa/status/1276978064166182913)
 
 # big features todo
 - mac/bsd platform layer
