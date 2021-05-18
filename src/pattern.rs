@@ -76,100 +76,83 @@ impl Pattern {
     }
 
     pub fn matches_with_state(&self, text: &str, state: PatternState) -> MatchResult {
-        let mut bytes = text.as_bytes();
+        let mut chars = text.chars();
         let ops = &self.ops;
         let mut op_index = state.op_index;
 
         #[inline]
-        fn check_and_jump<F>(bytes: &mut &[u8], okj: Jump, erj: Jump, predicate: F) -> usize
+        fn index(text: &str, chars: &Chars) -> usize {
+            chars.as_str().as_ptr() as usize - text.as_ptr() as usize
+        }
+
+        #[inline]
+        fn check_and_jump<F>(chars: &mut Chars, okj: Jump, erj: Jump, predicate: F) -> usize
         where
-            F: Fn(u8) -> bool,
+            F: Fn(char) -> bool,
         {
-            if !bytes.is_empty() && predicate(bytes[0]) {
-                *bytes = &bytes[1..];
-                okj.0 as _
-            } else {
-                erj.0 as _
+            let previous_state = chars.clone();
+            match chars.next() {
+                Some(c) if predicate(c) => okj.0 as _,
+                _ => {
+                    *chars = previous_state;
+                    erj.0 as _
+                }
             }
         }
 
         loop {
             match ops[op_index] {
-                Op::Ok => {
-                    return MatchResult::Ok(
-                        bytes.as_ptr() as usize - text.as_bytes().as_ptr() as usize,
-                    )
-                }
+                Op::Ok => return MatchResult::Ok(index(text, &chars)),
                 Op::Error => return MatchResult::Err,
                 Op::Reset(jump) => {
-                    bytes = text.as_bytes();
+                    chars = text.chars();
                     op_index = jump.0 as _;
                 }
                 Op::Unwind(jump, len) => {
-                    bytes = unsafe {
-                        std::slice::from_raw_parts(
-                            bytes.as_ptr().offset(-(len.0 as isize)),
-                            bytes.len() + len.0 as usize,
-                        )
+                    let len = (len.0 - 1) as _;
+                    let index = index(text, &chars);
+                    chars = match text[..index].char_indices().rev().nth(len) {
+                        Some((i, _)) => text[i..].chars(),
+                        None => unreachable!(),
                     };
                     op_index = jump.0 as _;
                 }
                 Op::EndAnchor(okj, erj) => {
-                    if bytes.is_empty() {
+                    if chars.as_str().is_empty() {
                         op_index = okj.0 as _;
                         return match ops[op_index] {
-                            Op::Ok => MatchResult::Ok(
-                                bytes.as_ptr() as usize - text.as_bytes().as_ptr() as usize,
-                            ),
+                            Op::Ok => MatchResult::Ok(index(text, &chars)),
                             _ => MatchResult::Pending(PatternState { op_index }),
                         };
                     } else {
                         op_index = erj.0 as _;
                     }
                 }
-                Op::SkipOne(okj, erj) => op_index = check_and_jump(&mut bytes, okj, erj, |_| true),
+                Op::SkipOne(okj, erj) => op_index = check_and_jump(&mut chars, okj, erj, |_| true),
                 Op::SkipMany(okj, erj, len) => {
-                    let len = len.0 as usize;
-                    if bytes.len() >= len {
-                        bytes = &bytes[len..];
-                        op_index = okj.0 as _;
-                    } else {
-                        op_index = erj.0 as _;
-                    }
+                    let len = (len.0 - 1) as _;
+                    op_index = match chars.nth(len) {
+                        Some(_) => okj.0 as _,
+                        None => erj.0 as _,
+                    };
                 }
                 Op::Alphabetic(okj, erj) => {
-                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_alphabetic());
+                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_alphabetic());
                 }
                 Op::Lower(okj, erj) => {
-                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_lowercase());
+                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_lowercase());
                 }
                 Op::Upper(okj, erj) => {
-                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_uppercase());
+                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_uppercase());
                 }
                 Op::Digit(okj, erj) => {
-                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_digit());
+                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_digit());
                 }
                 Op::Alphanumeric(okj, erj) => {
-                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_alphanumeric());
+                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_alphanumeric());
                 }
-                Op::Char(okj, erj, c) => {
-                    // TODO
-                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b == c as u8)
-                }
-                Op::Byte(okj, erj, byte) => {
-                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b == byte)
-                }
-                Op::Bytes3(okj, erj, bs) => {
-                    if bytes.len() >= 3
-                        && bytes[0] == bs[0]
-                        && bytes[1] == bs[1]
-                        && bytes[2] == bs[2]
-                    {
-                        op_index = okj.0 as _;
-                        bytes = &bytes[3..];
-                    } else {
-                        op_index = erj.0 as _;
-                    }
+                Op::Char(okj, erj, ch) => {
+                    op_index = check_and_jump(&mut chars, okj, erj, |c| c == ch)
                 }
             };
         }
@@ -248,8 +231,6 @@ enum Op {
     Digit(Jump, Jump),
     Alphanumeric(Jump, Jump),
     Char(Jump, Jump, char),
-    Byte(Jump, Jump, u8),
-    Bytes3(Jump, Jump, [u8; 3]),
 }
 
 impl fmt::Debug for Op {
@@ -305,24 +286,6 @@ impl fmt::Debug for Op {
                 erj.0,
                 width = WIDTH - 4
             )),
-            Op::Byte(okj, erj, byte) => f.write_fmt(format_args!(
-                "{:width$}'{}' {} {}",
-                "Byte",
-                *byte as char,
-                okj.0,
-                erj.0,
-                width = WIDTH - 4
-            )),
-            Op::Bytes3(okj, erj, bytes) => f.write_fmt(format_args!(
-                "{:width$}'{}','{}','{}' {} {}",
-                "Bytes3",
-                bytes[0] as char,
-                bytes[1] as char,
-                bytes[2] as char,
-                okj.0,
-                erj.0,
-                width = WIDTH - 4
-            )),
         }
     }
 }
@@ -363,7 +326,10 @@ impl<'a> PatternCompiler<'a> {
 
     fn next(&mut self) -> Result<char, PatternError> {
         match self.text.next() {
-            Some(c) => Ok(c),
+            Some(c) => {
+                self.current_char = c;
+                Ok(c)
+            }
             None => Err(PatternError::UnexpectedEndOfPattern),
         }
     }
@@ -610,17 +576,17 @@ impl<'a> PatternCompiler<'a> {
                 'u' => Op::Upper(okj, erj),
                 'd' => Op::Digit(okj, erj),
                 'w' => Op::Alphanumeric(okj, erj),
-                '%' => Op::Byte(okj, erj, b'%'),
-                '$' => Op::Byte(okj, erj, b'$'),
-                '.' => Op::Byte(okj, erj, b'.'),
-                '!' => Op::Byte(okj, erj, b'!'),
-                '(' => Op::Byte(okj, erj, b'('),
-                ')' => Op::Byte(okj, erj, b')'),
-                '[' => Op::Byte(okj, erj, b'['),
-                ']' => Op::Byte(okj, erj, b']'),
-                '{' => Op::Byte(okj, erj, b'{'),
-                '}' => Op::Byte(okj, erj, b'}'),
-                '|' => Op::Byte(okj, erj, b'|'),
+                '%' => Op::Char(okj, erj, '%'),
+                '$' => Op::Char(okj, erj, '$'),
+                '.' => Op::Char(okj, erj, '.'),
+                '!' => Op::Char(okj, erj, '!'),
+                '(' => Op::Char(okj, erj, '('),
+                ')' => Op::Char(okj, erj, ')'),
+                '[' => Op::Char(okj, erj, '['),
+                ']' => Op::Char(okj, erj, ']'),
+                '{' => Op::Char(okj, erj, '{'),
+                '}' => Op::Char(okj, erj, '}'),
+                '|' => Op::Char(okj, erj, '|'),
                 c => return Err(PatternError::InvalidEscaping(c)),
             },
             '$' => {
@@ -647,7 +613,7 @@ impl<'a> PatternCompiler<'a> {
         let mut i = 0;
         while i < self.ops.len() {
             match &self.ops[i] {
-                Op::Byte(_, _, _) => {
+                Op::Char(_, _, _) => {
                     /*
                     if !self.try_collapse_bytes3_at(i) {
                         self.try_collapse_sequence3_at(i);
@@ -698,9 +664,7 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Upper(okj, erj)
                 | Op::Digit(okj, erj)
                 | Op::Alphanumeric(okj, erj)
-                | Op::Char(okj, erj, _)
-                | Op::Byte(okj, erj, _)
-                | Op::Bytes3(okj, erj, _) => {
+                | Op::Char(okj, erj, _) => {
                     fix_jump(okj, index, jump);
                     fix_jump(erj, index, jump);
                 }
@@ -708,6 +672,7 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
+    /*
     fn try_collapse_bytes3_at(&mut self, index: usize) -> bool {
         if index + 3 > self.ops.len() {
             return false;
@@ -768,7 +733,9 @@ impl<'a> PatternCompiler<'a> {
 
         true
     }
+    */
 
+    /*
     fn try_collapse_sequence3_at(&mut self, index: usize) -> bool {
         if index + 6 > self.ops.len() {
             return false;
@@ -836,6 +803,7 @@ impl<'a> PatternCompiler<'a> {
 
         true
     }
+    */
 }
 
 #[cfg(test)]
@@ -1231,3 +1199,4 @@ mod tests {
         assert_err(PatternError::UnexpectedEndOfPattern, try_new_pattern("a|"));
     }
 }
+
