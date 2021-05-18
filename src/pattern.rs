@@ -154,6 +154,10 @@ impl Pattern {
                 Op::Char(okj, erj, ch) => {
                     op_index = check_and_jump(&mut chars, okj, erj, |c| c == ch)
                 }
+                Op::String(okj, erj, len, bytes) => {
+                    let s = unsafe {std::str::from_utf8_unchecked(&bytes[..len as usize])};
+                    todo!();
+                }
             };
         }
     }
@@ -231,13 +235,14 @@ enum Op {
     Digit(Jump, Jump),
     Alphanumeric(Jump, Jump),
     Char(Jump, Jump, char),
+    String(Jump, Jump, u8, [u8; 10]),
 }
 
 impl fmt::Debug for Op {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         const WIDTH: usize = 14;
 
-        fn p(f: &mut fmt::Formatter, name: &str, okj: &Jump, erj: &Jump) -> fmt::Result {
+        fn p(f: &mut fmt::Formatter, name: &str, okj: Jump, erj: Jump) -> fmt::Result {
             f.write_fmt(format_args!(
                 "{:width$}{} {}",
                 name,
@@ -248,24 +253,24 @@ impl fmt::Debug for Op {
         }
 
         match self {
-            Op::Ok => f.write_str("Ok"),
-            Op::Error => f.write_str("Error"),
-            Op::Reset(jump) => f.write_fmt(format_args!(
+            &Op::Ok => f.write_str("Ok"),
+            &Op::Error => f.write_str("Error"),
+            &Op::Reset(jump) => f.write_fmt(format_args!(
                 "{:width$} {}",
                 "Reset",
                 jump.0,
                 width = WIDTH - 4,
             )),
-            Op::Unwind(jump, len) => f.write_fmt(format_args!(
+            &Op::Unwind(jump, len) => f.write_fmt(format_args!(
                 "{:width$}[{}] {}",
                 "Unwind",
                 len.0,
                 jump.0,
                 width = WIDTH - 4
             )),
-            Op::EndAnchor(okj, erj) => p(f, "EndAnchor", okj, erj),
-            Op::SkipOne(okj, erj) => p(f, "SkipOne", okj, erj),
-            Op::SkipMany(okj, erj, len) => f.write_fmt(format_args!(
+            &Op::EndAnchor(okj, erj) => p(f, "EndAnchor", okj, erj),
+            &Op::SkipOne(okj, erj) => p(f, "SkipOne", okj, erj),
+            &Op::SkipMany(okj, erj, len) => f.write_fmt(format_args!(
                 "{:width$}[{}] {} {}",
                 "SkipMany",
                 len.0,
@@ -273,15 +278,23 @@ impl fmt::Debug for Op {
                 erj.0,
                 width = WIDTH - 4
             )),
-            Op::Alphabetic(okj, erj) => p(f, "Alphabetic", okj, erj),
-            Op::Lower(okj, erj) => p(f, "Lower", okj, erj),
-            Op::Upper(okj, erj) => p(f, "Upper", okj, erj),
-            Op::Digit(okj, erj) => p(f, "Digit", okj, erj),
-            Op::Alphanumeric(okj, erj) => p(f, "Alphanumeric", okj, erj),
-            Op::Char(okj, erj, c) => f.write_fmt(format_args!(
+            &Op::Alphabetic(okj, erj) => p(f, "Alphabetic", okj, erj),
+            &Op::Lower(okj, erj) => p(f, "Lower", okj, erj),
+            &Op::Upper(okj, erj) => p(f, "Upper", okj, erj),
+            &Op::Digit(okj, erj) => p(f, "Digit", okj, erj),
+            &Op::Alphanumeric(okj, erj) => p(f, "Alphanumeric", okj, erj),
+            &Op::Char(okj, erj, c) => f.write_fmt(format_args!(
                 "{:width$}'{}' {} {}",
                 "Char",
                 c,
+                okj.0,
+                erj.0,
+                width = WIDTH - 4
+            )),
+            &Op::String(okj, erj, len, bytes) => f.write_fmt(format_args!(
+                "{:width$}'{}' {} {}",
+                "String",
+                unsafe {std::str::from_utf8_unchecked(&bytes[..len as usize])},
                 okj.0,
                 erj.0,
                 width = WIDTH - 4
@@ -664,7 +677,8 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Upper(okj, erj)
                 | Op::Digit(okj, erj)
                 | Op::Alphanumeric(okj, erj)
-                | Op::Char(okj, erj, _) => {
+                | Op::Char(okj, erj, _)
+                | Op::String(okj, erj, _, _) => {
                     fix_jump(okj, index, jump);
                     fix_jump(erj, index, jump);
                 }
@@ -823,7 +837,7 @@ mod tests {
     #[test]
     fn assert_size() {
         // TODO we can make it 16 and have Char2
-        assert_eq!(12, std::mem::size_of::<Op>());
+        assert_eq!(16, std::mem::size_of::<Op>());
     }
 
     #[test]
