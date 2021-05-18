@@ -1,4 +1,4 @@
-use std::{convert::From, fmt, ops::AddAssign};
+use std::{convert::From, fmt, ops::AddAssign, str::Chars};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {
@@ -52,7 +52,7 @@ impl Pattern {
     }
 
     pub fn compile(&mut self, pattern: &str) -> Result<(), PatternError> {
-        match PatternCompiler::new(&mut self.ops, pattern.as_bytes()).compile() {
+        match PatternCompiler::new(&mut self.ops, pattern).compile() {
             Ok(start_jump) => {
                 self.start_jump = start_jump;
                 Ok(())
@@ -152,6 +152,10 @@ impl Pattern {
                 Op::Alphanumeric(okj, erj) => {
                     op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_alphanumeric());
                 }
+                Op::Char(okj, erj, c) => {
+                    // TODO
+                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b == c as u8)
+                }
                 Op::Byte(okj, erj, byte) => {
                     op_index = check_and_jump(&mut bytes, okj, erj, |b| b == byte)
                 }
@@ -243,6 +247,7 @@ enum Op {
     Upper(Jump, Jump),
     Digit(Jump, Jump),
     Alphanumeric(Jump, Jump),
+    Char(Jump, Jump, char),
     Byte(Jump, Jump, u8),
     Bytes3(Jump, Jump, [u8; 3]),
 }
@@ -292,6 +297,14 @@ impl fmt::Debug for Op {
             Op::Upper(okj, erj) => p(f, "Upper", okj, erj),
             Op::Digit(okj, erj) => p(f, "Digit", okj, erj),
             Op::Alphanumeric(okj, erj) => p(f, "Alphanumeric", okj, erj),
+            Op::Char(okj, erj, c) => f.write_fmt(format_args!(
+                "{:width$}'{}' {} {}",
+                "Char",
+                c,
+                okj.0,
+                erj.0,
+                width = WIDTH - 4
+            )),
             Op::Byte(okj, erj, byte) => f.write_fmt(format_args!(
                 "{:width$}'{}' {} {}",
                 "Byte",
@@ -315,18 +328,18 @@ impl fmt::Debug for Op {
 }
 
 struct PatternCompiler<'a> {
-    pub bytes: &'a [u8],
-    pub index: usize,
+    pub text: Chars<'a>,
+    pub current_char: char,
     pub start_jump: Jump,
     pub ops: &'a mut Vec<Op>,
 }
 
 impl<'a> PatternCompiler<'a> {
-    pub fn new(ops: &'a mut Vec<Op>, bytes: &'a [u8]) -> Self {
+    pub fn new(ops: &'a mut Vec<Op>, text: &'a str) -> Self {
         ops.clear();
         Self {
-            bytes,
-            index: 0,
+            text: text.chars(),
+            current_char: '\0',
             start_jump: Jump(2),
             ops,
         }
@@ -340,39 +353,24 @@ impl<'a> PatternCompiler<'a> {
         Ok(self.start_jump)
     }
 
-    fn peek(&self) -> Result<u8, PatternError> {
-        if self.index < self.bytes.len() {
-            Ok(self.bytes[self.index])
-        } else {
-            Err(PatternError::UnexpectedEndOfPattern)
-        }
-    }
-
-    fn current(&self) -> u8 {
-        self.bytes[self.index - 1]
-    }
-
-    fn assert_current(&self, byte: u8) -> Result<(), PatternError> {
-        if self.current() == byte {
+    fn assert_current(&self, c: char) -> Result<(), PatternError> {
+        if self.current_char == c {
             Ok(())
         } else {
-            Err(PatternError::Expected(byte as char))
+            Err(PatternError::Expected(c))
         }
     }
 
-    fn next(&mut self) -> Result<u8, PatternError> {
-        match self.peek() {
-            Ok(b) => {
-                self.index += 1;
-                Ok(b)
-            }
-            Err(e) => Err(e),
+    fn next(&mut self) -> Result<char, PatternError> {
+        match self.text.next() {
+            Some(c) => Ok(c),
+            None => Err(PatternError::UnexpectedEndOfPattern),
         }
     }
 
-    fn next_is_not(&mut self, byte: u8) -> Result<bool, PatternError> {
+    fn next_is(&mut self, c: char) -> Result<bool, PatternError> {
         match self.next() {
-            Ok(b) => Ok(b != byte),
+            Ok(ch) => Ok(ch == c),
             Err(e) => Err(e),
         }
     }
@@ -398,7 +396,7 @@ impl<'a> PatternCompiler<'a> {
         if let Ok(_) = self.next() {
             self.parse_stmt(JumpFrom::Beginning(reset_jump))?;
             while let Ok(_) = self.next() {
-                if self.current() == b'|' {
+                if self.current_char == '|' {
                     self.next()?;
                     self.ops.push(Op::Unwind(Jump(1), Length(0)));
                     patch_reset_jump(self, reset_jump);
@@ -413,8 +411,8 @@ impl<'a> PatternCompiler<'a> {
     }
 
     fn parse_stmt(&mut self, erj: JumpFrom) -> Result<(), PatternError> {
-        match self.current() {
-            b'{' => self.parse_repeat_stmt(erj),
+        match self.current_char {
+            '{' => self.parse_repeat_stmt(erj),
             _ => match self.parse_expr(JumpFrom::End(Jump(0)), erj) {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e),
@@ -423,9 +421,9 @@ impl<'a> PatternCompiler<'a> {
     }
 
     fn parse_expr(&mut self, okj: JumpFrom, erj: JumpFrom) -> Result<Length, PatternError> {
-        let len = match self.current() {
-            b'(' => self.parse_sequence_expr(okj, erj)?,
-            b'[' => self.parse_group_expr(okj, erj)?,
+        let len = match self.current_char {
+            '(' => self.parse_sequence_expr(okj, erj)?,
+            '[' => self.parse_group_expr(okj, erj)?,
             _ => self.parse_class_expr(okj, erj)?,
         };
 
@@ -480,9 +478,9 @@ impl<'a> PatternCompiler<'a> {
         let end_jump = self.get_absolute_jump(JumpFrom::End(Jump(0)));
 
         let mut has_cancel_pattern = false;
-        while self.next_is_not(b'}')? {
-            match self.current() {
-                b'!' => {
+        while !self.next_is('}')? {
+            match self.current_char {
+                '!' => {
                     self.next()?;
                     self.parse_expr(JumpFrom::Beginning(end_jump), JumpFrom::End(Jump(0)))?;
                     has_cancel_pattern = true;
@@ -499,7 +497,7 @@ impl<'a> PatternCompiler<'a> {
 
         self.patch_unwind_jump(JumpFrom::End(Jump(0)), end_jump);
 
-        self.assert_current(b'}')?;
+        self.assert_current('}')?;
         Ok(())
     }
 
@@ -508,14 +506,12 @@ impl<'a> PatternCompiler<'a> {
         okj: JumpFrom,
         erj: JumpFrom,
     ) -> Result<Length, PatternError> {
-        let inverse = self.peek()? == b'!';
+        let previous_state = self.text.clone();
         let mut len = Length(0);
 
-        if inverse {
-            self.next()?;
-
+        if self.next()? == '!' {
             let abs_erj = self.get_absolute_jump(erj);
-            while self.next_is_not(b')')? {
+            while !self.next_is(')')? {
                 let expr_len = self.parse_expr(JumpFrom::End(Jump(2)), JumpFrom::End(Jump(0)))?;
                 self.skip(
                     (self.ops.len() + 3).into(),
@@ -529,8 +525,9 @@ impl<'a> PatternCompiler<'a> {
             self.jump_at_end(okj);
             self.patch_unwind_jump(erj, abs_erj);
         } else {
+            self.text = previous_state;
             let abs_erj = self.get_absolute_jump(erj);
-            while self.next_is_not(b')')? {
+            while !self.next_is(')')? {
                 let expr_len = self.parse_expr(JumpFrom::End(Jump(1)), JumpFrom::End(Jump(0)))?;
                 self.ops.push(Op::Unwind(abs_erj, len));
                 len += expr_len;
@@ -539,19 +536,17 @@ impl<'a> PatternCompiler<'a> {
             self.patch_unwind_jump(erj, abs_erj);
         }
 
-        self.assert_current(b')')?;
+        self.assert_current(')')?;
         Ok(len)
     }
 
     fn parse_group_expr(&mut self, okj: JumpFrom, erj: JumpFrom) -> Result<Length, PatternError> {
-        let inverse = self.peek()? == b'!';
+        let previous_state = self.text.clone();
         let mut len = None;
 
-        if inverse {
-            self.next()?;
-
+        if self.next()? == '!' {
             let abs_erj = self.get_absolute_jump(erj);
-            while self.next_is_not(b']')? {
+            while !self.next_is(']')? {
                 let expr_len = self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::End(Jump(1)))?;
                 self.ops.push(Op::Unwind(abs_erj, expr_len));
 
@@ -571,8 +566,9 @@ impl<'a> PatternCompiler<'a> {
             }
             self.patch_unwind_jump(erj, abs_erj);
         } else {
+            self.text = previous_state;
             let abs_okj = self.get_absolute_jump(okj);
-            while self.next_is_not(b']')? {
+            while !self.next_is(']')? {
                 let expr_len =
                     self.parse_expr(JumpFrom::Beginning(abs_okj), JumpFrom::End(Jump(0)))?;
 
@@ -585,7 +581,7 @@ impl<'a> PatternCompiler<'a> {
             self.patch_unwind_jump(okj, abs_okj);
         }
 
-        self.assert_current(b']')?;
+        self.assert_current(']')?;
         len.ok_or(PatternError::EmptyGroup)
     }
 
@@ -607,40 +603,40 @@ impl<'a> PatternCompiler<'a> {
             }
         };
 
-        let op = match self.current() {
-            b'%' => match self.next()? {
-                b'a' => Op::Alphabetic(okj, erj),
-                b'l' => Op::Lower(okj, erj),
-                b'u' => Op::Upper(okj, erj),
-                b'd' => Op::Digit(okj, erj),
-                b'w' => Op::Alphanumeric(okj, erj),
-                b'%' => Op::Byte(okj, erj, b'%'),
-                b'$' => Op::Byte(okj, erj, b'$'),
-                b'.' => Op::Byte(okj, erj, b'.'),
-                b'!' => Op::Byte(okj, erj, b'!'),
-                b'(' => Op::Byte(okj, erj, b'('),
-                b')' => Op::Byte(okj, erj, b')'),
-                b'[' => Op::Byte(okj, erj, b'['),
-                b']' => Op::Byte(okj, erj, b']'),
-                b'{' => Op::Byte(okj, erj, b'{'),
-                b'}' => Op::Byte(okj, erj, b'}'),
-                b'|' => Op::Byte(okj, erj, b'|'),
-                b => return Err(PatternError::InvalidEscaping(b as char)),
+        let op = match self.current_char {
+            '%' => match self.next()? {
+                'a' => Op::Alphabetic(okj, erj),
+                'l' => Op::Lower(okj, erj),
+                'u' => Op::Upper(okj, erj),
+                'd' => Op::Digit(okj, erj),
+                'w' => Op::Alphanumeric(okj, erj),
+                '%' => Op::Byte(okj, erj, b'%'),
+                '$' => Op::Byte(okj, erj, b'$'),
+                '.' => Op::Byte(okj, erj, b'.'),
+                '!' => Op::Byte(okj, erj, b'!'),
+                '(' => Op::Byte(okj, erj, b'('),
+                ')' => Op::Byte(okj, erj, b')'),
+                '[' => Op::Byte(okj, erj, b'['),
+                ']' => Op::Byte(okj, erj, b']'),
+                '{' => Op::Byte(okj, erj, b'{'),
+                '}' => Op::Byte(okj, erj, b'}'),
+                '|' => Op::Byte(okj, erj, b'|'),
+                c => return Err(PatternError::InvalidEscaping(c)),
             },
-            b'$' => {
+            '$' => {
                 self.ops.push(Op::EndAnchor(okj, erj));
                 return Ok(Length(0));
             }
-            b'.' => Op::SkipOne(okj, erj),
-            b'!' => return Err(PatternError::Unescaped('!')),
-            b'(' => return Err(PatternError::Unescaped('(')),
-            b')' => return Err(PatternError::Unescaped(')')),
-            b'[' => return Err(PatternError::Unescaped('[')),
-            b']' => return Err(PatternError::Unescaped(']')),
-            b'{' => return Err(PatternError::Unescaped('{')),
-            b'}' => return Err(PatternError::Unescaped('}')),
-            b'|' => return Err(PatternError::Unescaped('|')),
-            b => Op::Byte(okj, erj, b),
+            '.' => Op::SkipOne(okj, erj),
+            '!' => return Err(PatternError::Unescaped('!')),
+            '(' => return Err(PatternError::Unescaped('(')),
+            ')' => return Err(PatternError::Unescaped(')')),
+            '[' => return Err(PatternError::Unescaped('[')),
+            ']' => return Err(PatternError::Unescaped(']')),
+            '{' => return Err(PatternError::Unescaped('{')),
+            '}' => return Err(PatternError::Unescaped('}')),
+            '|' => return Err(PatternError::Unescaped('|')),
+            c => Op::Char(okj, erj, c),
         };
 
         self.ops.push(op);
@@ -652,9 +648,11 @@ impl<'a> PatternCompiler<'a> {
         while i < self.ops.len() {
             match &self.ops[i] {
                 Op::Byte(_, _, _) => {
+                    /*
                     if !self.try_collapse_bytes3_at(i) {
                         self.try_collapse_sequence3_at(i);
                     }
+                    */
                     i += 1;
                 }
                 Op::Unwind(jump, Length(0)) => {
@@ -700,6 +698,7 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Upper(okj, erj)
                 | Op::Digit(okj, erj)
                 | Op::Alphanumeric(okj, erj)
+                | Op::Char(okj, erj, _)
                 | Op::Byte(okj, erj, _)
                 | Op::Bytes3(okj, erj, _) => {
                     fix_jump(okj, index, jump);
@@ -758,6 +757,7 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Upper(okj, erj)
                 | Op::Digit(okj, erj)
                 | Op::Alphanumeric(okj, erj)
+                | Op::Char(okj, erj, _)
                 | Op::Byte(okj, erj, _)
                 | Op::Bytes3(okj, erj, _) => {
                     fix_jump(okj, index);
@@ -825,6 +825,7 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Upper(okj, erj)
                 | Op::Digit(okj, erj)
                 | Op::Alphanumeric(okj, erj)
+                | Op::Char(okj, erj, _)
                 | Op::Byte(okj, erj, _)
                 | Op::Bytes3(okj, erj, _) => {
                     fix_jump(okj, index);
@@ -853,7 +854,8 @@ mod tests {
 
     #[test]
     fn assert_size() {
-        assert_eq!(8, std::mem::size_of::<Op>());
+        // TODO we can make it 16 and have Char2
+        assert_eq!(12, std::mem::size_of::<Op>());
     }
 
     #[test]
