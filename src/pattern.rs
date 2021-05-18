@@ -635,7 +635,7 @@ impl<'a> PatternCompiler<'a> {
             match &self.ops[i] {
                 Op::Char(_, _, _) => {
                     if !self.try_collapse_chars_at(i) {
-                        //self.try_collapse_sequence3_at(i);
+                        self.try_collapse_sequence_at(i);
                     }
                     i += 1;
                 }
@@ -692,25 +692,22 @@ impl<'a> PatternCompiler<'a> {
     }
 
     fn try_collapse_chars_at(&mut self, index: usize) -> bool {
-        let c = match self.ops[index] {
-            Op::Char(_, _, c) => c,
+        let (c, mut okj, erj) = match self.ops[index] {
+            Op::Char(okj, erj, c) => (c, okj, erj),
             _ => return false,
         };
         let mut string = [0; OP_STRING_LEN];
         let mut len = c.encode_utf8(&mut string).len();
 
-        let mut final_okj = None;
-        let mut final_erj = None;
-
         let mut op_index = index + 1;
         while op_index < self.ops.len() {
-            if let &Op::Char(okj, erj, c) = &self.ops[op_index] {
-                if op_index == okj.0 as _
-                    && final_erj.unwrap_or(erj).0 == erj.0
+            if let &Op::Char(oj, ej, c) = &self.ops[op_index] {
+                if op_index + 1 == oj.0 as _
+                    && erj.0 == ej.0
                     && len + c.len_utf8() <= OP_STRING_LEN
                 {
-                    final_okj = Some(okj);
-                    final_erj = Some(erj);
+                    len += c.encode_utf8(&mut string[len..]).len();
+                    okj = oj;
                     op_index += 1;
                     continue;
                 }
@@ -719,17 +716,14 @@ impl<'a> PatternCompiler<'a> {
             break;
         }
 
-        let okj = match final_okj {
-            Some(jump) => jump,
-            None => return false,
-        };
-        let erj = match final_erj {
-            Some(jump) => jump,
-            None => return false,
-        };
+        let from = index + 1;
+        let to = op_index;
+        if from == to {
+            return false;
+        }
 
         self.ops[index] = Op::String(okj, erj, len as _, string);
-        self.ops.drain(index + 1..op_index);
+        self.ops.drain(from..to);
 
         #[inline]
         fn fix_jump(jump: &mut Jump, index: usize, fix: u16) {
@@ -762,6 +756,9 @@ impl<'a> PatternCompiler<'a> {
         }
 
         true
+    }
+    
+    fn try_collapse_sequence_at(&mut self, index: usize) {
     }
 
     /*
@@ -936,6 +933,7 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches(""));
 
         let p = new_pattern("aa");
+        dbg!(&p);
         assert_eq!(MatchResult::Ok(2), p.matches("aa"));
         assert_eq!(MatchResult::Ok(2), p.matches("aaa"));
         assert_eq!(MatchResult::Err, p.matches("baa"));
