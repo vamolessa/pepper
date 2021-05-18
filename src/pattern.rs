@@ -1175,6 +1175,19 @@ mod tests {
         assert_eq!(MatchResult::Ok(1), p.matches("ca"));
         assert_eq!(MatchResult::Ok(1), p.matches("cab"));
     }
+    
+    #[test]
+    fn utf8() {
+        let p = new_pattern("[açé]");
+        assert_eq!(MatchResult::Ok(1), p.matches("a"));
+        assert_eq!(MatchResult::Ok('ç'.len_utf8()), p.matches("ç"));
+        assert_eq!(MatchResult::Ok('é'.len_utf8()), p.matches("é"));
+        
+        let p = new_pattern(".");
+        assert_eq!(MatchResult::Ok(1), p.matches("a"));
+        assert_eq!(MatchResult::Ok('ç'.len_utf8()), p.matches("ç"));
+        assert_eq!(MatchResult::Ok('é'.len_utf8()), p.matches("é"));
+    }
 
     #[test]
     fn bad_pattern() {
