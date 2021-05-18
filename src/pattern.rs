@@ -836,7 +836,6 @@ mod tests {
 
     #[test]
     fn assert_size() {
-        // TODO we can make it 16 and have Char2
         assert_eq!(16, std::mem::size_of::<Op>());
     }
 
