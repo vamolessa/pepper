@@ -55,4 +55,3 @@ pub fn search(keyword: &str) -> Option<(&'static Path, usize)> {
     }
     last_match
 }
-

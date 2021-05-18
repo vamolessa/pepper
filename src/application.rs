@@ -365,4 +365,3 @@ impl<'stdout> Drop for ClientApplication<'stdout> {
         }
     }
 }
-

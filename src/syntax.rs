@@ -1,9 +1,9 @@
 use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPositionIndex, BufferRange},
+    editor_utils::hash_bytes,
     glob::{Glob, InvalidGlobError},
     pattern::{MatchResult, Pattern, PatternError, PatternState},
-    editor_utils::hash_bytes,
 };
 
 const MAX_HIGHLIGHT_COUNT: usize = 2048;
@@ -689,4 +689,3 @@ mod tests {
         }
     }
 }
-

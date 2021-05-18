@@ -320,4 +320,3 @@ mod tests {
         assert_eq!(BONUS_WORD_BOUNDARY, fuzzy_match("abc x", "x"));
     }
 }
-

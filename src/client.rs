@@ -282,4 +282,3 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
-

@@ -155,8 +155,13 @@ impl Pattern {
                     op_index = check_and_jump(&mut chars, okj, erj, |c| c == ch)
                 }
                 Op::String(okj, erj, len, bytes) => {
-                    let s = unsafe {std::str::from_utf8_unchecked(&bytes[..len as usize])};
-                    todo!();
+                    let s = unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) };
+                    op_index = if chars.as_str().starts_with(s) {
+                        chars = chars.as_str()[s.len()..].chars();
+                        okj.0 as _
+                    } else {
+                        erj.0 as _
+                    }
                 }
             };
         }
@@ -220,6 +225,8 @@ enum JumpFrom {
     End(Jump),
 }
 
+const OP_STRING_LEN: usize = 10;
+
 #[derive(Clone)]
 enum Op {
     Ok,
@@ -235,7 +242,7 @@ enum Op {
     Digit(Jump, Jump),
     Alphanumeric(Jump, Jump),
     Char(Jump, Jump, char),
-    String(Jump, Jump, u8, [u8; 10]),
+    String(Jump, Jump, u8, [u8; OP_STRING_LEN]),
 }
 
 impl fmt::Debug for Op {
@@ -294,7 +301,7 @@ impl fmt::Debug for Op {
             &Op::String(okj, erj, len, bytes) => f.write_fmt(format_args!(
                 "{:width$}'{}' {} {}",
                 "String",
-                unsafe {std::str::from_utf8_unchecked(&bytes[..len as usize])},
+                unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) },
                 okj.0,
                 erj.0,
                 width = WIDTH - 4
@@ -627,11 +634,9 @@ impl<'a> PatternCompiler<'a> {
         while i < self.ops.len() {
             match &self.ops[i] {
                 Op::Char(_, _, _) => {
-                    /*
-                    if !self.try_collapse_bytes3_at(i) {
-                        self.try_collapse_sequence3_at(i);
+                    if !self.try_collapse_chars_at(i) {
+                        //self.try_collapse_sequence3_at(i);
                     }
-                    */
                     i += 1;
                 }
                 Op::Unwind(jump, Length(0)) => {
@@ -684,6 +689,79 @@ impl<'a> PatternCompiler<'a> {
                 }
             }
         }
+    }
+
+    fn try_collapse_chars_at(&mut self, index: usize) -> bool {
+        let c = match self.ops[index] {
+            Op::Char(_, _, c) => c,
+            _ => return false,
+        };
+        let mut string = [0; OP_STRING_LEN];
+        let mut len = c.encode_utf8(&mut string).len();
+
+        let mut final_okj = None;
+        let mut final_erj = None;
+
+        let mut op_index = index + 1;
+        while op_index < self.ops.len() {
+            if let &Op::Char(okj, erj, c) = &self.ops[op_index] {
+                if op_index == okj.0 as _
+                    && final_erj.unwrap_or(erj).0 == erj.0
+                    && len + c.len_utf8() <= OP_STRING_LEN
+                {
+                    final_okj = Some(okj);
+                    final_erj = Some(erj);
+                    op_index += 1;
+                    continue;
+                }
+            }
+
+            break;
+        }
+
+        let okj = match final_okj {
+            Some(jump) => jump,
+            None => return false,
+        };
+        let erj = match final_erj {
+            Some(jump) => jump,
+            None => return false,
+        };
+
+        self.ops[index] = Op::String(okj, erj, len as _, string);
+        self.ops.drain(index + 1..op_index);
+
+        #[inline]
+        fn fix_jump(jump: &mut Jump, index: usize, fix: u16) {
+            if jump.0 as usize > index {
+                jump.0 -= fix;
+            }
+        }
+
+        let fix = (len - 1) as u16;
+        fix_jump(&mut self.start_jump, index, fix);
+
+        for op in self.ops.iter_mut() {
+            match op {
+                Op::Ok | Op::Error => (),
+                Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index, fix),
+                Op::EndAnchor(okj, erj)
+                | Op::SkipOne(okj, erj)
+                | Op::SkipMany(okj, erj, _)
+                | Op::Alphabetic(okj, erj)
+                | Op::Lower(okj, erj)
+                | Op::Upper(okj, erj)
+                | Op::Digit(okj, erj)
+                | Op::Alphanumeric(okj, erj)
+                | Op::Char(okj, erj, _)
+                | Op::String(okj, erj, _, _) => {
+                    fix_jump(okj, index, fix);
+                    fix_jump(erj, index, fix);
+                }
+            }
+        }
+
+        true
     }
 
     /*
@@ -1188,14 +1266,14 @@ mod tests {
         assert_eq!(MatchResult::Ok(1), p.matches("ca"));
         assert_eq!(MatchResult::Ok(1), p.matches("cab"));
     }
-    
+
     #[test]
     fn utf8() {
         let p = new_pattern("[açé]");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok('ç'.len_utf8()), p.matches("ç"));
         assert_eq!(MatchResult::Ok('é'.len_utf8()), p.matches("é"));
-        
+
         let p = new_pattern(".");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok('ç'.len_utf8()), p.matches("ç"));

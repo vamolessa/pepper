@@ -1825,4 +1825,3 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
-
