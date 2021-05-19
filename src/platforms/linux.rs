@@ -20,8 +20,8 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    errno, suspend, get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
-    Process, RawMode,
+    errno, get_terminal_size, is_pipped, notify_suspension, parse_terminal_keys, read,
+    read_from_connection, run, suspend_process, Process, RawMode,
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
@@ -187,7 +187,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
         || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );
-    platform.set_suspend_api(suspend);
+    platform.set_suspend_api(notify_suspension);
     let event_sender = ServerApplication::run(args, platform);
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
@@ -390,7 +390,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         return;
     }
 
-    let raw_mode;
+    let mut raw_mode;
     let resize_signal;
     let suspend_signal;
 
@@ -408,7 +408,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         let signal = SignalFd::new(libc::SIGWINCH);
         epoll.add(signal.as_raw_fd(), 2);
         resize_signal = Some(signal);
-        
+
         let signal = SignalFd::new(libc::SIGTSTP);
         epoll.add(signal.as_raw_fd(), 3);
         suspend_signal = Some(signal);
@@ -470,8 +470,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 3 => {
                     if let Some(ref signal) = suspend_signal {
                         signal.read();
-                        panic!("suspend!");
-                        // TODO: suspend here!
+                        suspend_process(&mut raw_mode);
                     }
                 }
                 _ => unreachable!(),

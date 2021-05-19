@@ -20,8 +20,8 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    errno, suspend, get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
-    Process, RawMode,
+    errno, get_terminal_size, is_pipped, notify_suspension, parse_terminal_keys, read,
+    read_from_connection, run, suspend_process, Process, RawMode,
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
@@ -207,7 +207,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
 
     let (request_sender, request_receiver) = mpsc::channel();
     let mut platform = Platform::new(flush_requests, request_sender);
-    platform.set_suspend_api(suspend);
+    platform.set_suspend_api(notify_suspension);
     let event_sender = ServerApplication::run(args, platform);
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
@@ -414,7 +414,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         return;
     }
 
-    let raw_mode;
+    let mut raw_mode;
 
     let kqueue = Kqueue::new();
     kqueue.add(Event::Fd(connection.as_raw_fd()), 0);
@@ -476,9 +476,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     }
                 }
                 Ok(TriggeredEvent { index: 2, .. }) => resize = Some(get_terminal_size()),
-                Ok(TriggeredEvent { index: 3, .. }) => {
-                    // TODO: suspend
-                }
+                Ok(TriggeredEvent { index: 3, .. }) => suspend_process(&mut raw_mode),
                 Ok(_) => unreachable!(),
                 Err(()) => break 'main_loop,
             }

@@ -245,8 +245,12 @@ pub fn errno() -> libc::c_int {
     unsafe { *libc::__errno_location() }
 }
 
-pub fn suspend() {
-    // TODO: suspend here
+pub fn notify_suspension() {
+    unsafe { libc::kill(0, libc::SIGTSTP) };
+}
+
+pub fn suspend_process(raw_mode: &mut Option<RawMode>) {
+    unsafe {libc::raise(libc::SIGTSTP)};
 }
 
 pub fn get_terminal_size() -> (usize, usize) {
