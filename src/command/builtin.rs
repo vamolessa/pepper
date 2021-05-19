@@ -470,6 +470,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                             keys,
                         ) {
                             EditorControlFlow::Continue => Ok(None),
+                            EditorControlFlow::Suspend => Ok(Some(CommandOperation::Suspend)),
                             EditorControlFlow::Quit => Ok(Some(CommandOperation::Quit)),
                             EditorControlFlow::QuitAll => Ok(Some(CommandOperation::QuitAll)),
                         };

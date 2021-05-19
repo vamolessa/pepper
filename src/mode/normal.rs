@@ -78,7 +78,7 @@ impl State {
         let state = &mut ctx.editor.mode.normal_state;
         state.is_recording_auto_macro = false;
         match keys.next(&ctx.editor.buffered_keys) {
-            Key::Ctrl('z') => ctx.platform.suspend(),
+            Key::Ctrl('z') => return Some(ModeOperation::Suspend),
             Key::Char('q') => {
                 if ctx.editor.recording_macro.take().is_none() {
                     match keys.next(&ctx.editor.buffered_keys) {
@@ -110,6 +110,9 @@ impl State {
                                             keys,
                                         ) {
                                             EditorControlFlow::Continue => (),
+                                            EditorControlFlow::Suspend => {
+                                                return Some(ModeOperation::Suspend);
+                                            }
                                             EditorControlFlow::Quit => {
                                                 return Some(ModeOperation::Quit);
                                             }
@@ -1714,3 +1717,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     None
 }
+

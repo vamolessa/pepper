@@ -13,12 +13,14 @@ pub mod read_line;
 
 pub enum ModeOperation {
     Pending,
+    Suspend,
     Quit,
     QuitAll,
 }
 impl From<CommandOperation> for ModeOperation {
     fn from(op: CommandOperation) -> Self {
         match op {
+            CommandOperation::Suspend => ModeOperation::Suspend,
             CommandOperation::Quit => ModeOperation::Quit,
             CommandOperation::QuitAll => ModeOperation::QuitAll,
         }

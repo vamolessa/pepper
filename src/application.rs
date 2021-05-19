@@ -47,14 +47,6 @@ pub enum ApplicationEvent {
     },
 }
 
-fn restore_screen(stdout: &mut io::StdoutLock) {
-    use io::Write;
-    let _ = stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
-    let _ = stdout.write_all(ui::SHOW_CURSOR_CODE);
-    let _ = stdout.write_all(ui::RESET_STYLE_CODE);
-    let _ = stdout.flush();
-}
-
 pub struct ServerApplication;
 impl ServerApplication {
     pub const fn connection_buffer_len() -> usize {
@@ -144,6 +136,12 @@ impl ServerApplication {
                         while let Some(event) = events.next(&client_event_receiver) {
                             match editor.on_client_event(platform, &mut clients, event) {
                                 EditorControlFlow::Continue => (),
+                                EditorControlFlow::Suspend => {
+                                    let mut buf = platform.buf_pool.acquire();
+                                    let write = buf.write();
+                                    ServerEvent::Suspend.serialize(write);
+                                    //platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+                                }
                                 EditorControlFlow::Quit => {
                                     platform
                                         .enqueue_request(PlatformRequest::CloseClient { handle });
@@ -274,15 +272,8 @@ impl<'stdout> ClientApplication<'stdout> {
             }
         }
 
+        self.reinit_screen();
         if !self.is_pipped {
-            use io::Write;
-            self.stdout
-                .write_all(ui::ENTER_ALTERNATE_BUFFER_CODE)
-                .unwrap();
-            self.stdout.write_all(ui::HIDE_CURSOR_CODE).unwrap();
-            self.stdout.write_all(ui::MODE_256_COLORS_CODE).unwrap();
-            self.stdout.flush().unwrap();
-
             if args.as_client.is_none() {
                 ClientEvent::Key(self.handle, Key::None).serialize(&mut self.server_write_buf);
             }
@@ -295,13 +286,37 @@ impl<'stdout> ClientApplication<'stdout> {
         self.server_write_buf.as_slice()
     }
 
+    pub fn reinit_screen(&mut self) {
+        if self.is_pipped {
+            return;
+        }
+
+        use io::Write;
+        let _ = self.stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
+        let _ = self.stdout.write_all(ui::HIDE_CURSOR_CODE);
+        let _ = self.stdout.write_all(ui::MODE_256_COLORS_CODE);
+        self.stdout.flush().unwrap();
+    }
+
+    pub fn restore_screen(&mut self) {
+        if self.is_pipped {
+            return;
+        }
+
+        use io::Write;
+        let _ = self.stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
+        let _ = self.stdout.write_all(ui::SHOW_CURSOR_CODE);
+        let _ = self.stdout.write_all(ui::RESET_STYLE_CODE);
+        let _ = self.stdout.flush();
+    }
+
     pub fn update<'a>(
         &'a mut self,
         resize: Option<(usize, usize)>,
         keys: &[Key],
         stdin_bytes: &[u8],
         server_bytes: &[u8],
-    ) -> &'a [u8] {
+    ) -> (bool, &'a [u8]) {
         use io::Write;
 
         self.server_write_buf.clear();
@@ -330,6 +345,7 @@ impl<'stdout> ClientApplication<'stdout> {
             }
         }
 
+        let mut suspend = false;
         if !server_bytes.is_empty() {
             self.server_read_buf.extend_from_slice(server_bytes);
             let mut read_slice = &self.server_read_buf[..];
@@ -338,6 +354,7 @@ impl<'stdout> ClientApplication<'stdout> {
                 let previous_slice = read_slice;
                 match ServerEvent::deserialize(&mut read_slice) {
                     Ok(ServerEvent::Display(display)) => self.stdout.write_all(display).unwrap(),
+                    Ok(ServerEvent::Suspend) => suspend = true,
                     Ok(ServerEvent::CommandOutput(output)) => {
                         self.stdout.write_all(output.as_bytes()).unwrap();
                         self.stdout.write_all(b"\0").unwrap();
@@ -355,13 +372,12 @@ impl<'stdout> ClientApplication<'stdout> {
             self.stdout.flush().unwrap();
         }
 
-        self.server_write_buf.as_slice()
+        (suspend, self.server_write_buf.as_slice())
     }
 }
 impl<'stdout> Drop for ClientApplication<'stdout> {
     fn drop(&mut self) {
-        if !self.is_pipped {
-            restore_screen(&mut self.stdout);
-        }
+        self.restore_screen();
     }
 }
+

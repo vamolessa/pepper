@@ -11,7 +11,7 @@ use std::{
 };
 
 use pepper::{
-    application::AnyError,
+    application::{AnyError, ClientApplication},
     editor_utils::hash_bytes,
     platform::{BufPool, Key, ProcessTag, SharedBuf},
     Args,
@@ -246,11 +246,23 @@ pub fn errno() -> libc::c_int {
 }
 
 pub fn notify_suspension() {
+    eprintln!("notify suspension");
     unsafe { libc::kill(0, libc::SIGTSTP) };
 }
 
-pub fn suspend_process(raw_mode: &mut Option<RawMode>) {
-    unsafe {libc::raise(libc::SIGTSTP)};
+pub fn suspend_process(application: &mut ClientApplication, raw_mode: &mut Option<RawMode>) {
+    print!("on suspension\r\n");
+
+    application.restore_screen();
+    let was_in_raw_mode = raw_mode.is_some();
+    *raw_mode = None;
+
+    unsafe { libc::raise(libc::SIGTSTP) };
+
+    if was_in_raw_mode {
+        *raw_mode = Some(RawMode::enter());
+    }
+    application.reinit_screen();
 }
 
 pub fn get_terminal_size() -> (usize, usize) {

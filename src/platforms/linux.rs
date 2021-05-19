@@ -157,7 +157,7 @@ impl Epoll {
             libc::epoll_wait(self.0, events.0.as_mut_ptr(), events.0.len() as _, timeout)
         };
         if len == -1 {
-            if errno() != libc::EINTR {
+            if errno() == libc::EINTR {
                 len = 0;
             } else {
                 panic!("could not wait for events");
@@ -183,11 +183,10 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
     NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
 
     let (request_sender, request_receiver) = mpsc::channel();
-    let mut platform = Platform::new(
+    let platform = Platform::new(
         || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );
-    platform.set_suspend_api(notify_suspension);
     let event_sender = ServerApplication::run(args, platform);
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
@@ -414,9 +413,12 @@ fn run_client(args: Args, mut connection: UnixStream) {
         suspend_signal = Some(signal);
 
         let size = get_terminal_size();
-        let bytes = application.update(Some(size), &[], &[], &[]);
+        let (suspend, bytes) = application.update(Some(size), &[], &[], &[]);
         if connection.write(bytes).is_err() {
             return;
+        }
+        if suspend {
+            // TODO: suspend here
         }
     }
 
@@ -470,15 +472,18 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 3 => {
                     if let Some(ref signal) = suspend_signal {
                         signal.read();
-                        suspend_process(&mut raw_mode);
+                        suspend_process(&mut application, &mut raw_mode);
                     }
                 }
                 _ => unreachable!(),
             }
 
-            let bytes = application.update(resize, &keys, stdin_bytes, server_bytes);
+            let (suspend, bytes) = application.update(resize, &keys, stdin_bytes, server_bytes);
             if connection.write(bytes).is_err() {
                 break;
+            }
+            if suspend {
+                // TODO: suspend here
             }
         }
     }

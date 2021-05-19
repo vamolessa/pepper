@@ -67,7 +67,6 @@ pub enum ProcessTag {
 pub struct ProcessHandle(pub usize);
 
 pub struct Platform {
-    suspend: fn(),
     read_from_clipboard: fn(&str, &mut String),
     write_to_clipboard: fn(&mut String, &str),
     flush_requests: fn(),
@@ -82,7 +81,6 @@ pub struct Platform {
 impl Platform {
     pub fn new(flush_requests: fn(), request_sender: mpsc::Sender<PlatformRequest>) -> Self {
         Self {
-            suspend: || (),
             read_from_clipboard: |c, t| t.push_str(c),
             write_to_clipboard: |c, t| c.push_str(t),
             flush_requests,
@@ -95,10 +93,6 @@ impl Platform {
         }
     }
 
-    pub fn set_suspend_api(&mut self, suspend: fn()) {
-        self.suspend = suspend;
-    }
-
     pub fn set_clipboard_api(
         &mut self,
         read_from_clipboard: fn(&str, &mut String),
@@ -106,10 +100,6 @@ impl Platform {
     ) {
         self.read_from_clipboard = read_from_clipboard;
         self.write_to_clipboard = write_to_clipboard;
-    }
-
-    pub fn suspend(&self) {
-        (self.suspend)()
     }
 
     pub fn read_from_clipboard(&self, registers: &RegisterCollection, text: &mut String) {

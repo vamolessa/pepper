@@ -154,7 +154,7 @@ impl Kqueue {
             )
         };
         if len == -1 {
-            if errno() != libc::EINTR {
+            if errno() == libc::EINTR {
                 len = 0;
             } else {
                 panic!("could not wait for events");
@@ -206,8 +206,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
     }
 
     let (request_sender, request_receiver) = mpsc::channel();
-    let mut platform = Platform::new(flush_requests, request_sender);
-    platform.set_suspend_api(notify_suspension);
+    let platform = Platform::new(flush_requests, request_sender);
     let event_sender = ServerApplication::run(args, platform);
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
@@ -429,9 +428,12 @@ fn run_client(args: Args, mut connection: UnixStream) {
         kqueue.add(Event::Suspend, 3);
 
         let size = get_terminal_size();
-        let bytes = application.update(Some(size), &[], &[], &[]);
+        let (suspend, bytes) = application.update(Some(size), &[], &[], &[]);
         if connection.write(bytes).is_err() {
             return;
+        }
+        if suspend {
+            // TODO: suspend here
         }
     }
 
@@ -481,9 +483,12 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 Err(()) => break 'main_loop,
             }
 
-            let bytes = application.update(resize, &keys, stdin_bytes, server_bytes);
+            let (suspend, bytes) = application.update(resize, &keys, stdin_bytes, server_bytes);
             if connection.write(bytes).is_err() {
                 break;
+            }
+            if suspend {
+                // TODO: suspend here
             }
         }
     }

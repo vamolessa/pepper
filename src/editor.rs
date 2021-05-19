@@ -28,6 +28,7 @@ use crate::{
 #[derive(Clone, Copy)]
 pub enum EditorControlFlow {
     Continue,
+    Suspend,
     Quit,
     QuitAll,
 }
@@ -208,9 +209,8 @@ impl Editor {
             };
             match Mode::on_client_keys(&mut ctx, &mut keys) {
                 None => (),
-                Some(ModeOperation::Pending) => {
-                    return EditorControlFlow::Continue;
-                }
+                Some(ModeOperation::Pending) => return EditorControlFlow::Continue,
+                Some(ModeOperation::Suspend) => return EditorControlFlow::Suspend,
                 Some(ModeOperation::Quit) => {
                     Mode::change_to(&mut ctx, ModeKind::default());
                     self.buffered_keys.0.truncate(start_index);
@@ -292,6 +292,7 @@ impl Editor {
                 self.trigger_event_handlers(platform, clients);
                 match result {
                     None => EditorControlFlow::Continue,
+                    Some(CommandOperation::Suspend) => EditorControlFlow::Suspend,
                     Some(CommandOperation::Quit) => EditorControlFlow::Quit,
                     Some(CommandOperation::QuitAll) => EditorControlFlow::QuitAll,
                 }
@@ -460,3 +461,4 @@ impl Editor {
         }
     }
 }
+

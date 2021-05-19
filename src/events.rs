@@ -437,6 +437,7 @@ where
 
 pub enum ServerEvent<'a> {
     Display(&'a [u8]),
+    Suspend,
     CommandOutput(&'a str),
     Request(&'a str),
 }
@@ -462,12 +463,13 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 0u8.serialize(serializer);
                 display.serialize(serializer);
             }
+            Self::Suspend => 1u8.serialize(serializer),
             Self::CommandOutput(output) => {
-                1u8.serialize(serializer);
+                2u8.serialize(serializer);
                 output.serialize(serializer);
             }
             Self::Request(request) => {
-                2u8.serialize(serializer);
+                3u8.serialize(serializer);
                 request.serialize(serializer);
             }
         }
@@ -483,11 +485,12 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 let display = Serialize::deserialize(deserializer)?;
                 Ok(Self::Display(display))
             }
-            1 => {
+            1 => Ok(Self::Suspend),
+            2 => {
                 let output = Serialize::deserialize(deserializer)?;
                 Ok(Self::CommandOutput(output))
             }
-            2 => {
+            3 => {
                 let request = Serialize::deserialize(deserializer)?;
                 Ok(Self::Request(request))
             }
@@ -704,3 +707,4 @@ mod tests {
         assert_key_serialization(Key::Esc);
     }
 }
+

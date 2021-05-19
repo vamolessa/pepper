@@ -1192,7 +1192,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
                 console_output_mode = Some(output_mode);
 
                 let size = get_console_size(output_handle);
-                let bytes = application.update(Some(size), &[], &[], &[]);
+                let (_, bytes) = application.update(Some(size), &[], &[], &[]);
                 if !connection.write(bytes) {
                     return;
                 }
@@ -1243,7 +1243,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
             _ => unreachable!(),
         }
 
-        let bytes = application.update(resize, &keys, stdin_bytes, server_bytes);
+        let (_, bytes) = application.update(resize, &keys, stdin_bytes, server_bytes);
         if !connection.write(bytes) {
             break;
         }

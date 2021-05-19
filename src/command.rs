@@ -386,6 +386,7 @@ type CommandFn = for<'state, 'command> fn(
 ) -> Result<Option<CommandOperation>, CommandError>;
 
 pub enum CommandOperation {
+    Suspend,
     Quit,
     QuitAll,
 }
