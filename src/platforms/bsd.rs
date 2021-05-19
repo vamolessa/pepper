@@ -34,6 +34,7 @@ pub fn main() {
 
 enum Event {
     Resize,
+    Suspend,
     FlushRequests(bool),
     Fd(RawFd),
 }
@@ -42,6 +43,14 @@ impl Event {
         match self {
             Self::Resize => libc::kevent {
                 ident: libc::SIGWINCH as _,
+                filter: libc::EVFILT_SIGNAL,
+                flags,
+                fflags: 0,
+                data: 0,
+                udata: index as _,
+            },
+            Self::Suspend => libc::kevent {
+                ident: libc::SIGTSTP as _,
                 filter: libc::EVFILT_SIGNAL,
                 flags,
                 fflags: 0,
@@ -416,6 +425,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     } else {
         raw_mode = Some(RawMode::enter());
         kqueue.add(Event::Resize, 2);
+        kqueue.add(Event::Suspend, 3);
 
         let size = get_terminal_size();
         let bytes = application.update(Some(size), &[], &[], &[]);
@@ -465,6 +475,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     }
                 }
                 Ok(TriggeredEvent { index: 2, .. }) => resize = Some(get_terminal_size()),
+                Ok(TriggeredEvent { index: 3, .. }) => {
+                    // TODO: suspend
+                }
                 Ok(_) => unreachable!(),
                 Err(()) => break 'main_loop,
             }

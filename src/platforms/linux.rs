@@ -391,6 +391,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     let raw_mode;
     let resize_signal;
+    let suspend_signal;
 
     let epoll = Epoll::new();
     epoll.add(connection.as_raw_fd(), 0);
@@ -400,11 +401,16 @@ fn run_client(args: Args, mut connection: UnixStream) {
     if is_pipped {
         raw_mode = None;
         resize_signal = None;
+        suspend_signal = None;
     } else {
         raw_mode = Some(RawMode::enter());
         let signal = SignalFd::new(libc::SIGWINCH);
         epoll.add(signal.as_raw_fd(), 2);
         resize_signal = Some(signal);
+        
+        let signal = SignalFd::new(libc::SIGTSTP);
+        epoll.add(signal.as_raw_fd(), 3);
+        suspend_signal = Some(signal);
 
         let size = get_terminal_size();
         let bytes = application.update(Some(size), &[], &[], &[]);
@@ -458,6 +464,12 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     if let Some(ref signal) = resize_signal {
                         signal.read();
                         resize = Some(get_terminal_size());
+                    }
+                }
+                3 => {
+                    if let Some(ref signal) = suspend_signal {
+                        signal.read();
+                        // TODO: suspend here!
                     }
                 }
                 _ => unreachable!(),
