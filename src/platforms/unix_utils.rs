@@ -280,7 +280,7 @@ pub fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
             &[0x8, ref rest @ ..] => (Key::Backspace, rest),
             &[b'\r', ref rest @ ..] => (Key::Enter, rest),
             &[b'\t', ref rest @ ..] => (Key::Tab, rest),
-            &[0x7f, ref rest @ ..] => (Key::Delete, rest),
+            &[0x7f, ref rest @ ..] => (Key::Backspace, rest),
             &[b @ 0b0..=0b11111, ref rest @ ..] => {
                 let byte = b | 0b01100000;
                 (Key::Ctrl(byte as _), rest)

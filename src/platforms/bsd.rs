@@ -455,7 +455,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                             if is_pipped {
                                 stdin_bytes = bytes;
                             } else {
-                                parse_terminal_keys(&bytes, &mut keys);
+                                parse_terminal_keys(bytes, &mut keys);
                             }
                         }
                     }
