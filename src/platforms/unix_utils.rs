@@ -99,13 +99,22 @@ impl RawMode {
             let mut original = std::mem::zeroed();
             libc::tcgetattr(libc::STDIN_FILENO, &mut original);
             let mut new = original.clone();
-            new.c_iflag &= !(libc::BRKINT | libc::ICRNL | libc::INPCK | libc::ISTRIP | libc::IXON);
+            new.c_iflag &= !(libc::IGNBRK
+                | libc::BRKINT
+                | libc::PARMRK
+                | libc::ISTRIP
+                | libc::INLCR
+                | libc::IGNCR
+                | libc::ICRNL
+                | libc::IXON);
             new.c_oflag &= !libc::OPOST;
+            new.c_cflag &= !(libc::CSIZE | libc::PARENB);
             new.c_cflag |= libc::CS8;
             new.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
+            new.c_lflag |= libc::NOFLSH;
             new.c_cc[libc::VMIN] = 0;
-            new.c_cc[libc::VTIME] = 1;
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &new);
+            new.c_cc[libc::VTIME] = 0;
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &new);
             original
         };
         Self { original }
@@ -269,7 +278,7 @@ pub fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
             &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (Key::Delete, rest),
             &[0x1b, ref rest @ ..] => (Key::Esc, rest),
             &[0x8, ref rest @ ..] => (Key::Backspace, rest),
-            &[b'\n', ref rest @ ..] => (Key::Enter, rest),
+            &[b'\r', ref rest @ ..] => (Key::Enter, rest),
             &[b'\t', ref rest @ ..] => (Key::Tab, rest),
             &[0x7f, ref rest @ ..] => (Key::Delete, rest),
             &[b @ 0b0..=0b11111, ref rest @ ..] => {
@@ -294,3 +303,4 @@ pub fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
         keys.push(key);
     }
 }
+
