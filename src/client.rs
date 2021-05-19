@@ -154,6 +154,11 @@ impl Client {
             this: &Client,
             editor: &Editor,
         ) -> Option<(BufferPositionIndex, BufferPositionIndex)> {
+            let width = this.viewport_size.0 as BufferPositionIndex;
+            if width == 0 {
+                return None;
+            }
+
             let buffer_view = editor.buffer_views.get(this.buffer_view_handle?)?;
             let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
 
@@ -162,7 +167,6 @@ impl Client {
             let line = buffer.line_at(line_index as _).as_str();
             let column_index = position.column_byte_index;
 
-            let width = this.viewport_size.0 as BufferPositionIndex;
             let height = this.height as BufferPositionIndex;
             let half_height = height / 2;
 

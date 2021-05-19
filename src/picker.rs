@@ -203,6 +203,7 @@ fn filtered_to_picker_entry<'a>(
 const RECURSION_LIMIT: u8 = 8;
 const BONUS_WORD_BOUNDARY: u32 = 2;
 const BONUS_CONSECUTIVE: u32 = 3;
+
 fn fuzzy_match(text: &str, pattern: &str) -> u32 {
     fn recursive(
         mut text: Chars,
@@ -224,12 +225,13 @@ fn fuzzy_match(text: &str, pattern: &str) -> u32 {
         loop {
             matched = text_char.eq_ignore_ascii_case(&pattern_char);
             if matched {
-                let is_word_boundary = !last_text_char.is_ascii_alphabetic()
-                    && text_char.is_ascii_alphabetic()
-                    || last_text_char.is_ascii_lowercase() && text_char.is_ascii_uppercase();
+                let text_char_is_alphanumeric = text_char.is_ascii_alphanumeric();
+                let is_word_boundary = (!last_text_char.is_ascii_alphanumeric()
+                    && text_char_is_alphanumeric)
+                    || (last_text_char.is_ascii_lowercase() && text_char.is_ascii_uppercase());
                 if is_word_boundary {
                     score += BONUS_WORD_BOUNDARY;
-                } else if depth < RECURSION_LIMIT {
+                } else if on_word_boundary_sequence && depth < RECURSION_LIMIT {
                     let recursive_score = recursive(
                         text.clone(),
                         last_text_char,
@@ -247,10 +249,12 @@ fn fuzzy_match(text: &str, pattern: &str) -> u32 {
                 }
 
                 on_word_boundary_sequence = on_word_boundary_sequence || is_word_boundary;
-                pattern_char = match pattern.next() {
-                    Some(c) => c,
-                    None => break,
-                };
+                if on_word_boundary_sequence || !text_char_is_alphanumeric {
+                    pattern_char = match pattern.next() {
+                        Some(c) => c,
+                        None => break,
+                    };
+                }
             } else {
                 on_word_boundary_sequence = false;
             }
@@ -308,7 +312,8 @@ mod tests {
             fuzzy_match("word", "wor"),
         );
 
-        assert_eq!(BONUS_WORD_BOUNDARY, fuzzy_match("word", "wrd"),);
+        assert_eq!(0, fuzzy_match("word", "wrd"),);
+        assert_eq!(BONUS_WORD_BOUNDARY * 2, fuzzy_match("first/second", "f/s"));
 
         assert_eq!(
             (BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE) * 2,
@@ -320,3 +325,4 @@ mod tests {
         assert_eq!(BONUS_WORD_BOUNDARY, fuzzy_match("abc x", "x"));
     }
 }
+
