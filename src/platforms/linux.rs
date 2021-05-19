@@ -20,8 +20,8 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    errno, get_terminal_size, is_pipped, notify_suspension, parse_terminal_keys, read,
-    read_from_connection, run, suspend_process, Process, RawMode,
+    errno, get_terminal_size, is_pipped, suspend_process, parse_terminal_keys, read,
+    read_from_connection, run, Process, RawMode,
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
@@ -391,7 +391,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     let mut raw_mode;
     let resize_signal;
-    let suspend_signal;
 
     let epoll = Epoll::new();
     epoll.add(connection.as_raw_fd(), 0);
@@ -401,16 +400,11 @@ fn run_client(args: Args, mut connection: UnixStream) {
     if is_pipped {
         raw_mode = None;
         resize_signal = None;
-        suspend_signal = None;
     } else {
         raw_mode = Some(RawMode::enter());
         let signal = SignalFd::new(libc::SIGWINCH);
         epoll.add(signal.as_raw_fd(), 2);
         resize_signal = Some(signal);
-
-        let signal = SignalFd::new(libc::SIGTSTP);
-        epoll.add(signal.as_raw_fd(), 3);
-        suspend_signal = Some(signal);
 
         let size = get_terminal_size();
         let (_, bytes) = application.update(Some(size), &[], &[], &[]);
@@ -466,13 +460,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
                         resize = Some(get_terminal_size());
                     }
                 }
-                3 => {
-                    if let Some(ref signal) = suspend_signal {
-                        signal.read();
-                        eprint!("on suspend signal\r\n");
-                        //suspend_process(&mut application, &mut raw_mode);
-                    }
-                }
                 _ => unreachable!(),
             }
 
@@ -481,10 +468,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 break;
             }
             if suspend {
-                eprint!("suspended\r\n");
                 suspend_process(&mut application, &mut raw_mode);
-                eprint!("resume\r\n");
-                //notify_suspension();
             }
         }
     }

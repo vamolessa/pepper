@@ -20,7 +20,7 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    errno, get_terminal_size, is_pipped, notify_suspension, parse_terminal_keys, read,
+    errno, get_terminal_size, is_pipped, parse_terminal_keys, read,
     read_from_connection, run, suspend_process, Process, RawMode,
 };
 
@@ -34,7 +34,6 @@ pub fn main() {
 
 enum Event {
     Resize,
-    Suspend,
     FlushRequests(bool),
     Fd(RawFd),
 }
@@ -43,14 +42,6 @@ impl Event {
         match self {
             Self::Resize => libc::kevent {
                 ident: libc::SIGWINCH as _,
-                filter: libc::EVFILT_SIGNAL,
-                flags,
-                fflags: 0,
-                data: 0,
-                udata: index as _,
-            },
-            Self::Suspend => libc::kevent {
-                ident: libc::SIGTSTP as _,
                 filter: libc::EVFILT_SIGNAL,
                 flags,
                 fflags: 0,
@@ -425,7 +416,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
     } else {
         raw_mode = Some(RawMode::enter());
         kqueue.add(Event::Resize, 2);
-        kqueue.add(Event::Suspend, 3);
 
         let size = get_terminal_size();
         let (_, bytes) = application.update(Some(size), &[], &[], &[]);
@@ -475,9 +465,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     }
                 }
                 Ok(TriggeredEvent { index: 2, .. }) => resize = Some(get_terminal_size()),
-                Ok(TriggeredEvent { index: 3, .. }) => {
-                    suspend_process(&mut application, &mut raw_mode);
-                }
                 Ok(_) => unreachable!(),
                 Err(()) => break 'main_loop,
             }
@@ -487,7 +474,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 break;
             }
             if suspend {
-                notify_suspension();
+                suspend_process(&mut application, &mut raw_mode);
             }
         }
     }
