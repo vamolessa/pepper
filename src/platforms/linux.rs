@@ -20,7 +20,7 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    errno, get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
+    errno, suspend, get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
     Process, RawMode,
 };
 
@@ -183,10 +183,11 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
     NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
 
     let (request_sender, request_receiver) = mpsc::channel();
-    let platform = Platform::new(
+    let mut platform = Platform::new(
         || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );
+    platform.set_suspend_api(suspend);
     let event_sender = ServerApplication::run(args, platform);
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
@@ -469,6 +470,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 3 => {
                     if let Some(ref signal) = suspend_signal {
                         signal.read();
+                        panic!("suspend!");
                         // TODO: suspend here!
                     }
                 }

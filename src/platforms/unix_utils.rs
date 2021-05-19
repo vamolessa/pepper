@@ -245,6 +245,10 @@ pub fn errno() -> libc::c_int {
     unsafe { *libc::__errno_location() }
 }
 
+pub fn suspend() {
+    // TODO: suspend here
+}
+
 pub fn get_terminal_size() -> (usize, usize) {
     let mut size: libc::winsize = unsafe { std::mem::zeroed() };
     let result = unsafe {

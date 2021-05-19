@@ -78,6 +78,7 @@ impl State {
         let state = &mut ctx.editor.mode.normal_state;
         state.is_recording_auto_macro = false;
         match keys.next(&ctx.editor.buffered_keys) {
+            Key::Ctrl('z') => ctx.platform.suspend(),
             Key::Char('q') => {
                 if ctx.editor.recording_macro.take().is_none() {
                     match keys.next(&ctx.editor.buffered_keys) {
