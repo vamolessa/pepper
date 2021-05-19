@@ -934,6 +934,12 @@ mod tests {
         assert_eq!(MatchResult::Ok(1), p.matches("0"));
         assert_eq!(MatchResult::Ok(1), p.matches("9"));
         assert_eq!(MatchResult::Err, p.matches("!"));
+
+        let p = new_pattern("abcdefghij");
+        assert_eq!(MatchResult::Ok(10), p.matches("abcdefghij"));
+
+        let p = new_pattern("abcdefghijk");
+        assert_eq!(MatchResult::Ok(11), p.matches("abcdefghijk"));
     }
 
     #[test]
@@ -1019,6 +1025,12 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("z"));
         assert_eq!(MatchResult::Err, p.matches("7a"));
         assert_eq!(MatchResult::Ok(3), p.matches("7ab"));
+        
+        let p = new_pattern("(abcdefghij)");
+        assert_eq!(MatchResult::Ok(10), p.matches("abcdefghij"));
+
+        let p = new_pattern("(abcdefghijk)");
+        assert_eq!(MatchResult::Ok(11), p.matches("abcdefghijk"));
     }
 
     #[test]
