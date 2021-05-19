@@ -20,8 +20,8 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run, Process,
-    RawMode,
+    errno, get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
+    Process, RawMode,
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
@@ -153,11 +153,15 @@ impl Epoll {
             Some(duration) => duration.as_millis() as _,
             None => -1,
         };
-        let len = unsafe {
+        let mut len = unsafe {
             libc::epoll_wait(self.0, events.0.as_mut_ptr(), events.0.len() as _, timeout)
         };
         if len == -1 {
-            panic!("could not wait for events");
+            if errno() != libc::EINTR {
+                len = 0;
+            } else {
+                panic!("could not wait for events");
+            }
         }
 
         events.0[..len as usize].iter().map(|e| e.u64 as _)
@@ -464,3 +468,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
+

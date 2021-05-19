@@ -228,6 +228,10 @@ impl Drop for Process {
     }
 }
 
+pub fn errno() -> libc::c_int {
+    unsafe { *libc::__errno_location() }
+}
+
 pub fn get_terminal_size() -> (usize, usize) {
     let mut size: libc::winsize = unsafe { std::mem::zeroed() };
     let result = unsafe {

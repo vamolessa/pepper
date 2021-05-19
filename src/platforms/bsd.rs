@@ -20,8 +20,8 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run, Process,
-    RawMode,
+    errno, get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
+    Process, RawMode,
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
@@ -134,7 +134,7 @@ impl Kqueue {
             None => std::ptr::null(),
         };
 
-        let len = unsafe {
+        let mut len = unsafe {
             libc::kevent(
                 self.0,
                 [].as_ptr(),
@@ -145,7 +145,11 @@ impl Kqueue {
             )
         };
         if len == -1 {
-            panic!("could not wait for events");
+            if errno() != libc::EINTR {
+                len = 0;
+            } else {
+                panic!("could not wait for events");
+            }
         }
 
         events.0[..len as usize].iter().map(|e| {
@@ -470,3 +474,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
+
