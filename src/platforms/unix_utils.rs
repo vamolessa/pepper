@@ -246,16 +246,11 @@ pub fn errno() -> libc::c_int {
 }
 
 pub fn suspend_process(application: &mut ClientApplication, raw_mode: &mut Option<RawMode>) {
-    eprintln!("on before suspension");
-
     application.restore_screen();
     let was_in_raw_mode = raw_mode.is_some();
     *raw_mode = None;
 
     unsafe { libc::raise(libc::SIGTSTP) };
-    //unsafe { libc::kill(0, libc::SIGTSTP) };
-
-    eprintln!("on after suspension");
 
     if was_in_raw_mode {
         *raw_mode = Some(RawMode::enter());

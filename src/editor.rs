@@ -210,7 +210,11 @@ impl Editor {
             match Mode::on_client_keys(&mut ctx, &mut keys) {
                 None => (),
                 Some(ModeOperation::Pending) => return EditorControlFlow::Continue,
-                Some(ModeOperation::Suspend) => return EditorControlFlow::Suspend,
+                Some(ModeOperation::Suspend) => {
+                    Mode::change_to(&mut ctx, ModeKind::default());
+                    self.buffered_keys.0.truncate(start_index);
+                    return EditorControlFlow::Suspend;
+                }
                 Some(ModeOperation::Quit) => {
                     Mode::change_to(&mut ctx, ModeKind::default());
                     self.buffered_keys.0.truncate(start_index);
