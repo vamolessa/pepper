@@ -4,10 +4,7 @@ use std::{
         io::{AsRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
-    sync::{
-        atomic::{AtomicIsize, Ordering},
-        mpsc,
-    },
+    sync::atomic::{AtomicIsize, Ordering},
     time::Duration,
 };
 
@@ -20,8 +17,8 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    errno, get_terminal_size, is_pipped, parse_terminal_keys, read,
-    read_from_connection, run, suspend_process, Process, RawMode,
+    errno, get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
+    suspend_process, Process, RawMode,
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
@@ -196,7 +193,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
         }
     }
 
-    let (request_sender, request_receiver) = mpsc::channel();
+    let (request_sender, request_receiver) = ServerApplication::platform_request_channel();
     let platform = Platform::new(flush_requests, request_sender);
     let event_sender = ServerApplication::run(args, platform);
 

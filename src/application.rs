@@ -47,8 +47,28 @@ pub enum ApplicationEvent {
     },
 }
 
+pub struct ApplicationEventSender(mpsc::SyncSender<ApplicationEvent>);
+impl ApplicationEventSender {
+    pub fn send(&self, event: ApplicationEvent) -> Result<(), AnyError> {
+        match self.0.try_send(event) {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full(_)) => {
+                panic!("could not send application event. channel was full");
+            }
+            Err(_) => Err(AnyError),
+        }
+    }
+}
+
 pub struct ServerApplication;
 impl ServerApplication {
+    pub fn platform_request_channel() -> (
+        mpsc::SyncSender<PlatformRequest>,
+        mpsc::Receiver<PlatformRequest>,
+    ) {
+        mpsc::sync_channel(32)
+    }
+
     pub const fn connection_buffer_len() -> usize {
         512
     }
@@ -57,28 +77,28 @@ impl ServerApplication {
         Duration::from_secs(1)
     }
 
-    pub fn run(args: Args, mut platform: Platform) -> mpsc::Sender<ApplicationEvent> {
+    pub fn run(args: Args, mut platform: Platform) -> ApplicationEventSender {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let editor = Editor::new(current_dir);
         let clients = ClientManager::new();
 
         let source_default_config = !args.no_default_config;
-        let (event_sender, event_receiver) = mpsc::channel();
-        let event_sender_clone = event_sender.clone();
+        let (event_sender, event_receiver) = mpsc::sync_channel(32);
+        let application_event_sender = ApplicationEventSender(event_sender.clone());
         std::thread::spawn(move || {
             let _ = Self::run_application(
                 source_default_config,
                 editor,
                 clients,
                 &mut platform,
-                event_sender_clone,
+                event_sender,
                 event_receiver,
             );
             platform.enqueue_request(PlatformRequest::Exit);
             platform.flush_requests();
         });
 
-        event_sender
+        application_event_sender
     }
 
     fn run_application(
@@ -86,7 +106,7 @@ impl ServerApplication {
         mut editor: Editor,
         mut clients: ClientManager,
         platform: &mut Platform,
-        event_sender: mpsc::Sender<ApplicationEvent>,
+        event_sender: mpsc::SyncSender<ApplicationEvent>,
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
         let mut is_first_client = true;

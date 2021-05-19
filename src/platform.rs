@@ -70,7 +70,7 @@ pub struct Platform {
     read_from_clipboard: fn(&str, &mut String),
     write_to_clipboard: fn(&mut String, &str),
     flush_requests: fn(),
-    request_sender: mpsc::Sender<PlatformRequest>,
+    request_sender: mpsc::SyncSender<PlatformRequest>,
     needs_flushing: bool,
     pub buf_pool: BufPool,
 
@@ -79,7 +79,7 @@ pub struct Platform {
     pub paste_command: String,
 }
 impl Platform {
-    pub fn new(flush_requests: fn(), request_sender: mpsc::Sender<PlatformRequest>) -> Self {
+    pub fn new(flush_requests: fn(), request_sender: mpsc::SyncSender<PlatformRequest>) -> Self {
         Self {
             read_from_clipboard: |c, t| t.push_str(c),
             write_to_clipboard: |c, t| c.push_str(t),
@@ -139,7 +139,9 @@ impl Platform {
 
     pub fn enqueue_request(&mut self, request: PlatformRequest) {
         self.needs_flushing = true;
-        let _ = self.request_sender.send(request);
+        if let Err(mpsc::TrySendError::Full(_)) = self.request_sender.try_send(request) {
+            panic!("could not send platform request. channel was full");
+        }
     }
 
     pub fn flush_requests(&mut self) {

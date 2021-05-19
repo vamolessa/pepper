@@ -3,10 +3,7 @@ use std::{
     os::windows::{ffi::OsStrExt, io::IntoRawHandle},
     process::Child,
     ptr::NonNull,
-    sync::{
-        atomic::{AtomicPtr, Ordering},
-        mpsc,
-    },
+    sync::atomic::{AtomicPtr, Ordering},
     time::Duration,
 };
 
@@ -886,7 +883,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     let new_request_event = Event::automatic();
     NEW_REQUEST_EVENT_HANDLE.store(new_request_event.0 as _, Ordering::Relaxed);
 
-    let (request_sender, request_receiver) = mpsc::channel();
+    let (request_sender, request_receiver) = ServerApplication::platform_request_channel();
     let mut platform = Platform::new(
         || set_event(NEW_REQUEST_EVENT_HANDLE.load(Ordering::Relaxed) as _),
         request_sender,
@@ -1329,3 +1326,4 @@ fn parse_console_events(
         }
     }
 }
+
