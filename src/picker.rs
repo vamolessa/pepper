@@ -323,6 +323,11 @@ mod tests {
         assert_eq!(BONUS_WORD_BOUNDARY * 3, fuzzy_match("ababAbA", "aaa"));
         assert_eq!(BONUS_WORD_BOUNDARY * 2, fuzzy_match("abc cde", "ac"),);
         assert_eq!(BONUS_WORD_BOUNDARY, fuzzy_match("abc x", "x"));
+
+        assert_eq!(
+            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE * 3,
+            fuzzy_match("AxxBxx Abcd", "abcd")
+        );
     }
 }
 
