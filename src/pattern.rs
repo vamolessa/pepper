@@ -655,12 +655,6 @@ impl<'a> PatternCompiler<'a> {
             jump.0 -= 1;
         }
 
-        if self.start_jump.0 as usize > index {
-            self.start_jump.0 -= 1;
-        } else if self.start_jump.0 as usize == index {
-            self.start_jump = jump;
-        }
-
         #[inline]
         fn fix_jump(jump: &mut Jump, index: usize, removed_jump: Jump) {
             if jump.0 as usize > index {
@@ -669,6 +663,8 @@ impl<'a> PatternCompiler<'a> {
                 *jump = removed_jump;
             }
         }
+
+        fix_jump(&mut self.start_jump, index, jump);
 
         for op in self.ops.iter_mut() {
             match op {
@@ -696,24 +692,22 @@ impl<'a> PatternCompiler<'a> {
             Op::Char(okj, erj, c) => (c, okj, erj),
             _ => return false,
         };
-        let mut string = [0; OP_STRING_LEN];
-        let mut len = c.encode_utf8(&mut string).len();
+        let mut bytes = [0; OP_STRING_LEN];
+        let mut len = c.encode_utf8(&mut bytes).len();
 
         let mut op_index = index + 1;
         while op_index < self.ops.len() {
-            if let &Op::Char(oj, ej, c) = &self.ops[op_index] {
-                if op_index + 1 == oj.0 as _
-                    && erj.0 == ej.0
-                    && len + c.len_utf8() <= OP_STRING_LEN
-                {
-                    len += c.encode_utf8(&mut string[len..]).len();
-                    okj = oj;
-                    op_index += 1;
-                    continue;
-                }
+            let (oj, ej, c) = match self.ops[op_index] {
+                Op::Char(oj, ej, c) => (oj, ej, c),
+                _ => break,
+            };
+            if op_index + 1 != oj.0 as _ || erj.0 != ej.0 || len + c.len_utf8() > OP_STRING_LEN {
+                break;
             }
 
-            break;
+            len += c.encode_utf8(&mut bytes[len..]).len();
+            okj = oj;
+            op_index += 1;
         }
 
         let from = index + 1;
@@ -722,7 +716,7 @@ impl<'a> PatternCompiler<'a> {
             return false;
         }
 
-        self.ops[index] = Op::String(okj, erj, len as _, string);
+        self.ops[index] = Op::String(okj, erj, len as _, bytes);
         self.ops.drain(from..to);
 
         #[inline]
@@ -732,7 +726,7 @@ impl<'a> PatternCompiler<'a> {
             }
         }
 
-        let fix = (len - 1) as u16;
+        let fix = (len - 1) as _;
         fix_jump(&mut self.start_jump, index, fix);
 
         for op in self.ops.iter_mut() {
@@ -757,52 +751,67 @@ impl<'a> PatternCompiler<'a> {
 
         true
     }
-    
+
     fn try_collapse_sequence_at(&mut self, index: usize) {
-    }
+        let mut bytes = [0; OP_STRING_LEN];
+        let mut len = 0;
 
-    /*
-    fn try_collapse_bytes3_at(&mut self, index: usize) -> bool {
-        if index + 3 > self.ops.len() {
-            return false;
-        }
+        let mut jumps = None;
 
-        let mut final_okj = None;
-        let mut final_erj = None;
-        let mut bytes = [0 as u8; 3];
-
-        for i in 0..bytes.len() {
-            let op_index = index + i;
-            match &self.ops[op_index] {
-                Op::Byte(okj, erj, b)
-                    if okj.0 as usize == op_index + 1 && final_erj.unwrap_or(*erj).0 == erj.0 =>
-                {
-                    bytes[i] = *b;
-                    final_okj = Some(*okj);
-                    final_erj = Some(*erj);
-                }
-                _ => return false,
+        let mut sequence_len = 0;
+        let mut op_index = index;
+        while op_index + 1 < self.ops.len() {
+            let (okj, erj, c) = match self.ops[op_index] {
+                Op::Char(okj, erj, c) => (okj, erj, c),
+                _ => break,
+            };
+            if op_index + 2 != okj.0 as _
+                || op_index + 1 != erj.0 as _
+                || len + c.len_utf8() > OP_STRING_LEN
+            {
+                break;
             }
+
+            let (jump, count) = match self.ops[op_index + 1] {
+                Op::Unwind(jump, count) => (jump, count),
+                _ => break,
+            };
+            if sequence_len != count.0 as _ {
+                break;
+            }
+
+            len += c.encode_utf8(&mut bytes[len..]).len();
+            jumps = Some((okj, jump));
+            sequence_len += 1;
+            op_index += 2;
         }
 
-        self.ops[index] = Op::Bytes3(final_okj.unwrap(), final_erj.unwrap(), bytes);
-        self.ops.drain((index + 1)..(index + 3));
-
-        if self.start_jump.0 as usize > index {
-            self.start_jump.0 -= 2;
+        if sequence_len <= 1 {
+            return;
         }
+
+        let (okj, erj) = match jumps {
+            Some(jumps) => jumps,
+            None => return,
+        };
+
+        self.ops[index] = Op::String(okj, erj, len as _, bytes);
+        self.ops.drain(index + 1..op_index);
 
         #[inline]
-        fn fix_jump(jump: &mut Jump, index: usize) {
+        fn fix_jump(jump: &mut Jump, index: usize, fix: u16) {
             if jump.0 as usize > index {
-                jump.0 -= 2;
+                jump.0 -= fix;
             }
         }
+
+        let fix = (sequence_len * 2 - 1) as _;
+        fix_jump(&mut self.start_jump, index, fix);
 
         for op in self.ops.iter_mut() {
             match op {
                 Op::Ok | Op::Error => (),
-                Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index),
+                Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index, fix),
                 Op::EndAnchor(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
@@ -812,87 +821,13 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Digit(okj, erj)
                 | Op::Alphanumeric(okj, erj)
                 | Op::Char(okj, erj, _)
-                | Op::Byte(okj, erj, _)
-                | Op::Bytes3(okj, erj, _) => {
-                    fix_jump(okj, index);
-                    fix_jump(erj, index);
+                | Op::String(okj, erj, _, _) => {
+                    fix_jump(okj, index, fix);
+                    fix_jump(erj, index, fix);
                 }
             }
         }
-
-        true
     }
-    */
-
-    /*
-    fn try_collapse_sequence3_at(&mut self, index: usize) -> bool {
-        if index + 6 > self.ops.len() {
-            return false;
-        }
-
-        let mut final_okj = None;
-        let mut final_erj = None;
-        let mut bytes = [0 as u8; 3];
-
-        for i in 0..bytes.len() {
-            let op_index = index + i * 2;
-            match &self.ops[op_index] {
-                Op::Byte(okj, erj, b)
-                    if okj.0 as usize == op_index + 2 && erj.0 as usize == op_index + 1 =>
-                {
-                    bytes[i] = *b;
-                    final_okj = Some(*okj);
-                }
-                _ => return false,
-            }
-
-            let op_index = op_index + 1;
-            match &self.ops[op_index] {
-                Op::Unwind(jump, len) if len.0 as usize == i => {
-                    final_erj = Some(*jump);
-                }
-                _ => return false,
-            }
-        }
-
-        self.ops[index] = Op::Bytes3(final_okj.unwrap(), final_erj.unwrap(), bytes);
-        self.ops.drain((index + 1)..(index + 6));
-
-        if self.start_jump.0 as usize > index {
-            self.start_jump.0 -= 5;
-        }
-
-        #[inline]
-        fn fix_jump(jump: &mut Jump, index: usize) {
-            if jump.0 as usize > index {
-                jump.0 -= 5;
-            }
-        }
-
-        for op in self.ops.iter_mut() {
-            match op {
-                Op::Ok | Op::Error => (),
-                Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index),
-                Op::EndAnchor(okj, erj)
-                | Op::SkipOne(okj, erj)
-                | Op::SkipMany(okj, erj, _)
-                | Op::Alphabetic(okj, erj)
-                | Op::Lower(okj, erj)
-                | Op::Upper(okj, erj)
-                | Op::Digit(okj, erj)
-                | Op::Alphanumeric(okj, erj)
-                | Op::Char(okj, erj, _)
-                | Op::Byte(okj, erj, _)
-                | Op::Bytes3(okj, erj, _) => {
-                    fix_jump(okj, index);
-                    fix_jump(erj, index);
-                }
-            }
-        }
-
-        true
-    }
-    */
 }
 
 #[cfg(test)]
@@ -933,7 +868,6 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches(""));
 
         let p = new_pattern("aa");
-        dbg!(&p);
         assert_eq!(MatchResult::Ok(2), p.matches("aa"));
         assert_eq!(MatchResult::Ok(2), p.matches("aaa"));
         assert_eq!(MatchResult::Err, p.matches("baa"));
