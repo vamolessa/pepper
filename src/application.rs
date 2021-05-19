@@ -1,4 +1,4 @@
-use std::{env, fmt, io, path::Path, sync::mpsc, time::Duration};
+use std::{env, fmt, fs, io, panic, path::Path, sync::mpsc, time::Duration};
 
 use crate::{
     buffer::parse_path_and_position,
@@ -83,7 +83,7 @@ impl ServerApplication {
         let clients = ClientManager::new();
 
         let source_default_config = !args.no_default_config;
-        let (event_sender, event_receiver) = mpsc::sync_channel(32);
+        let (event_sender, event_receiver) = mpsc::sync_channel(1024);
         let application_event_sender = ApplicationEventSender(event_sender.clone());
         std::thread::spawn(move || {
             let _ = Self::run_application(
@@ -403,5 +403,22 @@ impl<'stdout> Drop for ClientApplication<'stdout> {
     fn drop(&mut self) {
         self.restore_screen();
     }
+}
+
+pub fn set_panic_hook() {
+    static mut ORIGINAL_PANIC_HOOK: Option<Box<dyn Fn(&panic::PanicInfo) + Sync + Send + 'static>> =
+        None;
+    unsafe { ORIGINAL_PANIC_HOOK = Some(panic::take_hook()) };
+
+    panic::set_hook(Box::new(|info| unsafe {
+        if let Ok(mut file) = fs::File::create("pepper-crash.txt") {
+            use io::Write;
+            let _ = writeln!(file, "{}", info);
+        }
+
+        if let Some(ref hook) = ORIGINAL_PANIC_HOOK {
+            hook(info);
+        }
+    }));
 }
 
