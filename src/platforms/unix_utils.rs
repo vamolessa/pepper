@@ -119,6 +119,10 @@ impl RawMode {
         };
         Self { original }
     }
+
+    pub fn backspace_code(&self) -> u8 {
+        self.original.c_cc[libc::VERASE]
+    }
 }
 impl Drop for RawMode {
     fn drop(&mut self) {
@@ -257,10 +261,11 @@ pub fn get_terminal_size() -> (usize, usize) {
     (size.ws_col as _, size.ws_row as _)
 }
 
-pub fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
+pub fn parse_terminal_keys(mut buf: &[u8], backspace_code: u8, keys: &mut Vec<Key>) {
     loop {
         let (key, rest) = match buf {
             &[] => break,
+            &[b, ref rest @ ..] if b == backspace_code => (Key::Backspace, rest),
             &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
             &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
             &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
@@ -280,7 +285,7 @@ pub fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
             &[0x8, ref rest @ ..] => (Key::Backspace, rest),
             &[b'\r', ref rest @ ..] => (Key::Enter, rest),
             &[b'\t', ref rest @ ..] => (Key::Tab, rest),
-            &[0x7f, ref rest @ ..] => (Key::Backspace, rest),
+            &[0x7f, ref rest @ ..] => (Key::Delete, rest),
             &[b @ 0b0..=0b11111, ref rest @ ..] => {
                 let byte = b | 0b01100000;
                 (Key::Ctrl(byte as _), rest)

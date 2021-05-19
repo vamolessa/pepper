@@ -424,6 +424,10 @@ fn run_client(args: Args, mut connection: UnixStream) {
         }
     }
 
+    let backspace_code = match raw_mode {
+        Some(ref raw) => raw.backspace_code(),
+        None => 0,
+    };
     let mut keys = Vec::new();
     let mut buf = Vec::new();
 
@@ -455,7 +459,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                             if is_pipped {
                                 stdin_bytes = bytes;
                             } else {
-                                parse_terminal_keys(bytes, &mut keys);
+                                parse_terminal_keys(bytes, backspace_code, &mut keys);
                             }
                         }
                     }
