@@ -140,7 +140,11 @@ impl ServerApplication {
                                     let mut buf = platform.buf_pool.acquire();
                                     let write = buf.write();
                                     ServerEvent::Suspend.serialize(write);
-                                    //platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+                                    let buf = buf.share();
+                                    platform.enqueue_request(PlatformRequest::WriteToClient {
+                                        handle,
+                                        buf,
+                                    });
                                 }
                                 EditorControlFlow::Quit => {
                                     platform

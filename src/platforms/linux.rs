@@ -413,12 +413,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
         suspend_signal = Some(signal);
 
         let size = get_terminal_size();
-        let (suspend, bytes) = application.update(Some(size), &[], &[], &[]);
+        let (_, bytes) = application.update(Some(size), &[], &[], &[]);
         if connection.write(bytes).is_err() {
             return;
-        }
-        if suspend {
-            // TODO: suspend here
         }
     }
 
@@ -472,7 +469,8 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 3 => {
                     if let Some(ref signal) = suspend_signal {
                         signal.read();
-                        suspend_process(&mut application, &mut raw_mode);
+                        eprint!("on suspend signal\r\n");
+                        //suspend_process(&mut application, &mut raw_mode);
                     }
                 }
                 _ => unreachable!(),
@@ -483,7 +481,10 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 break;
             }
             if suspend {
-                // TODO: suspend here
+                eprint!("suspended\r\n");
+                suspend_process(&mut application, &mut raw_mode);
+                eprint!("resume\r\n");
+                //notify_suspension();
             }
         }
     }

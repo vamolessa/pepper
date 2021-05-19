@@ -258,6 +258,7 @@ pub fn suspend_process(application: &mut ClientApplication, raw_mode: &mut Optio
     *raw_mode = None;
 
     unsafe { libc::raise(libc::SIGTSTP) };
+    //unsafe { libc::kill(0, libc::SIGTSTP) };
 
     if was_in_raw_mode {
         *raw_mode = Some(RawMode::enter());

@@ -428,12 +428,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
         kqueue.add(Event::Suspend, 3);
 
         let size = get_terminal_size();
-        let (suspend, bytes) = application.update(Some(size), &[], &[], &[]);
+        let (_, bytes) = application.update(Some(size), &[], &[], &[]);
         if connection.write(bytes).is_err() {
             return;
-        }
-        if suspend {
-            // TODO: suspend here
         }
     }
 
@@ -478,7 +475,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     }
                 }
                 Ok(TriggeredEvent { index: 2, .. }) => resize = Some(get_terminal_size()),
-                Ok(TriggeredEvent { index: 3, .. }) => suspend_process(&mut raw_mode),
+                Ok(TriggeredEvent { index: 3, .. }) => {
+                    suspend_process(&mut application, &mut raw_mode);
+                }
                 Ok(_) => unreachable!(),
                 Err(()) => break 'main_loop,
             }
@@ -488,7 +487,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 break;
             }
             if suspend {
-                // TODO: suspend here
+                notify_suspension();
             }
         }
     }
