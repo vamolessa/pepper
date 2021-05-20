@@ -15,7 +15,7 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `<c-n>`, `<c-p>` | go to next/previous cursor position in history |
 | `gg` | go to line |
 | `gh`, `gl`, `gi` | move cursors to first/last/first-non-blank columns |
-| `gj`, `gk` | move cursors to first/last line |
+| `gk`, `gj` | move cursors to first/last line |
 | `gm` | move cursors to matching bracket |
 | `go` | fuzzy pick from all loaded buffers |
 | `gb` | open previous buffer (if any) |
