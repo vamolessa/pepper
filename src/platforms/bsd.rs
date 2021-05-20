@@ -250,28 +250,29 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                 mut command,
                                 buf_len,
                             } => {
+                                let mut spawned = false;
                                 for (i, p) in processes.iter_mut().enumerate() {
                                     if p.is_some() {
                                         continue;
                                     }
 
                                     let handle = ProcessHandle(i);
-                                    match command.spawn() {
-                                        Ok(child) => {
-                                            let process = Process::new(child, tag, buf_len);
-                                            if let Some(fd) = process.try_as_raw_fd() {
-                                                kqueue
-                                                    .add(Event::Fd(fd), PROCESSES_START_INDEX + i);
-                                            }
-                                            *p = Some(process);
-                                            event_sender.send(
-                                                ApplicationEvent::ProcessSpawned { tag, handle },
-                                            )?;
+                                    if let Ok(child) = command.spawn() {
+                                        let process = Process::new(child, tag, buf_len);
+                                        if let Some(fd) = process.try_as_raw_fd() {
+                                            kqueue.add(Event::Fd(fd), PROCESSES_START_INDEX + i);
                                         }
-                                        Err(_) => event_sender
-                                            .send(ApplicationEvent::ProcessExit { tag })?,
+                                        *p = Some(process);
+                                        event_sender.send(ApplicationEvent::ProcessSpawned {
+                                            tag,
+                                            handle,
+                                        })?;
+                                        spawned = true;
                                     }
                                     break;
+                                }
+                                if !spawned {
+                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                                 }
                             }
                             PlatformRequest::WriteToProcess { handle, buf } => {
@@ -355,15 +356,10 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                         let tag = process.tag();
                         match process.read(&mut buf_pool) {
                             Ok(None) => (),
-                            Ok(Some(buf)) => {
-                                if buf.as_bytes().is_empty() {
-                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
-                                } else {
-                                    event_sender
-                                        .send(ApplicationEvent::ProcessOutput { tag, buf })?;
-                                }
+                            Ok(Some(buf)) if !buf.as_bytes().is_empty() => {
+                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                             }
-                            Err(()) => {
+                            _ => {
                                 if let Some(fd) = process.try_as_raw_fd() {
                                     kqueue.remove(Event::Fd(fd));
                                 }

@@ -938,25 +938,23 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                             mut command,
                             buf_len,
                         } => {
+                            let mut spawned = false;
                             for (i, p) in processes.iter_mut().enumerate() {
                                 if p.is_some() {
                                     continue;
                                 }
 
                                 let handle = ProcessHandle(i);
-                                match command.spawn() {
-                                    Ok(child) => {
-                                        *p = Some(AsyncProcess::new(child, tag, buf_len));
-                                        event_sender.send(ApplicationEvent::ProcessSpawned {
-                                            tag,
-                                            handle,
-                                        })?;
-                                    }
-                                    Err(_) => {
-                                        event_sender.send(ApplicationEvent::ProcessExit { tag })?
-                                    }
+                                if let Ok(child) = command.spawn() {
+                                    *p = Some(AsyncProcess::new(child, tag, buf_len));
+                                    event_sender
+                                        .send(ApplicationEvent::ProcessSpawned { tag, handle })?;
+                                    spawned = true;
                                 }
                                 break;
+                            }
+                            if !spawned {
+                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
                             }
                         }
                         PlatformRequest::WriteToProcess { handle, buf } => {
@@ -1022,15 +1020,10 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         let tag = process.tag;
                         match pipe.read_async(&mut buf_pool) {
                             Ok(None) => (),
-                            Ok(Some(buf)) => {
-                                if buf.as_bytes().is_empty() {
-                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
-                                } else {
-                                    event_sender
-                                        .send(ApplicationEvent::ProcessOutput { tag, buf })?;
-                                }
+                            Ok(Some(buf)) if !buf.as_bytes().is_empty() => {
+                                event_sender.send(ApplicationEvent::ProcessOutput { tag, buf })?;
                             }
-                            Err(()) => {
+                            _ => {
                                 process.stdout = None;
                                 process.kill();
                                 processes[i] = None;
