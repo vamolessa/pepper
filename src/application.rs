@@ -47,14 +47,11 @@ pub enum ApplicationEvent {
     },
 }
 
-pub struct ApplicationEventSender(mpsc::SyncSender<ApplicationEvent>);
+pub struct ApplicationEventSender(mpsc::Sender<ApplicationEvent>);
 impl ApplicationEventSender {
     pub fn send(&self, event: ApplicationEvent) -> Result<(), AnyError> {
-        match self.0.try_send(event) {
+        match self.0.send(event) {
             Ok(()) => Ok(()),
-            Err(mpsc::TrySendError::Full(_)) => {
-                panic!("could not send application event. channel was full");
-            }
             Err(_) => Err(AnyError),
         }
     }
@@ -83,7 +80,7 @@ impl ServerApplication {
         let clients = ClientManager::new();
 
         let source_default_config = !args.no_default_config;
-        let (event_sender, event_receiver) = mpsc::sync_channel(1024);
+        let (event_sender, event_receiver) = mpsc::channel();
         let application_event_sender = ApplicationEventSender(event_sender.clone());
         std::thread::spawn(move || {
             let _ = Self::run_application(
@@ -106,7 +103,7 @@ impl ServerApplication {
         mut editor: Editor,
         mut clients: ClientManager,
         platform: &mut Platform,
-        event_sender: mpsc::SyncSender<ApplicationEvent>,
+        event_sender: mpsc::Sender<ApplicationEvent>,
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
         let mut is_first_client = true;
