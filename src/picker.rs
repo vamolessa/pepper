@@ -229,9 +229,8 @@ fn fuzzy_match(text: &str, pattern: &str) -> u32 {
                 let is_word_boundary = (!last_text_char.is_ascii_alphanumeric()
                     && text_char_is_alphanumeric)
                     || (last_text_char.is_ascii_lowercase() && text_char.is_ascii_uppercase());
-                if is_word_boundary {
-                    score += BONUS_WORD_BOUNDARY;
-                } else if on_word_boundary_sequence && depth < RECURSION_LIMIT {
+
+                if depth < RECURSION_LIMIT {
                     let recursive_score = recursive(
                         text.clone(),
                         last_text_char,
@@ -247,8 +246,11 @@ fn fuzzy_match(text: &str, pattern: &str) -> u32 {
                 if on_word_boundary_sequence {
                     score += BONUS_CONSECUTIVE;
                 }
+                if is_word_boundary {
+                    score += BONUS_WORD_BOUNDARY;
+                    on_word_boundary_sequence = true;
+                }
 
-                on_word_boundary_sequence = on_word_boundary_sequence || is_word_boundary;
                 if on_word_boundary_sequence || !text_char_is_alphanumeric {
                     pattern_char = match pattern.next() {
                         Some(c) => c,
