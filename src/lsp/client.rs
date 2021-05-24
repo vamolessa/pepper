@@ -1982,6 +1982,7 @@ impl Client {
                 self.json.write(&mut self.request_raw_json, &symbols.into());
                 Ok(())
             }
+            // TODO: should be picker and not buffer
             "workspace/symbol" => {
                 let (client_handle, auto_close_buffer) = match self.request_state {
                     RequestState::WorkspaceSymbols {

@@ -3,6 +3,7 @@ use crate::{
     buffer_view::CursorMovementKind,
     client::Client,
     command::CommandManager,
+    cursor::CursorCollection,
     editor::KeysIterator,
     editor_utils::ReadLinePoll,
     lsp,
@@ -254,18 +255,23 @@ pub mod filter_cursors {
 
         let mut cursors = buffer_view.cursors.mut_guard();
         let main_cursor_position = cursors.main_cursor().position;
-        let cursor_count = cursors[..].len();
 
-        for i in 0..cursor_count {
-            let cursor = cursors[i];
+        let mut filtered_cursors = [Cursor::zero(); CursorCollection::capacity()];
+        let mut filtered_cursors_len = 0;
+
+        for &cursor in &cursors[..] {
             if range_contains_pattern(buffer, cursor.to_range(), pattern)
                 == keep_if_contains_pattern
             {
-                cursors.add(cursor);
+                filtered_cursors[filtered_cursors_len] = cursor;
+                filtered_cursors_len += 1;
             }
         }
 
-        cursors.remove_range(..cursor_count);
+        cursors.clear();
+        for &cursor in &filtered_cursors[..filtered_cursors_len] {
+            cursors.add(cursor);
+        }
 
         if cursors[..].is_empty() {
             cursors.add(Cursor {
@@ -281,25 +287,30 @@ pub mod filter_cursors {
 pub mod split_cursors {
     use super::*;
 
-    use crate::{
-        buffer_position::BufferPosition,
-        cursor::{Cursor, CursorCollectionMutGuard},
-    };
+    use crate::{buffer_position::BufferPosition, cursor::Cursor};
 
     pub fn enter_by_pattern_mode(ctx: &mut ModeContext) {
         fn add_matches(
-            cursors: &mut CursorCollectionMutGuard,
+            cursors: &mut [Cursor],
+            mut cursors_len: usize,
             line: &str,
             pattern: &str,
             start_position: BufferPosition,
-        ) {
+        ) -> usize {
             for (index, s) in line.match_indices(pattern) {
                 let mut anchor = start_position;
                 anchor.column_byte_index += index as BufferPositionIndex;
                 let mut position = anchor;
                 position.column_byte_index += s.len() as BufferPositionIndex;
-                cursors.add(Cursor { anchor, position });
+
+                if cursors_len >= cursors.len() {
+                    return cursors.len();
+                }
+                cursors[cursors_len] = Cursor { anchor, position };
+                cursors_len += 1;
             }
+
+            cursors_len
         }
 
         ctx.editor.read_line.set_prompt("split-by:");
@@ -314,11 +325,12 @@ pub mod split_cursors {
 
     pub fn enter_by_separators_mode(ctx: &mut ModeContext) {
         fn add_matches(
-            cursors: &mut CursorCollectionMutGuard,
+            cursors: &mut [Cursor],
+            mut cursors_len: usize,
             line: &str,
             pattern: &str,
             start_position: BufferPosition,
-        ) {
+        ) -> usize {
             let mut index = 0;
             for (i, s) in line.match_indices(pattern) {
                 if index != i {
@@ -326,14 +338,22 @@ pub mod split_cursors {
                     anchor.column_byte_index += index as BufferPositionIndex;
                     let mut position = start_position;
                     position.column_byte_index += i as BufferPositionIndex;
-                    cursors.add(Cursor { anchor, position });
+
+                    if cursors_len >= cursors.len() {
+                        return cursors.len();
+                    }
+                    cursors[cursors_len] = Cursor { anchor, position };
+                    cursors_len += 1;
                 }
 
                 index = i + s.len();
             }
 
             if index < line.len() {
-                cursors.add(Cursor {
+                if cursors_len >= cursors.len() {
+                    return cursors.len();
+                }
+                cursors[cursors_len] = Cursor {
                     anchor: BufferPosition::line_col(
                         start_position.line_index,
                         start_position.column_byte_index + index as BufferPositionIndex,
@@ -342,8 +362,11 @@ pub mod split_cursors {
                         start_position.line_index,
                         start_position.column_byte_index + line.len() as BufferPositionIndex,
                     ),
-                });
+                };
+                cursors_len += 1;
             }
+
+            cursors_len
         }
 
         ctx.editor.read_line.set_prompt("split-on:");
@@ -358,7 +381,7 @@ pub mod split_cursors {
 
     fn on_event_impl(
         ctx: &mut ModeContext,
-        add_matches: fn(&mut CursorCollectionMutGuard, &str, &str, BufferPosition),
+        add_matches: fn(&mut [Cursor], usize, &str, &str, BufferPosition) -> usize,
     ) -> Option<()> {
         let pattern = ctx.editor.read_line.input();
         let pattern = if pattern.is_empty() {
@@ -377,26 +400,40 @@ pub mod split_cursors {
 
         let mut cursors = buffer_view.cursors.mut_guard();
         let main_cursor_position = cursors.main_cursor().position;
-        let cursor_count = cursors[..].len();
 
-        for i in 0..cursor_count {
-            let cursor = cursors[i];
+        let mut splitted_cursors = [Cursor::zero(); CursorCollection::capacity()];
+        let mut splitted_cursors_len = 0;
+
+        for cursor in &cursors[..] {
             let range = cursor.to_range();
-            let new_cursors_start_index = cursors[..].len();
+            let new_cursors_start_index = splitted_cursors_len;
 
             if range.from.line_index == range.to.line_index {
                 let line = &buffer.line_at(range.from.line_index as _).as_str()
                     [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
-                add_matches(&mut cursors, line, pattern, range.from);
+                splitted_cursors_len = add_matches(
+                    &mut splitted_cursors,
+                    splitted_cursors_len,
+                    line,
+                    pattern,
+                    range.from,
+                );
             } else {
                 let line = &buffer.line_at(range.from.line_index as _).as_str()
                     [range.from.column_byte_index as usize..];
-                add_matches(&mut cursors, line, pattern, range.from);
+                splitted_cursors_len = add_matches(
+                    &mut splitted_cursors,
+                    splitted_cursors_len,
+                    line,
+                    pattern,
+                    range.from,
+                );
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
                     let line = buffer.line_at(line_index as _).as_str();
-                    add_matches(
-                        &mut cursors,
+                    splitted_cursors_len = add_matches(
+                        &mut splitted_cursors,
+                        splitted_cursors_len,
                         line,
                         pattern,
                         BufferPosition::line_col(line_index, 0),
@@ -405,8 +442,9 @@ pub mod split_cursors {
 
                 let line = &buffer.line_at(range.to.line_index as _).as_str()
                     [..range.to.column_byte_index as usize];
-                add_matches(
-                    &mut cursors,
+                splitted_cursors_len = add_matches(
+                    &mut splitted_cursors,
+                    splitted_cursors_len,
                     line,
                     pattern,
                     BufferPosition::line_col(range.to.line_index, 0),
@@ -414,13 +452,16 @@ pub mod split_cursors {
             }
 
             if cursor.position == range.from {
-                for cursor in &mut cursors[new_cursors_start_index..] {
+                for cursor in &mut splitted_cursors[new_cursors_start_index..] {
                     std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                 }
             }
         }
 
-        cursors.remove_range(..cursor_count);
+        cursors.clear();
+        for &cursor in &splitted_cursors[..splitted_cursors_len] {
+            cursors.add(cursor);
+        }
 
         if cursors[..].is_empty() {
             cursors.add(Cursor {
@@ -592,3 +633,4 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 }
+

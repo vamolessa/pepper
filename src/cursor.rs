@@ -1,6 +1,6 @@
 use std::{
     num::NonZeroU8,
-    ops::{Bound, Drop, Index, IndexMut, RangeBounds, RangeFrom, RangeFull},
+    ops::{Drop, Index, IndexMut, RangeFrom, RangeFull},
 };
 
 use crate::{
@@ -154,32 +154,6 @@ impl<'a> CursorCollectionMutGuard<'a> {
             self.inner.main_cursor_index = self.inner.len;
             self.inner.len = len;
         }
-    }
-
-    pub fn remove_range<R>(&mut self, range: R)
-    where
-        R: RangeBounds<usize>,
-    {
-        let start = match range.start_bound() {
-            Bound::Included(&n) => n,
-            Bound::Excluded(&n) => n + 1,
-            Bound::Unbounded => 0,
-        } as u8;
-        let end = match range.end_bound() {
-            Bound::Included(&n) => n + 1,
-            Bound::Excluded(&n) => n,
-            Bound::Unbounded => self.inner.len as _,
-        } as u8;
-        let len = end - start;
-
-        if self.inner.main_cursor_index >= end {
-            self.inner.main_cursor_index -= len;
-        } else if self.inner.main_cursor_index > start {
-            self.inner.main_cursor_index = start;
-        }
-
-        self.inner.cursors.copy_within(end as usize.., start as _);
-        self.inner.len -= len;
     }
 
     pub fn save_display_distances(&mut self, buffer: &BufferContent, tab_size: NonZeroU8) {
@@ -422,3 +396,4 @@ mod tests {
         assert!(cursors.next().is_none());
     }
 }
+
