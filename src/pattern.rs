@@ -66,6 +66,23 @@ impl Pattern {
         }
     }
 
+    pub fn search_anchor(&self) -> Option<char> {
+        let (c, erj) = match self.ops[self.start_jump.0 as usize] {
+            Op::Char(_, erj, c) => (c, erj),
+            Op::String(_, erj, len, bytes) => {
+                let s = unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) };
+                let c = s.chars().next()?;
+                (c, erj)
+            }
+            _ => return None,
+        };
+
+        match self.ops[erj.0 as usize] {
+            Op::Error => Some(c),
+            _ => None,
+        }
+    }
+
     pub fn matches(&self, text: &str) -> MatchResult {
         self.matches_with_state(
             text,
@@ -850,6 +867,21 @@ mod tests {
     }
 
     #[test]
+    fn search_anchor() {
+        assert_eq!(None, new_pattern("").search_anchor());
+        assert_eq!(Some('a'), new_pattern("a").search_anchor());
+        assert_eq!(Some('a'), new_pattern("abc").search_anchor());
+        assert_eq!(Some('a'), new_pattern("(abc)").search_anchor());
+        assert_eq!(None, new_pattern(".").search_anchor());
+        assert_eq!(None, new_pattern("%w").search_anchor());
+        assert_eq!(None, new_pattern("%d").search_anchor());
+        assert_eq!(Some('%'), new_pattern("%%").search_anchor());
+        assert_eq!(None, new_pattern("[abc]").search_anchor());
+        assert_eq!(None, new_pattern("{abc}").search_anchor());
+        assert_eq!(None, new_pattern("abc|def").search_anchor());
+    }
+
+    #[test]
     fn simple_pattern() {
         let p = new_pattern("");
         assert_eq!(MatchResult::Ok(0), p.matches(""));
@@ -1025,7 +1057,7 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("z"));
         assert_eq!(MatchResult::Err, p.matches("7a"));
         assert_eq!(MatchResult::Ok(3), p.matches("7ab"));
-        
+
         let p = new_pattern("(abcdefghij)");
         assert_eq!(MatchResult::Ok(10), p.matches("abcdefghij"));
 

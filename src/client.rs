@@ -240,6 +240,12 @@ impl ClientManager {
     }
 
     pub fn focus_client(&mut self, handle: ClientHandle) -> bool {
+        if let Some(client) = self.get(handle) {
+            if client.has_ui() {
+                return false;
+            }
+        }
+
         let changed = Some(handle) != self.focused_client;
         if changed {
             self.previous_focused_client = self.focused_client;

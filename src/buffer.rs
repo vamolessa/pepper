@@ -6,11 +6,11 @@ use std::{
     ops::RangeBounds,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    str::CharIndices,
-    str::FromStr,
+    str::{CharIndices, FromStr},
 };
 
 use crate::{
+    pattern::{Pattern, PatternError},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     events::{EditorEvent, EditorEventQueue},
     help,
@@ -81,6 +81,28 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
         Some(i) => {
             let position = BufferPosition::parse(&path[i + 1..]);
             (&path[..i], position)
+        }
+    }
+}
+
+pub enum SearchPattern<'a> {
+    Literal(&'a str),
+    Pattern(&'a Pattern),
+}
+impl<'a> SearchPattern<'a> {
+    pub fn parse(pattern: &'a str, pattern_buf: &'a mut Pattern) -> Result<Self, PatternError> {
+        if pattern.starts_with('%') {
+            pattern_buf.compile(&pattern[1..])?;
+            Ok(Self::Pattern(pattern_buf))
+        } else {
+            Ok(Self::Literal(pattern))
+        }
+    }
+
+    pub fn anchor(&self) -> Option<char> {
+        match self {
+            Self::Literal(s) => s.chars().next(),
+            Self::Pattern(p) => p.search_anchor(),
         }
     }
 }
@@ -436,22 +458,22 @@ impl BufferContent {
     }
 
     // TODO: also search by Pattern
-    pub fn find_search_ranges(&self, text: &str, ranges: &mut Vec<BufferRange>) {
-        if text.is_empty() {
+    pub fn find_search_ranges(&self, pattern: &str, ranges: &mut Vec<BufferRange>) {
+        if pattern.is_empty() {
             return;
         }
 
-        if text.as_bytes().iter().any(|c| c.is_ascii_uppercase()) {
+        if pattern.as_bytes().iter().any(|c| c.is_ascii_uppercase()) {
             for (i, line) in self.lines.iter().enumerate() {
-                for (j, _) in line.as_str().match_indices(text) {
+                for (j, _) in line.as_str().match_indices(pattern) {
                     ranges.push(BufferRange::between(
                         BufferPosition::line_col(i as _, j as _),
-                        BufferPosition::line_col(i as _, (j + text.len()) as _),
+                        BufferPosition::line_col(i as _, (j + pattern.len()) as _),
                     ));
                 }
             }
         } else {
-            let bytes = text.as_bytes();
+            let bytes = pattern.as_bytes();
             let bytes_len = bytes.len();
 
             for (i, line) in self.lines.iter().enumerate() {
@@ -1136,10 +1158,10 @@ impl Buffer {
         edits
     }
 
-    pub fn set_search(&mut self, text: &str) {
+    pub fn set_search(&mut self, pattern: &str) {
         self.search_ranges.clear();
         self.content
-            .find_search_ranges(text, &mut self.search_ranges);
+            .find_search_ranges(pattern, &mut self.search_ranges);
     }
 
     pub fn search_ranges(&self) -> &[BufferRange] {
