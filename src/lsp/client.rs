@@ -2572,7 +2572,7 @@ impl ClientManager {
         root: Option<&Path>,
         log_buffer_name: Option<&str>,
     ) -> Result<(), InvalidGlobError> {
-        let glob_hash = hash_bytes(glob.bytes());
+        let glob_hash = hash_bytes(glob.as_bytes());
         for recipe in &mut self.recipes {
             if recipe.glob_hash == glob_hash {
                 recipe.command.clear();

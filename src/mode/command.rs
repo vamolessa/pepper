@@ -286,7 +286,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
                 None => ("", pattern),
             };
 
-            let parent_hash = hash_bytes(parent.bytes());
+            let parent_hash = hash_bytes(parent.as_bytes());
             if state.completion_path_hash != Some(parent_hash) {
                 set_files_in_path_as_entries(&mut ctx.editor.picker, parent);
                 state.completion_path_hash = Some(parent_hash);

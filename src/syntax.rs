@@ -81,7 +81,7 @@ impl Syntax {
     }
 
     pub fn set_glob(&mut self, pattern: &str) -> Result<(), InvalidGlobError> {
-        self.glob_hash = hash_bytes(pattern.bytes());
+        self.glob_hash = hash_bytes(pattern.as_bytes());
         self.glob.compile(pattern)
     }
 

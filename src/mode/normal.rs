@@ -1333,7 +1333,7 @@ fn copy_text(
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle)?;
     buffer_view.append_selection_text(&ctx.editor.buffers, text, &mut state.last_copy_ranges);
     if !text.is_empty() {
-        state.last_copy_hash = hash_bytes(text.bytes());
+        state.last_copy_hash = hash_bytes(text.as_bytes());
     }
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
     None
@@ -1361,7 +1361,7 @@ fn paste_text(
     let hash = ctx.editor.mode.normal_state.last_copy_hash;
     let ranges = &ctx.editor.mode.normal_state.last_copy_ranges[..];
     let cursors = &buffer_view.cursors[..];
-    if hash == hash_bytes(text.bytes()) && ranges.len() == cursors.len() {
+    if hash == hash_bytes(text.as_bytes()) && ranges.len() == cursors.len() {
         if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle) {
             for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
                 let text = &text[range.0 as usize..range.1 as usize];

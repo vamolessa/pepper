@@ -86,7 +86,7 @@ struct Word {
 struct WordHash(u64);
 impl WordHash {
     pub fn new(word: &str) -> Self {
-        Self(hash_bytes(word.bytes()))
+        Self(hash_bytes(word.as_bytes()))
     }
 }
 impl Hash for WordHash {

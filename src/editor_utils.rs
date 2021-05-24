@@ -155,14 +155,12 @@ impl StringPool {
 }
 
 // FNV-1a : https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
-pub fn hash_bytes<I>(bytes: I) -> u64
-where
-    I: Iterator<Item = u8>,
-{
+pub fn hash_bytes(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
-    for b in bytes {
+    for &b in bytes {
         hash ^= b as u64;
         hash = hash.wrapping_mul(0x100000001b3);
     }
     return hash;
 }
+

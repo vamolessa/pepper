@@ -82,15 +82,17 @@ pub fn main() {
             use io::Write;
 
             let current_dir = env::current_dir().expect("could not retrieve the current directory");
-            let current_dir_bytes = current_dir
+            let current_dir_bytes: Vec<_> = current_dir
                 .as_os_str()
                 .encode_wide()
                 .map(|s| {
                     let bytes = s.to_le_bytes();
                     std::iter::once(bytes[0]).chain(std::iter::once(bytes[1]))
                 })
-                .flatten();
-            let current_directory_hash = hash_bytes(current_dir_bytes);
+                .flatten()
+                .collect();
+
+            let current_directory_hash = hash_bytes(&current_dir_bytes);
             let mut cursor = io::Cursor::new(&mut hash_buf[..]);
             write!(&mut cursor, "{:x}", current_directory_hash).unwrap();
             let len = cursor.position() as usize;
