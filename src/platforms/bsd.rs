@@ -411,7 +411,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         kqueue.add(Event::Resize, 2);
 
         let size = get_terminal_size();
-        let (_, bytes) = application.update(Some(size), &[], &[], &[]);
+        let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
         if connection.write_all(bytes).is_err() {
             return;
         }

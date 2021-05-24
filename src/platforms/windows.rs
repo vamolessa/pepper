@@ -1184,7 +1184,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
                 console_output_mode = Some(output_mode);
 
                 let size = get_console_size(output_handle);
-                let (_, bytes) = application.update(Some(size), &[], &[], &[]);
+                let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
                 if !connection.write(bytes) {
                     return;
                 }
