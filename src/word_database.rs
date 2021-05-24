@@ -188,8 +188,7 @@ impl WordDatabase {
 
     pub fn remove(&mut self, word: &str) {
         let hash = WordHash::new(word);
-        let entry = self.hash_to_index.entry(hash);
-        if let Entry::Occupied(entry) = entry {
+        if let Entry::Occupied(entry) = self.hash_to_index.entry(hash) {
             let index = *entry.get();
             let w = &mut self.words[index];
             w.count -= 1;
@@ -296,3 +295,4 @@ mod tests {
         assert_eq!(1, unique_word_count(&words));
     }
 }
+

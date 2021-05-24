@@ -509,7 +509,7 @@ impl BufferContent {
     }
 
     pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
-        if let None = text.find('\n') {
+        if !text.contains('\n') {
             let line = &mut self.lines[position.line_index as usize];
             let previous_len = line.as_str().len();
             line.insert_text(position.column_byte_index as _, text);
