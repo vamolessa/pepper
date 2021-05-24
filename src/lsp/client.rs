@@ -337,7 +337,7 @@ struct VersionedBuffer {
 impl VersionedBuffer {
     pub fn new() -> Self {
         Self {
-            version: 1,
+            version: 2,
             texts: String::new(),
             pending_edits: Vec::new(),
         }
@@ -362,8 +362,7 @@ impl VersionedBufferCollection {
     pub fn add_edit(&mut self, buffer_handle: BufferHandle, range: BufferRange, text: &str) {
         let index = buffer_handle.0 as usize;
         if index >= self.buffers.len() {
-            self.buffers
-                .resize_with(index + 1, VersionedBuffer::new);
+            self.buffers.resize_with(index + 1, VersionedBuffer::new);
         }
         let buffer = &mut self.buffers[index];
         let text_range_start = buffer.texts.len();
@@ -2380,17 +2379,20 @@ mod helper {
     }
 
     pub fn send_pending_did_change(client: &mut Client, editor: &Editor, platform: &mut Platform) {
-        if let TextDocumentSyncKind::None = client.server_capabilities.text_document_sync.change {
-            return;
-        }
-
         let mut versioned_buffers = std::mem::take(&mut client.versioned_buffers);
         for (buffer_handle, versioned_buffer) in versioned_buffers.iter_pending_mut() {
+            if versioned_buffer.pending_edits.is_empty() {
+                continue;
+            }
             let buffer = match editor.buffers.get(buffer_handle) {
                 Some(buffer) => buffer,
-                None => continue,
+                None => {
+                    versioned_buffer.dispose();
+                    continue;
+                }
             };
             if !buffer.capabilities.can_save {
+                versioned_buffer.flush();
                 continue;
             }
 
@@ -2410,7 +2412,7 @@ mod helper {
             );
 
             let mut content_changes = JsonArray::default();
-            match client.server_capabilities.text_document_sync.save {
+            match client.server_capabilities.text_document_sync.change {
                 TextDocumentSyncKind::None => (),
                 TextDocumentSyncKind::Full => {
                     let text = client.json.fmt_string(format_args!("{}", buffer.content()));
@@ -2661,10 +2663,7 @@ impl ClientManager {
     }
 
     pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
-        eprintln!("stop lsp {}", handle);
         if let ClientEntry::Occupied(client) = &mut self.entries[handle.0 as usize] {
-            eprintln!("stopping lsp {} was occupied", handle);
-
             let _ = client.notify(platform, "exit", JsonObject::default());
             if let Some(process_handle) = client.protocol.process_handle() {
                 platform.enqueue_request(PlatformRequest::KillProcess {
@@ -2682,7 +2681,6 @@ impl ClientManager {
     }
 
     pub fn stop_all(&mut self, platform: &mut Platform) {
-        eprintln!("stop all lsp");
         for i in 0..self.entries.len() {
             self.stop(platform, ClientHandle(i as _));
         }
@@ -2718,7 +2716,6 @@ impl ClientManager {
         handle: ClientHandle,
         process_handle: ProcessHandle,
     ) {
-        eprintln!("on lsp spawned {}", handle);
         if let ClientEntry::Occupied(ref mut client) = editor.lsp.entries[handle.0 as usize] {
             client.protocol.set_process_handle(process_handle);
             client.initialize(platform);
@@ -2777,17 +2774,17 @@ impl ClientManager {
     }
 
     pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
-        eprintln!("on lsp process exit {}", handle);
-
         let index = handle.0 as usize;
-        if let ClientEntry::Occupied(ref mut client) = editor.lsp.entries[index] {
+        let mut entry = ClientEntry::Vacant;
+        std::mem::swap(&mut entry, &mut editor.lsp.entries[index]);
+        if let ClientEntry::Occupied(mut client) = entry {
             client.write_to_log_buffer(|buf, _| {
                 use io::Write;
                 let _ = write!(buf, "lsp server stopped");
             });
+            client.flush_log_buffer(editor);
         }
 
-        editor.lsp.entries[index] = ClientEntry::Vacant;
         for recipe in &mut editor.lsp.recipes {
             if recipe.running_client == Some(handle) {
                 recipe.running_client = None;
@@ -2862,8 +2859,10 @@ impl ClientManager {
         for i in 0..editor.lsp.entries.len() {
             if let Some(mut client) = editor.lsp.entries[i].reserve_and_take() {
                 client.on_editor_events(editor, platform);
+                client.flush_log_buffer(editor);
                 editor.lsp.entries[i] = ClientEntry::Occupied(client);
             }
         }
     }
 }
+
