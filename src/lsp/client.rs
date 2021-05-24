@@ -329,13 +329,20 @@ struct VersionedBufferEdit {
     buffer_range: BufferRange,
     text_range: Range<usize>,
 }
-#[derive(Default)]
 struct VersionedBuffer {
     version: usize,
     texts: String,
     pending_edits: Vec<VersionedBufferEdit>,
 }
 impl VersionedBuffer {
+    pub fn new() -> Self {
+        Self {
+            version: 1,
+            texts: String::new(),
+            pending_edits: Vec::new(),
+        }
+    }
+
     pub fn flush(&mut self) {
         self.texts.clear();
         self.pending_edits.clear();
@@ -356,7 +363,7 @@ impl VersionedBufferCollection {
         let index = buffer_handle.0 as usize;
         if index >= self.buffers.len() {
             self.buffers
-                .resize_with(index + 1, VersionedBuffer::default);
+                .resize_with(index + 1, VersionedBuffer::new);
         }
         let buffer = &mut self.buffers[index];
         let text_range_start = buffer.texts.len();
