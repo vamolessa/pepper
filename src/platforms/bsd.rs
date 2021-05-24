@@ -393,7 +393,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     let stdout = io::stdout();
     let mut application = ClientApplication::new(client_handle, stdout.lock(), is_pipped);
     let bytes = application.init(args, is_first_client);
-    if connection.write(bytes).is_err() {
+    if connection.write_all(bytes).is_err() {
         return;
     }
 
@@ -412,7 +412,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
         let size = get_terminal_size();
         let (_, bytes) = application.update(Some(size), &[], &[], &[]);
-        if connection.write(bytes).is_err() {
+        if connection.write_all(bytes).is_err() {
             return;
         }
     }
@@ -463,7 +463,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
             }
 
             let (suspend, bytes) = application.update(resize, &keys, stdin_bytes, server_bytes);
-            if connection.write(bytes).is_err() {
+            if connection.write_all(bytes).is_err() {
                 break;
             }
             if suspend {

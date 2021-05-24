@@ -573,10 +573,7 @@ impl ClientEventIter {
                 self.read_len = buf.len() - slice.len();
                 Some(event)
             }
-            Err(_) => {
-                self.read_len = buf.len();
-                None
-            }
+            Err(_) => None,
         }
     }
 
@@ -705,6 +702,53 @@ mod tests {
         assert_key_serialization(Key::Alt('9'));
         assert_key_serialization(Key::Alt('$'));
         assert_key_serialization(Key::Esc);
+    }
+
+    #[test]
+    fn client_event_deserialize_splitted() {
+        const CHAR: char = 'x';
+        const EVENT_COUNT: usize = 100;
+
+        fn check_next_event(events: &mut ClientEventIter, receiver: &ClientEventReceiver) -> bool {
+            match events.next(receiver) {
+                Some(ClientEvent::Key(_, Key::Char(CHAR))) => true,
+                Some(ClientEvent::Key(_, Key::Char(c))) => {
+                    panic!("received char {} instead of {}", c, CHAR);
+                }
+                Some(event) => panic!(
+                    "received other kind of event. discriminant: {:?}",
+                    std::mem::discriminant(&event),
+                ),
+                None => false,
+            }
+        }
+
+        let client_handle = ClientHandle::from_index(0).unwrap();
+        let event = ClientEvent::Key(client_handle, Key::Char(CHAR));
+        let mut bytes = Vec::new();
+        for _ in 0..EVENT_COUNT {
+            event.serialize(&mut bytes);
+        }
+        assert_eq!(700, bytes.len());
+
+        let mut event_count = 0;
+        let mut receiver = ClientEventReceiver::default();
+
+        let mut events = receiver.receive_events(client_handle, &bytes[..512]);
+        while check_next_event(&mut events, &receiver) {
+            event_count += 1;
+        }
+        assert_eq!(511, events.read_len);
+        events.finish(&mut receiver);
+
+        let mut events = receiver.receive_events(client_handle, &bytes[512..]);
+        while check_next_event(&mut events, &receiver) {
+            event_count += 1;
+        }
+        events.finish(&mut receiver);
+
+        assert_eq!(0, receiver.bufs[client_handle.into_index()].len());
+        assert_eq!(EVENT_COUNT, event_count);
     }
 }
 
