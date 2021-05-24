@@ -2365,7 +2365,7 @@ mod helper {
             .json
             .create_string(protocol::path_to_language_id(&buffer.path));
         text_document.set("languageId".into(), language_id.into(), &mut client.json);
-        text_document.set("version".into(), JsonValue::Integer(0), &mut client.json);
+        text_document.set("version".into(), JsonValue::Integer(1), &mut client.json);
         let text = client.json.fmt_string(format_args!("{}", buffer.content()));
         text_document.set("text".into(), text.into(), &mut client.json);
 

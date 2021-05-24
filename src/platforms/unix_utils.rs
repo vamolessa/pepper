@@ -34,7 +34,7 @@ pub fn run(
             use io::Write;
 
             let current_dir = env::current_dir().expect("could not retrieve the current directory");
-            let current_dir_bytes = current_dir.as_os_str().as_bytes().iter().cloned();
+            let current_dir_bytes = current_dir.as_os_str().as_bytes();
             let current_directory_hash = hash_bytes(current_dir_bytes);
 
             let mut hash_buf = [0u8; 16];
