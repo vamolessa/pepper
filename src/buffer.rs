@@ -524,6 +524,10 @@ impl BufferContent {
                             None => break,
                         }
 
+                        if line.len() < bytes_len {
+                            break;
+                        }
+
                         if line.iter().zip(bytes.iter()).all(|(a, b)| eq_check(a, b)) {
                             let from = BufferPosition::line_col(line_index as _, column_index as _);
                             column_index += bytes_len;
@@ -543,8 +547,11 @@ impl BufferContent {
                     while !line.is_empty() {
                         if let Some(anchor) = anchor {
                             match line.find(anchor) {
-                                Some(i) => line = &line[i..],
-                                None => continue,
+                                Some(i) => {
+                                    column_index += i;
+                                    line = &line[i..];
+                                }
+                                None => break,
                             }
                         }
                         line = match pattern.matches(line) {
@@ -558,7 +565,11 @@ impl BufferContent {
                                 &line[len..]
                             }
                             _ => match line.chars().next() {
-                                Some(c) => &line[c.len_utf8()..],
+                                Some(c) => {
+                                    let len = c.len_utf8();
+                                    column_index += len;
+                                    &line[len..]
+                                }
                                 None => break,
                             },
                         };
