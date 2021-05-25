@@ -8,8 +8,6 @@
 
 ![macros](macros.gif)
 
-![script](script.gif)
-
 ![api](api.gif)
 
 ![commands](commands.gif)
