@@ -46,6 +46,26 @@ map -normal <c-s> :<space>save<enter>
 
 If you wish to see all the keybindings that are created by default, you can see the builtin [default config](https://github.com/vamolessa/pepper/blob/master/src/default_config.pp).
 
+## run lsp server automatically
+An LSP server is usually started when a file it should handle is opened, normally known from its extension.
+By using the `lsp` command, it's possible to automatically start an LSP server like that.
+For each LSP server you wish to register, add this to one of your config files:
+```
+lsp "**.ext" "lsp-server-command"
+```
+Where `"**.ext"` is a glob pattern that, when matched against a buffer just opened,
+will invoke the LSP server using `"lsp-server-command"`.
+In this case, whenever we open a buffer with extension `.ext`.
+
+If you wish to inspect/debug the protocol messages, you can instead register it as
+```
+lsp "**.ext" "lsp-server-command" -log=my-lsp-server-log
+```
+Where you can substitute `my-lsp-server-log` with any buffer name you want.
+
+You can check a full example with many LSP server configured in my
+[my config repository](https://github.com/vamolessa/pepper-config/blob/master/init.pp#L22).
+
 ## run program with `!`
 While in normal mode, you'll be able to enter 'run program' mode by pressing `!`.
 Its output will be printed to the status bar.

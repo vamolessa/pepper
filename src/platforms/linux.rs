@@ -17,7 +17,7 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    errno, get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
+    get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
     suspend_process, Process, RawMode,
 };
 
@@ -27,6 +27,10 @@ const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn main() {
     run(run_server, run_client);
+}
+
+fn errno() -> libc::c_int {
+    unsafe { *libc::__errno_location() }
 }
 
 struct EventFd(RawFd);

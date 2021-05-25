@@ -241,10 +241,6 @@ impl Drop for Process {
     }
 }
 
-pub fn errno() -> libc::c_int {
-    unsafe { *libc::__errno_location() }
-}
-
 pub fn suspend_process(application: &mut ClientApplication, raw_mode: &mut Option<RawMode>) {
     application.restore_screen();
     let was_in_raw_mode = raw_mode.is_some();
