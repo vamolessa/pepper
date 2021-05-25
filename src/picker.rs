@@ -1,4 +1,4 @@
-use std::{fmt, str::Chars};
+use std::fmt;
 
 use crate::word_database::{WordDatabase, WordIndicesIter};
 
@@ -201,99 +201,77 @@ fn filtered_to_picker_entry<'a>(
     }
 }
 
-const RECURSION_LIMIT: u8 = 8;
-const BONUS_WORD_BOUNDARY: u32 = 2;
-const BONUS_CONSECUTIVE: u32 = 3;
+const WORD_BOUNDARY_MATCH_SCORE: u32 = 2;
+const CONSECUTIVE_MATCH_SCORE: u32 = 3;
+
+struct FuzzyMatch {
+    rest_index: u32,
+    score: u32,
+}
 
 #[derive(Default)]
-struct FuzzyMatcher;
+struct FuzzyMatcher {
+    previous_matches: Vec<FuzzyMatch>,
+    next_matches: Vec<FuzzyMatch>,
+}
 impl FuzzyMatcher {
     pub fn score(&mut self, text: &str, pattern: &str) -> u32 {
-        fn recursive(
-            mut text: Chars,
-            mut last_text_char: char,
-            mut pattern: Chars,
-            mut pattern_char: char,
-            depth: u8,
-        ) -> u32 {
-            let mut text_char = match text.next() {
-                Some(c) => c,
-                None => return 0,
-            };
+        if pattern.is_empty() {
+            return 1;
+        }
 
-            let mut matched;
-            let mut on_word_boundary_sequence = false;
-            let mut best_score = 0;
-            let mut score = 0;
+        self.previous_matches.clear();
+        self.previous_matches.push(FuzzyMatch {
+            rest_index: 0,
+            score: 0,
+        });
 
-            loop {
-                matched = text_char.eq_ignore_ascii_case(&pattern_char);
-                if matched {
-                    let text_char_is_alphanumeric = text_char.is_ascii_alphanumeric();
-                    let is_word_boundary = (!last_text_char.is_ascii_alphanumeric()
-                        && text_char_is_alphanumeric)
-                        || (last_text_char.is_ascii_lowercase() && text_char.is_ascii_uppercase());
+        for pattern_char in pattern.chars() {
+            self.next_matches.clear();
 
-                    if depth < RECURSION_LIMIT {
-                        let recursive_score = recursive(
-                            text.clone(),
-                            last_text_char,
-                            pattern.clone(),
-                            pattern_char,
-                            depth + 1,
-                        );
-                        if recursive_score != 0 {
-                            best_score = best_score.max(recursive_score + score);
+            for previous_match in &self.previous_matches {
+                let mut previous_text_char = '\0';
+                for (i, text_char) in text[previous_match.rest_index as usize..].char_indices() {
+                    if text_char.eq_ignore_ascii_case(&pattern_char) {
+                        let (matched, score) = if i == 0 && previous_match.rest_index != 0 {
+                            (true, CONSECUTIVE_MATCH_SCORE)
+                        } else if !text_char.is_ascii_alphanumeric() {
+                            (true, 0)
+                        } else {
+                            let is_word_boundary = (!previous_text_char.is_ascii_alphanumeric()
+                                && text_char.is_ascii_alphanumeric())
+                                || (previous_text_char.is_ascii_lowercase()
+                                    && text_char.is_ascii_uppercase());
+                            (is_word_boundary, WORD_BOUNDARY_MATCH_SCORE)
+                        };
+                        if matched {
+                            let rest_index =
+                                previous_match.rest_index + (i + text_char.len_utf8()) as u32;
+                            let score = previous_match.score + score;
+                            self.next_matches.push(FuzzyMatch { rest_index, score });
                         }
                     }
 
-                    if on_word_boundary_sequence {
-                        score += BONUS_CONSECUTIVE;
-                    }
-                    if is_word_boundary {
-                        score += BONUS_WORD_BOUNDARY;
-                        on_word_boundary_sequence = true;
-                    }
-
-                    if on_word_boundary_sequence || !text_char_is_alphanumeric {
-                        pattern_char = match pattern.next() {
-                            Some(c) => c,
-                            None => break,
-                        };
-                    }
-                } else {
-                    on_word_boundary_sequence = false;
+                    previous_text_char = text_char;
                 }
-
-                last_text_char = text_char;
-                text_char = match text.next() {
-                    Some(c) => c,
-                    None => {
-                        matched = matched && pattern.next().is_none();
-                        break;
-                    }
-                };
             }
 
-            if matched {
-                score.max(best_score)
-            } else {
-                best_score
+            if self.next_matches.is_empty() {
+                return 0;
+            }
+            std::mem::swap(&mut self.previous_matches, &mut self.next_matches);
+        }
+
+        let mut best_score = 0;
+        for previous_match in &self.previous_matches {
+            if best_score < previous_match.score {
+                best_score = previous_match.score;
             }
         }
-
-        let mut pattern_chars = pattern.chars();
-        let pattern_char = match pattern_chars.next() {
-            Some(c) => c,
-            None => return 1,
-        };
-
-        let score = recursive(text.chars(), '\0', pattern_chars, pattern_char, 0);
-        if score != 0 {
-            score + (text.len() == pattern.len()) as u32
-        } else {
-            0
+        if best_score > 0 {
+            best_score += (text.len() == pattern.len()) as u32;
         }
+        best_score
     }
 }
 
@@ -312,39 +290,47 @@ mod tests {
         assert_eq!(0, fuzzy_matcher.score("a", "xyz"));
 
         assert_eq!(
-            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE * 3 + 1,
+            WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 3 + 1,
             fuzzy_matcher.score("word", "word"),
         );
 
         assert_eq!(
-            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE * 2,
+            WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 2,
             fuzzy_matcher.score("word", "wor"),
         );
 
         assert_eq!(0, fuzzy_matcher.score("word", "wrd"),);
+
         assert_eq!(
-            BONUS_WORD_BOUNDARY * 2,
+            WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE,
             fuzzy_matcher.score("first/second", "f/s")
         );
 
         assert_eq!(
-            (BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE) * 2,
+            (WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE) * 2,
             fuzzy_matcher.score("camelCase", "caca"),
         );
 
         assert_eq!(
-            BONUS_WORD_BOUNDARY * 3,
+            WORD_BOUNDARY_MATCH_SCORE * 3,
             fuzzy_matcher.score("ababAbA", "aaa")
         );
         assert_eq!(
-            BONUS_WORD_BOUNDARY * 2,
+            WORD_BOUNDARY_MATCH_SCORE * 2,
             fuzzy_matcher.score("abc cde", "ac"),
         );
-        assert_eq!(BONUS_WORD_BOUNDARY, fuzzy_matcher.score("abc x", "x"));
+        assert_eq!(WORD_BOUNDARY_MATCH_SCORE, fuzzy_matcher.score("abc x", "x"));
 
         assert_eq!(
-            BONUS_WORD_BOUNDARY + BONUS_CONSECUTIVE * 3,
+            WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 3,
             fuzzy_matcher.score("AxxBxx Abcd", "abcd")
+        );
+
+        let repetition_count = 100;
+        let big_repetitive_text = "a".repeat(repetition_count);
+        assert_eq!(
+            WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * (repetition_count - 1) as u32 + 1,
+            fuzzy_matcher.score(&big_repetitive_text, &big_repetitive_text),
         );
     }
 }
