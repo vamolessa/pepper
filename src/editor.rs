@@ -19,6 +19,7 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
     platform::{Key, Platform, ProcessHandle, ProcessTag},
+    pattern::Pattern,
     register::{RegisterCollection, RegisterKey},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -118,6 +119,7 @@ pub struct Editor {
     pub string_pool: StringPool,
 
     pub status_bar: StatusBar,
+    pub pattern_buf: Pattern,
 
     pub commands: CommandManager,
     pub lsp: lsp::ClientManager,
@@ -146,6 +148,7 @@ impl Editor {
             string_pool: StringPool::default(),
 
             status_bar: StatusBar::new(),
+            pattern_buf: Pattern::new(),
 
             commands: CommandManager::new(),
             lsp: lsp::ClientManager::new(),
