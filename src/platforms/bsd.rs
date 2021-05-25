@@ -11,7 +11,7 @@ use std::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
     client::ClientHandle,
-    platform::{BufPool, Platform, PlatformRequest, ProcessHandle},
+    platform::{BufPool, Key, Platform, PlatformRequest, ProcessHandle},
     Args,
 };
 

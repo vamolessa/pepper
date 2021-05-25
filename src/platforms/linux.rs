@@ -11,7 +11,7 @@ use std::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
     client::ClientHandle,
-    platform::{BufPool, Platform, PlatformRequest, ProcessHandle},
+    platform::{BufPool, Key, Platform, PlatformRequest, ProcessHandle},
     Args,
 };
 
@@ -441,7 +441,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     }
                     Ok(len) => {
                         let bytes = &buf[..len];
-                        
+
                         if is_pipped {
                             stdin_bytes = bytes;
                         } else {
