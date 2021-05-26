@@ -312,10 +312,11 @@ pub mod split_cursors {
             cursors: &mut [Cursor],
             mut cursors_len: usize,
             line: &str,
-            pattern: &str,
+            pattern: &Pattern,
             start_position: BufferPosition,
         ) -> usize {
-            for (index, s) in line.match_indices(pattern) {
+            let search_anchor = pattern.search_anchor();
+            for (index, s) in pattern.match_indices(line, search_anchor) {
                 let mut anchor = start_position;
                 anchor.column_byte_index += index as BufferPositionIndex;
                 let mut position = anchor;
@@ -346,11 +347,12 @@ pub mod split_cursors {
             cursors: &mut [Cursor],
             mut cursors_len: usize,
             line: &str,
-            pattern: &str,
+            pattern: &Pattern,
             start_position: BufferPosition,
         ) -> usize {
+            let search_anchor = pattern.search_anchor();
             let mut index = 0;
-            for (i, s) in line.match_indices(pattern) {
+            for (i, s) in pattern.match_indices(line, search_anchor) {
                 if index != i {
                     let mut anchor = start_position;
                     anchor.column_byte_index += index as BufferPositionIndex;
@@ -399,7 +401,7 @@ pub mod split_cursors {
 
     fn on_event_impl(
         ctx: &mut ModeContext,
-        add_matches: fn(&mut [Cursor], usize, &str, &str, BufferPosition) -> usize,
+        add_matches: fn(&mut [Cursor], usize, &str, &Pattern, BufferPosition) -> usize,
     ) -> Option<()> {
         let pattern = ctx.editor.read_line.input();
         let pattern = if pattern.is_empty() {
@@ -407,6 +409,11 @@ pub mod split_cursors {
         } else {
             pattern
         };
+
+        if let Err(error) = ctx.editor.pattern_buf.compile(pattern) {
+            ctx.editor.status_bar.write(MessageKind::Error).fmt(format_args!("{}", error));
+            return None;
+        }
 
         let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
@@ -433,7 +440,7 @@ pub mod split_cursors {
                     &mut splitted_cursors,
                     splitted_cursors_len,
                     line,
-                    pattern,
+                    &ctx.editor.pattern_buf,
                     range.from,
                 );
             } else {
@@ -443,7 +450,7 @@ pub mod split_cursors {
                     &mut splitted_cursors,
                     splitted_cursors_len,
                     line,
-                    pattern,
+                    &ctx.editor.pattern_buf,
                     range.from,
                 );
 
@@ -453,7 +460,7 @@ pub mod split_cursors {
                         &mut splitted_cursors,
                         splitted_cursors_len,
                         line,
-                        pattern,
+                        &ctx.editor.pattern_buf,
                         BufferPosition::line_col(line_index, 0),
                     );
                 }
@@ -464,7 +471,7 @@ pub mod split_cursors {
                     &mut splitted_cursors,
                     splitted_cursors_len,
                     line,
-                    pattern,
+                    &ctx.editor.pattern_buf,
                     BufferPosition::line_col(range.to.line_index, 0),
                 );
             }
