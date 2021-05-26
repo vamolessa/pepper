@@ -72,7 +72,7 @@ impl Pattern {
 
     pub fn compile_searcher(&mut self, pattern: &str) -> Result<(), PatternError> {
         let (ignore_case, pattern) = match pattern.strip_prefix('_') {
-            Some(pattern) => (true, pattern),
+            Some(pattern) => (false, pattern),
             None => {
                 let ignore_case = pattern.chars().all(char::is_lowercase);
                 (ignore_case, pattern)
@@ -100,16 +100,17 @@ impl Pattern {
                     buf[..len].copy_from_slice(pattern[..len].as_bytes());
                     pattern = &pattern[len..];
                     self.ops.push(Op::String(
-                        Jump(self.ops.len() as _),
+                        Jump((self.ops.len() + 1) as _),
                         Jump(0),
                         len as _,
                         buf,
                     ));
                 }
                 self.ops.push(Op::Ok);
+                self.start_jump = Jump(1);
             }
         }
-        if !ignore_case {
+        if ignore_case {
             self.ignore_case();
         }
         Ok(())
