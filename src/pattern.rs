@@ -74,11 +74,7 @@ impl<'pattern, 'text> Iterator for MatchIndices<'pattern, 'text> {
                 }
             }
             match self.pattern.matches(self.text) {
-                MatchResult::Ok(0) => {
-                    let result = (self.index, "");
-                    next_char(self)?;
-                    return Some(result);
-                }
+                MatchResult::Ok(0) => next_char(self)?,
                 MatchResult::Ok(len) => {
                     let result = (self.index, &self.text[..len]);
                     self.text = &self.text[len..];

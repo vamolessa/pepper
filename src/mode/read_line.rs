@@ -258,8 +258,11 @@ pub mod filter_cursors {
             pattern
         };
 
-        if let Err(error) = ctx.editor.pattern_buf.compile(pattern) {
-            ctx.editor.status_bar.write(MessageKind::Error).fmt(format_args!("{}", error));
+        if let Err(error) = ctx.editor.pattern_buf.compile_searcher(pattern) {
+            ctx.editor
+                .status_bar
+                .write(MessageKind::Error)
+                .fmt(format_args!("{}", error));
             return None;
         }
 
@@ -410,8 +413,11 @@ pub mod split_cursors {
             pattern
         };
 
-        if let Err(error) = ctx.editor.pattern_buf.compile(pattern) {
-            ctx.editor.status_bar.write(MessageKind::Error).fmt(format_args!("{}", error));
+        if let Err(error) = ctx.editor.pattern_buf.compile_searcher(pattern) {
+            ctx.editor
+                .status_bar
+                .write(MessageKind::Error)
+                .fmt(format_args!("{}", error));
             return None;
         }
 

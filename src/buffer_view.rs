@@ -6,6 +6,7 @@ use crate::{
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     events::EditorEventQueue,
+    history::EditKind,
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -440,13 +441,21 @@ impl BufferView {
             None => return,
         };
 
-        if let Some(edit) = edits.last() {
-            let mut cursors = self.cursors.mut_guard();
-            cursors.clear();
+        let mut cursors = self.cursors.mut_guard();
+        let mut last_edit_kind = None;
+        for edit in edits {
+            if last_edit_kind != Some(edit.kind) {
+                cursors.clear();
+            }
+            let position = match edit.kind {
+                EditKind::Insert => edit.range.to,
+                EditKind::Delete => edit.range.from,
+            };
             cursors.add(Cursor {
                 anchor: edit.range.from,
-                position: edit.range.from,
-            })
+                position,
+            });
+            last_edit_kind = Some(edit.kind);
         }
     }
 
@@ -461,13 +470,31 @@ impl BufferView {
             None => return,
         };
 
-        if let Some(edit) = edits.last() {
-            let mut cursors = self.cursors.mut_guard();
-            cursors.clear();
+        let mut cursors = self.cursors.mut_guard();
+        let mut last_edit_kind = None;
+        for edit in edits {
+            if last_edit_kind != Some(edit.kind) {
+                cursors.clear();
+            }
+            let position = match edit.kind {
+                EditKind::Insert => {
+                    for cursor in &mut cursors[..] {
+                        cursor.insert(edit.range);
+                    }
+                    edit.range.to
+                }
+                EditKind::Delete => {
+                    for cursor in &mut cursors[..] {
+                        cursor.delete(edit.range);
+                    }
+                    edit.range.from
+                }
+            };
             cursors.add(Cursor {
                 anchor: edit.range.from,
-                position: edit.range.from,
+                position,
             });
+            last_edit_kind = Some(edit.kind);
         }
     }
 }
@@ -723,3 +750,4 @@ mod tests {
         assert_movement(&mut ctx, (2, 0), (1, 9), CursorMovement::WordsBackward(1));
     }
 }
+
