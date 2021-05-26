@@ -436,13 +436,13 @@ impl BufferContent {
     }
 
     pub fn find_search_ranges(&self, pattern: &Pattern, ranges: &mut Vec<BufferRange>) {
-        let anchor = pattern.search_anchor();
+        let search_anchor = pattern.search_anchor();
         for (line_index, line) in self.lines.iter().enumerate() {
             let mut column_index = 0;
             let mut line = line.as_str();
             while !line.is_empty() {
-                if let Some(anchor) = anchor {
-                    match line.find(anchor) {
+                if let Some(search_anchor) = search_anchor {
+                    match line.find(search_anchor) {
                         Some(i) => {
                             column_index += i;
                             line = &line[i..];

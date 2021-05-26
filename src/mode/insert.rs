@@ -120,7 +120,7 @@ impl ModeState for State {
                 return None;
             }
             Key::Tab => {
-                const SPACES_BUF: [u8; u8::MAX as usize] = [b' '; u8::MAX as usize];
+                static SPACES_BUF: &[u8; u8::MAX as usize] = &[b' '; u8::MAX as usize];
                 let text = if ctx.editor.config.indent_with_tabs {
                     "\t"
                 } else {

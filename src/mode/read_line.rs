@@ -8,6 +8,7 @@ use crate::{
     editor_utils::ReadLinePoll,
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    pattern::Pattern,
     register::{RETURN_REGISTER, SEARCH_REGISTER},
 };
 
@@ -134,7 +135,8 @@ pub mod search {
         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
         let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
 
-        let _ = ctx.editor
+        let _ = ctx
+            .editor
             .pattern_buf
             .compile_searcher(&ctx.editor.read_line.input());
         buffer.set_search(&ctx.editor.pattern_buf);
@@ -217,29 +219,30 @@ pub mod filter_cursors {
         fn range_contains_pattern(
             buffer: &BufferContent,
             range: BufferRange,
-            pattern: &str,
+            pattern: &Pattern,
         ) -> bool {
+            let search_anchor = pattern.search_anchor();
             if range.from.line_index == range.to.line_index {
-                let line = &buffer.line_at(range.from.line_index as _).as_str()
+                let selection = &buffer.line_at(range.from.line_index as _).as_str()
                     [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
-                line.contains(pattern)
+                pattern.is_contained_by(selection, search_anchor)
             } else {
-                let line = &buffer.line_at(range.from.line_index as _).as_str()
+                let selection = &buffer.line_at(range.from.line_index as _).as_str()
                     [range.from.column_byte_index as usize..];
-                if line.contains(pattern) {
+                if pattern.is_contained_by(selection, search_anchor) {
                     return true;
                 }
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
-                    let line = buffer.line_at(line_index as _).as_str();
-                    if line.contains(pattern) {
+                    let selection = buffer.line_at(line_index as _).as_str();
+                    if pattern.is_contained_by(selection, search_anchor) {
                         return true;
                     }
                 }
 
-                let line = &buffer.line_at(range.to.line_index as _).as_str()
+                let selection = &buffer.line_at(range.to.line_index as _).as_str()
                     [..range.to.column_byte_index as usize];
-                line.contains(pattern)
+                pattern.is_contained_by(selection, search_anchor)
             }
         }
 
@@ -249,6 +252,9 @@ pub mod filter_cursors {
         } else {
             pattern
         };
+
+        // TODO: handle error
+        let _ = ctx.editor.pattern_buf.compile(pattern);
 
         let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
@@ -265,7 +271,7 @@ pub mod filter_cursors {
         let mut filtered_cursors_len = 0;
 
         for &cursor in &cursors[..] {
-            if range_contains_pattern(buffer, cursor.to_range(), pattern)
+            if range_contains_pattern(buffer, cursor.to_range(), &ctx.editor.pattern_buf)
                 == keep_if_contains_pattern
             {
                 filtered_cursors[filtered_cursors_len] = cursor;

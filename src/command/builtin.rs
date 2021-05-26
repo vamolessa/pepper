@@ -1112,7 +1112,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 };
 
                 if let Err(error) = syntax.set_rule(token_kind, pattern.as_str(definition)) {
-                    return Err(CommandError::PatternError(pattern, error));
+                    return Err(CommandError::PatternError(pattern, error.kind));
                 }
             }
 
