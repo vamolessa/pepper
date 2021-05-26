@@ -14,7 +14,7 @@ use crate::{
     events::{EditorEvent, EditorEventQueue},
     help,
     history::{Edit, EditKind, History},
-    pattern::{MatchResult, Pattern},
+    pattern::Pattern,
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
@@ -438,39 +438,12 @@ impl BufferContent {
     pub fn find_search_ranges(&self, pattern: &Pattern, ranges: &mut Vec<BufferRange>) {
         let search_anchor = pattern.search_anchor();
         for (line_index, line) in self.lines.iter().enumerate() {
-            let mut column_index = 0;
-            let mut line = line.as_str();
-            while !line.is_empty() {
-                if let Some(search_anchor) = search_anchor {
-                    match line.find(search_anchor) {
-                        Some(i) => {
-                            column_index += i;
-                            line = &line[i..];
-                        }
-                        None => break,
-                    }
-                }
-                let len = match pattern.matches(line) {
-                    MatchResult::Ok(len) => {
-                        let from = BufferPosition::line_col(line_index as _, column_index as _);
-                        column_index += len;
-                        let to = BufferPosition::line_col(line_index as _, column_index as _);
-                        ranges.push(BufferRange::between(from, to));
-                        line = &line[len..];
-                        len
-                    }
-                    _ => 0,
-                };
-                if len == 0 {
-                    match line.chars().next() {
-                        Some(c) => {
-                            let len = c.len_utf8();
-                            column_index += len;
-                            line = &line[len..];
-                        }
-                        None => break,
-                    }
-                }
+            let line = line.as_str();
+            for (column_index, text) in pattern.match_indices(line, search_anchor) {
+                let from = BufferPosition::line_col(line_index as _, column_index as _);
+                let end = column_index + text.len();
+                let to = BufferPosition::line_col(line_index as _, end as _);
+                ranges.push(BufferRange::between(from, to));
             }
         }
     }

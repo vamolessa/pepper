@@ -1475,10 +1475,7 @@ where
                     ctx.editor
                         .status_bar
                         .write(MessageKind::Error)
-                        .fmt(format_args!(
-                            "could not compile pattern '{}': {}",
-                            search, error
-                        ));
+                        .fmt(format_args!("{}", error));
                     return None;
                 }
             }

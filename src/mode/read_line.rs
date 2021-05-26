@@ -5,7 +5,7 @@ use crate::{
     command::CommandManager,
     cursor::CursorCollection,
     editor::KeysIterator,
-    editor_utils::ReadLinePoll,
+    editor_utils::{MessageKind, ReadLinePoll},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     pattern::Pattern,
@@ -221,28 +221,33 @@ pub mod filter_cursors {
             range: BufferRange,
             pattern: &Pattern,
         ) -> bool {
+            #[inline]
+            fn contains(selection: &str, pattern: &Pattern, anchor: Option<char>) -> bool {
+                pattern.match_indices(selection, anchor).next().is_some()
+            }
+
             let search_anchor = pattern.search_anchor();
             if range.from.line_index == range.to.line_index {
                 let selection = &buffer.line_at(range.from.line_index as _).as_str()
                     [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
-                pattern.is_contained_by(selection, search_anchor)
+                contains(selection, pattern, search_anchor)
             } else {
                 let selection = &buffer.line_at(range.from.line_index as _).as_str()
                     [range.from.column_byte_index as usize..];
-                if pattern.is_contained_by(selection, search_anchor) {
+                if contains(selection, pattern, search_anchor) {
                     return true;
                 }
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
                     let selection = buffer.line_at(line_index as _).as_str();
-                    if pattern.is_contained_by(selection, search_anchor) {
+                    if contains(selection, pattern, search_anchor) {
                         return true;
                     }
                 }
 
                 let selection = &buffer.line_at(range.to.line_index as _).as_str()
                     [..range.to.column_byte_index as usize];
-                pattern.is_contained_by(selection, search_anchor)
+                contains(selection, pattern, search_anchor)
             }
         }
 
@@ -253,8 +258,10 @@ pub mod filter_cursors {
             pattern
         };
 
-        // TODO: handle error
-        let _ = ctx.editor.pattern_buf.compile(pattern);
+        if let Err(error) = ctx.editor.pattern_buf.compile(pattern) {
+            ctx.editor.status_bar.write(MessageKind::Error).fmt(format_args!("{}", error));
+            return None;
+        }
 
         let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;

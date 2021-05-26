@@ -42,6 +42,55 @@ impl<'a> fmt::Display for PatternError<'a> {
     }
 }
 
+pub struct MatchIndices<'pattern, 'text> {
+    pattern: &'pattern Pattern,
+    text: &'text str,
+    index: usize,
+    anchor: Option<char>,
+}
+impl<'pattern, 'text> Iterator for MatchIndices<'pattern, 'text> {
+    type Item = (usize, &'text str);
+    fn next(&mut self) -> Option<Self::Item> {
+        #[inline]
+        fn next_char(iter: &mut MatchIndices) -> Option<()> {
+            let mut chars = iter.text.chars();
+            let c = chars.next()?;
+            iter.text = chars.as_str();
+            iter.index += c.len_utf8();
+            Some(())
+        }
+
+        loop {
+            if let Some(anchor) = self.anchor {
+                match self.text.find(anchor) {
+                    Some(i) => {
+                        self.text = &self.text[i..];
+                        self.index += i;
+                    }
+                    None => {
+                        self.text = "";
+                        return None;
+                    }
+                }
+            }
+            match self.pattern.matches(self.text) {
+                MatchResult::Ok(0) => {
+                    let result = (self.index, "");
+                    next_char(self)?;
+                    return Some(result);
+                }
+                MatchResult::Ok(len) => {
+                    let result = (self.index, &self.text[..len]);
+                    self.text = &self.text[len..];
+                    self.index += len;
+                    return Some(result);
+                }
+                _ => next_char(self)?,
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PatternState {
     op_index: usize,
@@ -156,9 +205,17 @@ impl Pattern {
         }
     }
 
-    // TODO
-    pub fn is_contained_by(&self, text: &str, anchor: Option<char>) -> bool {
-        false
+    pub fn match_indices<'pattern, 'text>(
+        &'pattern self,
+        text: &'text str,
+        anchor: Option<char>,
+    ) -> MatchIndices<'pattern, 'text> {
+        MatchIndices {
+            pattern: self,
+            text,
+            index: 0,
+            anchor,
+        }
     }
 
     pub fn matches(&self, text: &str) -> MatchResult {
