@@ -17,9 +17,9 @@ use crate::{
     keymap::{KeyMapCollection, MatchResult},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
+    pattern::Pattern,
     picker::Picker,
     platform::{Key, Platform, ProcessHandle, ProcessTag},
-    pattern::Pattern,
     register::{RegisterCollection, RegisterKey},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -119,7 +119,7 @@ pub struct Editor {
     pub string_pool: StringPool,
 
     pub status_bar: StatusBar,
-    pub pattern_buf: Pattern, // TODO: better name
+    pub aux_pattern: Pattern,
 
     pub commands: CommandManager,
     pub lsp: lsp::ClientManager,
@@ -148,7 +148,7 @@ impl Editor {
             string_pool: StringPool::default(),
 
             status_bar: StatusBar::new(),
-            pattern_buf: Pattern::new(),
+            aux_pattern: Pattern::new(),
 
             commands: CommandManager::new(),
             lsp: lsp::ClientManager::new(),
@@ -421,12 +421,21 @@ impl Editor {
                             self.buffer_views.on_buffer_load(buffer);
                         }
                     }
-                    &EditorEvent::BufferInsertText { handle, range, history, .. } => {
+                    &EditorEvent::BufferInsertText {
+                        handle,
+                        range,
+                        history,
+                        ..
+                    } => {
                         if !history {
                             self.buffer_views.on_buffer_insert_text(handle, range);
                         }
                     }
-                    &EditorEvent::BufferDeleteText { handle, range, history } => {
+                    &EditorEvent::BufferDeleteText {
+                        handle,
+                        range,
+                        history,
+                    } => {
                         if !history {
                             self.buffer_views.on_buffer_delete_text(handle, range);
                         }
@@ -472,4 +481,3 @@ impl Editor {
         }
     }
 }
-

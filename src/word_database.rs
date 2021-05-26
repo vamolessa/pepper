@@ -295,4 +295,3 @@ mod tests {
         assert_eq!(1, unique_word_count(&words));
     }
 }
-

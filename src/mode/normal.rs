@@ -1466,9 +1466,9 @@ where
     if search_ranges.is_empty() {
         let search = ctx.editor.registers.get(SEARCH_REGISTER);
         if !search.is_empty() {
-            match ctx.editor.pattern_buf.compile_searcher(search) {
+            match ctx.editor.aux_pattern.compile_searcher(search) {
                 Ok(()) => {
-                    buffer.set_search(&ctx.editor.pattern_buf);
+                    buffer.set_search(&ctx.editor.aux_pattern);
                     search_ranges = buffer.search_ranges();
                 }
                 Err(error) => {
@@ -1552,8 +1552,8 @@ fn search_word_or_move_to_it(
         register.push('_');
         register.push_str(text);
 
-        let _ = ctx.editor.pattern_buf.compile_searcher(register);
-        buffer.set_search(&ctx.editor.pattern_buf);
+        let _ = ctx.editor.aux_pattern.compile_searcher(register);
+        buffer.set_search(&ctx.editor.aux_pattern);
 
         drop(cursors);
         let main_position = buffer_view.cursors.main_cursor().position;
@@ -1730,4 +1730,3 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     None
 }
-

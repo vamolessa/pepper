@@ -85,7 +85,11 @@ impl Syntax {
         self.glob.compile(pattern)
     }
 
-    pub fn set_rule<'a>(&mut self, kind: TokenKind, pattern: &'a str) -> Result<(), PatternError<'a>> {
+    pub fn set_rule<'a>(
+        &mut self,
+        kind: TokenKind,
+        pattern: &'a str,
+    ) -> Result<(), PatternError<'a>> {
         self.rules[kind as usize].compile(pattern)
     }
 

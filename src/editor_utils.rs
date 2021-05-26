@@ -163,4 +163,3 @@ pub fn hash_bytes(bytes: &[u8]) -> u64 {
     }
     return hash;
 }
-

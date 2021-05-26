@@ -125,9 +125,9 @@ pub mod search {
     }
 
     fn update_search(ctx: &mut ModeContext) -> Option<()> {
-        ctx.editor.pattern_buf.clear();
+        ctx.editor.aux_pattern.clear();
         for buffer in ctx.editor.buffers.iter_mut() {
-            buffer.set_search(&ctx.editor.pattern_buf);
+            buffer.set_search(&ctx.editor.aux_pattern);
         }
 
         let client = ctx.clients.get_mut(ctx.client_handle)?;
@@ -137,9 +137,9 @@ pub mod search {
 
         let _ = ctx
             .editor
-            .pattern_buf
+            .aux_pattern
             .compile_searcher(&ctx.editor.read_line.input());
-        buffer.set_search(&ctx.editor.pattern_buf);
+        buffer.set_search(&ctx.editor.aux_pattern);
         let search_ranges = buffer.search_ranges();
 
         if search_ranges.is_empty() {
@@ -258,7 +258,7 @@ pub mod filter_cursors {
             pattern
         };
 
-        if let Err(error) = ctx.editor.pattern_buf.compile_searcher(pattern) {
+        if let Err(error) = ctx.editor.aux_pattern.compile_searcher(pattern) {
             ctx.editor
                 .status_bar
                 .write(MessageKind::Error)
@@ -281,7 +281,7 @@ pub mod filter_cursors {
         let mut filtered_cursors_len = 0;
 
         for &cursor in &cursors[..] {
-            if range_contains_pattern(buffer, cursor.to_range(), &ctx.editor.pattern_buf)
+            if range_contains_pattern(buffer, cursor.to_range(), &ctx.editor.aux_pattern)
                 == keep_if_contains_pattern
             {
                 filtered_cursors[filtered_cursors_len] = cursor;
@@ -413,7 +413,7 @@ pub mod split_cursors {
             pattern
         };
 
-        if let Err(error) = ctx.editor.pattern_buf.compile_searcher(pattern) {
+        if let Err(error) = ctx.editor.aux_pattern.compile_searcher(pattern) {
             ctx.editor
                 .status_bar
                 .write(MessageKind::Error)
@@ -446,7 +446,7 @@ pub mod split_cursors {
                     &mut splitted_cursors,
                     splitted_cursors_len,
                     line,
-                    &ctx.editor.pattern_buf,
+                    &ctx.editor.aux_pattern,
                     range.from,
                 );
             } else {
@@ -456,7 +456,7 @@ pub mod split_cursors {
                     &mut splitted_cursors,
                     splitted_cursors_len,
                     line,
-                    &ctx.editor.pattern_buf,
+                    &ctx.editor.aux_pattern,
                     range.from,
                 );
 
@@ -466,7 +466,7 @@ pub mod split_cursors {
                         &mut splitted_cursors,
                         splitted_cursors_len,
                         line,
-                        &ctx.editor.pattern_buf,
+                        &ctx.editor.aux_pattern,
                         BufferPosition::line_col(line_index, 0),
                     );
                 }
@@ -477,7 +477,7 @@ pub mod split_cursors {
                     &mut splitted_cursors,
                     splitted_cursors_len,
                     line,
-                    &ctx.editor.pattern_buf,
+                    &ctx.editor.aux_pattern,
                     BufferPosition::line_col(range.to.line_index, 0),
                 );
             }
@@ -664,4 +664,3 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 }
-

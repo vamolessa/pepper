@@ -317,4 +317,3 @@ pub fn parse_terminal_keys(mut buf: &[u8], backspace_code: u8, keys: &mut Vec<Ke
         keys.push(key);
     }
 }
-
