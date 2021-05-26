@@ -494,7 +494,6 @@ impl BufferContent {
         }
     }
 
-    // TODO: also search by Pattern
     pub fn find_search_ranges(&self, pattern: SearchPattern, ranges: &mut Vec<BufferRange>) {
         let case_sensitive = pattern.case_sensitive;
         match pattern.matcher {
@@ -534,6 +533,9 @@ impl BufferContent {
                             let to = BufferPosition::line_col(line_index as _, column_index as _);
                             ranges.push(BufferRange::between(from, to));
                             line = &line[bytes_len..];
+                        } else {
+                            column_index += 1;
+                            line = &line[1..];
                         }
                     }
                 }
