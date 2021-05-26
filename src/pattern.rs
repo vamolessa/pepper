@@ -66,6 +66,60 @@ impl Pattern {
         }
     }
 
+    pub fn compile_searcher(&mut self, pattern: &str) -> Result<(), PatternError> {
+        let (case_sensitive, pattern) = match pattern.strip_prefix('_') {
+            Some(pattern) => (true, pattern),
+            None => (false, pattern),
+        };
+        match pattern.strip_prefix('%') {
+            Some(pattern) => self.compile(pattern)?,
+            None => {
+                self.ops.clear();
+                self.ops.push(Op::Error);
+
+                let mut pattern = pattern;
+                let mut buf = [0; OP_STRING_LEN];
+                let mut len;
+                loop {
+                    len = match pattern
+                        .char_indices()
+                        .map(|(i, c)| i + c.len_utf8())
+                        .take_while(|&len| len < buf.len())
+                        .last()
+                    {
+                        Some(len) => len,
+                        None => break,
+                    };
+                    buf[..len].copy_from_slice(pattern[..len].as_bytes());
+                    pattern = &pattern[len..];
+                    self.ops.push(Op::String(
+                        Jump(self.ops.len() as _),
+                        Jump(0),
+                        len as _,
+                        buf,
+                    ));
+                }
+                self.ops.push(Op::Ok);
+            }
+        }
+        if !case_sensitive {
+            self.make_case_insensitive();
+        }
+        Ok(())
+    }
+
+    pub fn make_case_insensitive(&mut self) {
+        for op in &mut self.ops {
+            match op {
+                &mut Op::Char(okj, erj, c) => *op = Op::CharCaseInsensitive(okj, erj, c),
+                &mut Op::String(okj, erj, len, bytes) => {
+                    *op = Op::StringCaseInsensitive(okj, erj, len, bytes)
+                }
+                _ => (),
+            }
+        }
+    }
+
     pub fn search_anchor(&self) -> Option<char> {
         let (c, erj) = match self.ops[self.start_jump.0 as usize] {
             Op::Char(_, erj, c) => (c, erj),
@@ -171,10 +225,28 @@ impl Pattern {
                 Op::Char(okj, erj, ch) => {
                     op_index = check_and_jump(&mut chars, okj, erj, |c| c == ch)
                 }
+                Op::CharCaseInsensitive(okj, erj, ch) => {
+                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.eq_ignore_ascii_case(&ch))
+                }
                 Op::String(okj, erj, len, bytes) => {
-                    let s = unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) };
-                    op_index = if chars.as_str().starts_with(s) {
-                        chars = chars.as_str()[s.len()..].chars();
+                    let len = len as usize;
+                    let bytes = &bytes[..len];
+                    let text_bytes = chars.as_str().as_bytes();
+                    op_index = if text_bytes.len() >= len && &text_bytes[..len] == bytes {
+                        chars = chars.as_str()[len..].chars();
+                        okj.0 as _
+                    } else {
+                        erj.0 as _
+                    }
+                }
+                Op::StringCaseInsensitive(okj, erj, len, bytes) => {
+                    let len = len as usize;
+                    let bytes = &bytes[..len];
+                    let text_bytes = chars.as_str().as_bytes();
+                    op_index = if text_bytes.len() >= len
+                        && text_bytes[..len].eq_ignore_ascii_case(bytes)
+                    {
+                        chars = chars.as_str()[len..].chars();
                         okj.0 as _
                     } else {
                         erj.0 as _
@@ -259,7 +331,9 @@ enum Op {
     Digit(Jump, Jump),
     Alphanumeric(Jump, Jump),
     Char(Jump, Jump, char),
+    CharCaseInsensitive(Jump, Jump, char),
     String(Jump, Jump, u8, [u8; OP_STRING_LEN]),
+    StringCaseInsensitive(Jump, Jump, u8, [u8; OP_STRING_LEN]),
 }
 
 impl fmt::Debug for Op {
@@ -315,9 +389,25 @@ impl fmt::Debug for Op {
                 erj.0,
                 width = WIDTH - 4
             )),
+            &Op::CharCaseInsensitive(okj, erj, c) => f.write_fmt(format_args!(
+                "{:width$}'{}' {} {}",
+                "CharCaseInsensitive",
+                c,
+                okj.0,
+                erj.0,
+                width = WIDTH - 4
+            )),
             &Op::String(okj, erj, len, bytes) => f.write_fmt(format_args!(
                 "{:width$}'{}' {} {}",
                 "String",
+                unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) },
+                okj.0,
+                erj.0,
+                width = WIDTH - 4
+            )),
+            &Op::StringCaseInsensitive(okj, erj, len, bytes) => f.write_fmt(format_args!(
+                "{:width$}'{}' {} {}",
+                "StringCaseInsensitive",
                 unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) },
                 okj.0,
                 erj.0,
@@ -696,7 +786,9 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Digit(okj, erj)
                 | Op::Alphanumeric(okj, erj)
                 | Op::Char(okj, erj, _)
-                | Op::String(okj, erj, _, _) => {
+                | Op::CharCaseInsensitive(okj, erj, _)
+                | Op::String(okj, erj, _, _)
+                | Op::StringCaseInsensitive(okj, erj, _, _) => {
                     fix_jump(okj, index, jump);
                     fix_jump(erj, index, jump);
                 }
@@ -759,7 +851,9 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Digit(okj, erj)
                 | Op::Alphanumeric(okj, erj)
                 | Op::Char(okj, erj, _)
-                | Op::String(okj, erj, _, _) => {
+                | Op::CharCaseInsensitive(okj, erj, _)
+                | Op::String(okj, erj, _, _)
+                | Op::StringCaseInsensitive(okj, erj, _, _) => {
                     fix_jump(okj, index, fix);
                     fix_jump(erj, index, fix);
                 }
@@ -838,7 +932,9 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Digit(okj, erj)
                 | Op::Alphanumeric(okj, erj)
                 | Op::Char(okj, erj, _)
-                | Op::String(okj, erj, _, _) => {
+                | Op::CharCaseInsensitive(okj, erj, _)
+                | Op::String(okj, erj, _, _)
+                | Op::StringCaseInsensitive(okj, erj, _, _) => {
                     fix_jump(okj, index, fix);
                     fix_jump(erj, index, fix);
                 }
@@ -972,6 +1068,9 @@ mod tests {
 
         let p = new_pattern("abcdefghijk");
         assert_eq!(MatchResult::Ok(11), p.matches("abcdefghijk"));
+
+        let p = new_pattern("abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(MatchResult::Ok(26), p.matches("abcdefghijklmnopqrstuvwxyz"));
     }
 
     #[test]
@@ -1063,6 +1162,9 @@ mod tests {
 
         let p = new_pattern("(abcdefghijk)");
         assert_eq!(MatchResult::Ok(11), p.matches("abcdefghijk"));
+
+        let p = new_pattern("(abcdefghijklmnopqrstuvwxyz)");
+        assert_eq!(MatchResult::Ok(26), p.matches("abcdefghijklmnopqrstuvwxyz"));
     }
 
     #[test]
