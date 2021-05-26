@@ -556,7 +556,7 @@ impl BufferContent {
                                 None => break,
                             }
                         }
-                        line = match pattern.matches(line) {
+                        let len = match pattern.matches(line) {
                             MatchResult::Ok(len) => {
                                 let from =
                                     BufferPosition::line_col(line_index as _, column_index as _);
@@ -564,17 +564,21 @@ impl BufferContent {
                                 let to =
                                     BufferPosition::line_col(line_index as _, column_index as _);
                                 ranges.push(BufferRange::between(from, to));
-                                &line[len..]
+                                line = &line[len..];
+                                len
                             }
-                            _ => match line.chars().next() {
+                            _ => 0,
+                        };
+                        if len == 0 {
+                            match line.chars().next() {
                                 Some(c) => {
                                     let len = c.len_utf8();
                                     column_index += len;
-                                    &line[len..]
+                                    line = &line[len..];
                                 }
                                 None => break,
-                            },
-                        };
+                            }
+                        }
                     }
                 }
             }
