@@ -14,7 +14,7 @@ use crate::{
     events::{EditorEvent, EditorEventQueue},
     help,
     history::{Edit, EditKind, History},
-    pattern::{MatchResult, Pattern, PatternError},
+    pattern::{MatchResult, Pattern},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
@@ -82,65 +82,6 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
             let position = BufferPosition::parse(&path[i + 1..]);
             (&path[..i], position)
         }
-    }
-}
-
-pub struct SearchPatternError<'a> {
-    pattern: &'a str,
-    error: PatternError,
-}
-impl<'a> fmt::Display for SearchPatternError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "could not parse pattern '{}': {}",
-            self.pattern, self.error
-        )
-    }
-}
-
-pub enum SearchPatternMatcher<'a> {
-    Literal(&'a str),
-    Pattern(&'a Pattern),
-}
-
-pub struct SearchPattern<'a> {
-    pub case_sensitive: bool,
-    pub matcher: SearchPatternMatcher<'a>,
-}
-impl<'a> SearchPattern<'a> {
-    pub fn empty() -> Self {
-        Self {
-            case_sensitive: true,
-            matcher: SearchPatternMatcher::Literal(""),
-        }
-    }
-
-    pub fn parse(
-        pattern: &'a str,
-        pattern_buf: &'a mut Pattern,
-    ) -> Result<Self, SearchPatternError<'a>> {
-        let (case_sensitive, pattern) = match pattern.strip_prefix('_') {
-            Some(rest) => (true, rest),
-            None => (false, pattern),
-        };
-        let case_sensitive = if case_sensitive {
-            true
-        } else {
-            pattern.bytes().any(|c| c.is_ascii_uppercase())
-        };
-        let matcher = match pattern.strip_prefix('%') {
-            Some(pattern) => match pattern_buf.compile(pattern) {
-                Ok(()) => SearchPatternMatcher::Pattern(pattern_buf),
-                Err(error) => return Err(SearchPatternError { pattern, error }),
-            },
-            None => SearchPatternMatcher::Literal(pattern),
-        };
-
-        Ok(Self {
-            case_sensitive,
-            matcher,
-        })
     }
 }
 
@@ -494,91 +435,40 @@ impl BufferContent {
         }
     }
 
-    pub fn find_search_ranges(&self, pattern: SearchPattern, ranges: &mut Vec<BufferRange>) {
-        let case_sensitive = pattern.case_sensitive;
-        match pattern.matcher {
-            SearchPatternMatcher::Literal(pattern) => {
-                if pattern.is_empty() {
-                    return;
-                }
-
-                let bytes = pattern.as_bytes();
-                let bytes_len = bytes.len();
-                let anchor = bytes[0];
-                let eq_check = if case_sensitive {
-                    u8::eq
-                } else {
-                    u8::eq_ignore_ascii_case
-                };
-
-                for (line_index, line) in self.lines.iter().enumerate() {
-                    let mut column_index = 0;
-                    let mut line = line.as_str().as_bytes();
-                    loop {
-                        match line.iter().position(|b| eq_check(b, &anchor)) {
-                            Some(i) => {
-                                column_index += i;
-                                line = &line[i..];
-                            }
-                            None => break,
+    pub fn find_search_ranges(&self, pattern: &Pattern, ranges: &mut Vec<BufferRange>) {
+        let anchor = pattern.search_anchor();
+        for (line_index, line) in self.lines.iter().enumerate() {
+            let mut column_index = 0;
+            let mut line = line.as_str();
+            while !line.is_empty() {
+                if let Some(anchor) = anchor {
+                    match line.find(anchor) {
+                        Some(i) => {
+                            column_index += i;
+                            line = &line[i..];
                         }
-
-                        if line.len() < bytes_len {
-                            break;
-                        }
-
-                        if line.iter().zip(bytes.iter()).all(|(a, b)| eq_check(a, b)) {
-                            let from = BufferPosition::line_col(line_index as _, column_index as _);
-                            column_index += bytes_len;
-                            let to = BufferPosition::line_col(line_index as _, column_index as _);
-                            ranges.push(BufferRange::between(from, to));
-                            line = &line[bytes_len..];
-                        } else {
-                            column_index += 1;
-                            line = &line[1..];
-                        }
+                        None => break,
                     }
                 }
-            }
-            SearchPatternMatcher::Pattern(pattern) => {
-                let anchor = pattern.search_anchor();
-
-                for (line_index, line) in self.lines.iter().enumerate() {
-                    let mut column_index = 0;
-                    let mut line = line.as_str();
-                    while !line.is_empty() {
-                        if let Some(anchor) = anchor {
-                            match line.find(anchor) {
-                                Some(i) => {
-                                    column_index += i;
-                                    line = &line[i..];
-                                }
-                                None => break,
-                            }
+                let len = match pattern.matches(line) {
+                    MatchResult::Ok(len) => {
+                        let from = BufferPosition::line_col(line_index as _, column_index as _);
+                        column_index += len;
+                        let to = BufferPosition::line_col(line_index as _, column_index as _);
+                        ranges.push(BufferRange::between(from, to));
+                        line = &line[len..];
+                        len
+                    }
+                    _ => 0,
+                };
+                if len == 0 {
+                    match line.chars().next() {
+                        Some(c) => {
+                            let len = c.len_utf8();
+                            column_index += len;
+                            line = &line[len..];
                         }
-                        let len = match pattern.matches(line) {
-                            MatchResult::Ok(len) => {
-                                let from =
-                                    BufferPosition::line_col(line_index as _, column_index as _);
-                                column_index += len;
-                                let to =
-                                    BufferPosition::line_col(line_index as _, column_index as _);
-                                ranges.push(BufferRange::between(from, to));
-                                line = &line[len..];
-                                len
-                            }
-                            _ => 0,
-                        };
-                        if len == 0 {
-                            match line.chars().next() {
-                                Some(c) => {
-                                    let len = c.len_utf8();
-                                    column_index += len;
-                                    line = &line[len..];
-                                }
-                                None => break,
-                            }
-                        }
+                        None => break,
                     }
                 }
             }
@@ -1244,7 +1134,7 @@ impl Buffer {
         edits
     }
 
-    pub fn set_search(&mut self, pattern: SearchPattern) {
+    pub fn set_search(&mut self, pattern: &Pattern) {
         self.search_ranges.clear();
         self.content
             .find_search_ranges(pattern, &mut self.search_ranges);

@@ -119,7 +119,7 @@ pub struct Editor {
     pub string_pool: StringPool,
 
     pub status_bar: StatusBar,
-    pub pattern_buf: Pattern,
+    pub pattern_buf: Pattern, // TODO: better name
 
     pub commands: CommandManager,
     pub lsp: lsp::ClientManager,

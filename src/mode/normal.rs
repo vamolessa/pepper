@@ -1,10 +1,7 @@
 use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
-    buffer::{
-        find_path_and_position_at, parse_path_and_position, BufferContent, SearchPattern,
-        SearchPatternMatcher,
-    },
+    buffer::{find_path_and_position_at, parse_path_and_position, BufferContent},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::Client,
@@ -1469,16 +1466,19 @@ where
     if search_ranges.is_empty() {
         let search = ctx.editor.registers.get(SEARCH_REGISTER);
         if !search.is_empty() {
-            match SearchPattern::parse(search, &mut ctx.editor.pattern_buf) {
-                Ok(pattern) => {
-                    buffer.set_search(pattern);
+            match ctx.editor.pattern_buf.compile_searcher(search) {
+                Ok(()) => {
+                    buffer.set_search(&ctx.editor.pattern_buf);
                     search_ranges = buffer.search_ranges();
                 }
                 Err(error) => {
                     ctx.editor
                         .status_bar
                         .write(MessageKind::Error)
-                        .fmt(format_args!("{}", error));
+                        .fmt(format_args!(
+                            "could not compile pattern '{}': {}",
+                            search, error
+                        ));
                     return None;
                 }
             }
@@ -1555,10 +1555,8 @@ fn search_word_or_move_to_it(
         register.push('_');
         register.push_str(text);
 
-        buffer.set_search(SearchPattern {
-            case_sensitive: true,
-            matcher: SearchPatternMatcher::Literal(&register[1..]),
-        });
+        let _ = ctx.editor.pattern_buf.compile_searcher(register);
+        buffer.set_search(&ctx.editor.pattern_buf);
 
         drop(cursors);
         let main_position = buffer_view.cursors.main_cursor().position;

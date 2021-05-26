@@ -51,6 +51,12 @@ impl Pattern {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.ops.clear();
+        self.ops.push(Op::Error);
+        self.start_jump = Jump(0);
+    }
+
     pub fn compile(&mut self, pattern: &str) -> Result<(), PatternError> {
         match PatternCompiler::new(&mut self.ops, pattern).compile() {
             Ok(start_jump) => {
@@ -58,18 +64,19 @@ impl Pattern {
                 Ok(())
             }
             Err(error) => {
-                self.ops.clear();
-                self.ops.push(Op::Error);
-                self.start_jump = Jump(0);
+                self.clear();
                 Err(error)
             }
         }
     }
 
     pub fn compile_searcher(&mut self, pattern: &str) -> Result<(), PatternError> {
-        let (case_sensitive, pattern) = match pattern.strip_prefix('_') {
+        let (ignore_case, pattern) = match pattern.strip_prefix('_') {
             Some(pattern) => (true, pattern),
-            None => (false, pattern),
+            None => {
+                let ignore_case = pattern.chars().all(char::is_lowercase);
+                (ignore_case, pattern)
+            }
         };
         match pattern.strip_prefix('%') {
             Some(pattern) => self.compile(pattern)?,
@@ -102,13 +109,13 @@ impl Pattern {
                 self.ops.push(Op::Ok);
             }
         }
-        if !case_sensitive {
-            self.make_case_insensitive();
+        if !ignore_case {
+            self.ignore_case();
         }
         Ok(())
     }
 
-    pub fn make_case_insensitive(&mut self) {
+    pub fn ignore_case(&mut self) {
         for op in &mut self.ops {
             match op {
                 &mut Op::Char(okj, erj, c) => *op = Op::CharCaseInsensitive(okj, erj, c),
@@ -122,6 +129,7 @@ impl Pattern {
 
     pub fn search_anchor(&self) -> Option<char> {
         let (c, erj) = match self.ops[self.start_jump.0 as usize] {
+            Op::Error => return Some('\0'),
             Op::Char(_, erj, c) => (c, erj),
             Op::String(_, erj, len, bytes) => {
                 let s = unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) };
@@ -400,7 +408,7 @@ impl fmt::Debug for Op {
             &Op::String(okj, erj, len, bytes) => f.write_fmt(format_args!(
                 "{:width$}'{}' {} {}",
                 "String",
-                unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) },
+                String::from_utf8_lossy(&bytes[..len as usize]),
                 okj.0,
                 erj.0,
                 width = WIDTH - 4
@@ -408,7 +416,7 @@ impl fmt::Debug for Op {
             &Op::StringCaseInsensitive(okj, erj, len, bytes) => f.write_fmt(format_args!(
                 "{:width$}'{}' {} {}",
                 "StringCaseInsensitive",
-                unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) },
+                String::from_utf8_lossy(&bytes[..len as usize]),
                 okj.0,
                 erj.0,
                 width = WIDTH - 4

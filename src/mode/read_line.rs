@@ -1,5 +1,4 @@
 use crate::{
-    buffer::SearchPattern,
     buffer_position::BufferPositionIndex,
     buffer_view::CursorMovementKind,
     client::Client,
@@ -125,8 +124,9 @@ pub mod search {
     }
 
     fn update_search(ctx: &mut ModeContext) -> Option<()> {
+        ctx.editor.pattern_buf.clear();
         for buffer in ctx.editor.buffers.iter_mut() {
-            buffer.set_search(SearchPattern::empty());
+            buffer.set_search(&ctx.editor.pattern_buf);
         }
 
         let client = ctx.clients.get_mut(ctx.client_handle)?;
@@ -134,14 +134,10 @@ pub mod search {
         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
         let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
 
-        let search_pattern = match SearchPattern::parse(
-            &ctx.editor.read_line.input(),
-            &mut ctx.editor.pattern_buf,
-        ) {
-            Ok(pattern) => pattern,
-            Err(_) => SearchPattern::empty(),
-        };
-        buffer.set_search(search_pattern);
+        let _ = ctx.editor
+            .pattern_buf
+            .compile_searcher(&ctx.editor.read_line.input());
+        buffer.set_search(&ctx.editor.pattern_buf);
         let search_ranges = buffer.search_ranges();
 
         if search_ranges.is_empty() {
