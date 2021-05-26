@@ -2188,12 +2188,13 @@ impl Client {
                     handle,
                     range,
                     text,
+                    ..
                 } => {
                     let text = text.as_str(&editor.events);
                     let range = BufferRange::between(range.from, range.from);
                     self.versioned_buffers.add_edit(handle, range, text);
                 }
-                &EditorEvent::BufferDeleteText { handle, range } => {
+                &EditorEvent::BufferDeleteText { handle, range, .. } => {
                     self.versioned_buffers.add_edit(handle, range, "");
                 }
                 &EditorEvent::BufferSave { handle, .. } => {

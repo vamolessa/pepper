@@ -28,10 +28,12 @@ pub enum EditorEvent {
         handle: BufferHandle,
         range: BufferRange,
         text: EditorEventText,
+        history: bool,
     },
     BufferDeleteText {
         handle: BufferHandle,
         range: BufferRange,
+        history: bool,
     },
     BufferSave {
         handle: BufferHandle,
@@ -67,7 +69,13 @@ impl EditorEventQueue {
         self.write.events.push(event);
     }
 
-    pub fn enqueue_buffer_insert(&mut self, handle: BufferHandle, range: BufferRange, text: &str) {
+    pub fn enqueue_buffer_insert(
+        &mut self,
+        handle: BufferHandle,
+        range: BufferRange,
+        text: &str,
+        history: bool,
+    ) {
         let from = self.write.texts.len();
         self.write.texts.push_str(text);
         let text = EditorEventText {
@@ -78,6 +86,7 @@ impl EditorEventQueue {
             handle,
             range,
             text,
+            history,
         });
     }
 }

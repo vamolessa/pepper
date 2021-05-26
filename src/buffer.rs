@@ -885,7 +885,7 @@ impl Buffer {
             text,
         );
 
-        events.enqueue_buffer_insert(self.handle, range, text);
+        events.enqueue_buffer_insert(self.handle, range, text, false);
 
         if self.capabilities.has_history {
             self.history.add_edit(Edit {
@@ -951,6 +951,7 @@ impl Buffer {
         events.enqueue(EditorEvent::BufferDeleteText {
             handle: self.handle,
             range,
+            history: false,
         });
 
         let from = range.from;
@@ -1089,7 +1090,7 @@ impl Buffer {
                         edit.range.from,
                         edit.text,
                     );
-                    events.enqueue_buffer_insert(self.handle, edit.range, edit.text);
+                    events.enqueue_buffer_insert(self.handle, edit.range, edit.text, true);
                 }
                 EditKind::Delete => {
                     Self::delete_range_no_history(
@@ -1102,6 +1103,7 @@ impl Buffer {
                     events.enqueue(EditorEvent::BufferDeleteText {
                         handle: self.handle,
                         range: edit.range,
+                        history: true,
                     });
                 }
             }
