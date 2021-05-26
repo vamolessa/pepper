@@ -166,9 +166,6 @@ impl Client {
 
             let position = buffer_view.cursors.main_cursor().position;
 
-            // TODO: this is only needed because of undo/redo. need to investigate
-            let position = buffer.saturate_position(position);
-
             let line_index = position.line_index;
             let line = buffer.line_at(line_index as _).as_str();
             let column_index = position.column_byte_index;
