@@ -187,6 +187,10 @@ impl Pattern {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        matches!(self.ops[self.start_jump.0 as usize], Op::Ok | Op::Error)
+    }
+
     pub fn search_anchor(&self) -> Option<char> {
         let (c, erj) = match self.ops[self.start_jump.0 as usize] {
             Op::Error => return Some('\0'),

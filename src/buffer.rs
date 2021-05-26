@@ -436,6 +436,9 @@ impl BufferContent {
     }
 
     pub fn find_search_ranges(&self, pattern: &Pattern, ranges: &mut Vec<BufferRange>) {
+        if pattern.is_empty() {
+            return;
+        }
         let search_anchor = pattern.search_anchor();
         for (line_index, line) in self.lines.iter().enumerate() {
             let line = line.as_str();
