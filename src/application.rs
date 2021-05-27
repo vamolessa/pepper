@@ -60,10 +60,10 @@ impl ApplicationEventSender {
 pub struct ServerApplication;
 impl ServerApplication {
     pub fn platform_request_channel() -> (
-        mpsc::SyncSender<PlatformRequest>,
+        mpsc::Sender<PlatformRequest>,
         mpsc::Receiver<PlatformRequest>,
     ) {
-        mpsc::sync_channel(32)
+        mpsc::channel()
     }
 
     pub const fn connection_buffer_len() -> usize {

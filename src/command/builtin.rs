@@ -1279,6 +1279,21 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "new-line",
+        alias: "",
+        hidden: true,
+        completions: &[],
+        func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            args.assert_empty()?;
+
+            ctx.output.push('\n');
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
         name: "client-id",
         alias: "",
         hidden: false,
