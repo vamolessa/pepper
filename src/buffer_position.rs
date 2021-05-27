@@ -100,10 +100,17 @@ impl BufferPosition {
 
 impl fmt::Debug for BufferPosition {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_fmt(format_args!(
+        write!(
+            f,
             "BufferPosition(line: {}, col: {})",
-            self.line_index, self.column_byte_index
-        ))
+            self.line_index, self.column_byte_index,
+        )
+    }
+}
+
+impl fmt::Display for BufferPosition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{},{}", self.line_index, self.column_byte_index)
     }
 }
 
@@ -126,15 +133,6 @@ impl Ord for BufferPosition {
 impl PartialOrd for BufferPosition {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-impl fmt::Display for BufferPosition {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.line_index.fmt(f)?;
-        f.write_str(",")?;
-        self.column_byte_index.fmt(f)?;
-        Ok(())
     }
 }
 
@@ -162,13 +160,14 @@ impl BufferRange {
 
 impl fmt::Debug for BufferRange {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_fmt(format_args!(
+        write!(
+            f,
             "BufferRange(line: {}, col: {} => line: {}, col: {})",
             self.from.line_index,
             self.from.column_byte_index,
             self.to.line_index,
             self.to.column_byte_index
-        ))
+        )
     }
 }
 
@@ -268,3 +267,4 @@ mod tests {
         assert_eq!(Some(pos(3, 8)), BufferPosition::parse("4,9,xx"));
     }
 }
+

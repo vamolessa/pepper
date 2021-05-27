@@ -189,17 +189,18 @@ pub mod lsp_definition {
                             Some(position) => position,
                             None => BufferPosition::zero(),
                         };
+
                         NavigationHistory::save_client_snapshot(
                             ctx.clients,
                             ctx.client_handle,
                             &ctx.editor.buffer_views,
                         );
+
                         let path = ctx.editor.string_pool.acquire_with(path);
                         let buffer_view_handle = ctx
                             .editor
                             .buffer_view_handle_from_path(ctx.client_handle, Path::new(&path));
                         ctx.editor.string_pool.release(path);
-
                         if let Some(buffer_view) =
                             ctx.editor.buffer_views.get_mut(buffer_view_handle)
                         {
@@ -210,6 +211,7 @@ pub mod lsp_definition {
                                 position,
                             });
                         }
+
                         if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
                             client.set_buffer_view_handle(
                                 Some(buffer_view_handle),

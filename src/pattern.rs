@@ -350,9 +350,9 @@ impl fmt::Debug for Pattern {
         f.write_str("Pattern {\n")?;
         for (i, op) in self.ops.iter().enumerate() {
             if i == self.start_jump.0 as _ {
-                f.write_fmt(format_args!("  > [{:width$}] ", i, width = op_digit_count))?;
+                write!(f, "  > [{:width$}] ", i, width = op_digit_count)?;
             } else {
-                f.write_fmt(format_args!("    [{:width$}] ", i, width = op_digit_count))?;
+                write!(f, "    [{:width$}] ", i, width = op_digit_count)?;
             }
 
             fmt::Debug::fmt(op, f)?;
@@ -422,78 +422,73 @@ impl fmt::Debug for Op {
         const WIDTH: usize = 14;
 
         fn p(f: &mut fmt::Formatter, name: &str, okj: Jump, erj: Jump) -> fmt::Result {
-            f.write_fmt(format_args!(
-                "{:width$}{} {}",
-                name,
-                okj.0,
-                erj.0,
-                width = WIDTH
-            ))
+            write!(f, "{:width$}{} {}", name, okj.0, erj.0, width = WIDTH)
         }
 
         match self {
             &Op::Ok => f.write_str("Ok"),
             &Op::Error => f.write_str("Error"),
-            &Op::Reset(jump) => f.write_fmt(format_args!(
-                "{:width$} {}",
-                "Reset",
-                jump.0,
-                width = WIDTH - 4,
-            )),
-            &Op::Unwind(jump, len) => f.write_fmt(format_args!(
+            &Op::Reset(jump) => write!(f, "{:width$} {}", "Reset", jump.0, width = WIDTH - 4,),
+            &Op::Unwind(jump, len) => write!(
+                f,
                 "{:width$}[{}] {}",
                 "Unwind",
                 len.0,
                 jump.0,
                 width = WIDTH - 4
-            )),
+            ),
             &Op::EndAnchor(okj, erj) => p(f, "EndAnchor", okj, erj),
             &Op::SkipOne(okj, erj) => p(f, "SkipOne", okj, erj),
-            &Op::SkipMany(okj, erj, len) => f.write_fmt(format_args!(
+            &Op::SkipMany(okj, erj, len) => write!(
+                f,
                 "{:width$}[{}] {} {}",
                 "SkipMany",
                 len.0,
                 okj.0,
                 erj.0,
                 width = WIDTH - 4
-            )),
+            ),
             &Op::Alphabetic(okj, erj) => p(f, "Alphabetic", okj, erj),
             &Op::Lower(okj, erj) => p(f, "Lower", okj, erj),
             &Op::Upper(okj, erj) => p(f, "Upper", okj, erj),
             &Op::Digit(okj, erj) => p(f, "Digit", okj, erj),
             &Op::Alphanumeric(okj, erj) => p(f, "Alphanumeric", okj, erj),
-            &Op::Char(okj, erj, c) => f.write_fmt(format_args!(
+            &Op::Char(okj, erj, c) => write!(
+                f,
                 "{:width$}'{}' {} {}",
                 "Char",
                 c,
                 okj.0,
                 erj.0,
                 width = WIDTH - 4
-            )),
-            &Op::CharCaseInsensitive(okj, erj, c) => f.write_fmt(format_args!(
+            ),
+            &Op::CharCaseInsensitive(okj, erj, c) => write!(
+                f,
                 "{:width$}'{}' {} {}",
                 "CharCaseInsensitive",
                 c,
                 okj.0,
                 erj.0,
                 width = WIDTH - 4
-            )),
-            &Op::String(okj, erj, len, bytes) => f.write_fmt(format_args!(
+            ),
+            &Op::String(okj, erj, len, bytes) => write!(
+                f,
                 "{:width$}'{}' {} {}",
                 "String",
                 std::str::from_utf8(&bytes[..len as usize]).unwrap(),
                 okj.0,
                 erj.0,
                 width = WIDTH - 4
-            )),
-            &Op::StringCaseInsensitive(okj, erj, len, bytes) => f.write_fmt(format_args!(
+            ),
+            &Op::StringCaseInsensitive(okj, erj, len, bytes) => write!(
+                f,
                 "{:width$}'{}' {} {}",
                 "StringCaseInsensitive",
                 std::str::from_utf8(&bytes[..len as usize]).unwrap(),
                 okj.0,
                 erj.0,
                 width = WIDTH - 4
-            )),
+            ),
         }
     }
 }
@@ -1538,3 +1533,4 @@ mod tests {
         ));
     }
 }
+

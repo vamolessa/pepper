@@ -1676,26 +1676,58 @@ impl Client {
                 Ok(())
             }
             "textDocument/definition" => {
+                enum DefinitionLocation {
+                    Single(DocumentLocation),
+                    Many(JsonArray),
+                    Invalid,
+                }
+                impl DefinitionLocation {
+                    pub fn parse(value: JsonValue, json: &Json) -> Self {
+                        match value {
+                            JsonValue::Object(_) => {
+                                match DocumentLocation::from_json(value, json) {
+                                    Ok(location) => Self::Single(location),
+                                    Err(_) => Self::Invalid,
+                                }
+                            }
+                            JsonValue::Array(array) => {
+                                let mut locations = array
+                                    .clone()
+                                    .elements(json)
+                                    .filter_map(move |l| DocumentLocation::from_json(l, json).ok());
+                                let location = match locations.next() {
+                                    Some(location) => location,
+                                    None => return Self::Invalid,
+                                };
+                                match locations.next() {
+                                    Some(_) => Self::Many(array),
+                                    None => Self::Single(location),
+                                }
+                            }
+                            _ => Self::Invalid,
+                        }
+                    }
+                }
+
                 let client_handle = match self.request_state {
                     RequestState::Definition { client_handle } => client_handle,
                     _ => return Ok(()),
                 };
                 self.request_state = RequestState::Idle;
-                match result {
-                    JsonValue::Object(_) => {
-                        let location = DocumentLocation::from_json(result, &self.json)?;
+                match DefinitionLocation::parse(result, &self.json) {
+                    DefinitionLocation::Single(location) => {
                         let path = match Uri::parse(&self.root, location.uri.as_str(&self.json))? {
                             Uri::Path(path) => path,
                         };
 
-                        let buffer_view_handle =
-                            editor.buffer_view_handle_from_path(client_handle, path);
                         NavigationHistory::save_client_snapshot(
                             clients,
                             client_handle,
                             &mut editor.buffer_views,
                         );
 
+                        let buffer_view_handle =
+                            editor.buffer_view_handle_from_path(client_handle, path);
                         if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
                             let position = location.range.start.into();
                             let mut cursors = buffer_view.cursors.mut_guard();
@@ -1713,10 +1745,9 @@ impl Client {
                             );
                         }
                     }
-                    JsonValue::Array(locations) => {
+                    DefinitionLocation::Many(locations) => {
                         editor.picker.clear();
                         for location in locations
-                            .clone()
                             .elements(&self.json)
                             .filter_map(|l| DocumentLocation::from_json(l, &self.json).ok())
                         {
@@ -1747,7 +1778,7 @@ impl Client {
                             picker::lsp_definition::enter_mode(&mut ctx, self.handle());
                         }
                     }
-                    _ => (),
+                    DefinitionLocation::Invalid => (),
                 }
                 Ok(())
             }

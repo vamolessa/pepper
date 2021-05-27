@@ -130,7 +130,7 @@ pub struct KeyParseAllError {
 }
 impl fmt::Display for KeyParseAllError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_fmt(format_args!("{} at index: {}", self.error, self.index))
+        write!(f, "{} at index: {}", self.error, self.index)
     }
 }
 impl Error for KeyParseAllError {}
@@ -354,13 +354,13 @@ impl fmt::Display for Key {
             Key::PageDown => f.write_str("<pagedown>"),
             Key::Tab => f.write_str("<tab>"),
             Key::Delete => f.write_str("<delete>"),
-            Key::F(n) => f.write_fmt(format_args!("<f{}>", n)),
+            Key::F(n) => write!(f, "<f{}>", n),
             Key::Char(' ') => f.write_str("<space>"),
             Key::Char('<') => f.write_str("<less>"),
             Key::Char('>') => f.write_str("<greater>"),
-            Key::Char(c) => f.write_fmt(format_args!("{}", c)),
-            Key::Ctrl(c) => f.write_fmt(format_args!("<c-{}>", c)),
-            Key::Alt(c) => f.write_fmt(format_args!("<a-{}>", c)),
+            Key::Char(c) => write!(f, "{}", c),
+            Key::Ctrl(c) => write!(f, "<c-{}>", c),
+            Key::Alt(c) => write!(f, "<a-{}>", c),
             Key::Esc => f.write_str("<esc>"),
         }
     }
@@ -760,3 +760,4 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
+
