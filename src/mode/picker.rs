@@ -273,6 +273,62 @@ pub mod lsp_document_symbol {
     }
 }
 
+pub mod lsp_workspace_symbol {
+    use super::*;
+
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle) {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
+            match poll {
+                ReadLinePoll::Pending => None,
+                ReadLinePoll::Submitted => {
+                    if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
+                        let index = match ctx.editor.picker.current_entry(&ctx.editor.word_database)
+                        {
+                            Some((EntrySource::Custom(i), _)) => i,
+                            _ => 0,
+                        };
+                        let clients = &mut *ctx.clients;
+                        let client_handle = ctx.client_handle;
+                        lsp::ClientManager::access(ctx.editor, handle, |e, c| {
+                            c.finish_workspace_symbols(e, clients, client_handle, index);
+                        });
+                    }
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+                ReadLinePoll::Canceled => {
+                    if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
+                        lsp::ClientManager::access(ctx.editor, handle, |_, c| {
+                            c.cancel_current_request();
+                        });
+                    }
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+            }
+        }
+
+        ctx.editor.read_line.set_prompt("workspace symbol:");
+        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+        ctx.editor.picker.move_cursor(0);
+
+        if ctx.editor.picker.len() > 0 {
+            let state = &mut ctx.editor.mode.picker_state;
+            state.on_client_keys = on_client_keys;
+            state.lsp_client_handle = Some(client_handle);
+            Mode::change_to(ctx, ModeKind::Picker);
+        } else {
+            lsp::ClientManager::access(ctx.editor, client_handle, |_, c| {
+                c.cancel_current_request();
+            });
+        }
+    }
+}
+
 pub mod custom {
     use super::*;
 
@@ -328,3 +384,4 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
+

@@ -1527,11 +1527,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |mut ctx| {
             let mut args = ctx.args.with(&ctx.editor.registers);
             args.assert_no_bang()?;
-
-            let mut flags = [("auto-close", None)];
-            args.get_flags(&mut flags)?;
-            let auto_close_buffer = flags[0].1.is_some();
-
+            args.get_flags(&mut [])?;
             let query = args.try_next()?.map(|a| a.text).unwrap_or("");
             args.assert_empty()?;
 
@@ -1542,7 +1538,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let buffer_handle = ctx.current_buffer_handle()?;
             let query = ctx.editor.string_pool.acquire_with(query);
             let result = access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
-                client.workspace_symbols(editor, platform, client_handle, &query, auto_close_buffer)
+                client.workspace_symbols(editor, platform, client_handle, &query)
             });
             ctx.editor.string_pool.release(query);
             result?;

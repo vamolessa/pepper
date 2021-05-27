@@ -317,9 +317,7 @@ Pick and jump to a symbol in the current buffer listed by the lsp server.
 ## `lsp-workspace-symbols`
 Opens up a buffer with all symbols in the workspace found by the lsp server
 optionally filtered by a query.
-- usage: `lsp-workspace-symbols [<flags>] [<query>]`
-- flags:
-  - `-auto-close` : automatically closes buffer when no other client has it in focus
+- usage: `lsp-workspace-symbols [<query>]`
 
 ## `lsp-format`
 Format a buffer using the lsp server.
