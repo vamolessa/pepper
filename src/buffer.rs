@@ -48,9 +48,9 @@ pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Opti
 pub fn parse_path_and_position(text: &str) -> (&str, Option<BufferPosition>) {
     let text = text.trim();
     match text.rfind(':') {
-        Some(i) => match BufferPosition::parse(&text[i + 1..]) {
-            Some(position) => (&text[..i], Some(position)),
-            None => (text, None),
+        Some(i) => match text[i + 1..].parse() {
+            Ok(position) => (&text[..i], Some(position)),
+            Err(_) => (text, None),
         },
         None => (text, None),
     }
@@ -75,11 +75,11 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     let path = &text[from..to];
     match path.rfind(':') {
         None | Some(1) => {
-            let position = text[to..].strip_prefix(':').and_then(BufferPosition::parse);
+            let position = text[to..].strip_prefix(':').and_then(|t| t.parse().ok());
             (path, position)
         }
         Some(i) => {
-            let position = BufferPosition::parse(&path[i + 1..]);
+            let position = path[i + 1..].parse().ok();
             (&path[..i], position)
         }
     }
@@ -404,15 +404,18 @@ impl BufferContent {
         position.line_index = position.line_index.min((self.line_count() - 1) as _);
         let line = self.line_at(position.line_index as _).as_str();
         position.column_byte_index = position.column_byte_index.min(line.len() as _);
+        // TODO: is this really needed?
+        /*
         while !line.is_char_boundary(position.column_byte_index as _) {
             position.column_byte_index += 1;
         }
+        */
         position
     }
 
     pub fn append_range_text_to_string(&self, range: BufferRange, text: &mut String) {
-        let from = self.clamp_position(range.from);
-        let to = self.clamp_position(range.to);
+        let from = self.saturate_position(range.from);
+        let to = self.saturate_position(range.to);
 
         let first_line = self.lines[from.line_index as usize].as_str();
         if from.line_index == to.line_index {
@@ -449,15 +452,6 @@ impl BufferContent {
                 ranges.push(BufferRange::between(from, to));
             }
         }
-    }
-
-    fn clamp_position(&self, mut position: BufferPosition) -> BufferPosition {
-        position.line_index = position.line_index.min((self.line_count() - 1) as _);
-        position.column_byte_index = position
-            .column_byte_index
-            .min(self.lines[position.line_index as usize].as_str().len() as _);
-
-        position
     }
 
     pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
@@ -548,7 +542,7 @@ impl BufferContent {
         impl Iterator<Item = WordRefWithPosition<'a>>,
         impl Iterator<Item = WordRefWithPosition<'a>>,
     ) {
-        let position = self.clamp_position(position);
+        let position = self.saturate_position(position);
         let line_index = position.line_index as _;
         let column_byte_index = position.column_byte_index as _;
 
@@ -563,7 +557,7 @@ impl BufferContent {
     }
 
     pub fn word_at(&self, position: BufferPosition) -> WordRefWithPosition {
-        let position = self.clamp_position(position);
+        let position = self.saturate_position(position);
         self.line_at(position.line_index as _)
             .word_at(position.column_byte_index as _)
             .to_word_ref_with_position(position.line_index as _)
@@ -584,7 +578,7 @@ impl BufferContent {
         position: BufferPosition,
         delimiter: char,
     ) -> Option<BufferRange> {
-        let position = self.clamp_position(position);
+        let position = self.saturate_position(position);
         let line = self.line_at(position.line_index as _).as_str();
         let range = find_delimiter_pair_at(line, position.column_byte_index as _, delimiter)?;
         Some(BufferRange::between(
@@ -620,7 +614,7 @@ impl BufferContent {
             None
         }
 
-        let position = self.clamp_position(position);
+        let position = self.saturate_position(position);
         let line = self.line_at(position.line_index as _).as_str();
         let (before, after) = line.split_at(position.column_byte_index as _);
 
@@ -869,7 +863,7 @@ impl Buffer {
         events: &mut EditorEventQueue,
     ) -> BufferRange {
         self.search_ranges.clear();
-        let position = self.content.clamp_position(position);
+        let position = self.content.saturate_position(position);
 
         if text.is_empty() {
             return BufferRange::between(position, position);
@@ -940,8 +934,8 @@ impl Buffer {
         events: &mut EditorEventQueue,
     ) {
         self.search_ranges.clear();
-        range.from = self.content.clamp_position(range.from);
-        range.to = self.content.clamp_position(range.to);
+        range.from = self.content.saturate_position(range.from);
+        range.to = self.content.saturate_position(range.to);
 
         if range.from == range.to {
             return;
@@ -1960,3 +1954,4 @@ mod tests {
         );
     }
 }
+

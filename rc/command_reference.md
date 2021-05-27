@@ -75,9 +75,15 @@ Output can be accessed from the `%z` register in `<commands-on-output>`
   - `-env=<vars>` : sets environment variables in the form `VAR=<value> VAR=<value>...`
   - `-split-on-byte=<number>` : splits process output at every <number> byte
 
-## `replace-with-text`
-Replace each cursor selection with text.
-- usage: `replace-with-text <text>`
+## `replace-with`
+If either `-from` or `-to` are present, then the text inside that range will be deleted, otherwise
+each cursor selection will be used as a delete range. Then, it inserts `<text>` at every delete range,
+effectivelly replacing its previous contents.
+- usage: `replace-with [<flags>] <text>`
+- flags:
+  - `-buffer=<buffer-id>` : if present, buffer with id `<buffer-id>` is used instead
+  - `-from=<position>` : if present, replace range will start at `<position>`
+  - `-to=<position>` : if present, replace range will end at `<position>`
 
 ## `replace-with-output`
 Replace each cursor selection with command output.
@@ -250,6 +256,14 @@ Creates a keyboard mapping for an editor mode.
   - `-picker` : set mapping for picker mode
   - `-command` : set mapping for command mode
 
+## `text-len`
+Returns text length in bytes.
+- usage: `text-len <text>`
+
+## `text-join`
+Returns all `<args>` joined.
+- usage: `text-join <args...>`
+
 ## `client-id`
 Returns the current client's id.
 - usage: `client-id`
@@ -260,8 +274,23 @@ Returns the current buffer's id.
 
 ## `buffer-path`
 Returns the current buffer's associated filepath.
+- usage: `buffer-path [<flags>]`
 - flags:
   - `-buffer=<buffer-id>` : if present, buffer with id `<buffer-id>` is used instead
+
+## `buffer-line-count`
+Returns how many lines a buffer has. It's always at least one.
+- usage: `buffer-line-count [<flags>]`
+- flags:
+  - `-buffer=<buffer-id>` : if present, buffer with id `<buffer-id>` is used instead
+
+## `buffer-text`
+Returns the buffer text optionally delimited by `-from` and `-to`.
+- usage: `buffer-text [<flags>]`
+- flags:
+  - `-buffer=<buffer-id>` : if present, buffer with id `<buffer-id>` is used instead
+  - `-from=<position>` : if present, text range will start at `<position>`
+  - `-to=<position>` : if present, text range will end at `<position>`
 
 ## `lsp`
 Automatically starts a lsp server when a buffer matching a glob is opened.

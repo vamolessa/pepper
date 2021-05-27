@@ -1,6 +1,7 @@
 use std::{
     cmp::{Ord, Ordering, PartialOrd},
     fmt,
+    str::FromStr,
 };
 
 pub type BufferPositionIndex = u32;
@@ -72,30 +73,6 @@ impl BufferPosition {
             range.from
         }
     }
-
-    pub fn parse(s: &str) -> Option<BufferPosition> {
-        #[inline]
-        fn is_non_ascii_digit(c: char) -> bool {
-            !c.is_ascii_digit()
-        }
-
-        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
-        let (line, s) = s.split_at(i);
-        let line = line.parse::<BufferPositionIndex>().ok()?.saturating_sub(1);
-
-        let mut chars = s.chars();
-        if !matches!(chars.next(), Some(',')) {
-            return Some(BufferPosition::line_col(line, 0));
-        }
-        let s = chars.as_str();
-
-        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
-        let column = match s[..i].parse::<BufferPositionIndex>() {
-            Ok(n) => n.saturating_sub(1),
-            Err(_) => return Some(BufferPosition::line_col(line, 0)),
-        };
-        Some(BufferPosition::line_col(line, column))
-    }
 }
 
 impl fmt::Debug for BufferPosition {
@@ -133,6 +110,36 @@ impl Ord for BufferPosition {
 impl PartialOrd for BufferPosition {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl FromStr for BufferPosition {
+    type Err = ();
+    fn from_str(s: &str) -> Result<BufferPosition, Self::Err> {
+        #[inline]
+        fn is_non_ascii_digit(c: char) -> bool {
+            !c.is_ascii_digit()
+        }
+
+        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
+        let (line, s) = s.split_at(i);
+        let line = match line.parse::<BufferPositionIndex>() {
+            Ok(line) => line.saturating_sub(1),
+            Err(_) => return Err(()),
+        };
+
+        let mut chars = s.chars();
+        if !matches!(chars.next(), Some(',')) {
+            return Ok(BufferPosition::line_col(line, 0));
+        }
+        let s = chars.as_str();
+
+        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
+        let column = match s[..i].parse::<BufferPositionIndex>() {
+            Ok(n) => n.saturating_sub(1),
+            Err(_) => return Ok(BufferPosition::line_col(line, 0)),
+        };
+        Ok(BufferPosition::line_col(line, column))
     }
 }
 

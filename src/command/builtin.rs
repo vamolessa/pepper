@@ -8,8 +8,8 @@ use std::{
 
 use crate::{
     buffer::BufferHandle,
-    buffer_position::BufferPosition,
-    client::ClientManager,
+    buffer_position::{BufferPosition, BufferRange},
+    client::{Client, ClientManager},
     command::{
         parse_process_command, BuiltinCommand, CommandContext, CommandError, CommandManager,
         CommandOperation, CommandToken, CommandTokenIter, CommandTokenKind, CommandValue,
@@ -306,39 +306,98 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "replace-with-text",
+        name: "replace-with",
         alias: "",
         hidden: false,
         completions: &[],
         func: |ctx| {
             let mut args = ctx.args.with(&ctx.editor.registers);
             args.assert_no_bang()?;
-            args.get_flags(&mut [])?;
+
+            let mut flags = [("buffer", None), ("from", None), ("to", None)];
+            args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.as_ref().map(parse_command_value).transpose()?;
+            let from = flags[1].1.as_ref().map(parse_command_value).transpose()?;
+            let to = flags[2].1.as_ref().map(parse_command_value).transpose()?;
+
             let text = args.next()?.text;
             args.assert_empty()?;
 
-            let buffer_view_handle = ctx.current_buffer_view_handle()?;
-            let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
-                Some(buffer_view) => buffer_view,
-                None => return Err(CommandError::NoBufferOpened),
+            let buffer_handle = match buffer_handle {
+                Some(handle) => handle,
+                None => ctx.current_buffer_handle()?,
             };
-            buffer_view.delete_text_in_cursor_ranges(
-                &mut ctx.editor.buffers,
-                &mut ctx.editor.word_database,
-                &mut ctx.editor.events,
-            );
+            let buffer_end_position = match ctx.editor.buffers.get_mut(buffer_handle) {
+                Some(buffer) => buffer.content().end(),
+                None => return Err(CommandError::InvalidBufferHandle(buffer_handle)),
+            };
+            let range = match from {
+                Some(from) => match to {
+                    Some(to) => Some(BufferRange::between(from, to)),
+                    None => Some(BufferRange::between(from, buffer_end_position)),
+                },
+                None => match to {
+                    Some(to) => Some(BufferRange::between(BufferPosition::zero(), to)),
+                    None => match ctx
+                        .client_handle
+                        .and_then(|h| ctx.clients.get(h))
+                        .and_then(Client::buffer_view_handle)
+                        .and_then(|h| ctx.editor.buffer_views.get(h))
+                    {
+                        Some(buffer_view) if buffer_view.buffer_handle == buffer_handle => None,
+                        _ => Some(BufferRange::between(
+                            BufferPosition::zero(),
+                            buffer_end_position,
+                        )),
+                    },
+                },
+            };
 
-            let text = ctx.editor.string_pool.acquire_with(text);
-            ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
-            if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(buffer_view_handle) {
-                buffer_view.insert_text_at_cursor_positions(
-                    &mut ctx.editor.buffers,
-                    &mut ctx.editor.word_database,
-                    &text,
-                    &mut ctx.editor.events,
-                );
+            match range {
+                Some(range) => {
+                    let buffer = match ctx.editor.buffers.get_mut(buffer_handle) {
+                        Some(buffer) => buffer,
+                        None => return Err(CommandError::NoBufferOpened),
+                    };
+                    buffer.delete_range(
+                        &mut ctx.editor.word_database,
+                        range,
+                        &mut ctx.editor.events,
+                    );
+                    let text = ctx.editor.string_pool.acquire_with(text);
+                    buffer.insert_text(
+                        &mut ctx.editor.word_database,
+                        range.from,
+                        &text,
+                        &mut ctx.editor.events,
+                    );
+                    ctx.editor.string_pool.release(text);
+                }
+                None => {
+                    let buffer_view_handle = ctx.current_buffer_view_handle()?;
+                    let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+                        Some(buffer_view) => buffer_view,
+                        None => return Err(CommandError::NoBufferOpened),
+                    };
+                    buffer_view.delete_text_in_cursor_ranges(
+                        &mut ctx.editor.buffers,
+                        &mut ctx.editor.word_database,
+                        &mut ctx.editor.events,
+                    );
+
+                    let text = ctx.editor.string_pool.acquire_with(text);
+                    ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
+                    if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+                        buffer_view.insert_text_at_cursor_positions(
+                            &mut ctx.editor.buffers,
+                            &mut ctx.editor.word_database,
+                            &text,
+                            &mut ctx.editor.events,
+                        );
+                    }
+                    ctx.editor.string_pool.release(text);
+                }
             }
-            ctx.editor.string_pool.release(text);
 
             Ok(None)
         },
@@ -1187,6 +1246,39 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "text-len",
+        alias: "",
+        hidden: true,
+        completions: &[],
+        func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+            let text = args.next()?.text;
+            args.assert_empty()?;
+
+            use fmt::Write;
+            let _ = write!(ctx.output, "{}", text.len());
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "text-join",
+        alias: "",
+        hidden: true,
+        completions: &[],
+        func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+            args.get_flags(&mut [])?;
+
+            while let Some(arg) = args.try_next()? {
+                ctx.output.push_str(arg.text);
+            }
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
         name: "client-id",
         alias: "",
         hidden: false,
@@ -1222,7 +1314,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "buffer-path",
         alias: "",
-        hidden: false,
+        hidden: true,
         completions: &[],
         func: |ctx| {
             let mut args = ctx.args.with(&ctx.editor.registers);
@@ -1249,6 +1341,74 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 let _ = write!(ctx.output, "{}", path);
             }
 
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "buffer-line-count",
+        alias: "",
+        hidden: true,
+        completions: &[],
+        func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+
+            let mut flags = [("buffer", None)];
+            args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.as_ref().map(parse_command_value).transpose()?;
+
+            args.assert_empty()?;
+
+            let buffer_handle = match buffer_handle {
+                Some(handle) => handle,
+                None => ctx.current_buffer_handle()?,
+            };
+            let buffer = match ctx.editor.buffers.get(buffer_handle) {
+                Some(buffer) => buffer.content(),
+                None => return Err(CommandError::InvalidBufferHandle(buffer_handle)),
+            };
+
+            use fmt::Write;
+            let _ = write!(ctx.output, "{}", buffer.line_count());
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "buffer-text",
+        alias: "",
+        hidden: true,
+        completions: &[],
+        func: |ctx| {
+            let mut args = ctx.args.with(&ctx.editor.registers);
+            args.assert_no_bang()?;
+
+            let mut flags = [("buffer", None), ("from", None), ("to", None)];
+            args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.as_ref().map(parse_command_value).transpose()?;
+            let from = flags[1].1.as_ref().map(parse_command_value).transpose()?;
+            let to = flags[1].1.as_ref().map(parse_command_value).transpose()?;
+
+            args.assert_empty()?;
+
+            let buffer_handle = match buffer_handle {
+                Some(handle) => handle,
+                None => ctx.current_buffer_handle()?,
+            };
+            let buffer = match ctx.editor.buffers.get(buffer_handle) {
+                Some(buffer) => buffer.content(),
+                None => return Err(CommandError::InvalidBufferHandle(buffer_handle)),
+            };
+            let from = match from {
+                Some(from) => from,
+                None => BufferPosition::zero(),
+            };
+            let to = match to {
+                Some(to) => to,
+                None => buffer.end(),
+            };
+            let range = BufferRange::between(from, to);
+
+            buffer.append_range_text_to_string(range, ctx.output);
             Ok(None)
         },
     },
@@ -1638,3 +1798,4 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
+
