@@ -1,9 +1,15 @@
+use std::path::Path;
+
 use crate::{
+    buffer::parse_path_and_position,
+    buffer_position::BufferPosition,
     command::CommandManager,
+    cursor::Cursor,
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    navigation_history::NavigationHistory,
     picker::EntrySource,
     platform::Key,
     register::RETURN_REGISTER,
@@ -159,6 +165,77 @@ pub mod buffer {
                 .status_bar
                 .write(MessageKind::Error)
                 .str("no buffer opened");
+        }
+    }
+}
+
+pub mod lsp_definition {
+    use super::*;
+
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle) {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
+            match poll {
+                ReadLinePoll::Pending => None,
+                ReadLinePoll::Submitted => {
+                    if let Some((_, entry)) =
+                        ctx.editor.picker.current_entry(&ctx.editor.word_database)
+                    {
+                        let (path, position) = parse_path_and_position(entry);
+                        let position = match position {
+                            Some(position) => position,
+                            None => BufferPosition::zero(),
+                        };
+                        NavigationHistory::save_client_snapshot(
+                            ctx.clients,
+                            ctx.client_handle,
+                            &ctx.editor.buffer_views,
+                        );
+                        let path = ctx.editor.string_pool.acquire_with(path);
+                        let buffer_view_handle = ctx
+                            .editor
+                            .buffer_view_handle_from_path(ctx.client_handle, Path::new(&path));
+                        ctx.editor.string_pool.release(path);
+
+                        if let Some(buffer_view) =
+                            ctx.editor.buffer_views.get_mut(buffer_view_handle)
+                        {
+                            let mut cursors = buffer_view.cursors.mut_guard();
+                            cursors.clear();
+                            cursors.add(Cursor {
+                                anchor: position,
+                                position,
+                            });
+                        }
+                        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                            client.set_buffer_view_handle(
+                                Some(buffer_view_handle),
+                                &mut ctx.editor.events,
+                            );
+                        }
+                    }
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+                ReadLinePoll::Canceled => {
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+            }
+        }
+
+        ctx.editor.read_line.set_prompt("definition:");
+        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+        ctx.editor.picker.move_cursor(0);
+
+        if ctx.editor.picker.len() > 0 {
+            let state = &mut ctx.editor.mode.picker_state;
+            state.on_client_keys = on_client_keys;
+            state.lsp_client_handle = Some(client_handle);
+            Mode::change_to(ctx, ModeKind::Picker);
         }
     }
 }

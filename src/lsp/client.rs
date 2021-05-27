@@ -1681,39 +1681,73 @@ impl Client {
                     _ => return Ok(()),
                 };
                 self.request_state = RequestState::Idle;
-                let location = match result {
-                    JsonValue::Object(_) => result,
-                    // TODO: use picker in this case?
-                    JsonValue::Array(locations) => match locations.elements(&self.json).next() {
-                        Some(location) => location,
-                        None => return Ok(()),
-                    },
-                    _ => return Ok(()),
-                };
-                let location = DocumentLocation::from_json(location, &self.json)?;
-                let path = match Uri::parse(&self.root, location.uri.as_str(&self.json))? {
-                    Uri::Path(path) => path,
-                };
+                match result {
+                    JsonValue::Object(_) => {
+                        let location = DocumentLocation::from_json(result, &self.json)?;
+                        let path = match Uri::parse(&self.root, location.uri.as_str(&self.json))? {
+                            Uri::Path(path) => path,
+                        };
 
-                let buffer_view_handle = editor.buffer_view_handle_from_path(client_handle, path);
-                NavigationHistory::save_client_snapshot(
-                    clients,
-                    client_handle,
-                    &mut editor.buffer_views,
-                );
+                        let buffer_view_handle =
+                            editor.buffer_view_handle_from_path(client_handle, path);
+                        NavigationHistory::save_client_snapshot(
+                            clients,
+                            client_handle,
+                            &mut editor.buffer_views,
+                        );
 
-                if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
-                    let position = location.range.start.into();
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(Cursor {
-                        anchor: position,
-                        position,
-                    });
-                }
+                        if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
+                            let position = location.range.start.into();
+                            let mut cursors = buffer_view.cursors.mut_guard();
+                            cursors.clear();
+                            cursors.add(Cursor {
+                                anchor: position,
+                                position,
+                            });
+                        }
 
-                if let Some(client) = clients.get_mut(client_handle) {
-                    client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                        if let Some(client) = clients.get_mut(client_handle) {
+                            client.set_buffer_view_handle(
+                                Some(buffer_view_handle),
+                                &mut editor.events,
+                            );
+                        }
+                    }
+                    JsonValue::Array(locations) => {
+                        editor.picker.clear();
+                        for location in locations
+                            .clone()
+                            .elements(&self.json)
+                            .filter_map(|l| DocumentLocation::from_json(l, &self.json).ok())
+                        {
+                            let path = match Uri::parse(&self.root, location.uri.as_str(&self.json))
+                            {
+                                Ok(Uri::Path(path)) => path,
+                                Err(_) => continue,
+                            };
+                            let path = match path.to_str() {
+                                Some(path) => path,
+                                None => continue,
+                            };
+
+                            let position: BufferPosition = location.range.start.into();
+                            editor.picker.add_custom_entry_fmt(format_args!(
+                                "{}:{},{}",
+                                path,
+                                position.line_index + 1,
+                                position.column_byte_index + 1
+                            ));
+
+                            let mut ctx = ModeContext {
+                                editor,
+                                platform,
+                                clients,
+                                client_handle,
+                            };
+                            picker::lsp_definition::enter_mode(&mut ctx, self.handle());
+                        }
+                    }
+                    _ => (),
                 }
                 Ok(())
             }
