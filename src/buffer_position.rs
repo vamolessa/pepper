@@ -252,26 +252,26 @@ mod tests {
 
     #[test]
     fn buffer_position_parsing() {
-        assert_eq!(None, BufferPosition::parse(""));
-        assert_eq!(None, BufferPosition::parse(","));
-        assert_eq!(None, BufferPosition::parse("a,"));
-        assert_eq!(None, BufferPosition::parse(",b"));
-        assert_eq!(None, BufferPosition::parse("a,b"));
+        assert_eq!(Err(()), "".parse::<BufferPosition>());
+        assert_eq!(Err(()), ",".parse::<BufferPosition>());
+        assert_eq!(Err(()), "a,".parse::<BufferPosition>());
+        assert_eq!(Err(()), ",b".parse::<BufferPosition>());
+        assert_eq!(Err(()), "a,b".parse::<BufferPosition>());
 
-        assert_eq!(Some(pos(0, 0)), BufferPosition::parse("0"));
-        assert_eq!(Some(pos(0, 0)), BufferPosition::parse("1"));
-        assert_eq!(Some(pos(1, 0)), BufferPosition::parse("2"));
-        assert_eq!(Some(pos(98, 0)), BufferPosition::parse("99"));
+        assert_eq!(Ok(pos(0, 0)), "0".parse());
+        assert_eq!(Ok(pos(0, 0)), "1".parse());
+        assert_eq!(Ok(pos(1, 0)), "2".parse());
+        assert_eq!(Ok(pos(98, 0)), "99".parse());
 
-        assert_eq!(Some(pos(0, 0)), BufferPosition::parse("0,0"));
-        assert_eq!(Some(pos(0, 0)), BufferPosition::parse("1,1"));
-        assert_eq!(Some(pos(3, 1)), BufferPosition::parse("4,2"));
-        assert_eq!(Some(pos(98, 98)), BufferPosition::parse("99,99"));
+        assert_eq!(Ok(pos(0, 0)), "0,0".parse());
+        assert_eq!(Ok(pos(0, 0)), "1,1".parse());
+        assert_eq!(Ok(pos(3, 1)), "4,2".parse());
+        assert_eq!(Ok(pos(98, 98)), "99,99".parse());
 
-        assert_eq!(Some(pos(3, 0)), BufferPosition::parse("4,"));
-        assert_eq!(Some(pos(3, 0)), BufferPosition::parse("4,x"));
-        assert_eq!(Some(pos(3, 8)), BufferPosition::parse("4,9xx"));
-        assert_eq!(Some(pos(3, 8)), BufferPosition::parse("4,9,xx"));
+        assert_eq!(Ok(pos(3, 0)), "4,".parse());
+        assert_eq!(Ok(pos(3, 0)), "4,x".parse());
+        assert_eq!(Ok(pos(3, 8)), "4,9xx".parse());
+        assert_eq!(Ok(pos(3, 8)), "4,9,xx".parse());
     }
 }
 
