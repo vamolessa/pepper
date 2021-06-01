@@ -1838,7 +1838,7 @@ mod compiled {
 
     pub enum CommandTokenKind {
         Literal,
-        QuotedLiteral,
+        QuotedLiteral(bool),
         Flag,
         Equals,
         Variable,
@@ -1897,7 +1897,7 @@ mod compiled {
             }
 
             loop {
-                if self.index < self.bytes.len() {
+                if self.index >= self.bytes.len() {
                     return None;
                 }
                 if matches!(self.bytes[self.index], b' ' | b'\t') {
@@ -1910,8 +1910,9 @@ mod compiled {
             match self.bytes[self.index] {
                 delim @ b'"' | delim @ b'\'' => {
                     let from = self.index;
+                    let mut has_escaping = false;
                     loop {
-                        if self.index < self.bytes.len() {
+                        if self.index >= self.bytes.len() {
                             return Some(Err(error(
                                 self,
                                 CommandCompileError::UnterminatedQuotedLiteral(CommandTokenRange {
@@ -1923,6 +1924,7 @@ mod compiled {
 
                         let byte = self.bytes[self.index];
                         if byte == b'\\' {
+                            has_escaping = true;
                             self.index += 2;
                         } else {
                             self.index += 1;
@@ -1935,7 +1937,7 @@ mod compiled {
                     let to = self.index;
                     let range = CommandTokenRange { from, to };
                     Some(Ok(CommandToken {
-                        kind: CommandTokenKind::QuotedLiteral,
+                        kind: CommandTokenKind::QuotedLiteral(has_escaping),
                         range,
                     }))
                 }
@@ -1981,8 +1983,23 @@ mod compiled {
                 b'(' => single_byte_token(self, CommandTokenKind::OpenParenthesis),
                 b')' => single_byte_token(self, CommandTokenKind::CloseParenthesis),
                 b'\r' | b'\n' | b';' => single_byte_token(self, CommandTokenKind::EndOfStatement),
-                b => {
-                    todo!();
+                _ => {
+                    let from = self.index;
+                    loop {
+                        match self.bytes[self.index] {
+                            b'{' | b'(' | b' ' | b'\t' => break,
+                            _ => self.index += 1,
+                        }
+                        if self.index >= self.bytes.len() {
+                            break;
+                        }
+                    }
+                    let to = self.index;
+                    let range = CommandTokenRange { from, to };
+                    Some(Ok(CommandToken {
+                        kind: CommandTokenKind::Literal,
+                        range,
+                    }))
                 }
             }
         }
