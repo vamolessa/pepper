@@ -145,7 +145,7 @@ pub struct JsonString {
 }
 impl JsonString {
     pub fn as_str<'a>(&self, json: &'a Json) -> &'a str {
-        &json.strings[(self.start as usize)..(self.end as usize)]
+        &json.strings[self.start as usize..self.end as usize]
     }
 }
 
@@ -272,7 +272,7 @@ impl<'a> Iterator for JsonElementIter<'a> {
         if self.next != 0 {
             let element = &self.json.elements[self.next];
             self.next = element.next as usize;
-            Some(clone_json_value(&element.value))
+            Some(element.value.clone())
         } else {
             None
         }
@@ -291,35 +291,10 @@ impl<'a> Iterator for JsonMemberIter<'a> {
         if self.next != 0 {
             let member = &self.json.members[self.next];
             self.next = member.next as usize;
-            Some((
-                member.key.as_str(self.json),
-                clone_json_value(&member.value),
-            ))
+            Some((member.key.as_str(self.json), member.value.clone()))
         } else {
             None
         }
-    }
-}
-
-fn clone_json_value(value: &JsonValue) -> JsonValue {
-    match value {
-        JsonValue::Null => JsonValue::Null,
-        JsonValue::Boolean(b) => JsonValue::Boolean(*b),
-        JsonValue::Integer(i) => JsonValue::Integer(*i),
-        JsonValue::Number(n) => JsonValue::Number(*n),
-        JsonValue::Str(s) => JsonValue::Str(*s),
-        JsonValue::String(s) => JsonValue::String(JsonString {
-            start: s.start,
-            end: s.end,
-        }),
-        JsonValue::Array(a) => JsonValue::Array(JsonArray {
-            first: a.first,
-            last: a.last,
-        }),
-        JsonValue::Object(a) => JsonValue::Object(JsonObject {
-            first: a.first,
-            last: a.last,
-        }),
     }
 }
 

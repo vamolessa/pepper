@@ -613,6 +613,8 @@ impl BufferViewCollection {
 mod tests {
     use super::*;
 
+    use std::ops::Range;
+
     use crate::{buffer::BufferCapabilities, buffer_position::BufferPosition};
 
     struct TestContext {
@@ -677,11 +679,14 @@ mod tests {
 
         fn assert_movement(
             ctx: &mut TestContext,
-            from: (usize, usize),
-            to: (usize, usize),
+            from: Range<usize>,
+            to: Range<usize>,
             movement: CursorMovement,
         ) {
-            set_cursor(ctx, BufferPosition::line_col(from.0 as _, from.1 as _));
+            set_cursor(
+                ctx,
+                BufferPosition::line_col(from.start as _, from.end as _),
+            );
             ctx.buffer_views
                 .get_mut(ctx.buffer_view_handle)
                 .unwrap()
@@ -692,61 +697,51 @@ mod tests {
                     NonZeroU8::new(4).unwrap(),
                 );
             assert_eq!(
-                BufferPosition::line_col(to.0 as _, to.1 as _),
+                BufferPosition::line_col(to.start as _, to.end as _),
                 main_cursor_position(ctx)
             );
         }
 
         let mut ctx = TestContext::with_buffer("ab\nc e\nefgh\ni k\nlm");
-        assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::ColumnsForward(0));
-        assert_movement(&mut ctx, (2, 2), (2, 3), CursorMovement::ColumnsForward(1));
-        assert_movement(&mut ctx, (2, 2), (2, 4), CursorMovement::ColumnsForward(2));
-        assert_movement(&mut ctx, (2, 2), (3, 0), CursorMovement::ColumnsForward(3));
-        assert_movement(&mut ctx, (2, 2), (3, 3), CursorMovement::ColumnsForward(6));
-        assert_movement(&mut ctx, (2, 2), (4, 0), CursorMovement::ColumnsForward(7));
-        assert_movement(
-            &mut ctx,
-            (2, 2),
-            (4, 2),
-            CursorMovement::ColumnsForward(999),
-        );
+        assert_movement(&mut ctx, 2..2, 2..2, CursorMovement::ColumnsForward(0));
+        assert_movement(&mut ctx, 2..2, 2..3, CursorMovement::ColumnsForward(1));
+        assert_movement(&mut ctx, 2..2, 2..4, CursorMovement::ColumnsForward(2));
+        assert_movement(&mut ctx, 2..2, 3..0, CursorMovement::ColumnsForward(3));
+        assert_movement(&mut ctx, 2..2, 3..3, CursorMovement::ColumnsForward(6));
+        assert_movement(&mut ctx, 2..2, 4..0, CursorMovement::ColumnsForward(7));
+        assert_movement(&mut ctx, 2..2, 4..2, CursorMovement::ColumnsForward(999));
 
-        assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::ColumnsBackward(0));
-        assert_movement(&mut ctx, (2, 2), (2, 1), CursorMovement::ColumnsBackward(1));
-        assert_movement(&mut ctx, (2, 0), (1, 3), CursorMovement::ColumnsBackward(1));
-        assert_movement(&mut ctx, (2, 2), (1, 3), CursorMovement::ColumnsBackward(3));
-        assert_movement(&mut ctx, (2, 2), (0, 2), CursorMovement::ColumnsBackward(7));
-        assert_movement(
-            &mut ctx,
-            (2, 2),
-            (0, 0),
-            CursorMovement::ColumnsBackward(999),
-        );
+        assert_movement(&mut ctx, 2..2, 2..2, CursorMovement::ColumnsBackward(0));
+        assert_movement(&mut ctx, 2..2, 2..1, CursorMovement::ColumnsBackward(1));
+        assert_movement(&mut ctx, 2..0, 1..3, CursorMovement::ColumnsBackward(1));
+        assert_movement(&mut ctx, 2..2, 1..3, CursorMovement::ColumnsBackward(3));
+        assert_movement(&mut ctx, 2..2, 0..2, CursorMovement::ColumnsBackward(7));
+        assert_movement(&mut ctx, 2..2, 0..0, CursorMovement::ColumnsBackward(999));
 
-        assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::WordsForward(0));
-        assert_movement(&mut ctx, (2, 0), (2, 4), CursorMovement::WordsForward(1));
-        assert_movement(&mut ctx, (2, 0), (3, 0), CursorMovement::WordsForward(2));
-        assert_movement(&mut ctx, (2, 2), (3, 2), CursorMovement::WordsForward(3));
-        assert_movement(&mut ctx, (2, 2), (3, 3), CursorMovement::WordsForward(4));
-        assert_movement(&mut ctx, (2, 2), (4, 0), CursorMovement::WordsForward(5));
-        assert_movement(&mut ctx, (2, 2), (4, 2), CursorMovement::WordsForward(6));
-        assert_movement(&mut ctx, (2, 2), (4, 2), CursorMovement::WordsForward(999));
+        assert_movement(&mut ctx, 2..2, 2..2, CursorMovement::WordsForward(0));
+        assert_movement(&mut ctx, 2..0, 2..4, CursorMovement::WordsForward(1));
+        assert_movement(&mut ctx, 2..0, 3..0, CursorMovement::WordsForward(2));
+        assert_movement(&mut ctx, 2..2, 3..2, CursorMovement::WordsForward(3));
+        assert_movement(&mut ctx, 2..2, 3..3, CursorMovement::WordsForward(4));
+        assert_movement(&mut ctx, 2..2, 4..0, CursorMovement::WordsForward(5));
+        assert_movement(&mut ctx, 2..2, 4..2, CursorMovement::WordsForward(6));
+        assert_movement(&mut ctx, 2..2, 4..2, CursorMovement::WordsForward(999));
 
-        assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::WordsBackward(0));
-        assert_movement(&mut ctx, (2, 0), (1, 3), CursorMovement::WordsBackward(1));
-        assert_movement(&mut ctx, (2, 0), (1, 2), CursorMovement::WordsBackward(2));
-        assert_movement(&mut ctx, (2, 2), (2, 0), CursorMovement::WordsBackward(1));
-        assert_movement(&mut ctx, (2, 2), (1, 3), CursorMovement::WordsBackward(2));
-        assert_movement(&mut ctx, (2, 2), (1, 2), CursorMovement::WordsBackward(3));
-        assert_movement(&mut ctx, (2, 2), (1, 0), CursorMovement::WordsBackward(4));
-        assert_movement(&mut ctx, (2, 2), (0, 2), CursorMovement::WordsBackward(5));
-        assert_movement(&mut ctx, (2, 2), (0, 0), CursorMovement::WordsBackward(6));
-        assert_movement(&mut ctx, (2, 2), (0, 0), CursorMovement::WordsBackward(999));
+        assert_movement(&mut ctx, 2..2, 2..2, CursorMovement::WordsBackward(0));
+        assert_movement(&mut ctx, 2..0, 1..3, CursorMovement::WordsBackward(1));
+        assert_movement(&mut ctx, 2..0, 1..2, CursorMovement::WordsBackward(2));
+        assert_movement(&mut ctx, 2..2, 2..0, CursorMovement::WordsBackward(1));
+        assert_movement(&mut ctx, 2..2, 1..3, CursorMovement::WordsBackward(2));
+        assert_movement(&mut ctx, 2..2, 1..2, CursorMovement::WordsBackward(3));
+        assert_movement(&mut ctx, 2..2, 1..0, CursorMovement::WordsBackward(4));
+        assert_movement(&mut ctx, 2..2, 0..2, CursorMovement::WordsBackward(5));
+        assert_movement(&mut ctx, 2..2, 0..0, CursorMovement::WordsBackward(6));
+        assert_movement(&mut ctx, 2..2, 0..0, CursorMovement::WordsBackward(999));
 
         let mut ctx = TestContext::with_buffer("123\n  abc def\nghi");
-        assert_movement(&mut ctx, (1, 0), (1, 2), CursorMovement::WordsForward(1));
-        assert_movement(&mut ctx, (1, 9), (2, 0), CursorMovement::WordsForward(1));
-        assert_movement(&mut ctx, (1, 2), (1, 0), CursorMovement::WordsBackward(1));
-        assert_movement(&mut ctx, (2, 0), (1, 9), CursorMovement::WordsBackward(1));
+        assert_movement(&mut ctx, 1..0, 1..2, CursorMovement::WordsForward(1));
+        assert_movement(&mut ctx, 1..9, 2..0, CursorMovement::WordsForward(1));
+        assert_movement(&mut ctx, 1..2, 1..0, CursorMovement::WordsBackward(1));
+        assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }

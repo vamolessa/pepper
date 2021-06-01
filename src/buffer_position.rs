@@ -274,4 +274,3 @@ mod tests {
         assert_eq!(Ok(pos(3, 8)), "4,9,xx".parse());
     }
 }
-

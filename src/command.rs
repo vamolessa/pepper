@@ -1826,3 +1826,182 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
+
+// ========================
+
+mod compiled {
+    pub enum CommandCompileError {
+        UnterminatedQuotedLiteral(CommandTokenRange),
+        InvalidFlagName(CommandTokenRange),
+        InvalidVariableName(CommandTokenRange),
+    }
+
+    pub enum CommandTokenKind {
+        Literal,
+        QuotedLiteral,
+        Flag,
+        Equals,
+        Variable,
+        OpenCurlyBrackets,
+        CloseCurlyBrackets,
+        OpenParenthesis,
+        CloseParenthesis,
+        EndOfStatement,
+    }
+
+    pub struct CommandTokenRange {
+        pub from: usize,
+        pub to: usize,
+    }
+
+    pub struct CommandToken {
+        pub kind: CommandTokenKind,
+        pub range: CommandTokenRange,
+    }
+
+    pub struct CommandTokenIter<'a> {
+        bytes: &'a [u8],
+        index: usize,
+    }
+    impl<'a> Iterator for CommandTokenIter<'a> {
+        type Item = Result<CommandToken, CommandCompileError>;
+        fn next(&mut self) -> Option<Self::Item> {
+            fn error(
+                iter: &mut CommandTokenIter,
+                error: CommandCompileError,
+            ) -> CommandCompileError {
+                iter.index = iter.bytes.len();
+                error
+            }
+            fn consume_identifier(iter: &mut CommandTokenIter) {
+                let bytes = &iter.bytes[iter.index..];
+                let len = match bytes.iter().position(
+                    |b| !matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-'),
+                ) {
+                    Some(len) => len,
+                    None => bytes.len(),
+                };
+                iter.index += len;
+            }
+            fn single_byte_token(
+                iter: &mut CommandTokenIter,
+                kind: CommandTokenKind,
+            ) -> Option<Result<CommandToken, CommandCompileError>> {
+                let from = iter.index;
+                iter.index += 1;
+                let range = CommandTokenRange {
+                    from,
+                    to: iter.index,
+                };
+                Some(Ok(CommandToken { kind, range }))
+            }
+
+            loop {
+                if self.index < self.bytes.len() {
+                    return None;
+                }
+                if matches!(self.bytes[self.index], b' ' | b'\t') {
+                    self.index += 1;
+                } else {
+                    break;
+                }
+            }
+
+            match self.bytes[self.index] {
+                delim @ b'"' | delim @ b'\'' => {
+                    let from = self.index;
+                    loop {
+                        if self.index < self.bytes.len() {
+                            return Some(Err(error(
+                                self,
+                                CommandCompileError::UnterminatedQuotedLiteral(CommandTokenRange {
+                                    from,
+                                    to: self.bytes.len(),
+                                }),
+                            )));
+                        }
+
+                        let byte = self.bytes[self.index];
+                        if byte == b'\\' {
+                            self.index += 2;
+                        } else {
+                            self.index += 1;
+                            if byte == delim {
+                                break;
+                            }
+                        }
+                    }
+                    self.index += 1;
+                    let to = self.index;
+                    let range = CommandTokenRange { from, to };
+                    Some(Ok(CommandToken {
+                        kind: CommandTokenKind::QuotedLiteral,
+                        range,
+                    }))
+                }
+                b'-' => {
+                    let from = self.index;
+                    self.index += 1;
+                    consume_identifier(self);
+                    let to = self.index;
+                    let range = CommandTokenRange { from, to };
+                    if range.from + 1 == range.to {
+                        Some(Err(error(
+                            self,
+                            CommandCompileError::InvalidFlagName(range),
+                        )))
+                    } else {
+                        Some(Ok(CommandToken {
+                            kind: CommandTokenKind::Flag,
+                            range,
+                        }))
+                    }
+                }
+                b'$' => {
+                    let from = self.index;
+                    self.index += 1;
+                    consume_identifier(self);
+                    let to = self.index;
+                    let range = CommandTokenRange { from, to };
+                    if range.from + 1 == range.to {
+                        Some(Err(error(
+                            self,
+                            CommandCompileError::InvalidVariableName(range),
+                        )))
+                    } else {
+                        Some(Ok(CommandToken {
+                            kind: CommandTokenKind::Variable,
+                            range,
+                        }))
+                    }
+                }
+                b'=' => single_byte_token(self, CommandTokenKind::Equals),
+                b'{' => single_byte_token(self, CommandTokenKind::OpenCurlyBrackets),
+                b'}' => single_byte_token(self, CommandTokenKind::CloseCurlyBrackets),
+                b'(' => single_byte_token(self, CommandTokenKind::OpenParenthesis),
+                b')' => single_byte_token(self, CommandTokenKind::CloseParenthesis),
+                b'\r' | b'\n' | b';' => single_byte_token(self, CommandTokenKind::EndOfStatement),
+                b => {
+                    todo!();
+                }
+            }
+        }
+    }
+
+    enum Op {
+        BuiltinCommand,
+        MacroCommand,
+        RequestCommand,
+    }
+
+    struct ByteCodeChunk {
+        ops: Vec<Op>,
+        texts: String,
+    }
+
+    fn compile(commands: &str, chunk: &mut ByteCodeChunk) {
+        chunk.ops.clear();
+        todo!();
+    }
+}
+
