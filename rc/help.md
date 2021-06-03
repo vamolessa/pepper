@@ -7,6 +7,5 @@ For bug reports, please visit the [issues page](https://github.com/vamolessa/pep
 Index:
 - [bindings](bindings.md)
 - [command reference](command_reference.md)
-- [language syntax definitions](language_syntax_definitions)
+- [language syntax definitions](language_syntax_definitions.md)
 - [config recipes](config_recipes.md)
-
