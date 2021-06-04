@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::{
     buffer::BufferHandle,
     buffer_view::{BufferView, BufferViewCollection},
@@ -11,10 +13,10 @@ pub enum NavigationDirection {
     Backward,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct NavigationHistorySnapshot {
     buffer_handle: BufferHandle,
-    cursor_range: (usize, usize),
+    cursor_range: Range<usize>,
 }
 
 enum NavigationState {
@@ -69,7 +71,7 @@ impl NavigationHistory {
             if last.buffer_handle == buffer_handle {
                 let same_cursors = cursors
                     .iter()
-                    .zip(self.cursors[last.cursor_range.0..last.cursor_range.1].iter())
+                    .zip(self.cursors[last.cursor_range.clone()].iter())
                     .all(|(a, b)| *a == *b);
                 if same_cursors {
                     return;
@@ -84,7 +86,7 @@ impl NavigationHistory {
 
         self.snapshots.push(NavigationHistorySnapshot {
             buffer_handle,
-            cursor_range: (cursors_start_index, self.cursors.len()),
+            cursor_range: cursors_start_index..self.cursors.len(),
         });
     }
 
@@ -114,7 +116,7 @@ impl NavigationHistory {
                 }
 
                 history_index += 1;
-                let snapshot = history.snapshots[history_index];
+                let snapshot = history.snapshots[history_index].clone();
                 snapshot
             }
             NavigationDirection::Backward => {
@@ -131,7 +133,7 @@ impl NavigationHistory {
                 }
 
                 history_index -= 1;
-                history.snapshots[history_index]
+                history.snapshots[history_index].clone()
             }
         };
 
@@ -145,7 +147,7 @@ impl NavigationHistory {
             None => return,
         };
         cursors.clear();
-        for cursor in history.cursors[snapshot.cursor_range.0..snapshot.cursor_range.1].iter() {
+        for cursor in history.cursors[snapshot.cursor_range.clone()].iter() {
             cursors.add(*cursor);
         }
         if let Some(buffer) = editor.buffers.get(snapshot.buffer_handle) {
@@ -155,7 +157,6 @@ impl NavigationHistory {
                 cursor.position = buffer.saturate_position(cursor.position);
             }
         }
-        drop(cursors);
 
         if let Some(client) = clients.get_mut(client_handle) {
             client.set_buffer_view_handle(Some(view_handle), &mut editor.events);
@@ -164,17 +165,16 @@ impl NavigationHistory {
 
     pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {
         for i in (0..self.snapshots.len()).rev() {
-            let snapshot = self.snapshots[i];
+            let snapshot = self.snapshots[i].clone();
             if snapshot.buffer_handle == buffer_handle {
-                self.cursors
-                    .drain(snapshot.cursor_range.0..snapshot.cursor_range.1);
+                self.cursors.drain(snapshot.cursor_range.clone());
                 self.snapshots.remove(i);
 
-                let cursor_range_len = snapshot.cursor_range.1 - snapshot.cursor_range.0;
+                let cursor_range_len = snapshot.cursor_range.end - snapshot.cursor_range.start;
                 for s in &mut self.snapshots[i..] {
-                    if s.cursor_range.0 >= snapshot.cursor_range.1 {
-                        s.cursor_range.0 -= cursor_range_len;
-                        s.cursor_range.1 -= cursor_range_len;
+                    if s.cursor_range.start >= snapshot.cursor_range.end {
+                        s.cursor_range.start -= cursor_range_len;
+                        s.cursor_range.end -= cursor_range_len;
                     }
                 }
 
@@ -197,3 +197,4 @@ impl Default for NavigationHistory {
         }
     }
 }
+

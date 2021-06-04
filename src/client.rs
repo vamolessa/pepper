@@ -109,6 +109,7 @@ impl Client {
     ) {
         self.navigation_history
             .remove_snapshots_with_buffer_handle(buffer_handle);
+        // TODO: navigate back here?
 
         if self
             .previous_buffer_view_handle
