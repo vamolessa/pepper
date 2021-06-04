@@ -89,7 +89,20 @@ impl<'pattern, 'text> Iterator for MatchIndices<'pattern, 'text> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PatternState {
-    op_index: usize,
+    op_jump: Jump,
+}
+
+struct OpsSlice<'a>(&'a [Op]);
+impl<'a> OpsSlice<'a> {
+    #[inline]
+    pub fn at(&self, jump: Jump) -> &Op {
+        let index = jump.0 as usize;
+        if cfg!(debug_assertions) {
+            &self.0[index]
+        } else {
+            unsafe { self.0.get_unchecked(index) }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -184,14 +197,16 @@ impl Pattern {
     }
 
     pub fn is_empty(&self) -> bool {
-        matches!(self.ops[self.start_jump.0 as usize], Op::Ok | Op::Error)
+        let ops = OpsSlice(&self.ops);
+        matches!(ops.at(self.start_jump), Op::Ok | Op::Error)
     }
 
     pub fn search_anchor(&self) -> Option<char> {
-        let (c, erj) = match self.ops[self.start_jump.0 as usize] {
+        let ops = OpsSlice(&self.ops);
+        let (c, erj) = match ops.at(self.start_jump) {
             Op::Error => return Some('\0'),
-            Op::Char(_, erj, c) => (c, erj),
-            Op::String(_, erj, len, bytes) => {
+            &Op::Char(_, erj, c) => (c, erj),
+            &Op::String(_, erj, len, bytes) => {
                 let s = std::str::from_utf8(&bytes[..len as usize]).unwrap();
                 let c = s.chars().next()?;
                 (c, erj)
@@ -199,7 +214,7 @@ impl Pattern {
             _ => return None,
         };
 
-        match self.ops[erj.0 as usize] {
+        match ops.at(erj) {
             Op::Error => Some(c),
             _ => None,
         }
@@ -222,15 +237,15 @@ impl Pattern {
         self.matches_with_state(
             text,
             PatternState {
-                op_index: self.start_jump.0 as _,
+                op_jump: self.start_jump,
             },
         )
     }
 
     pub fn matches_with_state(&self, text: &str, state: PatternState) -> MatchResult {
         let mut chars = text.chars();
-        let ops = &self.ops;
-        let mut op_index = state.op_index;
+        let ops = OpsSlice(&self.ops);
+        let mut op_jump = state.op_jump;
 
         #[inline]
         fn index(text: &str, chars: &Chars) -> usize {
@@ -238,99 +253,99 @@ impl Pattern {
         }
 
         #[inline]
-        fn check_and_jump<F>(chars: &mut Chars, okj: Jump, erj: Jump, predicate: F) -> usize
+        fn check_and_jump<F>(chars: &mut Chars, okj: Jump, erj: Jump, predicate: F) -> Jump
         where
             F: Fn(char) -> bool,
         {
             let previous_state = chars.clone();
             match chars.next() {
-                Some(c) if predicate(c) => okj.0 as _,
+                Some(c) if predicate(c) => okj,
                 _ => {
                     *chars = previous_state;
-                    erj.0 as _
+                    erj
                 }
             }
         }
 
         loop {
-            match ops[op_index] {
+            match ops.at(op_jump) {
                 Op::Ok => return MatchResult::Ok(index(text, &chars)),
                 Op::Error => return MatchResult::Err,
-                Op::Reset(jump) => {
+                &Op::Reset(jump) => {
                     chars = text.chars();
-                    op_index = jump.0 as _;
+                    op_jump = jump;
                 }
-                Op::Unwind(jump, len) => {
+                &Op::Unwind(jump, len) => {
                     let len = (len.0 - 1) as _;
                     let index = index(text, &chars);
                     chars = match text[..index].char_indices().rev().nth(len) {
                         Some((i, _)) => text[i..].chars(),
                         None => unreachable!(),
                     };
-                    op_index = jump.0 as _;
+                    op_jump = jump;
                 }
-                Op::EndAnchor(okj, erj) => {
+                &Op::EndAnchor(okj, erj) => {
                     if chars.as_str().is_empty() {
-                        op_index = okj.0 as _;
-                        return match ops[op_index] {
+                        op_jump = okj;
+                        return match ops.at(op_jump) {
                             Op::Ok => MatchResult::Ok(index(text, &chars)),
-                            _ => MatchResult::Pending(PatternState { op_index }),
+                            _ => MatchResult::Pending(PatternState { op_jump }),
                         };
                     } else {
-                        op_index = erj.0 as _;
+                        op_jump = erj;
                     }
                 }
-                Op::SkipOne(okj, erj) => op_index = check_and_jump(&mut chars, okj, erj, |_| true),
-                Op::SkipMany(okj, erj, len) => {
+                &Op::SkipOne(okj, erj) => op_jump = check_and_jump(&mut chars, okj, erj, |_| true),
+                &Op::SkipMany(okj, erj, len) => {
                     let len = (len.0 - 1) as _;
-                    op_index = match chars.nth(len) {
-                        Some(_) => okj.0 as _,
-                        None => erj.0 as _,
+                    op_jump = match chars.nth(len) {
+                        Some(_) => okj,
+                        None => erj,
                     };
                 }
-                Op::Alphabetic(okj, erj) => {
-                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_alphabetic());
+                &Op::Alphabetic(okj, erj) => {
+                    op_jump = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_alphabetic());
                 }
-                Op::Lower(okj, erj) => {
-                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_lowercase());
+                &Op::Lower(okj, erj) => {
+                    op_jump = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_lowercase());
                 }
-                Op::Upper(okj, erj) => {
-                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_uppercase());
+                &Op::Upper(okj, erj) => {
+                    op_jump = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_uppercase());
                 }
-                Op::Digit(okj, erj) => {
-                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_digit());
+                &Op::Digit(okj, erj) => {
+                    op_jump = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_digit());
                 }
-                Op::Alphanumeric(okj, erj) => {
-                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_alphanumeric());
+                &Op::Alphanumeric(okj, erj) => {
+                    op_jump = check_and_jump(&mut chars, okj, erj, |c| c.is_ascii_alphanumeric());
                 }
-                Op::Char(okj, erj, ch) => {
-                    op_index = check_and_jump(&mut chars, okj, erj, |c| c == ch)
+                &Op::Char(okj, erj, ch) => {
+                    op_jump = check_and_jump(&mut chars, okj, erj, |c| c == ch)
                 }
-                Op::CharCaseInsensitive(okj, erj, ch) => {
-                    op_index = check_and_jump(&mut chars, okj, erj, |c| c.eq_ignore_ascii_case(&ch))
+                &Op::CharCaseInsensitive(okj, erj, ch) => {
+                    op_jump = check_and_jump(&mut chars, okj, erj, |c| c.eq_ignore_ascii_case(&ch))
                 }
-                Op::String(okj, erj, len, bytes) => {
+                &Op::String(okj, erj, len, bytes) => {
                     let len = len as usize;
                     let bytes = &bytes[..len];
                     let text_bytes = chars.as_str().as_bytes();
-                    op_index = if text_bytes.len() >= len && &text_bytes[..len] == bytes {
+                    op_jump = if text_bytes.len() >= len && &text_bytes[..len] == bytes {
                         chars = chars.as_str()[len..].chars();
-                        okj.0 as _
+                        okj
                     } else {
-                        erj.0 as _
+                        erj
                     }
                 }
-                Op::StringCaseInsensitive(okj, erj, len, bytes) => {
+                &Op::StringCaseInsensitive(okj, erj, len, bytes) => {
                     let len = len as usize;
                     let bytes = &bytes[..len];
                     let text_bytes = chars.as_str().as_bytes();
-                    op_index = if text_bytes.len() >= len
+                    op_jump = if text_bytes.len() >= len
                         && text_bytes[..len].eq_ignore_ascii_case(bytes)
                     {
                         chars = chars.as_str()[len..].chars();
-                        okj.0 as _
+                        okj
                     } else {
-                        erj.0 as _
+                        erj
                     }
                 }
             };
@@ -376,7 +391,7 @@ impl AddAssign for Length {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Jump(u16);
 impl From<usize> for Jump {
     fn from(value: usize) -> Self {
@@ -1295,12 +1310,12 @@ mod tests {
 
         let p = new_pattern("a$b");
         assert_eq!(
-            MatchResult::Pending(PatternState { op_index: 4 }),
+            MatchResult::Pending(PatternState { op_jump: Jump(4) }),
             p.matches("a")
         );
         assert_eq!(
             MatchResult::Ok(1),
-            p.matches_with_state("b", PatternState { op_index: 4 })
+            p.matches_with_state("b", PatternState { op_jump: Jump(4) })
         );
 
         let p = new_pattern("a{.!$}b");
@@ -1533,3 +1548,4 @@ mod tests {
         ));
     }
 }
+
