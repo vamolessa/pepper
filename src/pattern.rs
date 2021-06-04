@@ -95,13 +95,15 @@ pub struct PatternState {
 struct OpsSlice<'a>(&'a [Op]);
 impl<'a> OpsSlice<'a> {
     #[inline]
+    #[cfg(debug_assertions)]
     pub fn at(&self, jump: Jump) -> &Op {
-        let index = jump.0 as usize;
-        if cfg!(debug_assertions) {
-            &self.0[index]
-        } else {
-            unsafe { self.0.get_unchecked(index) }
-        }
+        &self.0[jump.0 as usize]
+    }
+
+    #[inline]
+    #[cfg(not(debug_assertions))]
+    pub fn at(&self, jump: Jump) -> &Op {
+        unsafe { self.0.get_unchecked(jump.0 as usize) }
     }
 }
 
