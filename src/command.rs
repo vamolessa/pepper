@@ -1907,99 +1907,119 @@ mod compiled {
                 }
             }
 
-            match self.bytes[self.index] {
-                delim @ b'"' | delim @ b'\'' => {
-                    let from = self.index;
-                    let mut has_escaping = false;
-                    loop {
-                        if self.index >= self.bytes.len() {
-                            return Some(Err(error(
-                                self,
-                                CommandCompileError::UnterminatedQuotedLiteral(CommandTokenRange {
-                                    from,
-                                    to: self.bytes.len(),
-                                }),
-                            )));
-                        }
+            loop {
+                match self.bytes[self.index] {
+                    delim @ b'"' | delim @ b'\'' => {
+                        let from = self.index;
+                        self.index += 1;
+                        let mut has_escaping = false;
+                        loop {
+                            if self.index >= self.bytes.len() {
+                                return Some(Err(error(
+                                    self,
+                                    CommandCompileError::UnterminatedQuotedLiteral(
+                                        CommandTokenRange {
+                                            from,
+                                            to: self.bytes.len(),
+                                        },
+                                    ),
+                                )));
+                            }
 
-                        let byte = self.bytes[self.index];
-                        if byte == b'\\' {
-                            has_escaping = true;
-                            self.index += 2;
+                            let byte = self.bytes[self.index];
+                            if byte == b'\\' {
+                                has_escaping = true;
+                                self.index += 2;
+                            } else {
+                                self.index += 1;
+                                if byte == delim {
+                                    break;
+                                }
+                            }
+                        }
+                        self.index += 1;
+                        let to = self.index;
+                        let range = CommandTokenRange { from, to };
+                        break Some(Ok(CommandToken {
+                            kind: CommandTokenKind::QuotedLiteral(has_escaping),
+                            range,
+                        }));
+                    }
+                    b'-' => {
+                        let from = self.index;
+                        self.index += 1;
+                        consume_identifier(self);
+                        let to = self.index;
+                        let range = CommandTokenRange { from, to };
+                        if range.from + 1 == range.to {
+                            break Some(Err(error(
+                                self,
+                                CommandCompileError::InvalidFlagName(range),
+                            )));
                         } else {
-                            self.index += 1;
-                            if byte == delim {
-                                break;
+                            break Some(Ok(CommandToken {
+                                kind: CommandTokenKind::Flag,
+                                range,
+                            }));
+                        }
+                    }
+                    b'$' => {
+                        let from = self.index;
+                        self.index += 1;
+                        consume_identifier(self);
+                        let to = self.index;
+                        let range = CommandTokenRange { from, to };
+                        if range.from + 1 == range.to {
+                            break Some(Err(error(
+                                self,
+                                CommandCompileError::InvalidVariableName(range),
+                            )));
+                        } else {
+                            break Some(Ok(CommandToken {
+                                kind: CommandTokenKind::Variable,
+                                range,
+                            }));
+                        }
+                    }
+                    b'=' => break single_byte_token(self, CommandTokenKind::Equals),
+                    b'{' => break single_byte_token(self, CommandTokenKind::OpenCurlyBrackets),
+                    b'}' => break single_byte_token(self, CommandTokenKind::CloseCurlyBrackets),
+                    b'(' => break single_byte_token(self, CommandTokenKind::OpenParenthesis),
+                    b')' => break single_byte_token(self, CommandTokenKind::CloseParenthesis),
+                    b'\\' => {
+                        let from = self.index;
+                        self.index += 1;
+                        match &self.bytes[self.index..] {
+                            b"\r" | b"\n" => self.index += 1,
+                            b"\r\n" => self.index += 2,
+                            _ => {
+                                let to = self.index;
+                                break Some(Ok(CommandToken {
+                                    kind: CommandTokenKind::Literal,
+                                    range: CommandTokenRange { from, to },
+                                }));
                             }
                         }
                     }
-                    self.index += 1;
-                    let to = self.index;
-                    let range = CommandTokenRange { from, to };
-                    Some(Ok(CommandToken {
-                        kind: CommandTokenKind::QuotedLiteral(has_escaping),
-                        range,
-                    }))
-                }
-                b'-' => {
-                    let from = self.index;
-                    self.index += 1;
-                    consume_identifier(self);
-                    let to = self.index;
-                    let range = CommandTokenRange { from, to };
-                    if range.from + 1 == range.to {
-                        Some(Err(error(
-                            self,
-                            CommandCompileError::InvalidFlagName(range),
-                        )))
-                    } else {
-                        Some(Ok(CommandToken {
-                            kind: CommandTokenKind::Flag,
-                            range,
-                        }))
+                    b'\r' | b'\n' | b';' => {
+                        break single_byte_token(self, CommandTokenKind::EndOfStatement)
                     }
-                }
-                b'$' => {
-                    let from = self.index;
-                    self.index += 1;
-                    consume_identifier(self);
-                    let to = self.index;
-                    let range = CommandTokenRange { from, to };
-                    if range.from + 1 == range.to {
-                        Some(Err(error(
-                            self,
-                            CommandCompileError::InvalidVariableName(range),
-                        )))
-                    } else {
-                        Some(Ok(CommandToken {
-                            kind: CommandTokenKind::Variable,
-                            range,
-                        }))
-                    }
-                }
-                b'=' => single_byte_token(self, CommandTokenKind::Equals),
-                b'{' => single_byte_token(self, CommandTokenKind::OpenCurlyBrackets),
-                b'}' => single_byte_token(self, CommandTokenKind::CloseCurlyBrackets),
-                b'(' => single_byte_token(self, CommandTokenKind::OpenParenthesis),
-                b')' => single_byte_token(self, CommandTokenKind::CloseParenthesis),
-                b'\r' | b'\n' | b';' => single_byte_token(self, CommandTokenKind::EndOfStatement),
-                _ => {
-                    let from = self.index;
-                    loop {
-                        match self.bytes[self.index] {
-                            b'{' | b'(' | b' ' | b'\t' => break,
-                            _ => self.index += 1,
+                    _ => {
+                        let from = self.index;
+                        self.index += 1;
+                        while self.index < self.bytes.len() {
+                            match self.bytes[self.index] {
+                                b'{' | b'(' | b' ' | b'\t' => break,
+                                _ => self.index += 1,
+                            }
                         }
-                        if self.index >= self.bytes.len() {
-                            break;
-                        }
+                        let to = self.index;
+                        let range = CommandTokenRange { from, to };
+                        break Some(Ok(CommandToken {
+                            kind: CommandTokenKind::Literal,
+                            range,
+                        }));
                     }
-                    let to = self.index;
-                    let range = CommandTokenRange { from, to };
-                    Some(Ok(CommandToken {
-                        kind: CommandTokenKind::Literal,
-                        range,
-                    }))
                 }
             }
         }
