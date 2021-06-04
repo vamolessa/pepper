@@ -15,8 +15,13 @@ pub enum NavigationDirection {
 
 #[derive(Clone)]
 struct NavigationHistorySnapshot {
-    buffer_handle: BufferHandle,
-    cursor_range: Range<usize>,
+    pub buffer_handle: BufferHandle,
+    pub cursor_range: Range<u32>,
+}
+impl NavigationHistorySnapshot {
+    pub fn cursor_range(&self) -> Range<usize> {
+        self.cursor_range.start as usize..self.cursor_range.end as usize
+    }
 }
 
 enum NavigationState {
@@ -71,7 +76,7 @@ impl NavigationHistory {
             if last.buffer_handle == buffer_handle {
                 let same_cursors = cursors
                     .iter()
-                    .zip(self.cursors[last.cursor_range.clone()].iter())
+                    .zip(self.cursors[last.cursor_range()].iter())
                     .all(|(a, b)| *a == *b);
                 if same_cursors {
                     return;
@@ -86,7 +91,7 @@ impl NavigationHistory {
 
         self.snapshots.push(NavigationHistorySnapshot {
             buffer_handle,
-            cursor_range: cursors_start_index..self.cursors.len(),
+            cursor_range: cursors_start_index as u32..self.cursors.len() as u32,
         });
     }
 
@@ -147,7 +152,7 @@ impl NavigationHistory {
             None => return,
         };
         cursors.clear();
-        for cursor in history.cursors[snapshot.cursor_range.clone()].iter() {
+        for cursor in history.cursors[snapshot.cursor_range()].iter() {
             cursors.add(*cursor);
         }
         if let Some(buffer) = editor.buffers.get(snapshot.buffer_handle) {
@@ -167,7 +172,7 @@ impl NavigationHistory {
         for i in (0..self.snapshots.len()).rev() {
             let snapshot = self.snapshots[i].clone();
             if snapshot.buffer_handle == buffer_handle {
-                self.cursors.drain(snapshot.cursor_range.clone());
+                self.cursors.drain(snapshot.cursor_range());
                 self.snapshots.remove(i);
 
                 let cursor_range_len = snapshot.cursor_range.end - snapshot.cursor_range.start;

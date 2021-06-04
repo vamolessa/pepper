@@ -327,7 +327,7 @@ fn is_editor_path_equals_to_lsp_path(
 
 struct VersionedBufferEdit {
     buffer_range: BufferRange,
-    text_range: Range<usize>,
+    text_range: Range<u32>,
 }
 struct VersionedBuffer {
     version: usize,
@@ -369,7 +369,7 @@ impl VersionedBufferCollection {
         buffer.texts.push_str(text);
         buffer.pending_edits.push(VersionedBufferEdit {
             buffer_range: range,
-            text_range: text_range_start..buffer.texts.len(),
+            text_range: text_range_start as u32..buffer.texts.len() as u32,
         });
     }
 
@@ -2489,7 +2489,9 @@ mod helper {
                             DocumentRange::from(edit.buffer_range).to_json_value(&mut client.json);
                         change_event.set("range".into(), edit_range, &mut client.json);
 
-                        let text = &versioned_buffer.texts[edit.text_range.clone()];
+                        let edit_text_range =
+                            edit.text_range.start as usize..edit.text_range.end as usize;
+                        let text = &versioned_buffer.texts[edit_text_range];
                         let text = client.json.create_string(text);
                         change_event.set("text".into(), text.into(), &mut client.json);
 
@@ -2926,3 +2928,4 @@ impl ClientManager {
         }
     }
 }
+

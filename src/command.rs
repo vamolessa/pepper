@@ -1830,6 +1830,8 @@ mod tests {
 // ========================
 
 mod compiled {
+    use std::ops::Range;
+
     pub enum CommandCompileError {
         UnterminatedQuotedLiteral(CommandTokenRange),
         InvalidFlagName(CommandTokenRange),
@@ -2002,7 +2004,13 @@ mod compiled {
                         }
                     }
                     b'\r' | b'\n' | b';' => {
-                        break single_byte_token(self, CommandTokenKind::EndOfStatement);
+                        let token = single_byte_token(self, CommandTokenKind::EndOfStatement);
+                        while self.index < self.bytes.len()
+                            && matches!(self.bytes[self.index], b'\r' | b'\n' | b';')
+                        {
+                            self.index += 1;
+                        }
+                        break token;
                     }
                     _ => {
                         let from = self.index;
@@ -2029,6 +2037,16 @@ mod compiled {
         BuiltinCommand,
         MacroCommand,
         RequestCommand,
+    }
+
+    struct MacroCommand {
+        name_range: Range<u32>,
+        chunk: ByteCodeChunk,
+    }
+
+    struct MacroCommandCollection {
+        names: String,
+        commands: Vec<MacroCommand>,
     }
 
     struct ByteCodeChunk {
