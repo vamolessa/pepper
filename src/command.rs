@@ -2002,7 +2002,7 @@ mod compiled {
                         }
                     }
                     b'\r' | b'\n' | b';' => {
-                        break single_byte_token(self, CommandTokenKind::EndOfStatement)
+                        break single_byte_token(self, CommandTokenKind::EndOfStatement);
                     }
                     _ => {
                         let from = self.index;
