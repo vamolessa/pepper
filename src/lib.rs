@@ -4,6 +4,7 @@ pub mod buffer_position;
 pub mod buffer_view;
 pub mod client;
 pub mod command;
+pub mod command_next;
 pub mod config;
 pub mod cursor;
 pub mod editor;
