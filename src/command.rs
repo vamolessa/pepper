@@ -1832,15 +1832,17 @@ mod tests {
 mod compiled {
     use std::ops::Range;
 
+    #[derive(Debug)]
     pub enum CommandCompileError {
         UnterminatedQuotedLiteral(CommandTokenRange),
         InvalidFlagName(CommandTokenRange),
         InvalidVariableName(CommandTokenRange),
     }
 
+    #[derive(Debug, PartialEq, Eq)]
     pub enum CommandTokenKind {
         Literal,
-        QuotedLiteral(bool),
+        QuotedLiteral,
         Flag,
         Equals,
         Variable,
@@ -1851,11 +1853,13 @@ mod compiled {
         EndOfStatement,
     }
 
+    #[derive(Debug, PartialEq, Eq)]
     pub struct CommandTokenRange {
         pub from: usize,
         pub to: usize,
     }
 
+    #[derive(Debug, PartialEq, Eq)]
     pub struct CommandToken {
         pub kind: CommandTokenKind,
         pub range: CommandTokenRange,
@@ -1864,6 +1868,14 @@ mod compiled {
     pub struct CommandTokenIter<'a> {
         bytes: &'a [u8],
         index: usize,
+    }
+    impl<'a> CommandTokenIter<'a> {
+        pub fn new(text: &'a str) -> Self {
+            Self {
+                bytes: text.as_bytes(),
+                index: 0,
+            }
+        }
     }
     impl<'a> Iterator for CommandTokenIter<'a> {
         type Item = Result<CommandToken, CommandCompileError>;
@@ -1899,22 +1911,21 @@ mod compiled {
             }
 
             loop {
-                if self.index >= self.bytes.len() {
-                    return None;
+                loop {
+                    if self.index >= self.bytes.len() {
+                        return None;
+                    }
+                    if matches!(self.bytes[self.index], b' ' | b'\t') {
+                        self.index += 1;
+                    } else {
+                        break;
+                    }
                 }
-                if matches!(self.bytes[self.index], b' ' | b'\t') {
-                    self.index += 1;
-                } else {
-                    break;
-                }
-            }
 
-            loop {
                 match self.bytes[self.index] {
                     delim @ b'"' | delim @ b'\'' => {
                         let from = self.index;
                         self.index += 1;
-                        let mut has_escaping = false;
                         loop {
                             if self.index >= self.bytes.len() {
                                 return Some(Err(error(
@@ -1930,7 +1941,6 @@ mod compiled {
 
                             let byte = self.bytes[self.index];
                             if byte == b'\\' {
-                                has_escaping = true;
                                 self.index += 2;
                             } else {
                                 self.index += 1;
@@ -1943,7 +1953,7 @@ mod compiled {
                         let to = self.index;
                         let range = CommandTokenRange { from, to };
                         break Some(Ok(CommandToken {
-                            kind: CommandTokenKind::QuotedLiteral(has_escaping),
+                            kind: CommandTokenKind::QuotedLiteral,
                             range,
                         }));
                     }
@@ -1992,8 +2002,8 @@ mod compiled {
                         let from = self.index;
                         self.index += 1;
                         match &self.bytes[self.index..] {
-                            b"\r" | b"\n" => self.index += 1,
-                            b"\r\n" => self.index += 2,
+                            &[b'\r', b'\n', ..] => self.index += 2,
+                            &[b'\r', ..] | &[b'\n', ..] => self.index += 1,
                             _ => {
                                 let to = self.index;
                                 break Some(Ok(CommandToken {
@@ -2006,7 +2016,7 @@ mod compiled {
                     b'\r' | b'\n' | b';' => {
                         let token = single_byte_token(self, CommandTokenKind::EndOfStatement);
                         while self.index < self.bytes.len()
-                            && matches!(self.bytes[self.index], b'\r' | b'\n' | b';')
+                            && matches!(self.bytes[self.index], b' ' | b'\t' | b'\r' | b'\n' | b';')
                         {
                             self.index += 1;
                         }
@@ -2017,7 +2027,9 @@ mod compiled {
                         self.index += 1;
                         while self.index < self.bytes.len() {
                             match self.bytes[self.index] {
-                                b'{' | b'(' | b' ' | b'\t' => break,
+                                b'{' | b'}' | b'(' | b')' | b' ' | b'\t' | b'\r' | b'\n' | b';' => {
+                                    break
+                                }
                                 _ => self.index += 1,
                             }
                         }
@@ -2034,9 +2046,10 @@ mod compiled {
     }
 
     enum Op {
-        BuiltinCommand,
-        MacroCommand,
-        RequestCommand,
+        Return,
+        BuiltinCommand(usize),
+        MacroCommand(usize),
+        RequestCommand(usize),
     }
 
     struct MacroCommand {
@@ -2054,9 +2067,45 @@ mod compiled {
         texts: String,
     }
 
-    fn compile(commands: &str, chunk: &mut ByteCodeChunk) {
+    fn compile(commands: &str, macros: &mut MacroCommandCollection, chunk: &mut ByteCodeChunk) {
         chunk.ops.clear();
         todo!();
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn tokens() {
+            fn collect_kind(text: &str) -> Vec<CommandTokenKind> {
+                CommandTokenIter::new(text)
+                    .map(Result::unwrap)
+                    .map(|t| t.kind)
+                    .collect()
+            }
+
+            use CommandTokenKind::*;
+            assert_eq!(Vec::<CommandTokenKind>::new(), collect_kind(""));
+            assert_eq!(vec![Literal], collect_kind("command"));
+            assert_eq!(vec![QuotedLiteral], collect_kind("'text'"));
+            assert_eq!(
+                vec![Literal, OpenParenthesis, Literal, CloseParenthesis],
+                collect_kind("cmd (subcmd)")
+            );
+            assert_eq!(
+                vec![Literal, Variable, Flag, Equals, Literal, Equals, Literal],
+                collect_kind("cmd $var -flag=value = not-flag")
+            );
+            assert_eq!(
+                vec![Literal, EndOfStatement, Literal, EndOfStatement, Literal],
+                collect_kind("cmd0;cmd1\r\n\ncmd2")
+            );
+            assert_eq!(
+                vec![Literal, Literal, Literal, Literal],
+                collect_kind("cmd0 \\ v0 \\\n \\\r\n v1")
+            );
+        }
     }
 }
 
