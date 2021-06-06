@@ -238,23 +238,31 @@ impl<'source> Parser<'source> {
         })
     }
 
+    pub fn previous_bytes(&self) -> &'source [u8] {
+        &self.tokenizer.bytes[self.previous.range.clone()]
+    }
+
     pub fn next(&mut self) -> Result<(), CommandCompileError> {
         let token = self.tokenizer.next()?;
         self.previous = token;
         Ok(())
     }
 
-    pub fn consume(&mut self, kind: CommandTokenKind) -> Result<Range<usize>, CommandCompileError> {
-        let range = self.previous.range.clone();
+    pub fn consume(&mut self, kind: CommandTokenKind) -> Result<(), CommandCompileError> {
         if self.previous.kind == kind {
-            self.next()?;
-            Ok(range)
+            self.next()
         } else {
             Err(CommandCompileError {
                 kind: CommandCompileErrorKind::ExpectedTokenKind(kind),
-                range,
+                range: self.previous.range.clone(),
             })
         }
+    }
+
+    pub fn matches(&mut self, kind: CommandTokenKind) -> Result<bool, CommandCompileError> {
+        let matches = self.previous.kind == kind;
+        self.next()?;
+        Ok(matches)
     }
 }
 
@@ -272,23 +280,42 @@ fn compile(source: &str, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompile
 }
 
 fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
-    fn definition(
+    fn parse_top_level(
         parser: &mut Parser,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
-        parser.next()?;
-        Ok(())
+        let previous_bytes = parser.previous_bytes();
+        parser.consume(CommandTokenKind::Literal)?;
+        match previous_bytes {
+            b"source" => parse_source(parser, chunk),
+            b"macro" => parse_macro(parser, chunk),
+            _ => parse_statement(parser, chunk),
+        }
     }
 
-    fn statement(
+    fn parse_source(
         parser: &mut Parser,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
-        Ok(())
+        todo!()
+    }
+
+    fn parse_macro(
+        parser: &mut Parser,
+        chunk: &mut ByteCodeChunk,
+    ) -> Result<(), CommandCompileError> {
+        todo!()
+    }
+
+    fn parse_statement(
+        parser: &mut Parser,
+        chunk: &mut ByteCodeChunk,
+    ) -> Result<(), CommandCompileError> {
+        todo!()
     }
 
     while parser.previous.kind != CommandTokenKind::EndOfSource {
-        definition(parser, chunk)?;
+        parse_top_level(parser, chunk)?;
     }
     Ok(())
 }
