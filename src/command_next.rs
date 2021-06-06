@@ -1,14 +1,6 @@
 use std::ops::Range;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum CommandTokenError {
-    UnterminatedQuotedLiteral,
-    InvalidFlagName,
-    InvalidVariableName,
-    InvalidEscaping,
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub enum CommandTokenKind {
     Literal,
     QuotedLiteral,
@@ -25,15 +17,31 @@ pub enum CommandTokenKind {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CommandToken {
-    pub kind: Result<CommandTokenKind, CommandTokenError>,
+    pub kind: CommandTokenKind,
     pub range: Range<usize>,
 }
 
-pub struct CommandTokenIter<'a> {
-    bytes: &'a [u8],
+#[derive(Debug, PartialEq, Eq)]
+pub enum CommandCompileErrorKind {
+    UnterminatedQuotedLiteral,
+    InvalidFlagName,
+    InvalidVariableName,
+    InvalidEscaping,
+
+    ExpectedTokenKind(CommandTokenKind),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CommandCompileError {
+    pub kind: CommandCompileErrorKind,
+    pub range: Range<usize>,
+}
+
+pub struct CommandTokenizer<'a> {
+    pub bytes: &'a [u8],
     index: usize,
 }
-impl<'a> CommandTokenIter<'a> {
+impl<'a> CommandTokenizer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             bytes: source.as_bytes(),
@@ -41,25 +49,8 @@ impl<'a> CommandTokenIter<'a> {
         }
     }
 
-    pub fn get_token_bytes(&self, range: Range<usize>) -> &'a [u8] {
-        &self.bytes[range]
-    }
-}
-impl<'a> Iterator for CommandTokenIter<'a> {
-    type Item = CommandToken;
-    fn next(&mut self) -> Option<Self::Item> {
-        fn error(
-            iter: &mut CommandTokenIter,
-            error: CommandTokenError,
-            range: Range<usize>,
-        ) -> CommandToken {
-            iter.index = iter.bytes.len();
-            CommandToken {
-                kind: Err(error),
-                range,
-            }
-        }
-        fn consume_identifier(iter: &mut CommandTokenIter) {
+    pub fn next(&mut self) -> Result<CommandToken, CommandCompileError> {
+        fn consume_identifier(iter: &mut CommandTokenizer) {
             let bytes = &iter.bytes[iter.index..];
             let len = match bytes
                 .iter()
@@ -70,28 +61,22 @@ impl<'a> Iterator for CommandTokenIter<'a> {
             };
             iter.index += len;
         }
-        fn single_byte_token(
-            iter: &mut CommandTokenIter,
-            kind: CommandTokenKind,
-        ) -> Option<CommandToken> {
+        fn single_byte_token(iter: &mut CommandTokenizer, kind: CommandTokenKind) -> CommandToken {
             let from = iter.index;
             iter.index += 1;
-            Some(CommandToken {
-                kind: Ok(kind),
+            CommandToken {
+                kind,
                 range: from..iter.index,
-            })
+            }
         }
 
         loop {
             loop {
-                if self.index == self.bytes.len() {
-                    self.index += 1;
-                    return Some(CommandToken {
-                        kind: Ok(CommandTokenKind::EndOfSource),
+                if self.index >= self.bytes.len() {
+                    return Ok(CommandToken {
+                        kind: CommandTokenKind::EndOfSource,
                         range: self.bytes.len()..self.bytes.len(),
                     });
-                } else if self.index > self.bytes.len() {
-                    return None;
                 }
                 if matches!(self.bytes[self.index], b' ' | b'\t') {
                     self.index += 1;
@@ -106,11 +91,10 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     self.index += 1;
                     loop {
                         if self.index >= self.bytes.len() {
-                            return Some(error(
-                                self,
-                                CommandTokenError::UnterminatedQuotedLiteral,
-                                from..self.bytes.len(),
-                            ));
+                            return Err(CommandCompileError {
+                                kind: CommandCompileErrorKind::UnterminatedQuotedLiteral,
+                                range: from..self.bytes.len(),
+                            });
                         }
 
                         let byte = self.bytes[self.index];
@@ -123,8 +107,8 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                             }
                         }
                     }
-                    break Some(CommandToken {
-                        kind: Ok(CommandTokenKind::QuotedLiteral),
+                    return Ok(CommandToken {
+                        kind: CommandTokenKind::QuotedLiteral,
                         range: from..self.index,
                     });
                 }
@@ -134,10 +118,13 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     consume_identifier(self);
                     let range = from..self.index;
                     if range.start + 1 == range.end {
-                        break Some(error(self, CommandTokenError::InvalidFlagName, range));
+                        return Err(CommandCompileError {
+                            kind: CommandCompileErrorKind::InvalidFlagName,
+                            range,
+                        });
                     } else {
-                        break Some(CommandToken {
-                            kind: Ok(CommandTokenKind::Flag),
+                        return Ok(CommandToken {
+                            kind: CommandTokenKind::Flag,
                             range,
                         });
                     }
@@ -148,19 +135,27 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     consume_identifier(self);
                     let range = from..self.index;
                     if range.start + 1 == range.end {
-                        break Some(error(self, CommandTokenError::InvalidVariableName, range));
+                        return Err(CommandCompileError {
+                            kind: CommandCompileErrorKind::InvalidVariableName,
+                            range,
+                        });
                     } else {
-                        break Some(CommandToken {
-                            kind: Ok(CommandTokenKind::Variable),
+                        return Ok(CommandToken {
+                            kind: CommandTokenKind::Variable,
                             range,
                         });
                     }
                 }
-                b'=' => break single_byte_token(self, CommandTokenKind::Equals),
-                b'{' => break single_byte_token(self, CommandTokenKind::OpenCurlyBrackets),
-                b'}' => break single_byte_token(self, CommandTokenKind::CloseCurlyBrackets),
-                b'(' => break single_byte_token(self, CommandTokenKind::OpenParenthesis),
-                b')' => break single_byte_token(self, CommandTokenKind::CloseParenthesis),
+                b'=' => return Ok(single_byte_token(self, CommandTokenKind::Equals)),
+                b'{' => return Ok(single_byte_token(self, CommandTokenKind::OpenCurlyBrackets)),
+                b'}' => {
+                    return Ok(single_byte_token(
+                        self,
+                        CommandTokenKind::CloseCurlyBrackets,
+                    ))
+                }
+                b'(' => return Ok(single_byte_token(self, CommandTokenKind::OpenParenthesis)),
+                b')' => return Ok(single_byte_token(self, CommandTokenKind::CloseParenthesis)),
                 b'\\' => {
                     let from = self.index;
                     self.index += 1;
@@ -168,11 +163,10 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                         &[b'\n', ..] => self.index += 1,
                         &[b'\r', b'\n', ..] => self.index += 2,
                         _ => {
-                            break Some(error(
-                                self,
-                                CommandTokenError::InvalidEscaping,
-                                from..self.index,
-                            ))
+                            return Err(CommandCompileError {
+                                kind: CommandCompileErrorKind::InvalidEscaping,
+                                range: from..self.index,
+                            })
                         }
                     }
                 }
@@ -183,7 +177,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     {
                         self.index += 1;
                     }
-                    break token;
+                    return Ok(token);
                 }
                 _ => {
                     let from = self.index;
@@ -196,8 +190,8 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                             _ => self.index += 1,
                         }
                     }
-                    break Some(CommandToken {
-                        kind: Ok(CommandTokenKind::Literal),
+                    return Ok(CommandToken {
+                        kind: CommandTokenKind::Literal,
                         range: from..self.index,
                     });
                 }
@@ -225,54 +219,48 @@ struct MacroCommandCollection {
     commands: Vec<MacroCommand>,
 }
 
-pub enum CommandCompileError {
-    UnexpectedEndOfTokens,
-    TokenError(CommandTokenError),
-}
-impl From<CommandTokenError> for CommandCompileError {
-    fn from(error: CommandTokenError) -> Self {
-        Self::TokenError(error)
-    }
-}
-
 struct ByteCodeChunk {
     ops: Vec<Op>,
     texts: String,
 }
 
 struct Parser<'source> {
-    tokens: CommandTokenIter<'source>,
-    pub previous_kind: CommandTokenKind,
-    pub previous_range: Range<usize>,
+    tokenizer: CommandTokenizer<'source>,
+    pub previous: CommandToken,
 }
-impl<'source> Parser<'source>  {
-    pub fn new(source: &'source str) -> Self {
-        Self {
-            tokens: CommandTokenIter::new(source),
-            previous_kind: CommandTokenKind::Literal,
-            previous_range: 0..0,
-        }
+impl<'source> Parser<'source> {
+    pub fn new(source: &'source str) -> Result<Self, CommandCompileError> {
+        let mut tokenizer = CommandTokenizer::new(source);
+        let previous = tokenizer.next()?;
+        Ok(Self {
+            tokenizer,
+            previous,
+        })
     }
 
     pub fn next(&mut self) -> Result<(), CommandCompileError> {
-        match self.tokens.next() {
-            Some(token) => match token.kind {
-                Ok(kind) => {
-                    self.previous_kind = kind;
-                    self.previous_range = token.range;
-                    Ok(())
-                }
-                Err(error) => Err(error.into()),
-            },
-            None => Err(CommandCompileError::UnexpectedEndOfTokens),
+        let token = self.tokenizer.next()?;
+        self.previous = token;
+        Ok(())
+    }
+
+    pub fn consume(&mut self, kind: CommandTokenKind) -> Result<Range<usize>, CommandCompileError> {
+        let range = self.previous.range.clone();
+        if self.previous.kind == kind {
+            self.next()?;
+            Ok(range)
+        } else {
+            Err(CommandCompileError {
+                kind: CommandCompileErrorKind::ExpectedTokenKind(kind),
+                range,
+            })
         }
     }
 }
 
 fn compile(source: &str, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
     chunk.ops.clear();
-    let mut parser = Parser::new(source);
-    parser.next()?;
+    let mut parser = Parser::new(source)?;
     match compile_into(&mut parser, chunk) {
         Ok(()) => (),
         Err(error) => {
@@ -284,7 +272,7 @@ fn compile(source: &str, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompile
 }
 
 fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
-    fn statement(
+    fn definition(
         parser: &mut Parser,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
@@ -292,8 +280,15 @@ fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), Co
         Ok(())
     }
 
-    loop {
-        statement(parser, chunk)?;
+    fn statement(
+        parser: &mut Parser,
+        chunk: &mut ByteCodeChunk,
+    ) -> Result<(), CommandCompileError> {
+        Ok(())
+    }
+
+    while parser.previous.kind != CommandTokenKind::EndOfSource {
+        definition(parser, chunk)?;
     }
     Ok(())
 }
@@ -305,29 +300,29 @@ mod tests {
     #[test]
     fn command_tokenizer() {
         fn collect<'a>(source: &'a str) -> Vec<(CommandTokenKind, &'a str)> {
-            CommandTokenIter::new(source)
-                .map(|t| (t.kind.unwrap(), &source[t.range]))
-                .collect()
+            let mut tokenizer = CommandTokenizer::new(source);
+            let mut tokens = Vec::new();
+            loop {
+                let token = tokenizer.next().unwrap();
+                match token.kind {
+                    CommandTokenKind::EndOfSource => break,
+                    _ => tokens.push((token.kind, &source[token.range])),
+                }
+            }
+            tokens
         }
 
         use CommandTokenKind::*;
-        assert_eq!(vec![(EndOfSource, "")], collect(""));
-        assert_eq!(vec![(EndOfSource, "")], collect("  "));
-        assert_eq!(
-            vec![(Literal, "command"), (EndOfSource, "")],
-            collect("command")
-        );
-        assert_eq!(
-            vec![(QuotedLiteral, "'text'"), (EndOfSource, "")],
-            collect("'text'")
-        );
+        assert!(collect("").is_empty());
+        assert!(collect("  ").is_empty());
+        assert_eq!(vec![(Literal, "command")], collect("command"));
+        assert_eq!(vec![(QuotedLiteral, "'text'")], collect("'text'"));
         assert_eq!(
             vec![
                 (Literal, "cmd"),
                 (OpenParenthesis, "("),
                 (Literal, "subcmd"),
                 (CloseParenthesis, ")"),
-                (EndOfSource, ""),
             ],
             collect("cmd (subcmd)")
         );
@@ -340,7 +335,6 @@ mod tests {
                 (Literal, "value"),
                 (Equals, "="),
                 (Literal, "not-flag"),
-                (EndOfSource, ""),
             ],
             collect("cmd $var -flag=value = not-flag")
         );
@@ -351,17 +345,11 @@ mod tests {
                 (Literal, "cmd1"),
                 (EndOfStatement, "\r"),
                 (Literal, "cmd2"),
-                (EndOfSource, ""),
             ],
             collect("cmd0;cmd1\r\n\ncmd2")
         );
         assert_eq!(
-            vec![
-                (Literal, "cmd0"),
-                (Literal, "v0"),
-                (Literal, "v1"),
-                (EndOfSource, ""),
-            ],
+            vec![(Literal, "cmd0"), (Literal, "v0"), (Literal, "v1")],
             collect("cmd0 v0 \\\n \\\r\n v1")
         );
     }
