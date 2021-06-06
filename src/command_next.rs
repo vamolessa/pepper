@@ -20,18 +20,13 @@ pub enum CommandTokenKind {
     OpenParenthesis,
     CloseParenthesis,
     EndOfStatement,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct CommandTokenRange {
-    pub from: usize,
-    pub to: usize,
+    EndOfSource,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CommandToken {
     pub kind: Result<CommandTokenKind, CommandTokenError>,
-    pub range: CommandTokenRange,
+    pub range: Range<usize>,
 }
 
 pub struct CommandTokenIter<'a> {
@@ -39,11 +34,15 @@ pub struct CommandTokenIter<'a> {
     index: usize,
 }
 impl<'a> CommandTokenIter<'a> {
-    pub fn new(text: &'a str) -> Self {
+    pub fn new(source: &'a str) -> Self {
         Self {
-            bytes: text.as_bytes(),
+            bytes: source.as_bytes(),
             index: 0,
         }
+    }
+
+    pub fn get_token_bytes(&self, range: Range<usize>) -> &'a [u8] {
+        &self.bytes[range]
     }
 }
 impl<'a> Iterator for CommandTokenIter<'a> {
@@ -52,7 +51,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
         fn error(
             iter: &mut CommandTokenIter,
             error: CommandTokenError,
-            range: CommandTokenRange,
+            range: Range<usize>,
         ) -> CommandToken {
             iter.index = iter.bytes.len();
             CommandToken {
@@ -77,19 +76,21 @@ impl<'a> Iterator for CommandTokenIter<'a> {
         ) -> Option<CommandToken> {
             let from = iter.index;
             iter.index += 1;
-            let range = CommandTokenRange {
-                from,
-                to: iter.index,
-            };
             Some(CommandToken {
                 kind: Ok(kind),
-                range,
+                range: from..iter.index,
             })
         }
 
         loop {
             loop {
-                if self.index >= self.bytes.len() {
+                if self.index == self.bytes.len() {
+                    self.index += 1;
+                    return Some(CommandToken {
+                        kind: Ok(CommandTokenKind::EndOfSource),
+                        range: self.bytes.len()..self.bytes.len(),
+                    });
+                } else if self.index > self.bytes.len() {
                     return None;
                 }
                 if matches!(self.bytes[self.index], b' ' | b'\t') {
@@ -108,10 +109,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                             return Some(error(
                                 self,
                                 CommandTokenError::UnterminatedQuotedLiteral,
-                                CommandTokenRange {
-                                    from,
-                                    to: self.bytes.len(),
-                                },
+                                from..self.bytes.len(),
                             ));
                         }
 
@@ -125,20 +123,17 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                             }
                         }
                     }
-                    let to = self.index;
-                    let range = CommandTokenRange { from, to };
                     break Some(CommandToken {
                         kind: Ok(CommandTokenKind::QuotedLiteral),
-                        range,
+                        range: from..self.index,
                     });
                 }
                 b'-' => {
                     let from = self.index;
                     self.index += 1;
                     consume_identifier(self);
-                    let to = self.index;
-                    let range = CommandTokenRange { from, to };
-                    if range.from + 1 == range.to {
+                    let range = from..self.index;
+                    if range.start + 1 == range.end {
                         break Some(error(self, CommandTokenError::InvalidFlagName, range));
                     } else {
                         break Some(CommandToken {
@@ -151,9 +146,8 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     let from = self.index;
                     self.index += 1;
                     consume_identifier(self);
-                    let to = self.index;
-                    let range = CommandTokenRange { from, to };
-                    if range.from + 1 == range.to {
+                    let range = from..self.index;
+                    if range.start + 1 == range.end {
                         break Some(error(self, CommandTokenError::InvalidVariableName, range));
                     } else {
                         break Some(CommandToken {
@@ -174,9 +168,11 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                         &[b'\n', ..] => self.index += 1,
                         &[b'\r', b'\n', ..] => self.index += 2,
                         _ => {
-                            let to = self.index;
-                            let range = CommandTokenRange { from, to };
-                            break Some(error(self, CommandTokenError::InvalidEscaping, range));
+                            break Some(error(
+                                self,
+                                CommandTokenError::InvalidEscaping,
+                                from..self.index,
+                            ))
                         }
                     }
                 }
@@ -200,11 +196,9 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                             _ => self.index += 1,
                         }
                     }
-                    let to = self.index;
-                    let range = CommandTokenRange { from, to };
                     break Some(CommandToken {
                         kind: Ok(CommandTokenKind::Literal),
-                        range,
+                        range: from..self.index,
                     });
                 }
             }
@@ -231,14 +225,77 @@ struct MacroCommandCollection {
     commands: Vec<MacroCommand>,
 }
 
+pub enum CommandCompileError {
+    UnexpectedEndOfTokens,
+    TokenError(CommandTokenError),
+}
+impl From<CommandTokenError> for CommandCompileError {
+    fn from(error: CommandTokenError) -> Self {
+        Self::TokenError(error)
+    }
+}
+
 struct ByteCodeChunk {
     ops: Vec<Op>,
     texts: String,
 }
 
-fn compile(commands: &str, macros: &mut MacroCommandCollection, chunk: &mut ByteCodeChunk) {
+struct Parser<'source> {
+    tokens: CommandTokenIter<'source>,
+    pub previous_kind: CommandTokenKind,
+    pub previous_range: Range<usize>,
+}
+impl<'source> Parser<'source>  {
+    pub fn new(source: &'source str) -> Self {
+        Self {
+            tokens: CommandTokenIter::new(source),
+            previous_kind: CommandTokenKind::Literal,
+            previous_range: 0..0,
+        }
+    }
+
+    pub fn next(&mut self) -> Result<(), CommandCompileError> {
+        match self.tokens.next() {
+            Some(token) => match token.kind {
+                Ok(kind) => {
+                    self.previous_kind = kind;
+                    self.previous_range = token.range;
+                    Ok(())
+                }
+                Err(error) => Err(error.into()),
+            },
+            None => Err(CommandCompileError::UnexpectedEndOfTokens),
+        }
+    }
+}
+
+fn compile(source: &str, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
     chunk.ops.clear();
-    todo!();
+    let mut parser = Parser::new(source);
+    parser.next()?;
+    match compile_into(&mut parser, chunk) {
+        Ok(()) => (),
+        Err(error) => {
+            chunk.ops.clear();
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
+    fn statement(
+        parser: &mut Parser,
+        chunk: &mut ByteCodeChunk,
+    ) -> Result<(), CommandCompileError> {
+        parser.next()?;
+        Ok(())
+    }
+
+    loop {
+        statement(parser, chunk)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -247,22 +304,30 @@ mod tests {
 
     #[test]
     fn command_tokenizer() {
-        fn collect<'a>(text: &'a str) -> Vec<(CommandTokenKind, &'a str)> {
-            CommandTokenIter::new(text)
-                .map(|t| (t.kind.unwrap(), &text[t.range.from..t.range.to]))
+        fn collect<'a>(source: &'a str) -> Vec<(CommandTokenKind, &'a str)> {
+            CommandTokenIter::new(source)
+                .map(|t| (t.kind.unwrap(), &source[t.range]))
                 .collect()
         }
 
         use CommandTokenKind::*;
-        assert!(collect("").is_empty());
-        assert_eq!(vec![(Literal, "command")], collect("command"));
-        assert_eq!(vec![(QuotedLiteral, "'text'")], collect("'text'"));
+        assert_eq!(vec![(EndOfSource, "")], collect(""));
+        assert_eq!(vec![(EndOfSource, "")], collect("  "));
+        assert_eq!(
+            vec![(Literal, "command"), (EndOfSource, "")],
+            collect("command")
+        );
+        assert_eq!(
+            vec![(QuotedLiteral, "'text'"), (EndOfSource, "")],
+            collect("'text'")
+        );
         assert_eq!(
             vec![
                 (Literal, "cmd"),
                 (OpenParenthesis, "("),
                 (Literal, "subcmd"),
-                (CloseParenthesis, ")")
+                (CloseParenthesis, ")"),
+                (EndOfSource, ""),
             ],
             collect("cmd (subcmd)")
         );
@@ -274,7 +339,8 @@ mod tests {
                 (Equals, "="),
                 (Literal, "value"),
                 (Equals, "="),
-                (Literal, "not-flag")
+                (Literal, "not-flag"),
+                (EndOfSource, ""),
             ],
             collect("cmd $var -flag=value = not-flag")
         );
@@ -284,12 +350,18 @@ mod tests {
                 (EndOfStatement, ";"),
                 (Literal, "cmd1"),
                 (EndOfStatement, "\r"),
-                (Literal, "cmd2")
+                (Literal, "cmd2"),
+                (EndOfSource, ""),
             ],
             collect("cmd0;cmd1\r\n\ncmd2")
         );
         assert_eq!(
-            vec![(Literal, "cmd0"), (Literal, "v0"), (Literal, "v1")],
+            vec![
+                (Literal, "cmd0"),
+                (Literal, "v0"),
+                (Literal, "v1"),
+                (EndOfSource, ""),
+            ],
             collect("cmd0 v0 \\\n \\\r\n v1")
         );
     }
