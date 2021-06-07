@@ -4,11 +4,16 @@ use std::ops::Range;
 pub enum CommandCompileErrorKind {
     UnterminatedQuotedLiteral,
     InvalidFlagName,
-    InvalidVariableName,
+    InvalidBindingName,
 
     ExpectedToken(CommandTokenKind),
     ExpectedStatement,
     ExpectedExpression,
+    InvalidBindingDeclarationAtTopLevel,
+    LiteralTooBig,
+    InvalidLiteralEscaping,
+    TooManyBindings,
+    UndeclaredBinding,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -23,7 +28,7 @@ pub enum CommandTokenKind {
     QuotedLiteral,
     Flag,
     Equals,
-    Variable,
+    Binding,
     OpenCurlyBrackets,
     CloseCurlyBrackets,
     OpenParenthesis,
@@ -135,12 +140,12 @@ impl<'a> CommandTokenizer<'a> {
                     let range = from..self.index;
                     if range.start + 1 == range.end {
                         return Err(CommandCompileError {
-                            kind: CommandCompileErrorKind::InvalidVariableName,
+                            kind: CommandCompileErrorKind::InvalidBindingName,
                             range,
                         });
                     } else {
                         return Ok(CommandToken {
-                            kind: CommandTokenKind::Variable,
+                            kind: CommandTokenKind::Binding,
                             range,
                         });
                     }
@@ -158,10 +163,7 @@ impl<'a> CommandTokenizer<'a> {
                 b'\r' | b'\n' => {
                     let from = self.index;
                     while self.index < source_bytes.len()
-                        && matches!(
-                            source_bytes[self.index],
-                            b' ' | b'\t' | b'\r' | b'\n'
-                        )
+                        && matches!(source_bytes[self.index], b' ' | b'\t' | b'\r' | b'\n')
                     {
                         self.index += 1;
                     }
@@ -175,9 +177,7 @@ impl<'a> CommandTokenizer<'a> {
                     self.index += 1;
                     while self.index < source_bytes.len() {
                         match source_bytes[self.index] {
-                            b'{' | b'}' | b'(' | b')' | b' ' | b'\t' | b'\r' | b'\n' => {
-                                break
-                            }
+                            b'{' | b'}' | b'(' | b')' | b' ' | b'\t' | b'\r' | b'\n' => break,
                             _ => self.index += 1,
                         }
                     }
@@ -191,11 +191,21 @@ impl<'a> CommandTokenizer<'a> {
     }
 }
 
+#[derive(Default)]
+struct LiteralValue {
+    pub start: u16,
+    pub len: u8,
+}
+
 enum Op {
     Return,
-    BuiltinCommand(usize),
-    MacroCommand(usize),
-    RequestCommand(usize),
+    PopToOutput,
+    PushLiteral(LiteralValue),
+    PushFromStack(u16),
+    PopAsFlag(u16),
+    CallBuiltinCommand(u16, u8),
+    CallMacroCommand(u16, u8),
+    CallRequestCommand(u16, u8),
 }
 
 struct MacroCommand {
@@ -214,18 +224,116 @@ struct ByteCodeChunk {
     ops: Vec<Op>,
     texts: String,
 }
+impl ByteCodeChunk {
+    pub fn emit(&mut self, op: Op) {
+        self.ops.push(op);
+    }
 
-struct Compiler<'source> {
+    pub fn add_literal(
+        &mut self,
+        text: &str,
+        range: Range<usize>,
+    ) -> Result<LiteralValue, CommandCompileError> {
+        if text.len() > u8::MAX as _ {
+            return Err(CommandCompileError {
+                kind: CommandCompileErrorKind::LiteralTooBig,
+                range,
+            });
+        }
+
+        let start = self.texts.len() as _;
+        let len = text.len() as _;
+        self.texts.push_str(text);
+        Ok(LiteralValue { start, len })
+    }
+
+    pub fn add_escaped_literal(
+        &mut self,
+        mut text: &str,
+        range: Range<usize>,
+    ) -> Result<LiteralValue, CommandCompileError> {
+        if text.len() > u8::MAX as _ {
+            return Err(CommandCompileError {
+                kind: CommandCompileErrorKind::LiteralTooBig,
+                range,
+            });
+        }
+
+        let start = self.texts.len();
+        while let Some(i) = text.find('\\') {
+            self.texts.push_str(&text[..i]);
+            text = &text[i + 1..];
+            match text.as_bytes() {
+                &[b'\\', ..] => self.texts.push('\\'),
+                &[b'\'', ..] => self.texts.push('\''),
+                &[b'\"', ..] => self.texts.push('\"'),
+                &[b'\n', ..] => self.texts.push('\n'),
+                &[b'\r', ..] => self.texts.push('\r'),
+                &[b'\t', ..] => self.texts.push('\t'),
+                &[b'\0', ..] => self.texts.push('\0'),
+                _ => {
+                    return Err(CommandCompileError {
+                        kind: CommandCompileErrorKind::InvalidLiteralEscaping,
+                        range,
+                    })
+                }
+            }
+        }
+        self.texts.push_str(text);
+
+        let len = (self.texts.len() - start) as _;
+        let start = start as _;
+        Ok(LiteralValue { start, len })
+    }
+}
+
+struct Binding<'source> {
+    name: &'source str,
+}
+struct BindingCollection<'source> {
+    bindings: Vec<Binding<'source>>,
+}
+impl<'source> BindingCollection<'source> {
+    pub fn declare(
+        &mut self,
+        name: &'source str,
+        range: Range<usize>,
+    ) -> Result<(), CommandCompileError> {
+        if self.bindings.len() >= u16::MAX as _ {
+            Err(CommandCompileError {
+                kind: CommandCompileErrorKind::TooManyBindings,
+                range,
+            })
+        } else {
+            self.bindings.push(Binding { name });
+            Ok(())
+        }
+    }
+
+    pub fn find_stack_index(&self, name: &str) -> Option<u16> {
+        self.bindings
+            .iter()
+            .rposition(|v| v.name == name)
+            .map(|i| i as _)
+    }
+}
+
+struct Compiler<'source, 'state> {
     tokenizer: CommandTokenizer<'source>,
     pub previous_token: CommandToken,
+    pub bindings: &'state mut BindingCollection<'source>,
 }
-impl<'source> Compiler<'source> {
-    pub fn new(source: &'source str) -> Result<Self, CommandCompileError> {
+impl<'source, 'state> Compiler<'source, 'state> {
+    pub fn new(
+        source: &'source str,
+        bindings: &'state mut BindingCollection<'source>,
+    ) -> Result<Self, CommandCompileError> {
         let mut tokenizer = CommandTokenizer::new(source);
         let previous_token = tokenizer.next()?;
         Ok(Self {
             tokenizer,
             previous_token,
+            bindings,
         })
     }
 
@@ -278,13 +386,16 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
             }
         }
 
-        parse_statement(compiler, chunk)
+        parse_statement(compiler, chunk, true)
     }
 
     fn parse_source(
         compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
+        compiler.next_token()?;
+        compiler.consume_token(CommandTokenKind::QuotedLiteral)?;
+        let path = compiler.previous_token_str();
         todo!()
     }
 
@@ -292,25 +403,45 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
         compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
+        compiler.next_token()?;
+        compiler.consume_token(CommandTokenKind::Literal)?;
+        let name = compiler.previous_token_str();
         todo!()
     }
 
     fn parse_statement(
         compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
+        is_top_level: bool,
     ) -> Result<(), CommandCompileError> {
         match compiler.previous_token.kind {
             CommandTokenKind::Literal | CommandTokenKind::OpenParenthesis => {
-                parse_command_call(compiler, chunk)
+                parse_command_call(compiler, chunk)?;
+                chunk.emit(Op::PopToOutput);
+                Ok(())
             }
-            CommandTokenKind::QuotedLiteral => parse_expression(compiler, chunk),
-            CommandTokenKind::Variable => {
-                let variable_name = compiler.previous_token_str();
+            CommandTokenKind::QuotedLiteral => {
+                parse_expression(compiler, chunk)?;
+                chunk.emit(Op::PopToOutput);
+                Ok(())
+            }
+            CommandTokenKind::Binding => {
+                if is_top_level {
+                    return Err(CommandCompileError {
+                        kind: CommandCompileErrorKind::InvalidBindingDeclarationAtTopLevel,
+                        range: compiler.previous_token.range.clone(),
+                    });
+                }
+
+                let binding_name = compiler.previous_token_str();
+                let binding_range = compiler.previous_token.range.clone();
+                compiler.bindings.declare(binding_name, binding_range)?;
+
                 compiler.next_token()?;
                 compiler.consume_token(CommandTokenKind::Equals)?;
-                parse_expression(compiler, chunk)?;
 
-                todo!();
+                parse_expression(compiler, chunk)?;
+                Ok(())
             }
             CommandTokenKind::EndOfCommand => Ok(()),
             _ => Err(CommandCompileError {
@@ -330,10 +461,12 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
                 compiler.consume_token(CommandTokenKind::Literal)?;
                 CommandTokenKind::CloseParenthesis
             }
-            _ => return Err(CommandCompileError {
-                kind: CommandCompileErrorKind::ExpectedToken(CommandTokenKind::Literal),
-                range: compiler.previous_token.range.clone(),
-            }),
+            _ => {
+                return Err(CommandCompileError {
+                    kind: CommandCompileErrorKind::ExpectedToken(CommandTokenKind::Literal),
+                    range: compiler.previous_token.range.clone(),
+                })
+            }
         };
 
         let range_start = compiler.previous_token.range.start;
@@ -342,7 +475,19 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
 
         loop {
             if compiler.previous_token.kind == CommandTokenKind::Flag {
-                todo!();
+                let flag_name = compiler.previous_token_str();
+                let flag_index = todo!();
+                compiler.next_token()?;
+
+                match compiler.previous_token.kind {
+                    CommandTokenKind::Equals => {
+                        compiler.next_token()?;
+                        parse_expression(compiler, chunk)?;
+                    }
+                    _ => chunk.emit(Op::PushLiteral(LiteralValue::default())),
+                }
+
+                chunk.emit(Op::PopAsFlag(flag_index));
             } else if compiler.previous_token.kind == end_token_kind {
                 compiler.next_token()?;
                 break;
@@ -360,19 +505,41 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
     ) -> Result<(), CommandCompileError> {
         let range_start = compiler.previous_token.range.start;
         match compiler.previous_token.kind {
-            CommandTokenKind::Literal | CommandTokenKind::QuotedLiteral => {
+            CommandTokenKind::Literal => {
+                let literal = compiler.previous_token_str();
+                let literal = chunk.add_literal(literal, compiler.previous_token.range.clone())?;
+                chunk.emit(Op::PushLiteral(literal));
                 compiler.next_token()?;
-                todo!();
+                Ok(())
+            }
+            CommandTokenKind::QuotedLiteral => {
+                let literal = compiler.previous_token_str();
+                let literal = &literal[1..];
+                let literal = &literal[..literal.len() - 1];
+                let literal =
+                    chunk.add_escaped_literal(literal, compiler.previous_token.range.clone())?;
+                chunk.emit(Op::PushLiteral(literal));
+                compiler.next_token()?;
+                Ok(())
             }
             CommandTokenKind::OpenParenthesis => {
                 parse_command_call(compiler, chunk)?;
                 compiler.consume_token(CommandTokenKind::CloseParenthesis)?;
                 Ok(())
             }
-            CommandTokenKind::Variable => {
-                let variable_name = compiler.previous_token_str();
-                compiler.next_token()?;
-                todo!()
+            CommandTokenKind::Binding => {
+                let binding_name = compiler.previous_token_str();
+                match compiler.bindings.find_stack_index(binding_name) {
+                    Some(index) => {
+                        compiler.next_token()?;
+                        chunk.emit(Op::PushFromStack(index));
+                        Ok(())
+                    }
+                    None => Err(CommandCompileError {
+                        kind: CommandCompileErrorKind::UndeclaredBinding,
+                        range: compiler.previous_token.range.clone(),
+                    }),
+                }
             }
             CommandTokenKind::EndOfCommand => Ok(()),
             _ => Err(CommandCompileError {
@@ -424,14 +591,14 @@ mod tests {
         assert_eq!(
             vec![
                 (Literal, "cmd"),
-                (Variable, "$var"),
+                (Binding, "$binding"),
                 (Flag, "-flag"),
                 (Equals, "="),
                 (Literal, "value"),
                 (Equals, "="),
                 (Literal, "not-flag"),
             ],
-            collect("cmd $var -flag=value = not-flag")
+            collect("cmd $binding -flag=value = not-flag")
         );
         assert_eq!(
             vec![
