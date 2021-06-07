@@ -29,6 +29,8 @@ pub enum CommandCompileErrorKind {
     InvalidEscaping,
 
     ExpectedTokenKind(CommandTokenKind),
+    ExpectedStatement,
+    ExpectedExpression,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -38,26 +40,22 @@ pub struct CommandCompileError {
 }
 
 pub struct CommandTokenizer<'a> {
-    pub bytes: &'a [u8],
+    pub source: &'a str,
     index: usize,
 }
 impl<'a> CommandTokenizer<'a> {
     pub fn new(source: &'a str) -> Self {
-        Self {
-            bytes: source.as_bytes(),
-            index: 0,
-        }
+        Self { source, index: 0 }
     }
 
     pub fn next(&mut self) -> Result<CommandToken, CommandCompileError> {
         fn consume_identifier(iter: &mut CommandTokenizer) {
-            let bytes = &iter.bytes[iter.index..];
-            let len = match bytes
-                .iter()
-                .position(|b| !matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-'))
+            let source = &iter.source[iter.index..];
+            let len = match source
+                .find(|c| !matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-'))
             {
                 Some(len) => len,
-                None => bytes.len(),
+                None => source.len(),
             };
             iter.index += len;
         }
@@ -70,34 +68,36 @@ impl<'a> CommandTokenizer<'a> {
             }
         }
 
+        let source_bytes = self.source.as_bytes();
+
         loop {
             loop {
-                if self.index >= self.bytes.len() {
+                if self.index >= source_bytes.len() {
                     return Ok(CommandToken {
                         kind: CommandTokenKind::EndOfSource,
-                        range: self.bytes.len()..self.bytes.len(),
+                        range: source_bytes.len()..source_bytes.len(),
                     });
                 }
-                if matches!(self.bytes[self.index], b' ' | b'\t') {
+                if matches!(source_bytes[self.index], b' ' | b'\t') {
                     self.index += 1;
                 } else {
                     break;
                 }
             }
 
-            match self.bytes[self.index] {
+            match source_bytes[self.index] {
                 delim @ b'"' | delim @ b'\'' => {
                     let from = self.index;
                     self.index += 1;
                     loop {
-                        if self.index >= self.bytes.len() {
+                        if self.index >= source_bytes.len() {
                             return Err(CommandCompileError {
                                 kind: CommandCompileErrorKind::UnterminatedQuotedLiteral,
-                                range: from..self.bytes.len(),
+                                range: from..source_bytes.len(),
                             });
                         }
 
-                        let byte = self.bytes[self.index];
+                        let byte = source_bytes[self.index];
                         if byte == b'\\' {
                             self.index += 2;
                         } else {
@@ -159,21 +159,24 @@ impl<'a> CommandTokenizer<'a> {
                 b'\\' => {
                     let from = self.index;
                     self.index += 1;
-                    match &self.bytes[self.index..] {
+                    match &source_bytes[self.index..] {
                         &[b'\n', ..] => self.index += 1,
                         &[b'\r', b'\n', ..] => self.index += 2,
                         _ => {
                             return Err(CommandCompileError {
                                 kind: CommandCompileErrorKind::InvalidEscaping,
                                 range: from..self.index,
-                            })
+                            });
                         }
                     }
                 }
                 b'\r' | b'\n' | b';' => {
                     let token = single_byte_token(self, CommandTokenKind::EndOfStatement);
-                    while self.index < self.bytes.len()
-                        && matches!(self.bytes[self.index], b' ' | b'\t' | b'\r' | b'\n' | b';')
+                    while self.index < source_bytes.len()
+                        && matches!(
+                            source_bytes[self.index],
+                            b' ' | b'\t' | b'\r' | b'\n' | b';'
+                        )
                     {
                         self.index += 1;
                     }
@@ -182,8 +185,8 @@ impl<'a> CommandTokenizer<'a> {
                 _ => {
                     let from = self.index;
                     self.index += 1;
-                    while self.index < self.bytes.len() {
-                        match self.bytes[self.index] {
+                    while self.index < source_bytes.len() {
+                        match source_bytes[self.index] {
                             b'{' | b'}' | b'(' | b')' | b' ' | b'\t' | b'\r' | b'\n' | b';' => {
                                 break
                             }
@@ -238,8 +241,8 @@ impl<'source> Parser<'source> {
         })
     }
 
-    pub fn previous_bytes(&self) -> &'source [u8] {
-        &self.tokenizer.bytes[self.previous.range.clone()]
+    pub fn previous_str(&self) -> &'source str {
+        &self.tokenizer.source[self.previous.range.clone()]
     }
 
     pub fn next(&mut self) -> Result<(), CommandCompileError> {
@@ -284,13 +287,17 @@ fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), Co
         parser: &mut Parser,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
-        let previous_bytes = parser.previous_bytes();
-        parser.consume(CommandTokenKind::Literal)?;
-        match previous_bytes {
-            b"source" => parse_source(parser, chunk),
-            b"macro" => parse_macro(parser, chunk),
-            _ => parse_statement(parser, chunk),
+        if let CommandTokenKind::Literal = parser.previous.kind {
+            let previous_str = parser.previous_str();
+            parser.next()?;
+            match previous_str {
+                "source" => return parse_source(parser, chunk),
+                "macro" => return parse_macro(parser, chunk),
+                _ => (),
+            }
         }
+
+        parse_statement(parser, chunk)
     }
 
     fn parse_source(
@@ -311,7 +318,44 @@ fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), Co
         parser: &mut Parser,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
-        todo!()
+        match parser.previous.kind {
+            CommandTokenKind::Literal => parse_command_call(parser, chunk),
+            CommandTokenKind::Variable => {
+                let variable_name = parser.previous_str();
+                parser.next()?;
+                parser.consume(CommandTokenKind::Equals)?;
+                parse_expression(parser, chunk)?;
+
+                todo!();
+            }
+            _ => Err(CommandCompileError {
+                kind: CommandCompileErrorKind::ExpectedStatement,
+                range: parser.previous.range.clone(),
+            }),
+        }
+    }
+
+    fn parse_command_call(
+        parser: &mut Parser,
+        chunk: &mut ByteCodeChunk,
+    ) -> Result<(), CommandCompileError> {
+        todo!();
+    }
+
+    fn parse_expression(
+        parser: &mut Parser,
+        chunk: &mut ByteCodeChunk,
+    ) -> Result<(), CommandCompileError> {
+        let range_start = parser.previous.range.start;
+        match parser.previous.kind {
+            CommandTokenKind::Literal | CommandTokenKind::QuotedLiteral => {
+                todo!();
+            }
+            _ => Err(CommandCompileError {
+                kind: CommandCompileErrorKind::ExpectedExpression,
+                range: range_start..parser.previous.range.end,
+            }),
+        }
     }
 
     while parser.previous.kind != CommandTokenKind::EndOfSource {
