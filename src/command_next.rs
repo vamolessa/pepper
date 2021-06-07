@@ -11,7 +11,7 @@ pub enum CommandTokenKind {
     CloseCurlyBrackets,
     OpenParenthesis,
     CloseParenthesis,
-    EndOfStatement,
+    EndOfCommand,
     EndOfSource,
 }
 
@@ -28,7 +28,7 @@ pub enum CommandCompileErrorKind {
     InvalidVariableName,
     InvalidEscaping,
 
-    ExpectedTokenKind(CommandTokenKind),
+    ExpectedToken(CommandTokenKind),
     ExpectedStatement,
     ExpectedExpression,
 }
@@ -171,7 +171,7 @@ impl<'a> CommandTokenizer<'a> {
                     }
                 }
                 b'\r' | b'\n' | b';' => {
-                    let token = single_byte_token(self, CommandTokenKind::EndOfStatement);
+                    let from = self.index;
                     while self.index < source_bytes.len()
                         && matches!(
                             source_bytes[self.index],
@@ -180,7 +180,10 @@ impl<'a> CommandTokenizer<'a> {
                     {
                         self.index += 1;
                     }
-                    return Ok(token);
+                    return Ok(CommandToken {
+                        kind: CommandTokenKind::EndOfCommand,
+                        range: from..self.index,
+                    });
                 }
                 _ => {
                     let from = self.index;
@@ -256,7 +259,7 @@ impl<'source> Parser<'source> {
             self.next()
         } else {
             Err(CommandCompileError {
-                kind: CommandCompileErrorKind::ExpectedTokenKind(kind),
+                kind: CommandCompileErrorKind::ExpectedToken(kind),
                 range: self.previous.range.clone(),
             })
         }
@@ -319,7 +322,10 @@ fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), Co
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
         match parser.previous.kind {
-            CommandTokenKind::Literal => parse_command_call(parser, chunk),
+            CommandTokenKind::Literal | CommandTokenKind::OpenParenthesis => {
+                parse_command_call(parser, chunk)
+            }
+            CommandTokenKind::QuotedLiteral => parse_expression(parser, chunk),
             CommandTokenKind::Variable => {
                 let variable_name = parser.previous_str();
                 parser.next()?;
@@ -339,6 +345,33 @@ fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), Co
         parser: &mut Parser,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
+        let end_token_kind = match parser.previous.kind {
+            CommandTokenKind::Literal => CommandTokenKind::Literal,
+            CommandTokenKind::OpenParenthesis => {
+                parser.consume(CommandTokenKind::Literal)?;
+                CommandTokenKind::CloseParenthesis
+            }
+            _ => return Err(CommandCompileError {
+                kind: CommandCompileErrorKind::ExpectedToken(CommandTokenKind::Literal),
+                range: parser.previous.range.clone(),
+            }),
+        };
+    
+        let range_start = parser.previous.range.start;
+        let command_name = parser.previous_str();
+        parser.next()?;
+
+        loop {
+            if parser.previous.kind == CommandTokenKind::Flag {
+                todo!();
+            } else if parser.previous.kind == end_token_kind {
+                parser.next()?;
+                break;
+            } else {
+                parse_expression(parser, chunk)?;
+            }
+        }
+
         todo!();
     }
 
@@ -349,7 +382,18 @@ fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), Co
         let range_start = parser.previous.range.start;
         match parser.previous.kind {
             CommandTokenKind::Literal | CommandTokenKind::QuotedLiteral => {
+                parser.next()?;
                 todo!();
+            }
+            CommandTokenKind::OpenParenthesis => {
+                parse_command_call(parser, chunk)?;
+                parser.consume(CommandTokenKind::CloseParenthesis)?;
+                Ok(())
+            }
+            CommandTokenKind::Variable => {
+                let variable_name = parser.previous_str();
+                parser.next()?;
+                todo!()
             }
             _ => Err(CommandCompileError {
                 kind: CommandCompileErrorKind::ExpectedExpression,
@@ -412,12 +456,12 @@ mod tests {
         assert_eq!(
             vec![
                 (Literal, "cmd0"),
-                (EndOfStatement, ";"),
+                (EndOfCommand, ";"),
                 (Literal, "cmd1"),
-                (EndOfStatement, "\r"),
+                (EndOfCommand, "\r\n\n ;\t \n;; "),
                 (Literal, "cmd2"),
             ],
-            collect("cmd0;cmd1\r\n\ncmd2")
+            collect("cmd0;cmd1 \t\r\n\n ;\t \n;; cmd2")
         );
         assert_eq!(
             vec![(Literal, "cmd0"), (Literal, "v0"), (Literal, "v1")],
