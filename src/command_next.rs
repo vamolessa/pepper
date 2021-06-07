@@ -1,6 +1,23 @@
 use std::ops::Range;
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum CommandCompileErrorKind {
+    UnterminatedQuotedLiteral,
+    InvalidFlagName,
+    InvalidVariableName,
+
+    ExpectedToken(CommandTokenKind),
+    ExpectedStatement,
+    ExpectedExpression,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CommandCompileError {
+    pub kind: CommandCompileErrorKind,
+    pub range: Range<usize>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum CommandTokenKind {
     Literal,
     QuotedLiteral,
@@ -18,23 +35,6 @@ pub enum CommandTokenKind {
 #[derive(Debug, PartialEq, Eq)]
 pub struct CommandToken {
     pub kind: CommandTokenKind,
-    pub range: Range<usize>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum CommandCompileErrorKind {
-    UnterminatedQuotedLiteral,
-    InvalidFlagName,
-    InvalidVariableName,
-
-    ExpectedToken(CommandTokenKind),
-    ExpectedStatement,
-    ExpectedExpression,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct CommandCompileError {
-    pub kind: CommandCompileErrorKind,
     pub range: Range<usize>,
 }
 
@@ -215,145 +215,139 @@ struct ByteCodeChunk {
     texts: String,
 }
 
-struct Parser<'source> {
+struct Compiler<'source> {
     tokenizer: CommandTokenizer<'source>,
-    pub previous: CommandToken,
+    pub previous_token: CommandToken,
 }
-impl<'source> Parser<'source> {
+impl<'source> Compiler<'source> {
     pub fn new(source: &'source str) -> Result<Self, CommandCompileError> {
         let mut tokenizer = CommandTokenizer::new(source);
-        let previous = tokenizer.next()?;
+        let previous_token = tokenizer.next()?;
         Ok(Self {
             tokenizer,
-            previous,
+            previous_token,
         })
     }
 
-    pub fn previous_str(&self) -> &'source str {
-        &self.tokenizer.source[self.previous.range.clone()]
+    pub fn previous_token_str(&self) -> &'source str {
+        &self.tokenizer.source[self.previous_token.range.clone()]
     }
 
-    pub fn next(&mut self) -> Result<(), CommandCompileError> {
+    pub fn next_token(&mut self) -> Result<(), CommandCompileError> {
         let token = self.tokenizer.next()?;
-        self.previous = token;
+        self.previous_token = token;
         Ok(())
     }
 
-    pub fn consume(&mut self, kind: CommandTokenKind) -> Result<(), CommandCompileError> {
-        if self.previous.kind == kind {
-            self.next()
+    pub fn consume_token(&mut self, kind: CommandTokenKind) -> Result<(), CommandCompileError> {
+        if self.previous_token.kind == kind {
+            self.next_token()
         } else {
             Err(CommandCompileError {
                 kind: CommandCompileErrorKind::ExpectedToken(kind),
-                range: self.previous.range.clone(),
+                range: self.previous_token.range.clone(),
             })
         }
     }
 
-    pub fn matches(&mut self, kind: CommandTokenKind) -> Result<bool, CommandCompileError> {
-        let matches = self.previous.kind == kind;
-        self.next()?;
-        Ok(matches)
-    }
-}
-
-fn compile(source: &str, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
-    chunk.ops.clear();
-    let mut parser = Parser::new(source)?;
-    match compile_into(&mut parser, chunk) {
-        Ok(()) => (),
-        Err(error) => {
-            chunk.ops.clear();
-            return Err(error);
+    pub fn compile_into(&mut self, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
+        chunk.ops.clear();
+        match compile(self, chunk) {
+            Ok(()) => (),
+            Err(error) => {
+                chunk.ops.clear();
+                return Err(error);
+            }
         }
+        Ok(())
     }
-    Ok(())
 }
 
-fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
+fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
     fn parse_top_level(
-        parser: &mut Parser,
+        compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
-        if let CommandTokenKind::Literal = parser.previous.kind {
-            let previous_str = parser.previous_str();
-            parser.next()?;
+        if let CommandTokenKind::Literal = compiler.previous_token.kind {
+            let previous_str = compiler.previous_token_str();
+            compiler.next_token()?;
             match previous_str {
-                "source" => return parse_source(parser, chunk),
-                "macro" => return parse_macro(parser, chunk),
+                "source" => return parse_source(compiler, chunk),
+                "macro" => return parse_macro(compiler, chunk),
                 _ => (),
             }
         }
 
-        parse_statement(parser, chunk)
+        parse_statement(compiler, chunk)
     }
 
     fn parse_source(
-        parser: &mut Parser,
+        compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
         todo!()
     }
 
     fn parse_macro(
-        parser: &mut Parser,
+        compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
         todo!()
     }
 
     fn parse_statement(
-        parser: &mut Parser,
+        compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
-        match parser.previous.kind {
+        match compiler.previous_token.kind {
             CommandTokenKind::Literal | CommandTokenKind::OpenParenthesis => {
-                parse_command_call(parser, chunk)
+                parse_command_call(compiler, chunk)
             }
-            CommandTokenKind::QuotedLiteral => parse_expression(parser, chunk),
+            CommandTokenKind::QuotedLiteral => parse_expression(compiler, chunk),
             CommandTokenKind::Variable => {
-                let variable_name = parser.previous_str();
-                parser.next()?;
-                parser.consume(CommandTokenKind::Equals)?;
-                parse_expression(parser, chunk)?;
+                let variable_name = compiler.previous_token_str();
+                compiler.next_token()?;
+                compiler.consume_token(CommandTokenKind::Equals)?;
+                parse_expression(compiler, chunk)?;
 
                 todo!();
             }
+            CommandTokenKind::EndOfCommand => Ok(()),
             _ => Err(CommandCompileError {
                 kind: CommandCompileErrorKind::ExpectedStatement,
-                range: parser.previous.range.clone(),
+                range: compiler.previous_token.range.clone(),
             }),
         }
     }
 
     fn parse_command_call(
-        parser: &mut Parser,
+        compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
-        let end_token_kind = match parser.previous.kind {
+        let end_token_kind = match compiler.previous_token.kind {
             CommandTokenKind::Literal => CommandTokenKind::Literal,
             CommandTokenKind::OpenParenthesis => {
-                parser.consume(CommandTokenKind::Literal)?;
+                compiler.consume_token(CommandTokenKind::Literal)?;
                 CommandTokenKind::CloseParenthesis
             }
             _ => return Err(CommandCompileError {
                 kind: CommandCompileErrorKind::ExpectedToken(CommandTokenKind::Literal),
-                range: parser.previous.range.clone(),
+                range: compiler.previous_token.range.clone(),
             }),
         };
 
-        let range_start = parser.previous.range.start;
-        let command_name = parser.previous_str();
-        parser.next()?;
+        let range_start = compiler.previous_token.range.start;
+        let command_name = compiler.previous_token_str();
+        compiler.next_token()?;
 
         loop {
-            if parser.previous.kind == CommandTokenKind::Flag {
+            if compiler.previous_token.kind == CommandTokenKind::Flag {
                 todo!();
-            } else if parser.previous.kind == end_token_kind {
-                parser.next()?;
+            } else if compiler.previous_token.kind == end_token_kind {
+                compiler.next_token()?;
                 break;
             } else {
-                parse_expression(parser, chunk)?;
+                parse_expression(compiler, chunk)?;
             }
         }
 
@@ -361,34 +355,35 @@ fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), Co
     }
 
     fn parse_expression(
-        parser: &mut Parser,
+        compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
-        let range_start = parser.previous.range.start;
-        match parser.previous.kind {
+        let range_start = compiler.previous_token.range.start;
+        match compiler.previous_token.kind {
             CommandTokenKind::Literal | CommandTokenKind::QuotedLiteral => {
-                parser.next()?;
+                compiler.next_token()?;
                 todo!();
             }
             CommandTokenKind::OpenParenthesis => {
-                parse_command_call(parser, chunk)?;
-                parser.consume(CommandTokenKind::CloseParenthesis)?;
+                parse_command_call(compiler, chunk)?;
+                compiler.consume_token(CommandTokenKind::CloseParenthesis)?;
                 Ok(())
             }
             CommandTokenKind::Variable => {
-                let variable_name = parser.previous_str();
-                parser.next()?;
+                let variable_name = compiler.previous_token_str();
+                compiler.next_token()?;
                 todo!()
             }
+            CommandTokenKind::EndOfCommand => Ok(()),
             _ => Err(CommandCompileError {
                 kind: CommandCompileErrorKind::ExpectedExpression,
-                range: range_start..parser.previous.range.end,
+                range: range_start..compiler.previous_token.range.end,
             }),
         }
     }
 
-    while parser.previous.kind != CommandTokenKind::EndOfSource {
-        parse_top_level(parser, chunk)?;
+    while compiler.previous_token.kind != CommandTokenKind::EndOfSource {
+        parse_top_level(compiler, chunk)?;
     }
     Ok(())
 }
