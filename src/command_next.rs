@@ -26,7 +26,6 @@ pub enum CommandCompileErrorKind {
     UnterminatedQuotedLiteral,
     InvalidFlagName,
     InvalidVariableName,
-    InvalidEscaping,
 
     ExpectedToken(CommandTokenKind),
     ExpectedStatement,
@@ -156,26 +155,12 @@ impl<'a> CommandTokenizer<'a> {
                 }
                 b'(' => return Ok(single_byte_token(self, CommandTokenKind::OpenParenthesis)),
                 b')' => return Ok(single_byte_token(self, CommandTokenKind::CloseParenthesis)),
-                b'\\' => {
-                    let from = self.index;
-                    self.index += 1;
-                    match &source_bytes[self.index..] {
-                        &[b'\n', ..] => self.index += 1,
-                        &[b'\r', b'\n', ..] => self.index += 2,
-                        _ => {
-                            return Err(CommandCompileError {
-                                kind: CommandCompileErrorKind::InvalidEscaping,
-                                range: from..self.index,
-                            });
-                        }
-                    }
-                }
-                b'\r' | b'\n' | b';' => {
+                b'\r' | b'\n' => {
                     let from = self.index;
                     while self.index < source_bytes.len()
                         && matches!(
                             source_bytes[self.index],
-                            b' ' | b'\t' | b'\r' | b'\n' | b';'
+                            b' ' | b'\t' | b'\r' | b'\n'
                         )
                     {
                         self.index += 1;
@@ -190,7 +175,7 @@ impl<'a> CommandTokenizer<'a> {
                     self.index += 1;
                     while self.index < source_bytes.len() {
                         match source_bytes[self.index] {
-                            b'{' | b'}' | b'(' | b')' | b' ' | b'\t' | b'\r' | b'\n' | b';' => {
+                            b'{' | b'}' | b'(' | b')' | b' ' | b'\t' | b'\r' | b'\n' => {
                                 break
                             }
                             _ => self.index += 1,
@@ -356,7 +341,7 @@ fn compile_into(parser: &mut Parser, chunk: &mut ByteCodeChunk) -> Result<(), Co
                 range: parser.previous.range.clone(),
             }),
         };
-    
+
         let range_start = parser.previous.range.start;
         let command_name = parser.previous_str();
         parser.next()?;
@@ -456,16 +441,11 @@ mod tests {
         assert_eq!(
             vec![
                 (Literal, "cmd0"),
-                (EndOfCommand, ";"),
                 (Literal, "cmd1"),
-                (EndOfCommand, "\r\n\n ;\t \n;; "),
+                (EndOfCommand, "\r\n\n \t \n  "),
                 (Literal, "cmd2"),
             ],
-            collect("cmd0;cmd1 \t\r\n\n ;\t \n;; cmd2")
-        );
-        assert_eq!(
-            vec![(Literal, "cmd0"), (Literal, "v0"), (Literal, "v1")],
-            collect("cmd0 v0 \\\n \\\r\n v1")
+            collect("cmd0 cmd1 \t\r\n\n \t \n  cmd2")
         );
     }
 }
