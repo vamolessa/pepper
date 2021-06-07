@@ -177,6 +177,9 @@ impl SharedBuf {
     }
 }
 
+// TODO: later try to make a SharedPool<T>
+// which is globally available and lock free
+// maybe even an arena/bump/temp allocator
 #[derive(Default)]
 pub struct BufPool {
     pool: Vec<SharedBuf>,

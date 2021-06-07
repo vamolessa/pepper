@@ -404,12 +404,6 @@ impl BufferContent {
         position.line_index = position.line_index.min((self.line_count() - 1) as _);
         let line = self.line_at(position.line_index as _).as_str();
         position.column_byte_index = position.column_byte_index.min(line.len() as _);
-        // TODO: is this really needed?
-        /*
-        while !line.is_char_boundary(position.column_byte_index as _) {
-            position.column_byte_index += 1;
-        }
-        */
         position
     }
 
@@ -879,7 +873,7 @@ impl Buffer {
             text,
         );
 
-        events.enqueue_buffer_insert(self.handle, range, text, false);
+        events.enqueue_buffer_insert(self.handle, range, text);
 
         if self.capabilities.has_history {
             self.history.add_edit(Edit {
@@ -945,7 +939,6 @@ impl Buffer {
         events.enqueue(EditorEvent::BufferDeleteText {
             handle: self.handle,
             range,
-            history: false,
         });
 
         let from = range.from;
@@ -1044,7 +1037,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> + DoubleEndedIterator<Item = Edit<'a>> {
-        self.history_edits(word_database, events, History::undo_edits)
+        self.apply_history_edits(word_database, events, History::undo_edits)
     }
 
     pub fn redo<'a>(
@@ -1052,10 +1045,10 @@ impl Buffer {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> + DoubleEndedIterator<Item = Edit<'a>> {
-        self.history_edits(word_database, events, History::redo_edits)
+        self.apply_history_edits(word_database, events, History::redo_edits)
     }
 
-    fn history_edits<'a, F, I>(
+    fn apply_history_edits<'a, F, I>(
         &'a mut self,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
@@ -1084,7 +1077,7 @@ impl Buffer {
                         edit.range.from,
                         edit.text,
                     );
-                    events.enqueue_buffer_insert(self.handle, edit.range, edit.text, true);
+                    events.enqueue_buffer_insert(self.handle, edit.range, edit.text);
                 }
                 EditKind::Delete => {
                     Self::delete_range_no_history(
@@ -1097,7 +1090,6 @@ impl Buffer {
                     events.enqueue(EditorEvent::BufferDeleteText {
                         handle: self.handle,
                         range: edit.range,
-                        history: true,
                     });
                 }
             }
@@ -1954,3 +1946,4 @@ mod tests {
         );
     }
 }
+

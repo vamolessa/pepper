@@ -31,18 +31,19 @@ pub enum CursorMovementKind {
 }
 
 pub struct BufferView {
+    alive: bool,
+    handle: BufferViewHandle,
     pub client_handle: ClientHandle,
     pub buffer_handle: BufferHandle,
     pub cursors: CursorCollection,
 }
 
 impl BufferView {
-    pub fn new(client_handle: ClientHandle, buffer_handle: BufferHandle) -> Self {
-        Self {
-            client_handle,
-            buffer_handle,
-            cursors: CursorCollection::new(),
-        }
+    fn reset(&mut self, client_handle: ClientHandle, buffer_handle: BufferHandle) {
+        self.alive = true;
+        self.client_handle = client_handle;
+        self.buffer_handle = buffer_handle;
+        self.cursors.mut_guard().clear();
     }
 
     pub fn move_cursors(
@@ -457,6 +458,9 @@ impl BufferView {
             });
             last_edit_kind = Some(edit.kind);
         }
+
+        events.enqueue_fix_cursors(self.handle, &cursors[..]);
+        cursors.clear();
     }
 
     pub fn redo(
@@ -496,6 +500,9 @@ impl BufferView {
             });
             last_edit_kind = Some(edit.kind);
         }
+
+        events.enqueue_fix_cursors(self.handle, &cursors[..]);
+        cursors.clear();
     }
 }
 
@@ -518,46 +525,63 @@ impl FromStr for BufferViewHandle {
 
 #[derive(Default)]
 pub struct BufferViewCollection {
-    buffer_views: Vec<Option<BufferView>>,
+    buffer_views: Vec<BufferView>,
 }
 
 impl BufferViewCollection {
-    pub fn add(&mut self, buffer_view: BufferView) -> BufferViewHandle {
-        for (i, slot) in self.buffer_views.iter_mut().enumerate() {
-            if slot.is_none() {
-                *slot = Some(buffer_view);
+    pub fn add_new(
+        &mut self,
+        client_handle: ClientHandle,
+        buffer_handle: BufferHandle,
+    ) -> BufferViewHandle {
+        for (i, view) in self.buffer_views.iter_mut().enumerate() {
+            if !view.alive {
+                view.reset(client_handle, buffer_handle);
                 return BufferViewHandle(i as _);
             }
         }
-
         let handle = BufferViewHandle(self.buffer_views.len() as _);
-        self.buffer_views.push(Some(buffer_view));
+        self.buffer_views.push(BufferView {
+            alive: true,
+            handle,
+            client_handle,
+            buffer_handle,
+            cursors: CursorCollection::new(),
+        });
         handle
     }
 
     pub fn remove_buffer_views(&mut self, buffer_handle: BufferHandle) {
-        for maybe_view in &mut self.buffer_views {
-            if let Some(view) = maybe_view {
-                if view.buffer_handle == buffer_handle {
-                    *maybe_view = None;
-                }
+        for view in &mut self.buffer_views {
+            if view.alive && view.buffer_handle == buffer_handle {
+                view.alive = false;
             }
         }
     }
 
     pub fn get(&self, handle: BufferViewHandle) -> Option<&BufferView> {
-        self.buffer_views[handle.0 as usize].as_ref()
+        let view = &self.buffer_views[handle.0 as usize];
+        if view.alive {
+            Some(view)
+        } else {
+            None
+        }
     }
 
     pub fn get_mut(&mut self, handle: BufferViewHandle) -> Option<&mut BufferView> {
-        self.buffer_views[handle.0 as usize].as_mut()
+        let view = &mut self.buffer_views[handle.0 as usize];
+        if view.alive {
+            Some(view)
+        } else {
+            None
+        }
     }
 
     pub fn on_buffer_load(&mut self, buffer: &Buffer) {
         let buffer_handle = buffer.handle();
         let buffer = buffer.content();
 
-        for view in self.buffer_views.iter_mut().flatten() {
+        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
             if view.buffer_handle == buffer_handle {
                 for c in &mut view.cursors.mut_guard()[..] {
                     c.anchor = buffer.saturate_position(c.anchor);
@@ -568,7 +592,7 @@ impl BufferViewCollection {
     }
 
     pub fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
-        for view in self.buffer_views.iter_mut().flatten() {
+        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
             if view.buffer_handle == buffer_handle {
                 for c in &mut view.cursors.mut_guard()[..] {
                     c.insert(range);
@@ -578,7 +602,7 @@ impl BufferViewCollection {
     }
 
     pub fn on_buffer_delete_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
-        for view in self.buffer_views.iter_mut().flatten() {
+        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
             if view.buffer_handle == buffer_handle {
                 for c in &mut view.cursors.mut_guard()[..] {
                     c.delete(range);
@@ -596,15 +620,13 @@ impl BufferViewCollection {
             .buffer_views
             .iter()
             .position(|v| {
-                v.as_ref()
-                    .map(|v| v.buffer_handle == buffer_handle && v.client_handle == client_handle)
-                    .unwrap_or(false)
+                v.alive && v.buffer_handle == buffer_handle && v.client_handle == client_handle
             })
             .map(|i| BufferViewHandle(i as _));
 
         match current_buffer_view_handle {
             Some(handle) => handle,
-            None => self.add(BufferView::new(client_handle, buffer_handle)),
+            None => self.add_new(client_handle, buffer_handle),
         }
     }
 }
@@ -640,11 +662,9 @@ mod tests {
                 &mut events,
             );
 
-            let buffer_view =
-                BufferView::new(ClientHandle::from_index(0).unwrap(), buffer.handle());
-
             let mut buffer_views = BufferViewCollection::default();
-            let buffer_view_handle = buffer_views.add(buffer_view);
+            let buffer_view_handle =
+                buffer_views.add_new(ClientHandle::from_index(0).unwrap(), buffer.handle());
 
             Self {
                 word_database,
@@ -745,3 +765,4 @@ mod tests {
         assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }
+

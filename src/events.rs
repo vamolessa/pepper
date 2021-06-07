@@ -1,8 +1,10 @@
 use std::{error::Error, fmt, str::Chars};
 
 use crate::{
+    cursor::Cursor,
     buffer::BufferHandle,
     buffer_position::BufferRange,
+    buffer_view::BufferViewHandle,
     client::ClientHandle,
     platform::Key,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
@@ -15,7 +17,18 @@ pub struct EditorEventText {
 }
 impl EditorEventText {
     pub fn as_str<'a>(&self, events: &'a EditorEventQueue) -> &'a str {
-        &events.read.texts[self.from as usize..self.to as _]
+        &events.read.texts[self.from as usize..self.to as usize]
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct EditorEventCursors {
+    from: u32,
+    to: u32,
+}
+impl EditorEventCursors {
+    pub fn as_cursors<'a>(&self, events: &'a EditorEventQueue) -> &'a [Cursor] {
+        &events.read.cursors[self.from as usize..self.to as usize]
     }
 }
 
@@ -28,12 +41,10 @@ pub enum EditorEvent {
         handle: BufferHandle,
         range: BufferRange,
         text: EditorEventText,
-        history: bool,
     },
     BufferDeleteText {
         handle: BufferHandle,
         range: BufferRange,
-        history: bool,
     },
     BufferSave {
         handle: BufferHandle,
@@ -41,6 +52,10 @@ pub enum EditorEvent {
     },
     BufferClose {
         handle: BufferHandle,
+    },
+    FixCursors {
+        handle: BufferViewHandle,
+        cursors: EditorEventCursors,
     },
     ClientChangeBufferView {
         handle: ClientHandle,
@@ -51,6 +66,7 @@ pub enum EditorEvent {
 struct EventQueue {
     events: Vec<EditorEvent>,
     texts: String,
+    cursors: Vec<Cursor>,
 }
 
 #[derive(Default)]
@@ -74,7 +90,6 @@ impl EditorEventQueue {
         handle: BufferHandle,
         range: BufferRange,
         text: &str,
-        history: bool,
     ) {
         let from = self.write.texts.len();
         self.write.texts.push_str(text);
@@ -86,7 +101,23 @@ impl EditorEventQueue {
             handle,
             range,
             text,
-            history,
+        });
+    }
+
+    pub fn enqueue_fix_cursors(
+        &mut self,
+        handle: BufferViewHandle,
+        cursors: &[Cursor],
+    ) {
+        let from = self.write.cursors.len();
+        self.write.cursors.extend_from_slice(cursors);
+        let cursors = EditorEventCursors {
+            from: from as _,
+            to: self.write.cursors.len() as _,
+        };
+        self.write.events.push(EditorEvent::FixCursors {
+            handle,
+            cursors,
         });
     }
 }
@@ -760,3 +791,4 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
+

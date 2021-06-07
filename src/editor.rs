@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     buffer::{BufferCapabilities, BufferCollection},
-    buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
+    buffer_view::{BufferViewCollection, BufferViewHandle},
     client::Client,
     client::{ClientHandle, ClientManager},
     command::{CommandManager, CommandOperation},
@@ -172,8 +172,7 @@ impl Editor {
             buffer.capabilities = BufferCapabilities::text();
             let _ = buffer.discard_and_reload_from_file(&mut self.word_database, &mut self.events);
 
-            let buffer_view = BufferView::new(client_handle, buffer.handle());
-            self.buffer_views.add(buffer_view)
+            self.buffer_views.add_new(client_handle, buffer.handle())
         }
     }
 
@@ -424,21 +423,15 @@ impl Editor {
                     &EditorEvent::BufferInsertText {
                         handle,
                         range,
-                        history,
                         ..
                     } => {
-                        if !history {
-                            self.buffer_views.on_buffer_insert_text(handle, range);
-                        }
+                        self.buffer_views.on_buffer_insert_text(handle, range);
                     }
                     &EditorEvent::BufferDeleteText {
                         handle,
                         range,
-                        history,
                     } => {
-                        if !history {
-                            self.buffer_views.on_buffer_delete_text(handle, range);
-                        }
+                        self.buffer_views.on_buffer_delete_text(handle, range);
                     }
                     &EditorEvent::BufferSave { handle, new_path } => {
                         if new_path {
@@ -453,6 +446,15 @@ impl Editor {
                             client.on_buffer_close(&self.buffer_views, handle, &mut self.events);
                         }
                         self.buffer_views.remove_buffer_views(handle);
+                    }
+                    &EditorEvent::FixCursors { handle, cursors } => {
+                        if let Some(buffer_view) = self.buffer_views.get_mut(handle) {
+                            let mut view_cursors = buffer_view.cursors.mut_guard();
+                            view_cursors.clear();
+                            for &cursor in cursors.as_cursors(&self.events) {
+                                view_cursors.add(cursor);
+                            }
+                        }
                     }
                     &EditorEvent::ClientChangeBufferView { handle } => {
                         if let Some(buffer_handle) = clients

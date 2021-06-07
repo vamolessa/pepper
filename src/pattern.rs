@@ -414,6 +414,8 @@ enum JumpFrom {
 
 const OP_STRING_LEN: usize = 10;
 
+// TODO: add Op for word boundary?
+// TODO: add Op for start of line?
 #[derive(Clone)]
 enum Op {
     Ok,

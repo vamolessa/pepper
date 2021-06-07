@@ -2271,7 +2271,8 @@ impl Client {
                     helper::send_pending_did_change(self, editor, platform);
                     helper::send_did_close(self, editor, platform, handle);
                 }
-                EditorEvent::ClientChangeBufferView { .. } => (),
+                &EditorEvent::FixCursors { .. } => (),
+                &EditorEvent::ClientChangeBufferView { .. } => (),
             }
         }
     }
