@@ -631,7 +631,7 @@ impl State {
                             path_buf.push_str(path);
 
                             let path = Path::new(&path_buf);
-                            if !path.starts_with(HELP_PREFIX) && !path.exists() {
+                            if !path.starts_with(HELP_PREFIX) && !path.is_file() {
                                 ctx.editor
                                     .status_bar
                                     .write(MessageKind::Error)
