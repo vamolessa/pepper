@@ -1,4 +1,8 @@
-use std::ops::Range;
+use std::{
+    fs,
+    ops::Range,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CommandCompileErrorKind {
@@ -14,6 +18,7 @@ pub enum CommandCompileErrorKind {
     InvalidLiteralEscaping,
     TooManyBindings,
     UndeclaredBinding,
+    CouldNotSourceFile,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -287,53 +292,32 @@ impl ByteCodeChunk {
     }
 }
 
-struct Binding<'source> {
-    name: &'source str,
-}
-struct BindingCollection<'source> {
-    bindings: Vec<Binding<'source>>,
-}
-impl<'source> BindingCollection<'source> {
-    pub fn declare(
-        &mut self,
-        name: &'source str,
-        range: Range<usize>,
-    ) -> Result<(), CommandCompileError> {
-        if self.bindings.len() >= u16::MAX as _ {
-            Err(CommandCompileError {
-                kind: CommandCompileErrorKind::TooManyBindings,
-                range,
-            })
-        } else {
-            self.bindings.push(Binding { name });
-            Ok(())
-        }
-    }
-
-    pub fn find_stack_index(&self, name: &str) -> Option<u16> {
-        self.bindings
-            .iter()
-            .rposition(|v| v.name == name)
-            .map(|i| i as _)
-    }
+struct Binding {
+    range: Range<u32>,
 }
 
 struct Compiler<'source, 'state> {
     tokenizer: CommandTokenizer<'source>,
+    path: Option<&'state Path>,
     pub previous_token: CommandToken,
-    pub bindings: &'state mut BindingCollection<'source>,
+    pub bindings: &'state mut Vec<Binding>,
+    bindings_previous_len: usize,
 }
 impl<'source, 'state> Compiler<'source, 'state> {
     pub fn new(
         source: &'source str,
-        bindings: &'state mut BindingCollection<'source>,
+        path: Option<&'state Path>,
+        bindings: &'state mut Vec<Binding>,
     ) -> Result<Self, CommandCompileError> {
         let mut tokenizer = CommandTokenizer::new(source);
         let previous_token = tokenizer.next()?;
+        let bindings_previous_len = bindings.len();
         Ok(Self {
             tokenizer,
+            path,
             previous_token,
             bindings,
+            bindings_previous_len,
         })
     }
 
@@ -358,6 +342,27 @@ impl<'source, 'state> Compiler<'source, 'state> {
         }
     }
 
+    pub fn declare_binding(&mut self, range: Range<usize>) -> Result<(), CommandCompileError> {
+        if self.bindings.len() >= u16::MAX as _ {
+            Err(CommandCompileError {
+                kind: CommandCompileErrorKind::TooManyBindings,
+                range,
+            })
+        } else {
+            let range = range.start as _..range.end as _;
+            self.bindings.push(Binding { range });
+            Ok(())
+        }
+    }
+
+    pub fn find_binding_stack_index(&self, name: &str) -> Option<u16> {
+        let source = self.tokenizer.source;
+        self.bindings
+            .iter()
+            .rposition(|b| &source[b.range.start as usize..b.range.end as usize] == name)
+            .map(|i| i as _)
+    }
+
     pub fn compile_into(&mut self, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
         chunk.ops.clear();
         match compile(self, chunk) {
@@ -368,6 +373,11 @@ impl<'source, 'state> Compiler<'source, 'state> {
             }
         }
         Ok(())
+    }
+}
+impl<'source, 'state> Drop for Compiler<'source, 'state> {
+    fn drop(&mut self) {
+        self.bindings.truncate(self.bindings_previous_len);
     }
 }
 
@@ -395,8 +405,32 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
     ) -> Result<(), CommandCompileError> {
         compiler.next_token()?;
         compiler.consume_token(CommandTokenKind::QuotedLiteral)?;
-        let path = compiler.previous_token_str();
-        todo!()
+
+        let path = Path::new(compiler.previous_token_str());
+        let path = if path.is_absolute() {
+            path.into()
+        } else {
+            let mut buf = PathBuf::new();
+            if let Some(path) = compiler.path {
+                buf.push(path);
+            }
+            buf.push(path);
+            buf
+        };
+
+        let source = match fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(_) => {
+                return Err(CommandCompileError {
+                    kind: CommandCompileErrorKind::CouldNotSourceFile,
+                    range: compiler.previous_token.range.clone(),
+                })
+            }
+        };
+
+        let mut compiler = Compiler::new(&source, Some(&path), compiler.bindings)?;
+        compiler.compile_into(chunk)?;
+        Ok(())
     }
 
     fn parse_macro(
@@ -433,9 +467,7 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
                     });
                 }
 
-                let binding_name = compiler.previous_token_str();
-                let binding_range = compiler.previous_token.range.clone();
-                compiler.bindings.declare(binding_name, binding_range)?;
+                compiler.declare_binding(compiler.previous_token.range.clone())?;
 
                 compiler.next_token()?;
                 compiler.consume_token(CommandTokenKind::Equals)?;
@@ -529,7 +561,7 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
             }
             CommandTokenKind::Binding => {
                 let binding_name = compiler.previous_token_str();
-                match compiler.bindings.find_stack_index(binding_name) {
+                match compiler.find_binding_stack_index(binding_name) {
                     Some(index) => {
                         compiler.next_token()?;
                         chunk.emit(Op::PushFromStack(index));
