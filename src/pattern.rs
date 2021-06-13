@@ -140,6 +140,11 @@ impl Pattern {
         }
     }
 
+    // TODO: change prefixes to
+    // "f/" for 'fixed' searcher smart case
+    // "F/" for 'fixed' searcher case sensitive
+    // "p/" for 'pattern' searcher smart case
+    // "P/" for 'pattern' searcher case sensitive
     pub fn compile_searcher<'a>(&mut self, pattern: &'a str) -> Result<(), PatternError<'a>> {
         let (ignore_case, pattern) = match pattern.strip_prefix('_') {
             Some(pattern) => (false, pattern),
