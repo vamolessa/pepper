@@ -18,6 +18,8 @@ pub enum CommandCompileErrorKind {
     InvalidLiteralEscaping,
     TooManyBindings,
     UndeclaredBinding,
+    UndeclaredCommand,
+    NoSuchFlag,
     CouldNotSourceFile,
 }
 
@@ -213,6 +215,30 @@ enum Op {
     CallRequestCommand(u16, u8),
 }
 
+#[derive(Clone, Copy)]
+pub enum CommandSource {
+    Builtin(usize),
+    Macro(usize),
+    Request(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionSource {
+    Commands,
+    Buffers,
+    Files,
+    Custom(&'static [&'static str]),
+}
+
+pub struct BuiltinCommand {
+    pub name: &'static str,
+    pub alias: &'static str,
+    pub hidden: bool,
+    pub completions: &'static [CompletionSource],
+    pub flags: &'static [&'static str],
+    //pub func: CommandFn,
+}
+
 struct MacroCommand {
     name_range: Range<u32>,
     op_start_index: u32,
@@ -223,6 +249,11 @@ struct MacroCommandCollection {
     names: String,
     chunk: ByteCodeChunk,
     commands: Vec<MacroCommand>,
+}
+
+pub struct CommandManager {
+    builtin_commands: &'static [BuiltinCommand],
+    macro_commands: MacroCommandCollection,
 }
 
 struct ByteCodeChunk {
@@ -302,12 +333,16 @@ struct Compiler<'source, 'state> {
     pub previous_token: CommandToken,
     pub bindings: &'state mut Vec<Binding>,
     bindings_previous_len: usize,
+    builtin_commands: &'static [BuiltinCommand],
+    macro_commands: &'state MacroCommandCollection,
 }
 impl<'source, 'state> Compiler<'source, 'state> {
     pub fn new(
         source: &'source str,
         path: Option<&'state Path>,
         bindings: &'state mut Vec<Binding>,
+        builtin_commands: &'static [BuiltinCommand],
+        macro_commands: &'state MacroCommandCollection,
     ) -> Result<Self, CommandCompileError> {
         let mut tokenizer = CommandTokenizer::new(source);
         let previous_token = tokenizer.next()?;
@@ -318,6 +353,8 @@ impl<'source, 'state> Compiler<'source, 'state> {
             previous_token,
             bindings,
             bindings_previous_len,
+            builtin_commands,
+            macro_commands,
         })
     }
 
@@ -340,6 +377,31 @@ impl<'source, 'state> Compiler<'source, 'state> {
                 range: self.previous_token.range.clone(),
             })
         }
+    }
+
+    pub fn find_command(&self, name: &str) -> Option<CommandSource> {
+        if let Some(i) = self.macro_commands.commands.iter().position(|c| {
+            let range = c.name_range.start as usize..c.name_range.end as usize;
+            &self.macro_commands.names[range] == name
+        }) {
+            return Some(CommandSource::Macro(i));
+        }
+
+        /*
+        if let Some(i) = self.request_commands.iter().position(|c| c.name == name) {
+            return Some(CommandSource::Request(i));
+        }
+        */
+
+        if let Some(i) = self
+            .builtin_commands
+            .iter()
+            .position(|c| c.alias == name || c.name == name)
+        {
+            return Some(CommandSource::Builtin(i));
+        }
+
+        None
     }
 
     pub fn declare_binding(&mut self, range: Range<usize>) -> Result<(), CommandCompileError> {
@@ -428,7 +490,13 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
             }
         };
 
-        let mut compiler = Compiler::new(&source, Some(&path), compiler.bindings)?;
+        let mut compiler = Compiler::new(
+            &source,
+            Some(&path),
+            compiler.bindings,
+            compiler.builtin_commands,
+            compiler.macro_commands,
+        )?;
         compiler.compile_into(chunk)?;
         Ok(())
     }
@@ -505,10 +573,39 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
         let command_name = compiler.previous_token_str();
         compiler.next_token()?;
 
+        let command_source = match compiler.find_command(command_name) {
+            Some(source) => source,
+            None => {
+                return Err(CommandCompileError {
+                    kind: CommandCompileErrorKind::UndeclaredCommand,
+                    range: compiler.previous_token.range.clone(),
+                })
+            }
+        };
+
         loop {
+            fn find_flag_index_from_previous_token(
+                compiler: &Compiler,
+                command_source: CommandSource,
+            ) -> Result<usize, CommandCompileError> {
+                if let CommandSource::Builtin(i) = command_source {
+                    let flag_name = compiler.previous_token_str();
+                    for (i, &flag) in compiler.builtin_commands[i].flags.iter().enumerate() {
+                        if flag == flag_name {
+                            return Ok(i);
+                        }
+                    }
+                }
+
+                Err(CommandCompileError {
+                    kind: CommandCompileErrorKind::NoSuchFlag,
+                    range: compiler.previous_token.range.clone(),
+                })
+            }
+
             if compiler.previous_token.kind == CommandTokenKind::Flag {
-                let flag_name = compiler.previous_token_str();
-                let flag_index = todo!();
+                let flag_index =
+                    find_flag_index_from_previous_token(compiler, command_source)? as _;
                 compiler.next_token()?;
 
                 match compiler.previous_token.kind {
