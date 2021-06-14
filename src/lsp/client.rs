@@ -304,7 +304,7 @@ impl BufferDiagnosticCollection {
     }
 
     pub fn sort(&mut self) {
-        self.diagnostics.sort_by_key(|d| d.range.from);
+        self.diagnostics.sort_unstable_by_key(|d| d.range.from);
     }
 }
 

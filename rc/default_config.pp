@@ -28,7 +28,7 @@ syntax "**/*.pp" {
 }
 
 syntax "**/*.refs" {
-	keywords = {{%a/%._-!:}|%w:{%a/%._-!:}}
+	keywords = {%w:{%a/%._-!:}|{%a/%._-!:}}
 	symbols = {,}
 	literals = {%d}
 	strings = ""

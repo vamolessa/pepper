@@ -78,7 +78,7 @@ impl CursorCollection {
 
     fn sort_and_merge(&mut self) {
         let main_cursor = self.cursors[self.main_cursor_index as usize];
-        self.cursors[..self.len as usize].sort_by_key(|c| c.to_range().from);
+        self.cursors[..self.len as usize].sort_unstable_by_key(|c| c.to_range().from);
         self.main_cursor_index = self.cursors[..self.len as usize]
             .binary_search_by_key(&main_cursor.position, |c| c.position)
             .unwrap_or(0) as _;

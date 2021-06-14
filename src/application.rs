@@ -205,7 +205,7 @@ impl ServerApplication {
                 let has_focus = focused_client_handle == Some(c.handle());
 
                 let mut buf = platform.buf_pool.acquire();
-                let write = buf.write_with_len(ServerEvent::header_len());
+                let write = buf.write_with_len(ServerEvent::display_header_len());
                 ui::render(
                     &editor,
                     c.buffer_view_handle(),
@@ -243,7 +243,8 @@ impl<'stdout> ClientApplication<'stdout> {
     }
 
     pub const fn connection_buffer_len() -> usize {
-        2 * 1024
+        //2 * 1024 // TODO: increase to 32 * 1024 ??
+        48 * 1024
     }
 
     pub fn new(handle: ClientHandle, stdout: io::StdoutLock<'stdout>, is_pipped: bool) -> Self {
@@ -386,7 +387,9 @@ impl<'stdout> ClientApplication<'stdout> {
                         self.server_read_buf.drain(..read_len);
                         break;
                     }
-                    Err(DeserializeError::InvalidData) => panic!("received invalid data"),
+                    Err(DeserializeError::InvalidData) => {
+                        panic!("client received invalid data from server")
+                    }
                 }
             }
 
@@ -418,3 +421,4 @@ pub fn set_panic_hook() {
         }
     }));
 }
+
