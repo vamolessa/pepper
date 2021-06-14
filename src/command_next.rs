@@ -615,20 +615,27 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
             })
         }
 
-        let end_token_kind = match compiler.previous_token.kind {
-            CommandTokenKind::Literal => CommandTokenKind::EndOfCommand,
-            CommandTokenKind::OpenParenthesis => {
-                compiler.consume_token(CommandTokenKind::Literal)?;
-                CommandTokenKind::CloseParenthesis
+        fn find_end_token_kind(
+            compiler: &mut Compiler,
+        ) -> Result<CommandTokenKind, CommandCompileError> {
+            match compiler.previous_token.kind {
+                CommandTokenKind::Literal => return Ok(CommandTokenKind::EndOfCommand),
+                CommandTokenKind::OpenParenthesis => {
+                    compiler.next_token()?;
+                    if let CommandTokenKind::Literal = compiler.previous_token.kind {
+                        return Ok(CommandTokenKind::CloseParenthesis);
+                    }
+                }
+                _ => (),
             }
-            _ => {
-                return Err(CommandCompileError {
-                    kind: CommandCompileErrorKind::ExpectedToken(CommandTokenKind::Literal),
-                    range: compiler.previous_token.range.clone(),
-                })
-            }
-        };
 
+            Err(CommandCompileError {
+                kind: CommandCompileErrorKind::ExpectedToken(CommandTokenKind::Literal),
+                range: compiler.previous_token.range.clone(),
+            })
+        }
+
+        let end_token_kind = find_end_token_kind(compiler)?;
         let command_source = find_command_from_previous_token(compiler)?;
         compiler.next_token()?;
 
@@ -700,6 +707,10 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
         compiler: &mut Compiler,
         chunk: &mut ByteCodeChunk,
     ) -> Result<(), CommandCompileError> {
+        while let CommandTokenKind::EndOfCommand = compiler.previous_token.kind {
+            compiler.next_token()?;
+        }
+
         let range_start = compiler.previous_token.range.start;
         match compiler.previous_token.kind {
             CommandTokenKind::Literal => {
@@ -734,7 +745,6 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
                     }),
                 }
             }
-            CommandTokenKind::EndOfCommand => Ok(()),
             _ => Err(CommandCompileError {
                 kind: CommandCompileErrorKind::ExpectedExpression,
                 range: range_start..compiler.previous_token.range.end,
@@ -852,7 +862,7 @@ mod tests {
                 PopToOutput,
                 Return
             ],
-            compile("'literal'")
+            compile("\n\n 'literal'")
         );
 
         assert_eq!(
@@ -911,6 +921,58 @@ mod tests {
                 Return
             ],
             compile("cmd -switch arg -option=opt"),
+        );
+
+        assert_eq!(
+            vec![
+                PushLiteral(LiteralValue {
+                    start: 0,
+                    len: "arg0".len() as _,
+                }),
+                PushLiteral(LiteralValue {
+                    start: "arg0".len() as _,
+                    len: "arg1".len() as _,
+                }),
+                CallBuiltinCommand {
+                    index: 0,
+                    arg_count: 1,
+                    flag_count: 0,
+                },
+                PopAsFlag(1),
+                PushLiteral(LiteralValue {
+                    start: "arg0arg1".len() as _,
+                    len: "arg2".len() as _,
+                }),
+                CallBuiltinCommand {
+                    index: 0,
+                    arg_count: 2,
+                    flag_count: 1,
+                },
+                PopToOutput,
+                Return
+            ],
+            compile("cmd arg0 -option=(cmd arg1) arg2"),
+        );
+
+        assert_eq!(
+            vec![
+                PushLiteral(LiteralValue {
+                    start: 0,
+                    len: "arg0".len() as _,
+                }),
+                PushLiteral(LiteralValue {
+                    start: "arg0".len() as _,
+                    len: "arg1".len() as _,
+                }),
+                CallBuiltinCommand {
+                    index: 0,
+                    arg_count: 2,
+                    flag_count: 0,
+                },
+                PopToOutput,
+                Return
+            ],
+            compile("(cmd \n arg0 \n arg2)"),
         );
     }
 }
