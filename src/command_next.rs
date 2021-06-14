@@ -216,7 +216,7 @@ struct LiteralValue {
 #[derive(Debug, PartialEq, Eq)]
 enum Op {
     Return,
-    PopToOutput,
+    Pop,
     PushLiteral(LiteralValue),
     PushFromStack(u16),
     PopAsFlag(u8),
@@ -428,9 +428,12 @@ impl<'source, 'state> Compiler<'source, 'state> {
     }
 
     pub fn compile(&mut self, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
-        chunk.ops.clear();
+        chunk.clear();
         match compile(self, chunk) {
-            Ok(()) => chunk.emit(Op::Return),
+            Ok(()) => {
+                chunk.emit(Op::PushLiteral(LiteralValue::default()));
+                chunk.emit(Op::Return);
+            }
             Err(error) => {
                 chunk.clear();
                 return Err(error);
@@ -452,14 +455,9 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
     ) -> Result<(), CommandCompileError> {
         if let CommandTokenKind::Literal = compiler.previous_token.kind {
             match compiler.previous_token_str() {
-                "source" => {
-                    compiler.next_token()?;
-                    return parse_source(compiler, chunk);
-                }
-                "macro" => {
-                    compiler.next_token()?;
-                    return parse_macro(compiler, chunk);
-                }
+                "source" => return parse_source(compiler, chunk),
+                "macro" => return parse_macro(compiler, chunk),
+                "return" => return parse_return(compiler, chunk),
                 _ => (),
             }
         }
@@ -514,7 +512,48 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
         compiler.next_token()?;
         compiler.consume_token(CommandTokenKind::Literal)?;
         let name = compiler.previous_token_str();
-        todo!()
+        compiler.next_token()?;
+
+        debug_assert!(compiler.bindings.is_empty());
+
+        loop {
+            match compiler.previous_token.kind {
+                CommandTokenKind::OpenCurlyBrackets => {
+                    compiler.next_token()?;
+                    break;
+                }
+                CommandTokenKind::Binding => {
+                    compiler.declare_binding(compiler.previous_token.range.clone())?;
+                    compiler.next_token()?;
+                },
+                _ => return Err(CommandCompileError {
+                    kind: CommandCompileErrorKind::ExpectedToken(CommandTokenKind::OpenCurlyBrackets),
+                    range: compiler.previous_token.range.clone(),
+                }),
+            }
+        }
+
+        while compiler.previous_token.kind != CommandTokenKind::CloseCurlyBrackets {
+            parse_statement(compiler, chunk, false)?;
+        }
+        compiler.next_token()?;
+
+        compiler.bindings.clear();
+        if chunk.ops.last() != Some(&Op::Return) {
+            chunk.emit(Op::PushLiteral(LiteralValue::default()));
+            chunk.emit(Op::Return);
+        }
+        Ok(())
+    }
+
+    fn parse_return(
+        compiler: &mut Compiler,
+        chunk: &mut ByteCodeChunk,
+    ) -> Result<(), CommandCompileError> {
+        compiler.next_token()?;
+        parse_expression(compiler, chunk)?;
+        chunk.emit(Op::Return);
+        Ok(())
     }
 
     fn parse_statement(
@@ -525,12 +564,7 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
         match compiler.previous_token.kind {
             CommandTokenKind::Literal | CommandTokenKind::OpenParenthesis => {
                 parse_command_call(compiler, chunk)?;
-                chunk.emit(Op::PopToOutput);
-                Ok(())
-            }
-            CommandTokenKind::QuotedLiteral => {
-                parse_expression(compiler, chunk)?;
-                chunk.emit(Op::PopToOutput);
+                chunk.emit(Op::Pop);
                 Ok(())
             }
             CommandTokenKind::Binding => {
@@ -542,7 +576,6 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
                 }
 
                 compiler.declare_binding(compiler.previous_token.range.clone())?;
-
                 compiler.next_token()?;
                 compiler.consume_token(CommandTokenKind::Equals)?;
 
@@ -851,19 +884,7 @@ mod tests {
 
         use Op::*;
 
-        assert_eq!(vec![Return], compile(""));
-
-        assert_eq!(
-            vec![
-                PushLiteral(LiteralValue {
-                    start: 0,
-                    len: "literal".len() as _
-                }),
-                PopToOutput,
-                Return
-            ],
-            compile("\n\n 'literal'")
-        );
+        assert_eq!(vec![PushLiteral(LiteralValue::default()), Return], compile(""));
 
         assert_eq!(
             vec![
@@ -872,7 +893,8 @@ mod tests {
                     arg_count: 0,
                     flag_count: 0,
                 },
-                PopToOutput,
+                Pop,
+                PushLiteral(LiteralValue::default()),
                 Return
             ],
             compile("cmd"),
@@ -893,7 +915,8 @@ mod tests {
                     arg_count: 2,
                     flag_count: 0,
                 },
-                PopToOutput,
+                Pop,
+                PushLiteral(LiteralValue::default()),
                 Return
             ],
             compile("cmd arg0 arg1"),
@@ -917,7 +940,8 @@ mod tests {
                     arg_count: 1,
                     flag_count: 2,
                 },
-                PopToOutput,
+                Pop,
+                PushLiteral(LiteralValue::default()),
                 Return
             ],
             compile("cmd -switch arg -option=opt"),
@@ -948,7 +972,8 @@ mod tests {
                     arg_count: 2,
                     flag_count: 1,
                 },
-                PopToOutput,
+                Pop,
+                PushLiteral(LiteralValue::default()),
                 Return
             ],
             compile("cmd arg0 -option=(cmd arg1) arg2"),
@@ -969,7 +994,8 @@ mod tests {
                     arg_count: 2,
                     flag_count: 0,
                 },
-                PopToOutput,
+                Pop,
+                PushLiteral(LiteralValue::default()),
                 Return
             ],
             compile("(cmd \n arg0 \n arg2)"),
