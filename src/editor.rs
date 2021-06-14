@@ -420,17 +420,10 @@ impl Editor {
                             self.buffer_views.on_buffer_load(buffer);
                         }
                     }
-                    &EditorEvent::BufferInsertText {
-                        handle,
-                        range,
-                        ..
-                    } => {
+                    &EditorEvent::BufferInsertText { handle, range, .. } => {
                         self.buffer_views.on_buffer_insert_text(handle, range);
                     }
-                    &EditorEvent::BufferDeleteText {
-                        handle,
-                        range,
-                    } => {
+                    &EditorEvent::BufferDeleteText { handle, range } => {
                         self.buffer_views.on_buffer_delete_text(handle, range);
                     }
                     &EditorEvent::BufferSave { handle, new_path } => {

@@ -598,7 +598,7 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
 
         let command_source = find_command_from_previous_token(compiler)?;
         compiler.next_token()?;
-        
+
         let mut arg_count = 0;
 
         loop {
@@ -756,4 +756,3 @@ mod tests {
         );
     }
 }
-

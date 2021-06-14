@@ -1,11 +1,11 @@
 use std::{error::Error, fmt, str::Chars};
 
 use crate::{
-    cursor::Cursor,
     buffer::BufferHandle,
     buffer_position::BufferRange,
     buffer_view::BufferViewHandle,
     client::ClientHandle,
+    cursor::Cursor,
     platform::Key,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
@@ -85,12 +85,7 @@ impl EditorEventQueue {
         self.write.events.push(event);
     }
 
-    pub fn enqueue_buffer_insert(
-        &mut self,
-        handle: BufferHandle,
-        range: BufferRange,
-        text: &str,
-    ) {
+    pub fn enqueue_buffer_insert(&mut self, handle: BufferHandle, range: BufferRange, text: &str) {
         let from = self.write.texts.len();
         self.write.texts.push_str(text);
         let text = EditorEventText {
@@ -104,21 +99,16 @@ impl EditorEventQueue {
         });
     }
 
-    pub fn enqueue_fix_cursors(
-        &mut self,
-        handle: BufferViewHandle,
-        cursors: &[Cursor],
-    ) {
+    pub fn enqueue_fix_cursors(&mut self, handle: BufferViewHandle, cursors: &[Cursor]) {
         let from = self.write.cursors.len();
         self.write.cursors.extend_from_slice(cursors);
         let cursors = EditorEventCursors {
             from: from as _,
             to: self.write.cursors.len() as _,
         };
-        self.write.events.push(EditorEvent::FixCursors {
-            handle,
-            cursors,
-        });
+        self.write
+            .events
+            .push(EditorEvent::FixCursors { handle, cursors });
     }
 }
 
@@ -791,4 +781,3 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
-

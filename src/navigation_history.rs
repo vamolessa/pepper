@@ -202,4 +202,3 @@ impl Default for NavigationHistory {
         }
     }
 }
-

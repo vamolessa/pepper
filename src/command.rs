@@ -244,7 +244,9 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             CommandError::UnsavedChanges => f.write_str(
                 "there are unsaved changes. try appending a '!' to command name to force execute",
             ),
-            CommandError::NoBufferOpened => f.write_str("no buffer opened"),
+            CommandError::NoBufferOpened => f.write_str(
+                "no buffer opened. use command `:open <file-path>` to open one or `:help open` for more info",
+            ),
             CommandError::InvalidBufferHandle(handle) => {
                 write!(f, "invalid buffer handle {}", handle)
             }
