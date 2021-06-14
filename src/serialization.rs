@@ -113,9 +113,9 @@ impl Serializer for Vec<u8> {
 impl<'de> Deserializer<'de> for &'de [u8] {
     fn read(&mut self, len: usize) -> Result<&'de [u8], DeserializeError> {
         if len <= self.len() {
-            let (before, after) = self.split_at(len);
-            *self = after;
-            Ok(before)
+            let (read, rest) = self.split_at(len);
+            *self = rest;
+            Ok(read)
         } else {
             Err(DeserializeError::InsufficientData)
         }
