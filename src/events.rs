@@ -482,15 +482,15 @@ pub enum ServerEvent<'a> {
     Request(&'a str),
 }
 impl<'a> ServerEvent<'a> {
-    pub const fn header_len() -> usize {
+    pub const fn display_header_len() -> usize {
         1 + std::mem::size_of::<u32>()
     }
 
     pub fn serialize_display_header(buf: &mut [u8]) {
         buf[0] = 0;
-        let len = buf.len() as u32 - Self::header_len() as u32;
+        let len = buf.len() as u32 - Self::display_header_len() as u32;
         let len_buf = len.to_le_bytes();
-        buf[1..Self::header_len()].copy_from_slice(&len_buf);
+        buf[1..Self::display_header_len()].copy_from_slice(&len_buf);
     }
 }
 impl<'de> Serialize<'de> for ServerEvent<'de> {
