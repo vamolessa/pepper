@@ -156,7 +156,7 @@ impl Glob {
 
                     start_ops_index = self.ops.len();
                 }
-                Some('}') | Some(',') => return Ok(previous_state),
+                Some('}' | ',') => return Ok(previous_state),
                 Some('/') => self.ops.push(Op::Separator),
                 Some(c) => match self.ops[start_ops_index..].last_mut() {
                     Some(Op::Slice { to, .. }) if *to == self.texts.len() as _ => {

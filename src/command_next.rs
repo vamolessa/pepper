@@ -106,7 +106,7 @@ impl<'a> CommandTokenizer<'a> {
             }
 
             match source_bytes[self.index] {
-                delim @ b'"' | delim @ b'\'' => {
+                delim @ (b'"' | b'\'') => {
                     let from = self.index;
                     self.index += 1;
                     loop {
@@ -525,11 +525,15 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
                 CommandTokenKind::Binding => {
                     compiler.declare_binding(compiler.previous_token.range.clone())?;
                     compiler.next_token()?;
-                },
-                _ => return Err(CommandCompileError {
-                    kind: CommandCompileErrorKind::ExpectedToken(CommandTokenKind::OpenCurlyBrackets),
-                    range: compiler.previous_token.range.clone(),
-                }),
+                }
+                _ => {
+                    return Err(CommandCompileError {
+                        kind: CommandCompileErrorKind::ExpectedToken(
+                            CommandTokenKind::OpenCurlyBrackets,
+                        ),
+                        range: compiler.previous_token.range.clone(),
+                    })
+                }
             }
         }
 
@@ -884,7 +888,10 @@ mod tests {
 
         use Op::*;
 
-        assert_eq!(vec![PushLiteral(LiteralValue::default()), Return], compile(""));
+        assert_eq!(
+            vec![PushLiteral(LiteralValue::default()), Return],
+            compile("")
+        );
 
         assert_eq!(
             vec![

@@ -134,7 +134,7 @@ impl State {
                 }
             }
             Key::Char(':') => Mode::change_to(ctx, ModeKind::Command),
-            Key::Char('g') | Key::Char('G') => {
+            Key::Char('g' | 'G') => {
                 if state.count == 0 {
                     match keys.next(&ctx.editor.buffered_keys) {
                         Key::None => return Some(ModeOperation::Pending),
@@ -312,14 +312,14 @@ impl State {
 
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
-                    Key::Char('w') | Key::Char('W') => {
+                    Key::Char('w' | 'W') => {
                         for cursor in &mut cursors[..] {
                             let word = buffer.word_at(cursor.position);
                             cursor.anchor = word.position;
                             cursor.position = word.end_position();
                         }
                     }
-                    Key::Char('a') | Key::Char('A') => {
+                    Key::Char('a' | 'A') => {
                         let last_line_index = buffer.line_count() - 1;
                         let last_line_len = buffer.line_at(last_line_index).as_str().len();
 
@@ -332,18 +332,10 @@ impl State {
                             ),
                         });
                     }
-                    Key::Char('(') | Key::Char(')') => {
-                        balanced_brackets(buffer, &mut cursors[..], '(', ')')
-                    }
-                    Key::Char('[') | Key::Char(']') => {
-                        balanced_brackets(buffer, &mut cursors[..], '[', ']')
-                    }
-                    Key::Char('{') | Key::Char('}') => {
-                        balanced_brackets(buffer, &mut cursors[..], '{', '}')
-                    }
-                    Key::Char('<') | Key::Char('>') => {
-                        balanced_brackets(buffer, &mut cursors[..], '<', '>')
-                    }
+                    Key::Char('(' | ')') => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
+                    Key::Char('[' | ']') => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
+                    Key::Char('{' | '}') => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
+                    Key::Char('<' | '>') => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
                     Key::Char('|') => delimiter_pair(buffer, &mut cursors[..], '|'),
                     Key::Char('"') => delimiter_pair(buffer, &mut cursors[..], '"'),
                     Key::Char('\'') => delimiter_pair(buffer, &mut cursors[..], '\''),
@@ -401,7 +393,7 @@ impl State {
 
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
-                    Key::Char('w') | Key::Char('W') => {
+                    Key::Char('w' | 'W') => {
                         for cursor in &mut cursors[..] {
                             let (word, mut left_words, mut right_words) =
                                 buffer.words_from(cursor.position);
@@ -417,7 +409,7 @@ impl State {
                             };
                         }
                     }
-                    Key::Char('a') | Key::Char('A') => {
+                    Key::Char('a' | 'A') => {
                         let last_line_index = buffer.line_count() - 1;
                         let last_line_len = buffer.line_at(last_line_index).as_str().len();
 
@@ -430,18 +422,10 @@ impl State {
                             ),
                         });
                     }
-                    Key::Char('(') | Key::Char(')') => {
-                        balanced_brackets(buffer, &mut cursors[..], '(', ')')
-                    }
-                    Key::Char('[') | Key::Char(']') => {
-                        balanced_brackets(buffer, &mut cursors[..], '[', ']')
-                    }
-                    Key::Char('{') | Key::Char('}') => {
-                        balanced_brackets(buffer, &mut cursors[..], '{', '}')
-                    }
-                    Key::Char('<') | Key::Char('>') => {
-                        balanced_brackets(buffer, &mut cursors[..], '<', '>')
-                    }
+                    Key::Char('(' | ')') => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
+                    Key::Char('[' | ']') => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
+                    Key::Char('{' | '}') => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
+                    Key::Char('<' | '>') => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
                     Key::Char('|') => delimiter_pair(buffer, &mut cursors[..], '|'),
                     Key::Char('"') => delimiter_pair(buffer, &mut cursors[..], '"'),
                     Key::Char('\'') => delimiter_pair(buffer, &mut cursors[..], '\''),
@@ -554,7 +538,7 @@ impl State {
                                 '[' | ']' => buffer.find_balanced_chars_at(position, '[', ']'),
                                 '{' | '}' => buffer.find_balanced_chars_at(position, '{', '}'),
                                 '<' | '>' => buffer.find_balanced_chars_at(position, '<', '>'),
-                                d @ '|' | d @ '"' | d @ '\'' | d @ '`' => {
+                                d @ ('|' | '"' | '\'' | '`') => {
                                     buffer.find_delimiter_pair_at(position, d)
                                 }
                                 _ => continue,
@@ -1001,7 +985,7 @@ impl State {
                 Self::on_edit_keys(ctx.editor, keys, keys_from_index);
                 return None;
             }
-            Key::Char('c') | Key::Char('C') => match keys.next(&ctx.editor.buffered_keys) {
+            Key::Char('c' | 'C') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char('c') => {
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;

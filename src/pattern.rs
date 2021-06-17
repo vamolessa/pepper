@@ -214,7 +214,7 @@ impl Pattern {
             Op::Error => return Some('\0'),
             &Op::Char(_, erj, c) => (c, erj),
             &Op::String(_, erj, len, bytes) => {
-                let s = std::str::from_utf8(&bytes[..len as usize]).unwrap();
+                let s = unsafe { std::str::from_utf8_unchecked(&bytes[..len as usize]) };
                 let c = s.chars().next()?;
                 (c, erj)
             }

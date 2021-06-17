@@ -579,7 +579,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
         }
 
         match self.rest.as_bytes()[0] {
-            delim @ b'"' | delim @ b'\'' => {
+            delim @ (b'"' | b'\'') => {
                 self.rest = &self.rest[1..];
                 match self.rest.find(delim as char) {
                     Some(i) => {
@@ -685,9 +685,12 @@ fn get_flags<'a>(
     let raw = tokens.raw;
     loop {
         match tokens.next() {
-            Some((CommandTokenKind::Identifier, _))
-            | Some((CommandTokenKind::String, _))
-            | Some((CommandTokenKind::Register, _)) => (),
+            Some((
+                CommandTokenKind::Identifier
+                | CommandTokenKind::String
+                | CommandTokenKind::Register,
+                _,
+            )) => (),
             Some((CommandTokenKind::Flag, token)) => {
                 let key = &token.as_str(raw)[1..];
                 let value = match flags.iter_mut().find(|(k, _)| *k == key) {
@@ -697,8 +700,9 @@ fn get_flags<'a>(
 
                 let previous_state = tokens.rest;
                 let raw_value = match tokens.next() {
-                    Some((CommandTokenKind::Identifier, _))
-                    | Some((CommandTokenKind::String, _)) => RawCommandValue::Literal(token),
+                    Some((CommandTokenKind::Identifier | CommandTokenKind::String, _)) => {
+                        RawCommandValue::Literal(token)
+                    }
                     Some((CommandTokenKind::Register, token)) => {
                         let register = parse_register_key(raw, token)?;
                         RawCommandValue::Register(token, register)
@@ -708,16 +712,14 @@ fn get_flags<'a>(
                         RawCommandValue::Literal(token)
                     }
                     Some((CommandTokenKind::Equals, _)) => match tokens.next() {
-                        Some((CommandTokenKind::Identifier, token))
-                        | Some((CommandTokenKind::String, token)) => {
+                        Some((CommandTokenKind::Identifier | CommandTokenKind::String, token)) => {
                             RawCommandValue::Literal(token)
                         }
                         Some((CommandTokenKind::Register, token)) => {
                             let register = parse_register_key(raw, token)?;
                             RawCommandValue::Register(token, register)
                         }
-                        Some((CommandTokenKind::Flag, token))
-                        | Some((CommandTokenKind::Equals, token)) => {
+                        Some((CommandTokenKind::Flag | CommandTokenKind::Equals, token)) => {
                             break Err(CommandError::InvalidToken(token))
                         }
                         Some((CommandTokenKind::Unterminated, token)) => {
@@ -750,8 +752,7 @@ fn try_next_raw_value(
     let raw = tokens.raw;
     loop {
         match tokens.next() {
-            Some((CommandTokenKind::Identifier, token))
-            | Some((CommandTokenKind::String, token)) => {
+            Some((CommandTokenKind::Identifier | CommandTokenKind::String, token)) => {
                 break Ok(Some(RawCommandValue::Literal(token)))
             }
             Some((CommandTokenKind::Register, token)) => {
@@ -761,8 +762,7 @@ fn try_next_raw_value(
             Some((CommandTokenKind::Flag, _)) => {
                 let previous_state = tokens.rest;
                 match tokens.next() {
-                    Some((CommandTokenKind::Identifier, token))
-                    | Some((CommandTokenKind::String, token)) => {
+                    Some((CommandTokenKind::Identifier | CommandTokenKind::String, token)) => {
                         break Ok(Some(RawCommandValue::Literal(token)))
                     }
                     Some((CommandTokenKind::Register, token)) => {
@@ -793,17 +793,19 @@ fn try_next_raw_value(
 fn assert_empty(tokens: &mut CommandTokenIter, max: usize) -> Result<(), CommandError> {
     loop {
         match tokens.next() {
-            Some((CommandTokenKind::Identifier, token))
-            | Some((CommandTokenKind::String, token))
-            | Some((CommandTokenKind::Register, token)) => {
-                break Err(CommandError::TooManyArguments(token, max))
-            }
+            Some((
+                CommandTokenKind::Identifier
+                | CommandTokenKind::String
+                | CommandTokenKind::Register,
+                token,
+            )) => break Err(CommandError::TooManyArguments(token, max)),
             Some((CommandTokenKind::Flag, _)) => match tokens.next() {
-                Some((CommandTokenKind::Identifier, token))
-                | Some((CommandTokenKind::String, token))
-                | Some((CommandTokenKind::Register, token)) => {
-                    break Err(CommandError::TooManyArguments(token, max))
-                }
+                Some((
+                    CommandTokenKind::Identifier
+                    | CommandTokenKind::String
+                    | CommandTokenKind::Register,
+                    token,
+                )) => break Err(CommandError::TooManyArguments(token, max)),
                 Some((CommandTokenKind::Flag, _)) => (),
                 Some((CommandTokenKind::Equals, _)) => {
                     tokens.next();
@@ -1480,10 +1482,13 @@ pub fn parse_process_command(
 ) -> Result<Command, CommandError> {
     let mut command_tokens = CommandTokenIter::new(command);
     let command_name = match command_tokens.next() {
-        Some((CommandTokenKind::Identifier, token))
-        | Some((CommandTokenKind::String, token))
-        | Some((CommandTokenKind::Flag, token))
-        | Some((CommandTokenKind::Equals, token)) => token.as_str(command),
+        Some((
+            CommandTokenKind::Identifier
+            | CommandTokenKind::String
+            | CommandTokenKind::Flag
+            | CommandTokenKind::Equals,
+            token,
+        )) => token.as_str(command),
         Some((CommandTokenKind::Register, token)) => {
             let register = parse_register_key(command, token)?;
             registers.get(register)
@@ -1513,13 +1518,14 @@ pub fn parse_process_command(
     let mut environment_tokens = CommandTokenIter::new(environment);
     loop {
         let key = match environment_tokens.next() {
-            Some((CommandTokenKind::Identifier, token))
-            | Some((CommandTokenKind::String, token)) => token.as_str(environment),
+            Some((CommandTokenKind::Identifier | CommandTokenKind::String, token)) => {
+                token.as_str(environment)
+            }
             Some((CommandTokenKind::Register, token)) => {
                 let register = parse_register_key(environment, token)?;
                 registers.get(register)
             }
-            Some((CommandTokenKind::Flag, token)) | Some((CommandTokenKind::Equals, token)) => {
+            Some((CommandTokenKind::Flag | CommandTokenKind::Equals, token)) => {
                 return Err(CommandError::InvalidToken(token))
             }
             Some((CommandTokenKind::Unterminated, token)) => {
@@ -1537,13 +1543,14 @@ pub fn parse_process_command(
             }
         }
         let value = match environment_tokens.next() {
-            Some((CommandTokenKind::Identifier, token))
-            | Some((CommandTokenKind::String, token)) => token.as_str(environment),
+            Some((CommandTokenKind::Identifier | CommandTokenKind::String, token)) => {
+                token.as_str(environment)
+            }
             Some((CommandTokenKind::Register, token)) => {
                 let register = parse_register_key(environment, token)?;
                 registers.get(register)
             }
-            Some((CommandTokenKind::Flag, token)) | Some((CommandTokenKind::Equals, token)) => {
+            Some((CommandTokenKind::Flag | CommandTokenKind::Equals, token)) => {
                 return Err(CommandError::InvalidToken(token))
             }
             Some((CommandTokenKind::Unterminated, token)) => {

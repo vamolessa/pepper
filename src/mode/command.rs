@@ -63,7 +63,7 @@ impl ModeState for State {
             ReadLinePoll::Pending => {
                 keys.put_back();
                 match keys.next(&ctx.editor.buffered_keys) {
-                    Key::Ctrl('n') | Key::Ctrl('j') => match state.read_state {
+                    Key::Ctrl('n' | 'j') => match state.read_state {
                         ReadCommandState::NavigatingHistory(ref mut i) => {
                             *i = ctx
                                 .editor
@@ -78,7 +78,7 @@ impl ModeState for State {
                         }
                         ReadCommandState::TypingCommand => apply_completion(ctx, 1),
                     },
-                    Key::Ctrl('p') | Key::Ctrl('k') => match state.read_state {
+                    Key::Ctrl('p' | 'k') => match state.read_state {
                         ReadCommandState::NavigatingHistory(ref mut i) => {
                             *i = i.saturating_sub(1);
                             let entry = ctx.editor.commands.history_entry(*i);
@@ -194,11 +194,12 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     }
 
     let (completion_source, mut pattern) = match last_token {
-        Some((CommandTokenKind::Identifier, token))
-        | Some((CommandTokenKind::String, token))
-        | Some((CommandTokenKind::Unterminated, token))
-            if !is_flag_value =>
-        {
+        Some((
+            CommandTokenKind::Identifier
+            | CommandTokenKind::String
+            | CommandTokenKind::Unterminated,
+            token,
+        )) if !is_flag_value => {
             let mut completion_source = CompletionSource::Custom(&[]);
             if arg_count > 0 {
                 for command in ctx.editor.commands.builtin_commands() {
