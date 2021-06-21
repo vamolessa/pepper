@@ -418,6 +418,7 @@ enum JumpFrom {
 }
 
 const OP_STRING_LEN: usize = 10;
+const _ASSERT_OP_SIZE: [(); 16] = [(); std::mem::size_of::<Op>()];
 
 // TODO: add Op for word boundary?
 // TODO: add Op for start of line?
@@ -1063,11 +1064,6 @@ mod tests {
 
     fn new_pattern(pattern: &str) -> Pattern {
         try_new_pattern(pattern).unwrap()
-    }
-
-    #[test]
-    fn assert_size() {
-        assert_eq!(16, std::mem::size_of::<Op>());
     }
 
     #[test]

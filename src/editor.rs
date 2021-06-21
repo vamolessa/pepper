@@ -122,6 +122,7 @@ pub struct Editor {
     pub aux_pattern: Pattern,
 
     pub commands: CommandManager,
+    pub commands_next: crate::command_next::CommandManager,
     pub lsp: lsp::ClientManager,
     pub events: EditorEventQueue,
 }
@@ -151,6 +152,7 @@ impl Editor {
             aux_pattern: Pattern::new(),
 
             commands: CommandManager::new(),
+            commands_next: crate::command_next::CommandManager::new(),
             lsp: lsp::ClientManager::new(),
             events: EditorEventQueue::default(),
         }
