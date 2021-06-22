@@ -225,25 +225,13 @@ const _ASSERT_OP_SIZE: [(); 4] = [(); std::mem::size_of::<Op>()];
 enum Op {
     Return,
     Pop,
-    PushLiteral {
-        start: u16,
-        len: u8,
-    },
+    PushLiteral { start: u16, len: u8 },
     PushFromStack(u16),
     PopAsFlag(u8),
-    CallBuiltinCommand {
-        index: u8,
-        flag_count: u8,
-        arg_count: u8,
-    },
-    CallMacroCommand {
-        index: u16,
-        arg_count: u8,
-    },
-    CallRequestCommand {
-        index: u16,
-        arg_count: u8,
-    },
+    PrepareStackFrame { is_macro_chunk: bool },
+    CallBuiltinCommand(u8),
+    CallMacroCommand(u16),
+    CallRequestCommand(u16),
 }
 
 #[derive(Clone, Copy)]
@@ -288,9 +276,7 @@ pub struct CommandManager {
     macro_commands: MacroCommandCollection,
 
     temp_chunk: ByteCodeChunk,
-    flag_stack: Vec<StackFlag>,
-    value_stack: Vec<StackValue>,
-    call_stack: Vec<StackFrame>,
+    virtual_machine: VirtualMachine,
 }
 impl CommandManager {
     pub fn new() -> Self {
@@ -299,9 +285,7 @@ impl CommandManager {
             macro_commands: MacroCommandCollection::default(),
 
             temp_chunk: ByteCodeChunk::default(),
-            flag_stack: Vec::new(),
-            value_stack: Vec::new(),
-            call_stack: Vec::new(),
+            virtual_machine: VirtualMachine::default(),
         }
     }
 }
@@ -705,6 +689,10 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
         let command_source = find_command_from_previous_token(compiler)?;
         compiler.next_token()?;
 
+        chunk.emit(Op::PrepareStackFrame {
+            is_macro_chunk: matches!(command_source, CommandSource::Macro(_)),
+        });
+
         let mut arg_count = 0;
         let mut flag_count = 0;
         loop {
@@ -751,19 +739,9 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
         }
 
         match command_source {
-            CommandSource::Builtin(i) => chunk.emit(Op::CallBuiltinCommand {
-                index: i as _,
-                flag_count,
-                arg_count,
-            }),
-            CommandSource::Macro(i) => chunk.emit(Op::CallMacroCommand {
-                index: i as _,
-                arg_count,
-            }),
-            CommandSource::Request(i) => chunk.emit(Op::CallRequestCommand {
-                index: i as _,
-                arg_count,
-            }),
+            CommandSource::Builtin(i) => chunk.emit(Op::CallBuiltinCommand(i as _)),
+            CommandSource::Macro(i) => chunk.emit(Op::CallMacroCommand(i as _)),
+            CommandSource::Request(i) => chunk.emit(Op::CallRequestCommand(i as _)),
         };
 
         Ok(())
@@ -844,9 +822,20 @@ struct StackFlag {
 }
 
 struct StackFrame {
-    is_macro_byte_code: bool,
+    is_macro_chunk: bool,
     op_index: u32,
     texts_len: u32,
+    value_stack_len: u16,
+    flag_stack_len: u16,
+}
+
+#[derive(Default)]
+struct VirtualMachine {
+    texts: String,
+    flag_stack: Vec<StackFlag>,
+    value_stack: Vec<StackValue>,
+    stack_frames: Vec<StackFrame>,
+    prepared_stack_frames: Vec<StackFrame>,
 }
 
 fn execute(
@@ -855,65 +844,82 @@ fn execute(
     clients: &mut ClientManager,
     client_handle: Option<ClientHandle>,
 ) {
-    let mut ops = &editor.commands_next.temp_chunk.ops[..];
-    let mut texts = &mut editor.commands_next.temp_chunk.texts;
-    let mut flag_stack = &mut editor.commands_next.flag_stack;
-    let mut value_stack = &mut editor.commands_next.value_stack;
+    let mut vm = &mut editor.commands_next.virtual_machine;
+    let mut chunk = &editor.commands_next.temp_chunk;
+    let mut op_index = 0;
 
     loop {
-        let op = match ops {
-            [op, rest @ ..] => {
-                ops = rest;
-                op
-            }
-            _ => unreachable!(),
-        };
-        match op {
+        match &chunk.ops[op_index] {
             Op::Return => {
                 todo!();
             }
-            Op::Pop => drop(value_stack.pop()),
-            &Op::PushLiteral { start, len } => value_stack.push(StackValue {
-                start: start as _,
-                end: (start as usize + len as usize) as _,
-            }),
-            &Op::PushFromStack(stack_index) => value_stack.push(value_stack[stack_index as usize]),
+            Op::Pop => drop(vm.value_stack.pop()),
+            &Op::PushLiteral { start, len } => {
+                let start = start as usize;
+                let end = start + len as usize;
+                vm.texts.push_str(&chunk.texts[start..end]);
+                vm.value_stack.push(StackValue {
+                    start: start as _,
+                    end: end as _,
+                });
+            }
+            &Op::PushFromStack(stack_index) => {
+                let value = vm.value_stack[stack_index as usize];
+                //let range = value.start as usize..value.end as usize;
+                //let start = vm.texts.len();
+                //unsafe {
+                //    vm.texts.as_mut_vec().extend_from_within(range);
+                //}
+                vm.value_stack.push(value);
+            }
             &Op::PopAsFlag(flag_index) => {
-                let value = match value_stack.pop() {
+                let value = match vm.value_stack.pop() {
                     Some(value) => value,
                     None => unreachable!(),
                 };
-                flag_stack.push(StackFlag {
+                vm.flag_stack.push(StackFlag {
                     start: value.start,
                     end: value.end,
                     flag_index,
                 });
             }
-            &Op::CallBuiltinCommand {
-                index,
-                flag_count,
-                arg_count,
-            } => {
+            &Op::PrepareStackFrame { is_macro_chunk } => {
+                let frame = StackFrame {
+                    is_macro_chunk,
+                    op_index: op_index as _,
+                    texts_len: vm.texts.len() as _,
+                    value_stack_len: vm.value_stack.len() as _,
+                    flag_stack_len: vm.flag_stack.len() as _,
+                };
+                vm.prepared_stack_frames.push(frame);
+            }
+            &Op::CallBuiltinCommand(index) => {
+                let frame = vm.prepared_stack_frames.pop().unwrap();
                 let command_fn = &editor.commands_next.builtin_commands[index as usize].func;
                 command_fn();
 
-                ops = &editor.commands_next.temp_chunk.ops[..];
-                texts = &mut editor.commands_next.temp_chunk.texts;
-                flag_stack = &mut editor.commands_next.flag_stack;
-                value_stack = &mut editor.commands_next.value_stack;
+                chunk = if frame.is_macro_chunk {
+                    &editor.commands_next.macro_commands.chunk
+                } else {
+                    &editor.commands_next.temp_chunk
+                };
+                vm = &mut editor.commands_next.virtual_machine;
 
-                value_stack.push(StackValue {
+                vm.value_stack.push(StackValue {
                     start: 0,
-                    end: texts.len() as _,
+                    end: chunk.texts.len() as _,
                 });
+
+                vm.stack_frames.push(frame);
             }
-            &Op::CallMacroCommand { index, arg_count } => {
+            &Op::CallMacroCommand(index) => {
                 todo!();
             }
-            &Op::CallRequestCommand { index, arg_count } => {
+            &Op::CallRequestCommand(index) => {
                 todo!();
             }
         }
+        op_index += 1;
     }
 }
 
