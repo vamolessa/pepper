@@ -760,11 +760,12 @@ struct Compiler<'source, 'data> {
 }
 
 fn compile(compiler: &mut Compiler) -> Result<(), CommandCompileError> {
-    fn emit_expression(compiler: &mut Compiler) -> usize {
+    fn emit_expression(compiler: &mut Compiler, index: usize) -> usize {
+        
         0
     }
 
-    fn emit_statement(compiler: &mut Compiler) -> usize {
+    fn emit_statement(compiler: &mut Compiler, index: usize) -> usize {
         0
     }
 
@@ -795,7 +796,7 @@ fn compile(compiler: &mut Compiler) -> Result<(), CommandCompileError> {
                 let op_start_index = compiler.virtual_machine.ops.len() as _;
                 index += 1;
                 while index != 0 {
-                    index = emit_statement(compiler);
+                    index = emit_statement(compiler, index);
                 }
 
                 let name_range = compiler.commands.add_custom_command_name(name);
@@ -847,7 +848,7 @@ fn compile(compiler: &mut Compiler) -> Result<(), CommandCompileError> {
                 }
 
                 while flag != 0 {
-                    flag = emit_statement(compiler);
+                    flag = emit_statement(compiler, flag);
                 }
 
                 match command_source {
@@ -880,7 +881,6 @@ fn compile(compiler: &mut Compiler) -> Result<(), CommandCompileError> {
     compiler.virtual_machine.ops.push(Op::Return);
     Ok(())
 }
-
 
 /*
 fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
