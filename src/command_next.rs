@@ -10,6 +10,60 @@ use crate::{
     platform::Platform,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionSource {
+    Commands,
+    Buffers,
+    Files,
+    Custom(&'static [&'static str]),
+}
+
+pub struct BuiltinCommand {
+    pub name: &'static str,
+    pub alias: &'static str,
+    pub hidden: bool,
+    pub completions: &'static [CompletionSource],
+    pub flags: &'static [&'static str],
+    pub func: fn(),
+}
+
+struct MacroCommand {
+    name_range: Range<u32>,
+    op_start_index: u32,
+    param_count: u8,
+}
+
+pub struct CommandCollection {
+    builtin_commands: &'static [BuiltinCommand],
+    custom_command_names: String,
+    macro_commands: Vec<MacroCommand>,
+}
+impl CommandCollection {
+    pub fn add_custom_command_name(&mut self, name: &str) -> Range<u32> {
+        let start = self.custom_command_names.len();
+        self.custom_command_names.push_str(name);
+        let end = self.custom_command_names.len();
+        start as _..end as _
+    }
+}
+impl Default for CommandCollection {
+    fn default() -> Self {
+        Self {
+            builtin_commands: &[], // TODO: reference builtin commands
+            custom_command_names: String::new(),
+            macro_commands: Vec::new(),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct CommandManager {
+    commands: CommandCollection,
+    temp_ast: Vec<CommandAstNode>,
+    temp_bindings: Vec<Binding>,
+    virtual_machine: VirtualMachine,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum CommandCompileErrorKind {
     UnterminatedQuotedLiteral,
@@ -29,6 +83,7 @@ pub enum CommandCompileErrorKind {
     TooManyArgs,
     TooManyFlags,
     CouldNotSourceFile,
+    CommandAlreadyExists,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -246,19 +301,23 @@ enum CommandAstNode {
     },
 }
 
-struct Parser<'source, 'state> {
-    tokenizer: CommandTokenizer<'source>,
-    path: Option<&'state Path>,
-    ast: &'state mut Vec<CommandAstNode>,
-    pub previous_token: CommandToken,
-    pub bindings: &'state mut Vec<Binding>,
+struct Binding {
+    pub range: Range<u32>,
 }
-impl<'source, 'state> Parser<'source, 'state> {
+
+struct Parser<'source, 'data> {
+    tokenizer: CommandTokenizer<'source>,
+    pub path: Option<&'data Path>,
+    pub ast: &'data mut Vec<CommandAstNode>,
+    pub bindings: &'data mut Vec<Binding>,
+    pub previous_token: CommandToken,
+}
+impl<'source, 'data> Parser<'source, 'data> {
     pub fn new(
         source: &'source str,
-        path: Option<&'state Path>,
-        ast: &'state mut Vec<CommandAstNode>,
-        bindings: &'state mut Vec<Binding>,
+        path: Option<&'data Path>,
+        ast: &'data mut Vec<CommandAstNode>,
+        bindings: &'data mut Vec<Binding>,
     ) -> Result<Self, CommandCompileError> {
         let mut tokenizer = CommandTokenizer::new(source);
         let previous_token = tokenizer.next()?;
@@ -266,8 +325,8 @@ impl<'source, 'state> Parser<'source, 'state> {
             tokenizer,
             path,
             ast,
-            previous_token,
             bindings,
+            previous_token,
         })
     }
 
@@ -296,7 +355,7 @@ impl<'source, 'state> Parser<'source, 'state> {
         }
     }
 
-    pub fn declare_binding_from_previous_token(&mut self) -> Result<(), CommandCompileError> {
+    pub fn declare_binding_from_previous_token(&mut self) -> Result<&Binding, CommandCompileError> {
         if self.bindings.len() >= u16::MAX as _ {
             Err(CommandCompileError {
                 kind: CommandCompileErrorKind::TooManyBindings,
@@ -304,12 +363,8 @@ impl<'source, 'state> Parser<'source, 'state> {
             })
         } else {
             let range = self.previous_token_range();
-            self.ast.push(CommandAstNode::BindingDeclaration {
-                name: range.clone(),
-                next: 0,
-            });
             self.bindings.push(Binding { range });
-            Ok(())
+            Ok(&self.bindings[self.bindings.len()])
         }
     }
 
@@ -403,10 +458,11 @@ fn parse(parser: &mut Parser) -> Result<(), CommandCompileError> {
         loop {
             match parser.previous_token.kind {
                 CommandTokenKind::OpenCurlyBrackets => {
-                    if let CommandAstNode::MacroDeclaration { param_count, .. } =
-                        &mut parser.ast[index]
-                    {
-                        *param_count = (parser.bindings.len() - previous_bindings_len) as _;
+                    match &mut parser.ast[index] {
+                        CommandAstNode::MacroDeclaration { param_count, .. } => {
+                            *param_count = (parser.bindings.len() - previous_bindings_len) as _;
+                        }
+                        _ => unreachable!(),
                     }
                     parser.next_token()?;
                     break;
@@ -464,7 +520,13 @@ fn parse(parser: &mut Parser) -> Result<(), CommandCompileError> {
                         });
                     }
 
-                    parser.declare_binding_from_previous_token()?;
+                    let binding = parser.declare_binding_from_previous_token()?;
+                    let name = binding.range.clone();
+                    parser.ast.push(CommandAstNode::BindingDeclaration {
+                        name,
+                        next: 0,
+                    });
+
                     parser.next_token()?;
                     parser.consume_token(CommandTokenKind::Equals)?;
 
@@ -529,17 +591,17 @@ fn parse(parser: &mut Parser) -> Result<(), CommandCompileError> {
             if parser.previous_token.kind == CommandTokenKind::Flag {
                 let range_start = parser.previous_token.range.start;
 
+                let len = parser.ast.len() as _;
                 if flag_count == 0 {
-                    let len = parser.ast.len() as _;
-                    if let CommandAstNode::CommandCall { first_flag, .. } = &mut parser.ast[index] {
-                        *first_flag = len;
+                    match &mut parser.ast[index] {
+                        CommandAstNode::CommandCall { first_flag, .. } => *first_flag = len,
+                        _ => unreachable!(),
                     }
                 }
-                let next_flag = parser.ast.len();
                 if let CommandAstNode::CommandCallFlag { next, .. } = &mut parser.ast[last_flag] {
-                    *next = next_flag as _;
+                    *next = len;
                 }
-                last_flag = next_flag;
+                last_flag = parser.ast.len();
                 parser.ast.push(CommandAstNode::CommandCallFlag {
                     name: parser.previous_token_range(),
                     next: 0,
@@ -568,17 +630,17 @@ fn parse(parser: &mut Parser) -> Result<(), CommandCompileError> {
             } else {
                 let range_start = parser.previous_token.range.start;
 
+                let len = parser.ast.len() as _;
                 if arg_count == 0 {
-                    let len = parser.ast.len() as _;
-                    if let CommandAstNode::CommandCall { first_arg, .. } = &mut parser.ast[index] {
-                        *first_arg = len;
+                    match &mut parser.ast[index] {
+                        CommandAstNode::CommandCall { first_arg, .. } => *first_arg = len,
+                        _ => unreachable!(),
                     }
                 }
-                let next_arg = parser.ast.len();
                 if let CommandAstNode::CommandCallArg { next, .. } = &mut parser.ast[last_arg] {
-                    *next = next_arg as _;
+                    *next = len;
                 }
-                last_arg = next_arg;
+                last_arg = parser.ast.len();
                 parser.ast.push(CommandAstNode::CommandCallArg { next: 0 });
 
                 parse_expression(parser, is_top_level)?;
@@ -601,19 +663,32 @@ fn parse(parser: &mut Parser) -> Result<(), CommandCompileError> {
         parser: &mut Parser,
         is_top_level: bool,
     ) -> Result<(), CommandCompileError> {
+        fn consume_literal_range(parser: &mut Parser) -> Result<Range<u32>, CommandCompileError> {
+            let range = parser.previous_token.range.clone();
+            if range.end - range.start <= u8::MAX as _ {
+                parser.next_token()?;
+                Ok(range.start as _..range.end as _)
+            } else {
+                Err(CommandCompileError {
+                    kind: CommandCompileErrorKind::LiteralTooBig,
+                    range,
+                })
+            }
+        }
+
         while let CommandTokenKind::EndOfCommand = parser.previous_token.kind {
             parser.next_token()?;
         }
 
         match parser.previous_token.kind {
             CommandTokenKind::Literal => {
-                parser.ast.push(CommandAstNode::Literal(parser.previous_token_range()));
-                parser.next_token()?;
+                let range = consume_literal_range(parser)?;
+                parser.ast.push(CommandAstNode::Literal(range));
                 Ok(())
             }
             CommandTokenKind::QuotedLiteral => {
-                parser.ast.push(CommandAstNode::QuotedLiteral(parser.previous_token_range()));
-                parser.next_token()?;
+                let range = consume_literal_range(parser)?;
+                parser.ast.push(CommandAstNode::QuotedLiteral(range));
                 Ok(())
             }
             CommandTokenKind::OpenParenthesis => parse_command_call(parser, is_top_level),
@@ -644,255 +719,170 @@ fn parse(parser: &mut Parser) -> Result<(), CommandCompileError> {
     Ok(())
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct LiteralValue {
-    pub start: u16,
-    pub len: u8,
-}
-
-const _ASSERT_OP_SIZE: [(); 4] = [(); std::mem::size_of::<Op>()];
-
-#[derive(Debug, PartialEq, Eq)]
-enum Op {
-    Return,
-    Pop,
-    PushLiteralReference { start: u16, len: u8 },
-    PushLiteralCopy { start: u16, len: u8 },
-    PushFromStack(u16),
-    PopAsFlag(u8),
-    PrepareStackFrame { is_macro_chunk: bool },
-    CallBuiltinCommand(u8),
-    CallMacroCommand(u16),
-    CallRequestCommand(u16),
-}
-
 #[derive(Clone, Copy)]
-pub enum CommandSource {
+enum CommandSource {
     Builtin(usize),
     Macro(usize),
     Request(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompletionSource {
-    Commands,
-    Buffers,
-    Files,
-    Custom(&'static [&'static str]),
-}
-
-pub struct BuiltinCommand {
-    pub name: &'static str,
-    pub alias: &'static str,
-    pub hidden: bool,
-    pub completions: &'static [CompletionSource],
-    pub flags: &'static [&'static str],
-    pub func: fn(),
-}
-
-struct MacroCommand {
-    name_range: Range<u32>,
-    op_start_index: u32,
-    params_len: u8,
-}
-
-#[derive(Default)]
-struct MacroCommandCollection {
-    names: String,
-    chunk: ByteCodeChunk,
-    commands: Vec<MacroCommand>,
-}
-
-pub struct CommandManager {
-    builtin_commands: &'static [BuiltinCommand],
-    macro_commands: MacroCommandCollection,
-
-    temp_chunk: ByteCodeChunk,
-    virtual_machine: VirtualMachine,
-}
-impl CommandManager {
-    pub fn new() -> Self {
-        Self {
-            builtin_commands: &[],
-            macro_commands: MacroCommandCollection::default(),
-
-            temp_chunk: ByteCodeChunk::default(),
-            virtual_machine: VirtualMachine::default(),
-        }
-    }
-}
-
-#[derive(Default)]
-struct ByteCodeChunk {
-    ops: Vec<Op>,
-    texts: String,
-}
-impl ByteCodeChunk {
-    pub fn clear(&mut self) {
-        self.ops.clear();
-        self.texts.clear();
+fn find_command(commands: &CommandCollection, name: &str) -> Option<CommandSource> {
+    if let Some(i) = commands.macro_commands.iter().position(|c| {
+        let range = c.name_range.start as usize..c.name_range.end as usize;
+        &commands.custom_command_names[range] == name
+    }) {
+        return Some(CommandSource::Macro(i));
     }
 
-    pub fn emit(&mut self, op: Op) {
-        self.ops.push(op);
+    // TODO: implement for request command
+    /*
+    if let Some(i) = commands.request_commands.iter().position(|c| c.name == name) {
+        return Some(CommandSource::Request(i));
+    }
+    */
+
+    if let Some(i) = commands
+        .builtin_commands
+        .iter()
+        .position(|c| c.name == name || c.alias == name)
+    {
+        return Some(CommandSource::Builtin(i));
     }
 
-    pub fn add_literal(
-        &mut self,
-        text: &str,
-        range: Range<usize>,
-    ) -> Result<LiteralValue, CommandCompileError> {
-        if text.len() > u8::MAX as _ {
-            return Err(CommandCompileError {
-                kind: CommandCompileErrorKind::LiteralTooBig,
-                range,
-            });
-        }
+    None
+}
 
-        let start = self.texts.len() as _;
-        let len = text.len() as _;
-        self.texts.push_str(text);
-        Ok(LiteralValue { start, len })
+struct Compiler<'source, 'data> {
+    source: &'source str,
+    ast: &'data [CommandAstNode],
+    commands: &'data mut CommandCollection,
+    virtual_machine: &'data mut VirtualMachine,
+}
+
+fn compile(compiler: &mut Compiler) -> Result<(), CommandCompileError> {
+    fn emit_expression(compiler: &mut Compiler) -> usize {
+        0
     }
 
-    pub fn add_escaped_literal(
-        &mut self,
-        mut text: &str,
-        range: Range<usize>,
-    ) -> Result<LiteralValue, CommandCompileError> {
-        if text.len() > u8::MAX as _ {
-            return Err(CommandCompileError {
-                kind: CommandCompileErrorKind::LiteralTooBig,
-                range,
-            });
-        }
+    fn emit_statement(compiler: &mut Compiler) -> usize {
+        0
+    }
 
-        let start = self.texts.len();
-        while let Some(i) = text.find('\\') {
-            self.texts.push_str(&text[..i]);
-            text = &text[i + 1..];
-            match text.as_bytes() {
-                &[b'\\', ..] => self.texts.push('\\'),
-                &[b'\'', ..] => self.texts.push('\''),
-                &[b'\"', ..] => self.texts.push('\"'),
-                &[b'\n', ..] => self.texts.push('\n'),
-                &[b'\r', ..] => self.texts.push('\r'),
-                &[b'\t', ..] => self.texts.push('\t'),
-                &[b'\0', ..] => self.texts.push('\0'),
-                _ => {
+    if compiler.ast.len() == 1 {
+        return Ok(());
+    }
+
+    let mut index = 1;
+    while index != 0 {
+        match compiler.ast[index] {
+            CommandAstNode::CommandCall { next, .. } | CommandAstNode::Return { next } => {
+                index = next as _;
+            }
+            CommandAstNode::MacroDeclaration {
+                ref name,
+                param_count,
+                next,
+            } => {
+                let name_range = name.start as usize..name.end as usize;
+                let name = &compiler.source[name_range.clone()];
+                if find_command(compiler.commands, name).is_some() {
                     return Err(CommandCompileError {
-                        kind: CommandCompileErrorKind::InvalidLiteralEscaping,
-                        range,
-                    })
+                        kind: CommandCompileErrorKind::CommandAlreadyExists,
+                        range: name_range,
+                    });
                 }
+
+                let op_start_index = compiler.virtual_machine.ops.len() as _;
+                index += 1;
+                while index != 0 {
+                    index = emit_statement(compiler);
+                }
+
+                let name_range = compiler.commands.add_custom_command_name(name);
+                compiler.commands.macro_commands.push(MacroCommand {
+                    name_range,
+                    op_start_index,
+                    param_count,
+                });
+
+                index = next as _;
             }
-        }
-        self.texts.push_str(text);
-
-        let len = (self.texts.len() - start) as _;
-        let start = start as _;
-        Ok(LiteralValue { start, len })
-    }
-}
-
-struct Binding {
-    range: Range<u32>,
-}
-
-struct Compiler<'source, 'state> {
-    tokenizer: CommandTokenizer<'source>,
-    path: Option<&'state Path>,
-    pub previous_token: CommandToken,
-    pub bindings: &'state mut Vec<Binding>,
-    bindings_previous_len: usize,
-    builtin_commands: &'static [BuiltinCommand],
-    macro_commands: &'state mut MacroCommandCollection,
-}
-impl<'source, 'state> Compiler<'source, 'state> {
-    pub fn new(
-        source: &'source str,
-        path: Option<&'state Path>,
-        bindings: &'state mut Vec<Binding>,
-        builtin_commands: &'static [BuiltinCommand],
-        macro_commands: &'state mut MacroCommandCollection,
-    ) -> Result<Self, CommandCompileError> {
-        let mut tokenizer = CommandTokenizer::new(source);
-        let previous_token = tokenizer.next()?;
-        let bindings_previous_len = bindings.len();
-        Ok(Self {
-            tokenizer,
-            path,
-            previous_token,
-            bindings,
-            bindings_previous_len,
-            builtin_commands,
-            macro_commands,
-        })
-    }
-
-    pub fn previous_token_str(&self) -> &'source str {
-        &self.tokenizer.source[self.previous_token.range.clone()]
-    }
-
-    pub fn next_token(&mut self) -> Result<(), CommandCompileError> {
-        let token = self.tokenizer.next()?;
-        self.previous_token = token;
-        Ok(())
-    }
-
-    pub fn consume_token(&mut self, kind: CommandTokenKind) -> Result<(), CommandCompileError> {
-        if self.previous_token.kind == kind {
-            self.next_token()
-        } else {
-            Err(CommandCompileError {
-                kind: CommandCompileErrorKind::ExpectedToken(kind),
-                range: self.previous_token.range.clone(),
-            })
+            _ => unreachable!(),
         }
     }
 
-    pub fn declare_binding(&mut self, range: Range<usize>) -> Result<(), CommandCompileError> {
-        if self.bindings.len() >= u16::MAX as _ {
-            Err(CommandCompileError {
-                kind: CommandCompileErrorKind::TooManyBindings,
-                range,
-            })
-        } else {
-            let range = range.start as _..range.end as _;
-            self.bindings.push(Binding { range });
-            Ok(())
-        }
-    }
+    index = 1;
+    while index != 0 {
+        match compiler.ast[index] {
+            CommandAstNode::CommandCall {
+                ref name,
+                first_arg,
+                first_flag,
+                next,
+            } => {
+                let name_range = name.start as usize..name.end as usize;
+                let name = &compiler.source[name_range.clone()];
+                let command_source = match find_command(compiler.commands, name) {
+                    Some(source) => source,
+                    None => {
+                        return Err(CommandCompileError {
+                            kind: CommandCompileErrorKind::NoSuchCommand,
+                            range: name_range,
+                        });
+                    }
+                };
 
-    pub fn find_binding_stack_index(&self, name: &str) -> Option<u16> {
-        let source = self.tokenizer.source;
-        self.bindings
-            .iter()
-            .rposition(|b| &source[b.range.start as usize..b.range.end as usize] == name)
-            .map(|i| i as _)
-    }
+                let mut arg = first_arg as usize;
+                let mut flag = first_flag as usize;
 
-    pub fn compile(&mut self, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
-        chunk.clear();
-        match compile(self, chunk) {
-            Ok(()) => {
-                chunk.emit(Op::PushLiteralReference { start: 0, len: 0 });
-                chunk.emit(Op::Return);
+                if flag != 0 && !matches!(command_source, CommandSource::Builtin(_)) {
+                    let name = match compiler.ast[flag] {
+                        CommandAstNode::CommandCallFlag { ref name, .. } => name,
+                        _ => unreachable!(),
+                    };
+                    return Err(CommandCompileError {
+                        kind: CommandCompileErrorKind::NoSuchFlag,
+                        range: name.start as usize..name.end as usize,
+                    });
+                }
+
+                while flag != 0 {
+                    flag = emit_statement(compiler);
+                }
+
+                match command_source {
+                    CommandSource::Builtin(i) => compiler
+                        .virtual_machine
+                        .ops
+                        .push(Op::CallBuiltinCommand(i as _)),
+                    CommandSource::Macro(i) => compiler
+                        .virtual_machine
+                        .ops
+                        .push(Op::CallMacroCommand(i as _)),
+                    CommandSource::Request(i) => compiler
+                        .virtual_machine
+                        .ops
+                        .push(Op::CallRequestCommand(i as _)),
+                }
+
+                index = next as _;
             }
-            Err(error) => {
-                chunk.clear();
-                return Err(error);
+            CommandAstNode::Return { next } => {
+                compiler.virtual_machine.ops.push(Op::Return);
+                index = next as _;
             }
+            CommandAstNode::MacroDeclaration { next, .. } => index = next as _,
+            _ => unreachable!(),
         }
-        Ok(())
     }
-}
-impl<'source, 'state> Drop for Compiler<'source, 'state> {
-    fn drop(&mut self) {
-        self.bindings.truncate(self.bindings_previous_len);
-    }
+
+    compiler.virtual_machine.ops.push(Op::PushLiteral { start: 0, len: 0 });
+    compiler.virtual_machine.ops.push(Op::Return);
+    Ok(())
 }
 
+
+/*
 fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), CommandCompileError> {
     fn parse_top_level(
         compiler: &mut Compiler,
@@ -1062,12 +1052,6 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
                 return Ok(CommandSource::Macro(i));
             }
 
-            // TODO: implement for request command
-            /*
-            if let Some(i) = compiler.request_commands.iter().position(|c| c.name == command_name) {
-                return Ok(CommandSource::Request(i));
-            }
-            */
 
             if let Some(i) = compiler
                 .builtin_commands
@@ -1252,6 +1236,22 @@ fn compile(compiler: &mut Compiler, chunk: &mut ByteCodeChunk) -> Result<(), Com
     }
     Ok(())
 }
+*/
+
+const _ASSERT_OP_SIZE: [(); 4] = [(); std::mem::size_of::<Op>()];
+
+#[derive(Debug, PartialEq, Eq)]
+enum Op {
+    Return,
+    Pop,
+    PushLiteral { start: u16, len: u8 },
+    PushFromStack(u16),
+    PopAsFlag(u8),
+    PrepareStackFrame,
+    CallBuiltinCommand(u8),
+    CallMacroCommand(u16),
+    CallRequestCommand(u16),
+}
 
 #[derive(Copy, Clone)]
 struct StackValue {
@@ -1267,7 +1267,6 @@ struct StackFlag {
 }
 
 struct StackFrame {
-    is_macro_chunk: bool,
     op_index: u32,
     texts_len: u32,
     value_stack_len: u16,
@@ -1276,11 +1275,57 @@ struct StackFrame {
 
 #[derive(Default)]
 struct VirtualMachine {
+    ops: Vec<Op>,
     texts: String,
     flag_stack: Vec<StackFlag>,
     value_stack: Vec<StackValue>,
     stack_frames: Vec<StackFrame>,
     prepared_stack_frames: Vec<StackFrame>,
+}
+impl VirtualMachine {
+    pub fn add_literal(&mut self, text: &str) -> Op {
+        let start = self.texts.len();
+        self.texts.push_str(text);
+        let len = self.texts.len() - start;
+        Op::PushLiteral {
+            start: start as _,
+            len: len as _,
+        }
+    }
+
+    pub fn add_escaped_literal(
+        &mut self,
+        mut text: &str,
+        range: Range<usize>,
+    ) -> Result<Op, CommandCompileError> {
+        let start = self.texts.len();
+        while let Some(i) = text.find('\\') {
+            self.texts.push_str(&text[..i]);
+            text = &text[i + 1..];
+            match text.as_bytes() {
+                &[b'\\', ..] => self.texts.push('\\'),
+                &[b'\'', ..] => self.texts.push('\''),
+                &[b'\"', ..] => self.texts.push('\"'),
+                &[b'\n', ..] => self.texts.push('\n'),
+                &[b'\r', ..] => self.texts.push('\r'),
+                &[b'\t', ..] => self.texts.push('\t'),
+                &[b'\0', ..] => self.texts.push('\0'),
+                _ => {
+                    return Err(CommandCompileError {
+                        kind: CommandCompileErrorKind::InvalidLiteralEscaping,
+                        range,
+                    })
+                }
+            }
+        }
+
+        self.texts.push_str(text);
+        let len = self.texts.len() - start;
+        Ok(Op::PushLiteral {
+            start: start as _,
+            len: len as _,
+        })
+    }
 }
 
 fn execute(
@@ -1290,16 +1335,15 @@ fn execute(
     client_handle: Option<ClientHandle>,
 ) {
     let mut vm = &mut editor.commands_next.virtual_machine;
-    let mut chunk = &editor.commands_next.temp_chunk;
     let mut op_index = 0;
 
     loop {
-        match &chunk.ops[op_index] {
+        match vm.ops[op_index] {
             Op::Return => {
                 todo!();
             }
             Op::Pop => drop(vm.value_stack.pop()),
-            &Op::PushLiteralReference { start, len } => {
+            Op::PushLiteral { start, len } => {
                 let start = start as usize;
                 let end = start + len as usize;
                 vm.value_stack.push(StackValue {
@@ -1307,20 +1351,11 @@ fn execute(
                     end: end as _,
                 });
             }
-            &Op::PushLiteralCopy { start, len } => {
-                let start = start as usize;
-                let end = start + len as usize;
-                vm.texts.push_str(&chunk.texts[start..end]);
-                vm.value_stack.push(StackValue {
-                    start: start as _,
-                    end: end as _,
-                });
-            }
-            &Op::PushFromStack(stack_index) => {
+            Op::PushFromStack(stack_index) => {
                 let value = vm.value_stack[stack_index as usize];
                 vm.value_stack.push(value);
             }
-            &Op::PopAsFlag(flag_index) => {
+            Op::PopAsFlag(flag_index) => {
                 let value = match vm.value_stack.pop() {
                     Some(value) => value,
                     None => unreachable!(),
@@ -1331,9 +1366,8 @@ fn execute(
                     flag_index,
                 });
             }
-            &Op::PrepareStackFrame { is_macro_chunk } => {
+            Op::PrepareStackFrame => {
                 let frame = StackFrame {
-                    is_macro_chunk,
                     op_index: op_index as _,
                     texts_len: vm.texts.len() as _,
                     value_stack_len: vm.value_stack.len() as _,
@@ -1341,29 +1375,24 @@ fn execute(
                 };
                 vm.prepared_stack_frames.push(frame);
             }
-            &Op::CallBuiltinCommand(index) => {
+            Op::CallBuiltinCommand(index) => {
                 let frame = vm.prepared_stack_frames.pop().unwrap();
-                let command_fn = &editor.commands_next.builtin_commands[index as usize].func;
+                let command_fn = &editor.commands_next.commands.builtin_commands[index as usize].func;
                 command_fn();
 
-                chunk = if frame.is_macro_chunk {
-                    &editor.commands_next.macro_commands.chunk
-                } else {
-                    &editor.commands_next.temp_chunk
-                };
                 vm = &mut editor.commands_next.virtual_machine;
 
                 vm.value_stack.push(StackValue {
                     start: 0,
-                    end: chunk.texts.len() as _,
+                    end: vm.texts.len() as _,
                 });
 
                 vm.stack_frames.push(frame);
             }
-            &Op::CallMacroCommand(index) => {
+            Op::CallMacroCommand(index) => {
                 todo!();
             }
-            &Op::CallRequestCommand(index) => {
+            Op::CallRequestCommand(index) => {
                 todo!();
             }
         }

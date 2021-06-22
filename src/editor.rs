@@ -152,7 +152,7 @@ impl Editor {
             aux_pattern: Pattern::new(),
 
             commands: CommandManager::new(),
-            commands_next: crate::command_next::CommandManager::new(),
+            commands_next: crate::command_next::CommandManager::default(),
             lsp: lsp::ClientManager::new(),
             events: EditorEventQueue::default(),
         }
