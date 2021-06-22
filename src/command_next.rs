@@ -864,6 +864,7 @@ fn execute(
                 });
             }
             &Op::PushFromStack(stack_index) => {
+                // TODO: is this ok?
                 let value = vm.value_stack[stack_index as usize];
                 //let range = value.start as usize..value.end as usize;
                 //let start = vm.texts.len();
