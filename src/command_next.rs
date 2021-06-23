@@ -62,6 +62,47 @@ impl Default for CommandCollection {
     }
 }
 
+struct SourcePathCollection {
+    buf: String,
+    ranges: Vec<Range<u16>>,
+}
+impl SourcePathCollection {
+    pub fn get(&self, index: usize) -> &Path {
+        let range = self.ranges[index].clone();
+        let range = range.start as usize..range.end as usize;
+        Path::new(&self.buf[range])
+    }
+
+    pub fn index_of(&mut self, path: &Path) -> usize {
+        let path = match path.to_str() {
+            Some(path) => path,
+            None => return 0,
+        };
+
+        for (i, range) in self.ranges.iter().enumerate() {
+            let range = range.start as usize..range.end as usize;
+            if &self.buf[range] == path {
+                return i;
+            }
+        }
+
+        let start = self.buf.len();
+        self.buf.push_str(path);
+        let end = self.buf.len();
+        let index = self.ranges.len();
+        self.ranges.push(start as _..end as _);
+        index
+    }
+}
+impl Default for SourcePathCollection {
+    fn default() -> Self {
+        Self {
+            buf: String::new(),
+            ranges: vec![0..0],
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct CommandManager {
     commands: CommandCollection,
@@ -332,37 +373,10 @@ struct Binding {
     pub range: Range<u32>,
 }
 
-struct SourceCollection<'source> {
-    pub contents: [&'source str; u8::MAX as _],
-    pub paths: [&'source Path; u8::MAX as _],
-    len: u8,
-}
-impl<'source> SourceCollection<'source> {
-    pub fn new() -> Self {
-        Self {
-            contents: [""; u8::MAX as _],
-            paths: [Path::new(""); u8::MAX as _],
-            len: 0,
-        }
-    }
-
-    pub fn add(&mut self, path: &'source Path, source: &'source str) -> Option<u8> {
-        if self.len == u8::MAX {
-            return None;
-        }
-
-        let index = self.len;
-        self.contents[index as usize] = source;
-        self.paths[index as usize] = path;
-        self.len += 1;
-
-        Some(index)
-    }
-}
-
 struct Parser<'source, 'data> {
     tokenizer: CommandTokenizer<'source>,
-    pub sources: &'source mut SourceCollection<'source>,
+    pub paths: &'data mut SourcePathCollection,
+    pub sources: &'source [&'source str],
     pub source_index: u8,
     pub ast: &'data mut Vec<CommandAstNode>,
     pub bindings: &'data mut Vec<Binding>,
@@ -370,15 +384,17 @@ struct Parser<'source, 'data> {
 }
 impl<'source, 'data> Parser<'source, 'data> {
     pub fn new(
-        sources: &'source SourceCollection<'source>,
+        paths: &'data mut SourcePathCollection,
+        sources: &'source [&'source str],
         ast: &'data mut Vec<CommandAstNode>,
         bindings: &'data mut Vec<Binding>,
         source_index: u8,
     ) -> Result<Self, CommandError> {
-        let source = sources.contents[source_index as usize];
+        let source = sources[source_index as usize];
         let mut tokenizer = CommandTokenizer::new(source);
         let previous_token = tokenizer.next()?;
         Ok(Self {
+            paths,
             tokenizer,
             sources,
             source_index: source_index as _,
@@ -478,7 +494,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             path.into()
         } else {
             let mut buf = PathBuf::new();
-            let current_path = parser.sources.paths[parser.source_index as usize];
+            let current_path = parser.paths.get(parser.source_index as _);
             if !current_path.as_os_str().is_empty() {
                 buf.push(current_path);
             }
@@ -497,21 +513,20 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             }
         };
 
-        let source_index = match parser.sources.add(&path, &source) {
-            Some(index) => index,
-            None => {
-                return Err(CommandError {
-                    kind: CommandErrorKind::TooManySources,
-                    source: parser.source_index,
-                    range: parser.previous_token.range.clone(),
-                })
-            }
-        };
+        let source_index = parser.paths.index_of(&path);
+        if source_index > u8::MAX as _ {
+            return Err(CommandError {
+                kind: CommandErrorKind::TooManySources,
+                source: parser.source_index,
+                range: parser.previous_token.range.clone(),
+            })
+        }
 
         parser.next_token()?;
 
         let previous_bindings_len = parser.bindings.len();
         let mut parser = Parser::new(
+            parser.paths,
             parser.sources,
             parser.ast,
             parser.bindings,
@@ -1153,6 +1168,7 @@ struct VirtualMachine {
     prepared_frames: Vec<StackFrame>,
 
     op_locations: Vec<SourceLocation>,
+    paths: SourcePathCollection,
 }
 
 fn execute(
