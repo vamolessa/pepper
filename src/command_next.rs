@@ -845,14 +845,15 @@ fn find_command(commands: &CommandCollection, name: &str) -> Option<CommandSourc
 }
 
 struct Compiler<'source, 'data> {
-    pub source: &'source str,
+    pub sources: &'source [&'source str],
     pub ast: &'data [CommandAstNode],
     pub commands: &'data mut CommandCollection,
     pub virtual_machine: &'data mut VirtualMachine,
 }
 impl<'source, 'data> Compiler<'source, 'data> {
-    pub fn emit_push_literal(&mut self, range: Range<u32>) {
-        let literal = &self.source[range.start as usize..range.end as usize];
+    pub fn emit_push_literal(&mut self, source_index: u8, range: Range<u32>) {
+        let literal =
+            &self.sources[source_index as usize][range.start as usize..range.end as usize];
         let start = self.virtual_machine.texts.len();
         self.virtual_machine.texts.push_str(literal);
         let len = self.virtual_machine.texts.len() - start;
@@ -869,7 +870,8 @@ impl<'source, 'data> Compiler<'source, 'data> {
     ) -> Result<(), CommandError> {
         let start = self.virtual_machine.texts.len();
 
-        let mut literal = &self.source[range.start as usize..range.end as usize];
+        let mut literal =
+            &self.sources[source_index as usize][range.start as usize..range.end as usize];
         while let Some(i) = literal.find('\\') {
             self.virtual_machine.texts.push_str(&literal[..i]);
             literal = &literal[i + 1..];
@@ -909,7 +911,7 @@ fn compile(compiler: &mut Compiler) -> Result<usize, CommandError> {
     ) -> Result<(), CommandError> {
         match compiler.ast[index] {
             CommandAstNode::Literal(ref range) => {
-                compiler.emit_push_literal(range.clone());
+                compiler.emit_push_literal(source_index, range.clone());
             }
             CommandAstNode::QuotedLiteral(ref range) => {
                 let mut range = range.clone();
@@ -927,7 +929,8 @@ fn compile(compiler: &mut Compiler) -> Result<usize, CommandError> {
                 first_flag,
                 next,
             } => {
-                let command_name = &compiler.source[name.start as usize..name.end as usize];
+                let command_name = &compiler.sources[source_index as usize]
+                    [name.start as usize..name.end as usize];
                 let command_source = match find_command(compiler.commands, command_name) {
                     Some(source) => source,
                     None => {
@@ -971,8 +974,12 @@ fn compile(compiler: &mut Compiler) -> Result<usize, CommandError> {
                             compiler.ast[flag]
                         {
                             let name_range = name.start as _..name.end as _;
-                            let flag_index =
-                                find_flag_index(flags, compiler.source, source, name_range)?;
+                            let flag_index = find_flag_index(
+                                flags,
+                                compiler.sources[source_index as usize],
+                                source,
+                                name_range,
+                            )?;
                             flag_expressions[flag_index] = flag + 1;
                             flag = next as _;
                         }
@@ -1060,7 +1067,8 @@ fn compile(compiler: &mut Compiler) -> Result<usize, CommandError> {
                 param_count,
                 next,
             } => {
-                let command_name = &compiler.source[name.start as usize..name.end as usize];
+                let command_name =
+                    &compiler.sources[source as usize][name.start as usize..name.end as usize];
                 if find_command(compiler.commands, command_name).is_some() {
                     return Err(CommandError {
                         kind: CommandErrorKind::CommandAlreadyExists,
