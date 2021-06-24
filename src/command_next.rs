@@ -376,7 +376,6 @@ struct Binding {
 struct Parser<'source, 'data> {
     tokenizer: CommandTokenizer<'source>,
     pub paths: &'data mut SourcePathCollection,
-    pub sources: &'source [&'source str],
     pub source_index: u8,
     pub ast: &'data mut Vec<CommandAstNode>,
     pub bindings: &'data mut Vec<Binding>,
@@ -384,19 +383,17 @@ struct Parser<'source, 'data> {
 }
 impl<'source, 'data> Parser<'source, 'data> {
     pub fn new(
+        source: &'source str,
         paths: &'data mut SourcePathCollection,
-        sources: &'source [&'source str],
         ast: &'data mut Vec<CommandAstNode>,
         bindings: &'data mut Vec<Binding>,
         source_index: u8,
     ) -> Result<Self, CommandError> {
-        let source = sources[source_index as usize];
         let mut tokenizer = CommandTokenizer::new(source);
         let previous_token = tokenizer.next()?;
         Ok(Self {
             paths,
             tokenizer,
-            sources,
             source_index: source_index as _,
             ast,
             bindings,
@@ -526,8 +523,8 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
 
         let previous_bindings_len = parser.bindings.len();
         let mut parser = Parser::new(
+            &source,
             parser.paths,
-            parser.sources,
             parser.ast,
             parser.bindings,
             source_index as _,
