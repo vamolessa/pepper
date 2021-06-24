@@ -106,27 +106,41 @@ impl Default for SourcePathCollection {
 #[derive(Default)]
 pub struct CommandManager {
     commands: CommandCollection,
-    temp_ast: Vec<CommandAstNode>,
-    temp_bindings: Vec<Binding>,
+    texts: String,
+    ast: Vec<CommandAstNode>,
+    bindings: Vec<Binding>,
     virtual_machine: VirtualMachine,
 }
 impl CommandManager {
     pub fn eval(editor: &mut Editor, source: &str) -> Result<(), CommandError> {
         let commands = &mut editor.commands_next;
-        let mut parser = Parser::new(
-            source,
-            &mut commands.virtual_machine.paths,
-            &mut commands.temp_ast,
-            &mut commands.temp_bindings,
-            0,
-        )?;
-        parser.parse()?;
+
+        commands.texts.clear();
+        commands.ast.clear();
+        commands.bindings.clear();
+
+        let mut parser = Parser {
+            tokenizer: CommandTokenizer::new(source),
+            source_index: 0,
+            paths: &mut commands.virtual_machine.paths,
+            texts: &mut commands.texts,
+            ast: &mut commands.ast,
+            bindings: &mut commands.bindings,
+            previous_token: CommandToken::default(),
+        };
+        parse(&mut parser)?;
+
         let mut compiler = Compiler {
-            texts: "", // TODO: fix this
-            ast: &commands.temp_ast,
+            texts: &mut commands.texts,
+            ast: &commands.ast,
             commands: &mut commands.commands,
             virtual_machine: &mut commands.virtual_machine,
         };
+        let definitions_len = compile(&mut compiler)?;
+
+        commands.virtual_machine.ops.truncate(definitions_len.ops as _);
+        commands.virtual_machine.texts.truncate(definitions_len.texts as _);
+        commands.virtual_machine.op_locations.truncate(definitions_len.op_locations as _);
 
         Ok(())
     }
@@ -187,6 +201,14 @@ pub struct CommandToken {
 impl CommandToken {
     pub fn range(&self) -> Range<usize> {
         self.range.start as _..self.range.end as _
+    }
+}
+impl Default for CommandToken {
+    fn default() -> Self {
+        Self {
+            kind: CommandTokenKind::EndOfSource,
+            range: 0..0,
+        }
     }
 }
 
@@ -391,40 +413,29 @@ struct Binding {
 
 struct Parser<'source, 'data> {
     tokenizer: CommandTokenizer<'source>,
-    pub paths: &'data mut SourcePathCollection,
     pub source_index: u8,
+    pub paths: &'data mut SourcePathCollection,
+    pub texts: &'data mut String,
     pub ast: &'data mut Vec<CommandAstNode>,
     pub bindings: &'data mut Vec<Binding>,
     pub previous_token: CommandToken,
 }
 impl<'source, 'data> Parser<'source, 'data> {
-    pub fn new(
-        source: &'source str,
-        paths: &'data mut SourcePathCollection,
-        ast: &'data mut Vec<CommandAstNode>,
-        bindings: &'data mut Vec<Binding>,
-        source_index: u8,
-    ) -> Result<Self, CommandError> {
-        let mut tokenizer = CommandTokenizer::new(source);
-        let previous_token = tokenizer.next()?;
-        Ok(Self {
-            paths,
-            tokenizer,
-            source_index: source_index as _,
-            ast,
-            bindings,
-            previous_token,
-        })
-    }
-
     pub fn previous_token_str(&self) -> &'source str {
         &self.tokenizer.source[self.previous_token.range()]
     }
 
     pub fn next_token(&mut self) -> Result<(), CommandError> {
-        let token = self.tokenizer.next()?;
-        self.previous_token = token;
-        Ok(())
+        match self.tokenizer.next() {
+            Ok(token) => {
+                self.previous_token = token;
+                Ok(())
+            },
+            Err(mut error) => {
+                error.source = self.source_index;
+                Err(error)
+            }
+        }
     }
 
     pub fn consume_token(&mut self, kind: CommandTokenKind) -> Result<(), CommandError> {
@@ -469,17 +480,6 @@ impl<'source, 'data> Parser<'source, 'data> {
             | CommandAstNode::Return { next, .. } => *next = next_index as _,
             _ => unreachable!(),
         }
-    }
-
-    pub fn parse(&mut self) -> Result<(), CommandError> {
-        self.ast.clear();
-        self.bindings.clear();
-        self.ast.push(CommandAstNode::Return {
-            source: self.source_index,
-            next: 0,
-        });
-        parse(self)?;
-        Ok(())
     }
 }
 
@@ -538,14 +538,17 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         parser.next_token()?;
 
         let previous_bindings_len = parser.bindings.len();
-        let mut parser = Parser::new(
-            &source,
-            parser.paths,
-            parser.ast,
-            parser.bindings,
-            source_index as _,
-        )?;
-        parse(&mut parser)?;
+        let mut source_parser = Parser {
+            tokenizer: CommandTokenizer::new(&source),
+            source_index: source_index as _,
+            paths: parser.paths,
+            texts: parser.texts,
+            ast: parser.ast,
+            bindings: parser.bindings,
+            previous_token: CommandToken::default(),
+        };
+        parse(&mut source_parser)?;
+
         parser.bindings.truncate(previous_bindings_len);
         Ok(())
     }
@@ -823,6 +826,14 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         }
     }
 
+    parser.next_token()?;
+    if parser.ast.is_empty() {
+        parser.ast.push(CommandAstNode::Return {
+            source: 0,
+            next: 0,
+        });
+    }
+
     while parser.previous_token.kind != CommandTokenKind::EndOfSource {
         parse_top_level(parser)?;
     }
@@ -919,7 +930,22 @@ impl<'data> Compiler<'data> {
     }
 }
 
-fn compile(compiler: &mut Compiler) -> Result<usize, CommandError> {
+struct DefinitionsLen {
+    pub ops: u32,
+    pub texts: u32,
+    pub op_locations: u32,
+}
+impl DefinitionsLen {
+    fn from_vm(vm: &VirtualMachine) -> Self {
+        Self {
+            ops: vm.ops.len() as _,
+            texts: vm.texts.len() as _,
+            op_locations: vm.op_locations.len() as _,
+        }
+    }
+}
+
+fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
     fn emit_expression(
         compiler: &mut Compiler,
         source_index: u8,
@@ -1062,8 +1088,8 @@ fn compile(compiler: &mut Compiler) -> Result<usize, CommandError> {
         }
     }
 
-    if compiler.ast.len() == 1 {
-        return Ok(compiler.virtual_machine.ops.len());
+    if compiler.ast.len() <= 1 {
+        return Ok(DefinitionsLen::from_vm(&compiler.virtual_machine));
     }
 
     let mut index = 1;
@@ -1106,7 +1132,7 @@ fn compile(compiler: &mut Compiler) -> Result<usize, CommandError> {
         }
     }
 
-    let definitions_end = compiler.virtual_machine.ops.len();
+    let definitions_len = DefinitionsLen::from_vm(&compiler.virtual_machine);
 
     index = 1;
     while index != 0 {
@@ -1122,7 +1148,7 @@ fn compile(compiler: &mut Compiler) -> Result<usize, CommandError> {
         .push(Op::PushLiteral { start: 0, len: 0 });
     compiler.virtual_machine.ops.push(Op::Return);
 
-    Ok(definitions_end)
+    Ok(definitions_len)
 }
 
 const _ASSERT_OP_SIZE: [(); 4] = [(); std::mem::size_of::<Op>()];
