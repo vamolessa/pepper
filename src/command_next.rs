@@ -266,19 +266,21 @@ impl<'a> CommandTokenizer<'a> {
 
         loop {
             if self.index == source_bytes.len() {
+                let position = self.position;
                 self.index += 1;
                 self.position.column_byte_index += 1;
                 return Ok(CommandToken {
                     kind: CommandTokenKind::EndOfCommand,
                     range: source_bytes.len() as _..source_bytes.len() as _,
-                    position: self.position,
+                    position,
                 });
             }
             if self.index > source_bytes.len() {
+                let position = self.position;
                 return Ok(CommandToken {
                     kind: CommandTokenKind::EndOfSource,
                     range: source_bytes.len() as _..source_bytes.len() as _,
-                    position: self.position,
+                    position,
                 });
             }
 
@@ -289,6 +291,7 @@ impl<'a> CommandTokenizer<'a> {
                 }
                 b'\n' => {
                     let from = self.index;
+                    let position = self.position;
                     while self.index < source_bytes.len() {
                         match source_bytes[self.index] {
                             b' ' | b'\t' | b'\r' => {
@@ -306,7 +309,7 @@ impl<'a> CommandTokenizer<'a> {
                     return Ok(CommandToken {
                         kind: CommandTokenKind::EndOfCommand,
                         range: from as _..self.index as _,
-                        position: self.position,
+                        position,
                     });
                 }
                 delim @ (b'"' | b'\'') => {
@@ -451,14 +454,13 @@ enum AstNode {
         next: u16,
     },
     CommandCallArg {
-        next: u16,
+        next_arg: u16,
     },
     CommandCallFlag {
         name: Range<u32>,
-        next: u16,
+        next_flag: u16,
     },
     BindingDeclaration {
-        name: Range<u32>,
         next: u16,
     },
     MacroDeclaration {
@@ -516,7 +518,7 @@ impl<'source, 'data> Parser<'source, 'data> {
         }
     }
 
-    pub fn declare_binding_from_previous_token(&mut self) -> Result<&Binding, CommandError> {
+    pub fn declare_binding_from_previous_token(&mut self) -> Result<(), CommandError> {
         if self.bindings.len() >= u16::MAX as _ {
             Err(CommandError {
                 kind: CommandErrorKind::TooManyBindings,
@@ -526,7 +528,7 @@ impl<'source, 'data> Parser<'source, 'data> {
         } else {
             let range = self.previous_token.range.clone();
             self.bindings.push(Binding { range });
-            Ok(&self.bindings[self.bindings.len()])
+            Ok(())
         }
     }
 
@@ -698,11 +700,8 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                         });
                     }
 
-                    let binding = parser.declare_binding_from_previous_token()?;
-                    let name = binding.range.clone();
-                    parser
-                        .ast
-                        .push(AstNode::BindingDeclaration { name, next: 0 });
+                    parser.declare_binding_from_previous_token()?;
+                    parser.ast.push(AstNode::BindingDeclaration { next: 0 });
 
                     parser.next_token()?;
                     parser.consume_token(CommandTokenKind::Equals)?;
@@ -782,13 +781,16 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                     _ => (),
                 }
 
-                if let AstNode::CommandCallFlag { next, .. } = &mut parser.ast[last_flag] {
+                if let AstNode::CommandCallFlag {
+                    next_flag: next, ..
+                } = &mut parser.ast[last_flag]
+                {
                     *next = len;
                 }
                 last_flag = parser.ast.len();
                 parser.ast.push(AstNode::CommandCallFlag {
                     name: parser.previous_token.range.clone(),
-                    next: 0,
+                    next_flag: 0,
                 });
 
                 let position = parser.previous_token.position;
@@ -817,11 +819,11 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                         _ => unreachable!(),
                     }
                 }
-                if let AstNode::CommandCallArg { next, .. } = &mut parser.ast[last_arg] {
+                if let AstNode::CommandCallArg { next_arg: next, .. } = &mut parser.ast[last_arg] {
                     *next = len;
                 }
                 last_arg = parser.ast.len();
-                parser.ast.push(AstNode::CommandCallArg { next: 0 });
+                parser.ast.push(AstNode::CommandCallArg { next_arg: 0 });
 
                 let expression_position = parse_expression(parser, is_top_level)?;
                 if arg_count == u8::MAX {
@@ -1115,7 +1117,11 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
 
                         let mut flag_expressions = [0; u8::MAX as _];
                         let flags = compiler.commands.builtin_commands[i].flags;
-                        while let AstNode::CommandCallFlag { ref name, next } = compiler.ast[flag] {
+                        while let AstNode::CommandCallFlag {
+                            ref name,
+                            next_flag: next,
+                        } = compiler.ast[flag]
+                        {
                             let name = &compiler.texts[name.start as usize..name.end as usize];
                             let flag_index = find_flag_index(flags, name, source_index, position)?;
                             flag_expressions[flag_index] = flag + 1;
@@ -1148,24 +1154,33 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                     },
                 }
 
-                while let AstNode::CommandCallArg { next } = compiler.ast[arg] {
+                while let AstNode::CommandCallArg { next_arg: next } = compiler.ast[arg] {
                     emit_expression(compiler, source_index, arg + 1)?;
                     arg = next as _;
                 }
 
                 match command_source {
-                    CommandSource::Builtin(i) => compiler
-                        .virtual_machine
-                        .ops
-                        .push(Op::CallBuiltinCommand(i as _)),
-                    CommandSource::Macro(i) => compiler
-                        .virtual_machine
-                        .ops
-                        .push(Op::CallMacroCommand(i as _)),
-                    CommandSource::Request(i) => compiler
-                        .virtual_machine
-                        .ops
-                        .push(Op::CallRequestCommand(i as _)),
+                    CommandSource::Builtin(i) => compiler.emit(
+                        Op::CallBuiltinCommand(i as _),
+                        SourceLocation {
+                            source: source_index,
+                            position,
+                        },
+                    ),
+                    CommandSource::Macro(i) => compiler.emit(
+                        Op::CallMacroCommand(i as _),
+                        SourceLocation {
+                            source: source_index,
+                            position,
+                        },
+                    ),
+                    CommandSource::Request(i) => compiler.emit(
+                        Op::CallRequestCommand(i as _),
+                        SourceLocation {
+                            source: source_index,
+                            position,
+                        },
+                    ),
                 }
 
                 debug_assert_eq!(0, next);
@@ -1280,11 +1295,20 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
         }
     }
 
-    compiler
-        .virtual_machine
-        .ops
-        .push(Op::PushLiteral { start: 0, len: 0 });
-    compiler.virtual_machine.ops.push(Op::Return);
+    compiler.emit(
+        Op::PushLiteral { start: 0, len: 0 },
+        SourceLocation {
+            source: 0,
+            position: BufferPosition::zero(),
+        },
+    );
+    compiler.emit(
+        Op::Return,
+        SourceLocation {
+            source: 0,
+            position: BufferPosition::zero(),
+        },
+    );
 
     Ok(definitions_len)
 }
@@ -1434,14 +1458,21 @@ mod tests {
 
     #[test]
     fn command_tokenizer() {
-        fn collect<'a>(source: &'a str) -> Vec<(CommandTokenKind, &'a str)> {
+        fn pos(line: usize, column: usize) -> BufferPosition {
+            BufferPosition::line_col(line as _, column as _)
+        }
+
+        fn collect<'a>(source: &'a str) -> Vec<(CommandTokenKind, &'a str, BufferPosition)> {
             let mut tokenizer = CommandTokenizer::new(source);
             let mut tokens = Vec::new();
             loop {
                 let token = tokenizer.next().unwrap();
                 match token.kind {
                     CommandTokenKind::EndOfSource => break,
-                    _ => tokens.push((token.kind, &source[token.range()])),
+                    _ => {
+                        let text = &source[token.range()];
+                        tokens.push((token.kind, text, token.position))
+                    }
                 }
             }
             tokens
@@ -1449,46 +1480,52 @@ mod tests {
 
         use CommandTokenKind::*;
 
-        assert_eq!(vec![(EndOfCommand, "")], collect(""));
-        assert_eq!(vec![(EndOfCommand, "")], collect("  "));
+        assert_eq!(vec![(EndOfCommand, "", pos(0, 0))], collect(""));
+        assert_eq!(vec![(EndOfCommand, "", pos(0, 2))], collect("  "));
         assert_eq!(
-            vec![(Literal, "command"), (EndOfCommand, "")],
+            vec![
+                (Literal, "command", pos(0, 0)),
+                (EndOfCommand, "", pos(0, 7))
+            ],
             collect("command"),
         );
         assert_eq!(
-            vec![(QuotedLiteral, "'text'"), (EndOfCommand, "")],
+            vec![
+                (QuotedLiteral, "'text'", pos(0, 0)),
+                (EndOfCommand, "", pos(0, 6))
+            ],
             collect("'text'"),
         );
         assert_eq!(
             vec![
-                (Literal, "cmd"),
-                (OpenParenthesis, "("),
-                (Literal, "subcmd"),
-                (CloseParenthesis, ")"),
-                (EndOfCommand, ""),
+                (Literal, "cmd", pos(0, 0)),
+                (OpenParenthesis, "(", pos(0, 4)),
+                (Literal, "subcmd", pos(0, 5)),
+                (CloseParenthesis, ")", pos(0, 11)),
+                (EndOfCommand, "", pos(0, 12)),
             ],
             collect("cmd (subcmd)"),
         );
         assert_eq!(
             vec![
-                (Literal, "cmd"),
-                (Binding, "$binding"),
-                (Flag, "-flag"),
-                (Equals, "="),
-                (Literal, "value"),
-                (Equals, "="),
-                (Literal, "not-flag"),
-                (EndOfCommand, ""),
+                (Literal, "cmd", pos(0, 0)),
+                (Binding, "$binding", pos(0, 4)),
+                (Flag, "-flag", pos(0, 13)),
+                (Equals, "=", pos(0, 18)),
+                (Literal, "value", pos(0, 19)),
+                (Equals, "=", pos(0, 25)),
+                (Literal, "not-flag", pos(0, 27)),
+                (EndOfCommand, "", pos(0, 35)),
             ],
             collect("cmd $binding -flag=value = not-flag"),
         );
         assert_eq!(
             vec![
-                (Literal, "cmd0"),
-                (Literal, "cmd1"),
-                (EndOfCommand, "\r\n\n \t \n  "),
-                (Literal, "cmd2"),
-                (EndOfCommand, ""),
+                (Literal, "cmd0", pos(0, 0)),
+                (Literal, "cmd1", pos(0, 5)),
+                (EndOfCommand, "\n\n \t \n  ", pos(0, 12)),
+                (Literal, "cmd2", pos(3, 2)),
+                (EndOfCommand, "", pos(3, 6)),
             ],
             collect("cmd0 cmd1 \t\r\n\n \t \n  cmd2"),
         );
@@ -1496,9 +1533,25 @@ mod tests {
 
     #[test]
     fn command_compiler() {
-        fn compile(source: &str) -> Vec<Op> {
+        fn compile_source(source: &str) -> VirtualMachine {
+            let mut paths = SourcePathCollection::default();
+            let mut texts = String::new();
+            let mut ast = Vec::new();
             let mut bindings = Vec::new();
-            let builtin_commands = &[BuiltinCommand {
+
+            let mut parser = Parser {
+                tokenizer: CommandTokenizer::new(source),
+                source_index: 0,
+                paths: &mut paths,
+                texts: &mut texts,
+                ast: &mut ast,
+                bindings: &mut bindings,
+                previous_token: CommandToken::default(),
+            };
+            parse(&mut parser).unwrap();
+
+            let mut commands = CommandCollection::default();
+            commands.builtin_commands = &[BuiltinCommand {
                 name: "cmd",
                 alias: "",
                 hidden: false,
@@ -1506,120 +1559,129 @@ mod tests {
                 flags: &["-switch", "-option"],
                 func: || (),
             }];
-            let mut macro_commands = MacroCommandCollection::default();
-            let mut compiler = Compiler::new(
-                source,
-                None,
-                &mut bindings,
-                builtin_commands,
-                &mut macro_commands,
-            )
-            .unwrap();
-            let mut chunk = ByteCodeChunk::default();
-            compiler.compile(&mut chunk).unwrap();
-            chunk.ops
+            let mut virtual_machine = VirtualMachine::default();
+
+            let mut compiler = Compiler {
+                texts: &texts,
+                ast: &ast,
+                commands: &mut commands,
+                virtual_machine: &mut virtual_machine,
+            };
+            compile(&mut compiler).unwrap();
+
+            virtual_machine
         }
 
         use Op::*;
 
         assert_eq!(
-            vec![
-                PrepareStackFrame { is_macro_chunk },
-                PushLiteralReference { start: 0, len: 0 },
-                Return
-            ],
-            compile("")
+            vec![PushLiteral { start: 0, len: 0 }, Return],
+            compile_source("").ops,
         );
 
         assert_eq!(
             vec![
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
                 CallBuiltinCommand(0),
                 Pop,
-                PushLiteralReference { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
                 Return
             ],
-            compile("cmd"),
+            compile_source("cmd").ops,
         );
 
         assert_eq!(
             vec![
-                PushLiteralReference {
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral {
                     start: 0,
                     len: "arg0".len() as _,
                 },
-                PushLiteralReference {
+                PushLiteral {
                     start: "arg0".len() as _,
                     len: "arg1".len() as _,
                 },
                 CallBuiltinCommand(0),
                 Pop,
-                PushLiteralReference { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
                 Return
             ],
-            compile("cmd arg0 arg1"),
+            compile_source("cmd arg0 arg1").ops,
         );
 
         assert_eq!(
             vec![
-                PushLiteralReference { start: 0, len: 0 },
-                PopAsFlag(0),
-                PushLiteralReference {
-                    start: 0,
-                    len: "arg".len() as _,
-                },
-                PushLiteralReference {
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral {
                     start: "arg".len() as _,
                     len: "opt".len() as _,
                 },
-                PopAsFlag(1),
+                PushLiteral {
+                    start: 0,
+                    len: "arg".len() as _,
+                },
                 CallBuiltinCommand(0),
                 Pop,
-                PushLiteralReference { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
                 Return
             ],
-            compile("cmd -switch arg -option=opt"),
+            compile_source("cmd -switch arg -option=opt").ops,
         );
 
         assert_eq!(
             vec![
-                PushLiteralReference {
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                // begin nested call
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral {
                     start: 0,
-                    len: "arg0".len() as _,
-                },
-                PushLiteralReference {
-                    start: "arg0".len() as _,
                     len: "arg1".len() as _,
                 },
                 CallBuiltinCommand(0),
-                PopAsFlag(1),
-                PushLiteralReference {
-                    start: "arg0arg1".len() as _,
+                // end nested call
+                PushLiteral {
+                    start: "arg1".len() as _,
+                    len: "arg0".len() as _,
+                },
+                PushLiteral {
+                    start: "arg1arg0".len() as _,
                     len: "arg2".len() as _,
                 },
                 CallBuiltinCommand(0),
                 Pop,
-                PushLiteralReference { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
                 Return
             ],
-            compile("cmd arg0 -option=(cmd arg1) arg2"),
+            compile_source("cmd arg0 -option=(cmd arg1) arg2").ops,
         );
 
         assert_eq!(
             vec![
-                PushLiteralReference {
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral {
                     start: 0,
                     len: "arg0".len() as _,
                 },
-                PushLiteralReference {
+                PushLiteral {
                     start: "arg0".len() as _,
                     len: "arg1".len() as _,
                 },
                 CallBuiltinCommand(0),
                 Pop,
-                PushLiteralReference { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
                 Return
             ],
-            compile("(cmd \n arg0 \n arg2)"),
+            compile_source("(cmd \n arg0 \n arg2)").ops,
         );
     }
 }
