@@ -107,8 +107,7 @@ impl Default for SourcePathCollection {
 #[derive(Default)]
 pub struct CommandManager {
     commands: CommandCollection,
-    texts: String,
-    ast: Vec<AstNode>,
+    ast: Ast,
     bindings: Vec<Binding>,
     virtual_machine: VirtualMachine,
 }
@@ -116,7 +115,6 @@ impl CommandManager {
     pub fn eval(editor: &mut Editor, source: &str) -> Result<(), CommandError> {
         let commands = &mut editor.commands_next;
 
-        commands.texts.clear();
         commands.ast.clear();
         commands.bindings.clear();
 
@@ -124,7 +122,6 @@ impl CommandManager {
             tokenizer: CommandTokenizer::new(source),
             source_index: 0,
             paths: &mut commands.virtual_machine.paths,
-            texts: &mut commands.texts,
             ast: &mut commands.ast,
             bindings: &mut commands.bindings,
             previous_token: CommandToken::default(),
@@ -133,7 +130,6 @@ impl CommandManager {
         parse(&mut parser)?;
 
         let mut compiler = Compiler {
-            texts: &mut commands.texts,
             ast: &commands.ast,
             commands: &mut commands.commands,
             virtual_machine: &mut commands.virtual_machine,
@@ -474,6 +470,18 @@ enum AstNode {
     },
 }
 
+#[derive(Default)]
+struct Ast {
+    pub nodes: Vec<AstNode>,
+    pub texts: String,
+}
+impl Ast {
+    pub fn clear(&mut self) {
+        self.nodes.clear();
+        self.texts.clear();
+    }
+}
+
 struct Binding {
     pub range: Range<u32>,
 }
@@ -482,8 +490,7 @@ struct Parser<'source, 'data> {
     tokenizer: CommandTokenizer<'source>,
     pub source_index: u8,
     pub paths: &'data mut SourcePathCollection,
-    pub texts: &'data mut String,
-    pub ast: &'data mut Vec<AstNode>,
+    pub ast: &'data mut Ast,
     pub bindings: &'data mut Vec<Binding>,
     pub previous_token: CommandToken,
     pub previous_statement_index: u16,
@@ -541,15 +548,15 @@ impl<'source, 'data> Parser<'source, 'data> {
     }
 
     pub fn add_statement(&mut self) {
-        let index = self.ast.len() as _;
+        let index = self.ast.nodes.len() as _;
         if self.previous_statement_index > 0 {
-            match &mut self.ast[self.previous_statement_index as usize] {
+            match &mut self.ast.nodes[self.previous_statement_index as usize] {
                 AstNode::Statement { next, .. } => *next = index,
                 _ => unreachable!(),
             }
         }
         self.previous_statement_index = index;
-        self.ast.push(AstNode::Statement {
+        self.ast.nodes.push(AstNode::Statement {
             source: self.source_index,
             next: 0,
         });
@@ -614,7 +621,6 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             tokenizer: CommandTokenizer::new(&source),
             source_index: source_index as _,
             paths: parser.paths,
-            texts: parser.texts,
             ast: parser.ast,
             bindings: parser.bindings,
             previous_token: CommandToken::default(),
@@ -631,9 +637,9 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         parser.next_token()?;
         parser.consume_token(CommandTokenKind::Literal)?;
 
-        let index = parser.ast.len();
+        let index = parser.ast.nodes.len();
         parser.add_statement();
-        parser.ast.push(AstNode::MacroDeclaration {
+        parser.ast.nodes.push(AstNode::MacroDeclaration {
             name: parser.previous_token.range.clone(),
             position: parser.previous_token.position,
             param_count: 0,
@@ -644,7 +650,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         loop {
             match parser.previous_token.kind {
                 CommandTokenKind::OpenCurlyBrackets => {
-                    match &mut parser.ast[index] {
+                    match &mut parser.ast.nodes[index] {
                         AstNode::MacroDeclaration { param_count, .. } => {
                             *param_count = (parser.bindings.len() - previous_bindings_len) as _;
                         }
@@ -678,7 +684,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
 
     fn parse_return(parser: &mut Parser, is_top_level: bool) -> Result<(), CommandError> {
         parser.add_statement();
-        parser.ast.push(AstNode::Return {
+        parser.ast.nodes.push(AstNode::Return {
             position: parser.previous_token.position,
         });
         parser.next_token()?;
@@ -704,7 +710,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
 
                     parser.declare_binding_from_previous_token()?;
                     parser.add_statement();
-                    parser.ast.push(AstNode::BindingDeclaration);
+                    parser.ast.nodes.push(AstNode::BindingDeclaration);
 
                     parser.next_token()?;
                     parser.consume_token(CommandTokenKind::Equals)?;
@@ -747,8 +753,8 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
 
         let end_token_kind = find_end_token_kind(parser)?;
 
-        let index = parser.ast.len();
-        parser.ast.push(AstNode::CommandCall {
+        let index = parser.ast.nodes.len();
+        parser.ast.nodes.push(AstNode::CommandCall {
             name: parser.previous_token.range.clone(),
             position: parser.previous_token.position,
             first_arg: 0,
@@ -764,10 +770,10 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
 
         loop {
             if parser.previous_token.kind == CommandTokenKind::Flag {
-                let len = parser.ast.len() as _;
+                let len = parser.ast.nodes.len() as _;
 
                 match flag_count {
-                    0 => match &mut parser.ast[index] {
+                    0 => match &mut parser.ast.nodes[index] {
                         AstNode::CommandCall { first_flag, .. } => *first_flag = len,
                         _ => unreachable!(),
                     },
@@ -781,11 +787,11 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                     _ => (),
                 }
 
-                if let AstNode::CommandCallFlag { next, .. } = &mut parser.ast[last_flag] {
+                if let AstNode::CommandCallFlag { next, .. } = &mut parser.ast.nodes[last_flag] {
                     *next = len;
                 }
-                last_flag = parser.ast.len();
-                parser.ast.push(AstNode::CommandCallFlag {
+                last_flag = parser.ast.nodes.len();
+                parser.ast.nodes.push(AstNode::CommandCallFlag {
                     name: parser.previous_token.range.clone(),
                     next: 0,
                 });
@@ -797,7 +803,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                         parser.next_token()?;
                         parse_expression(parser, is_top_level)?;
                     }
-                    _ => parser.ast.push(AstNode::Literal {
+                    _ => parser.ast.nodes.push(AstNode::Literal {
                         range: 0..0,
                         position,
                     }),
@@ -808,19 +814,19 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                 parser.next_token()?;
                 break;
             } else {
-                let len = parser.ast.len() as _;
+                let len = parser.ast.nodes.len() as _;
 
                 if arg_count == 0 {
-                    match &mut parser.ast[index] {
+                    match &mut parser.ast.nodes[index] {
                         AstNode::CommandCall { first_arg, .. } => *first_arg = len,
                         _ => unreachable!(),
                     }
                 }
-                if let AstNode::CommandCallArg { next, .. } = &mut parser.ast[last_arg] {
+                if let AstNode::CommandCallArg { next, .. } = &mut parser.ast.nodes[last_arg] {
                     *next = len;
                 }
-                last_arg = parser.ast.len();
-                parser.ast.push(AstNode::CommandCallArg { next: 0 });
+                last_arg = parser.ast.nodes.len();
+                parser.ast.nodes.push(AstNode::CommandCallArg { next: 0 });
 
                 let expression_position = parse_expression(parser, is_top_level)?;
                 if arg_count == u8::MAX {
@@ -845,9 +851,9 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         fn consume_literal_range(parser: &mut Parser) -> Result<Range<u32>, CommandError> {
             let range = parser.previous_token.range();
             if range.end - range.start <= u8::MAX as _ {
-                let start = parser.texts.len();
-                parser.texts.push_str(&parser.tokenizer.source[range]);
-                let end = parser.texts.len();
+                let start = parser.ast.texts.len();
+                parser.ast.texts.push_str(&parser.tokenizer.source[range]);
+                let end = parser.ast.texts.len();
                 parser.next_token()?;
                 Ok(start as _..end as _)
             } else {
@@ -867,13 +873,16 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             CommandTokenKind::Literal => {
                 let position = parser.previous_token.position;
                 let range = consume_literal_range(parser)?;
-                parser.ast.push(AstNode::Literal { range, position });
+                parser.ast.nodes.push(AstNode::Literal { range, position });
                 Ok(position)
             }
             CommandTokenKind::QuotedLiteral => {
                 let position = parser.previous_token.position;
                 let range = consume_literal_range(parser)?;
-                parser.ast.push(AstNode::QuotedLiteral { range, position });
+                parser
+                    .ast
+                    .nodes
+                    .push(AstNode::QuotedLiteral { range, position });
                 Ok(position)
             }
             CommandTokenKind::OpenParenthesis => {
@@ -887,7 +896,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                 match parser.find_binding_stack_index(binding_name) {
                     Some(index) => {
                         parser.next_token()?;
-                        parser.ast.push(AstNode::Binding { index, position });
+                        parser.ast.nodes.push(AstNode::Binding { index, position });
                         Ok(position)
                     }
                     None => Err(CommandError {
@@ -948,8 +957,7 @@ fn find_command(commands: &CommandCollection, name: &str) -> Option<CommandSourc
 }
 
 struct Compiler<'data> {
-    pub texts: &'data str,
-    pub ast: &'data [AstNode],
+    pub ast: &'data Ast,
     pub commands: &'data mut CommandCollection,
     pub virtual_machine: &'data mut VirtualMachine,
 }
@@ -960,7 +968,7 @@ impl<'data> Compiler<'data> {
     }
 
     pub fn emit_push_literal(&mut self, range: Range<u32>, location: SourceLocation) {
-        let literal = &self.texts[range.start as usize..range.end as usize];
+        let literal = &self.ast.texts[range.start as usize..range.end as usize];
         let start = self.virtual_machine.texts.len();
         self.virtual_machine.texts.push_str(literal);
         let len = self.virtual_machine.texts.len() - start;
@@ -980,7 +988,7 @@ impl<'data> Compiler<'data> {
     ) -> Result<(), CommandError> {
         let start = self.virtual_machine.texts.len();
 
-        let mut literal = &self.texts[range.start as usize..range.end as usize];
+        let mut literal = &self.ast.texts[range.start as usize..range.end as usize];
         while let Some(i) = literal.find('\\') {
             self.virtual_machine.texts.push_str(&literal[..i]);
             literal = &literal[i + 1..];
@@ -1020,14 +1028,40 @@ struct DefinitionsLen {
     pub texts: u32,
     pub op_locations: u32,
 }
+impl DefinitionsLen {
+    pub fn from_virtual_machine(vm: &VirtualMachine) -> Self {
+        Self {
+            ops: vm.ops.len() as _,
+            texts: vm.texts.len() as _,
+            op_locations: vm.op_locations.len() as _,
+        }
+    }
+}
 
 fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
+    fn emit_final_return(compiler: &mut Compiler) {
+        compiler.emit(
+            Op::PushLiteral { start: 0, len: 0 },
+            SourceLocation {
+                source_index: 0,
+                position: BufferPosition::zero(),
+            },
+        );
+        compiler.emit(
+            Op::Return,
+            SourceLocation {
+                source_index: 0,
+                position: BufferPosition::zero(),
+            },
+        );
+    }
+
     fn emit_expression(
         compiler: &mut Compiler,
         source_index: u8,
         index: usize,
     ) -> Result<(), CommandError> {
-        match compiler.ast[index] {
+        match compiler.ast.nodes[index] {
             AstNode::Literal {
                 ref range,
                 position,
@@ -1067,7 +1101,7 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                 first_flag,
                 ..
             } => {
-                let command_name = &compiler.texts[name.start as usize..name.end as usize];
+                let command_name = &compiler.ast.texts[name.start as usize..name.end as usize];
                 let command_source = match find_command(compiler.commands, command_name) {
                     Some(source) => source,
                     None => {
@@ -1112,8 +1146,10 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
 
                         let mut flag_expressions = [0; u8::MAX as _];
                         let flags = compiler.commands.builtin_commands[i].flags;
-                        while let AstNode::CommandCallFlag { ref name, next } = compiler.ast[flag] {
-                            let name = &compiler.texts[name.start as usize..name.end as usize];
+                        while let AstNode::CommandCallFlag { ref name, next } =
+                            compiler.ast.nodes[flag]
+                        {
+                            let name = &compiler.ast.texts[name.start as usize..name.end as usize];
                             let flag_index = find_flag_index(flags, name, source_index, position)?;
                             flag_expressions[flag_index] = flag + 1;
                             flag = next as _;
@@ -1133,7 +1169,7 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                             }
                         }
                     }
-                    _ => match compiler.ast[flag] {
+                    _ => match compiler.ast.nodes[flag] {
                         AstNode::CommandCallFlag { .. } => {
                             return Err(CommandError {
                                 kind: CommandErrorKind::NoSuchFlag,
@@ -1145,7 +1181,7 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                     },
                 }
 
-                while let AstNode::CommandCallArg { next } = compiler.ast[arg] {
+                while let AstNode::CommandCallArg { next } = compiler.ast.nodes[arg] {
                     emit_expression(compiler, source_index, arg + 1)?;
                     arg = next as _;
                 }
@@ -1181,13 +1217,13 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
     }
 
     fn emit_statement(compiler: &mut Compiler, index: usize) -> Result<usize, CommandError> {
-        let (source_index, next) = match compiler.ast[index] {
+        let (source_index, next) = match compiler.ast.nodes[index] {
             AstNode::Statement { source, next } => (source, next),
             _ => unreachable!(),
         };
 
         let index = index + 1;
-        match compiler.ast[index] {
+        match compiler.ast.nodes[index] {
             AstNode::CommandCall { position, .. } => {
                 emit_expression(compiler, source_index, index)?;
                 compiler.emit(
@@ -1214,10 +1250,17 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
         Ok(next as _)
     }
 
+    if compiler.ast.nodes.is_empty() {
+        emit_final_return(compiler);
+        return Ok(DefinitionsLen::from_virtual_machine(
+            &compiler.virtual_machine,
+        ));
+    }
+
     let mut index = 0;
 
     loop {
-        let (source_index, next) = match compiler.ast[index] {
+        let (source_index, next) = match compiler.ast.nodes[index] {
             AstNode::Statement { source, next } => (source, next),
             _ => unreachable!(),
         };
@@ -1227,9 +1270,9 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
             ref name,
             position,
             param_count,
-        } = compiler.ast[index]
+        } = compiler.ast.nodes[index]
         {
-            let command_name = &compiler.texts[name.start as usize..name.end as usize];
+            let command_name = &compiler.ast.texts[name.start as usize..name.end as usize];
             if find_command(compiler.commands, command_name).is_some() {
                 return Err(CommandError {
                     kind: CommandErrorKind::CommandAlreadyExists,
@@ -1258,21 +1301,20 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
         index = next as _;
     }
 
-    let definitions_len = DefinitionsLen {
-        ops: compiler.virtual_machine.ops.len() as _,
-        texts: compiler.virtual_machine.texts.len() as _,
-        op_locations: compiler.virtual_machine.op_locations.len() as _,
-    };
+    let definitions_len = DefinitionsLen::from_virtual_machine(&compiler.virtual_machine);
 
     index = 0;
 
     loop {
-        let next = match compiler.ast[index] {
+        let next = match compiler.ast.nodes[index] {
             AstNode::Statement { next, .. } => next,
             _ => unreachable!(),
         };
 
-        if !matches!(compiler.ast[index + 1], AstNode::MacroDeclaration { .. }) {
+        if !matches!(
+            compiler.ast.nodes[index + 1],
+            AstNode::MacroDeclaration { .. }
+        ) {
             emit_statement(compiler, index)?;
         }
 
@@ -1282,21 +1324,7 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
         index = next as _;
     }
 
-    compiler.emit(
-        Op::PushLiteral { start: 0, len: 0 },
-        SourceLocation {
-            source_index: 0,
-            position: BufferPosition::zero(),
-        },
-    );
-    compiler.emit(
-        Op::Return,
-        SourceLocation {
-            source_index: 0,
-            position: BufferPosition::zero(),
-        },
-    );
-
+    emit_final_return(compiler);
     Ok(definitions_len)
 }
 
@@ -1534,8 +1562,9 @@ mod tests {
                 ast: &mut ast,
                 bindings: &mut bindings,
                 previous_token: CommandToken::default(),
+                previous_statement_index: 0,
             };
-            parse(&mut parser, 0).unwrap();
+            parse(&mut parser).unwrap();
 
             dbg!(&ast);
 
@@ -1555,7 +1584,6 @@ mod tests {
                 ast: &ast,
                 commands: &mut commands,
                 virtual_machine: &mut virtual_machine,
-                source_index: 0,
             };
             compile(&mut compiler).unwrap();
 
