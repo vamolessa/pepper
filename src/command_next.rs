@@ -1560,8 +1560,6 @@ mod tests {
             };
             parse(&mut parser).unwrap();
 
-            dbg!(&ast.nodes);
-
             static BUILTIN_COMMANDS: &[BuiltinCommand] = &[BuiltinCommand {
                 name_hash: hash_bytes(b"cmd"),
                 alias_hash: hash_bytes(b""),
