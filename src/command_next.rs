@@ -474,7 +474,7 @@ impl Ast {
 }
 
 struct Binding {
-    pub range: Range<u32>,
+    pub name_hash: u64,
 }
 
 struct Parser<'source, 'data> {
@@ -524,17 +524,19 @@ impl<'source, 'data> Parser<'source, 'data> {
                 position: self.previous_token.position,
             })
         } else {
-            let range = self.previous_token.range.clone();
-            self.bindings.push(Binding { range });
+            let name = &self.tokenizer.source[self.previous_token.range()];
+            let name_hash = hash_bytes(name.as_bytes());
+            self.bindings.push(Binding { name_hash });
             Ok(())
         }
     }
 
-    pub fn find_binding_stack_index(&self, name: &str) -> Option<u16> {
-        let source = self.tokenizer.source;
+    pub fn find_binding_stack_index_from_previous_token(&self) -> Option<u16> {
+        let name = &self.tokenizer.source[self.previous_token.range()];
+        let name_hash = hash_bytes(name.as_bytes());
         self.bindings
             .iter()
-            .rposition(|b| &source[b.range.start as usize..b.range.end as usize] == name)
+            .rposition(|b| b.name_hash == name_hash)
             .map(|i| i as _)
     }
 
@@ -889,8 +891,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             }
             CommandTokenKind::Binding => {
                 let position = parser.previous_token.position;
-                let binding_name = parser.previous_token_str();
-                match parser.find_binding_stack_index(binding_name) {
+                match parser.find_binding_stack_index_from_previous_token() {
                     Some(index) => {
                         parser.next_token()?;
                         parser.ast.nodes.push(AstNode::Binding { index, position });
@@ -1693,6 +1694,36 @@ mod tests {
                 Return
             ],
             compile_source("(cmd \n arg0 \n arg2)").ops,
+        );
+        
+        assert_eq!(
+            vec![
+                // begin macro
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
+                DuplicateAt(0),
+                CallBuiltinCommand(0),
+                PushLiteral { start: 0, len: 0 },
+                Return,
+                // end macro
+
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral { start: 0, len: "0".len() as _ },
+                CallBuiltinCommand(0),
+
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral { start: 0, len: 0 },
+                PushLiteral { start: "0".len() as _, len: "1".len() as _ },
+                CallBuiltinCommand(0),
+
+                PushLiteral { start: 0, len: 0 },
+                Return,
+            ],
+            compile_source("cmd '0'\n macro c $v { cmd $p } cmd '1'").ops,
         );
     }
 }
