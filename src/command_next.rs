@@ -8,6 +8,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex},
     client::{ClientHandle, ClientManager},
     editor::Editor,
+    editor_utils::hash_bytes,
     platform::Platform,
 };
 
@@ -20,43 +21,33 @@ pub enum CompletionSource {
 }
 
 pub struct BuiltinCommand {
-    pub name: &'static str,
-    pub alias: &'static str,
+    pub name_hash: u64,
+    pub alias_hash: u64,
     pub hidden: bool,
     pub completions: &'static [CompletionSource],
-    pub flags: &'static [&'static str],
+    pub flags_hashes: &'static [u64],
     pub func: fn(),
 }
 
 struct MacroCommand {
-    name_range: Range<u32>,
+    name_hash: u64,
     op_start_index: u32,
     param_count: u8,
 }
 
 struct RequestCommand {
-    name_range: Range<u32>,
+    name_hash: u64,
 }
 
 struct CommandCollection {
     builtin_commands: &'static [BuiltinCommand],
-    custom_command_names: String,
     macro_commands: Vec<MacroCommand>,
     request_commands: Vec<RequestCommand>,
-}
-impl CommandCollection {
-    pub fn add_custom_command_name(&mut self, name: &str) -> Range<u32> {
-        let start = self.custom_command_names.len();
-        self.custom_command_names.push_str(name);
-        let end = self.custom_command_names.len();
-        start as _..end as _
-    }
 }
 impl Default for CommandCollection {
     fn default() -> Self {
         Self {
             builtin_commands: &[], // TODO: reference builtin commands
-            custom_command_names: String::new(),
             macro_commands: Vec::new(),
             request_commands: Vec::new(),
         }
@@ -447,7 +438,7 @@ enum AstNode {
         next: u16,
     },
     CommandCall {
-        name: Range<u32>,
+        name_hash: u64,
         position: BufferPosition,
         first_arg: u16,
         first_flag: u16,
@@ -456,12 +447,12 @@ enum AstNode {
         next: u16,
     },
     CommandCallFlag {
-        name: Range<u32>,
+        name_hash: u64,
         next: u16,
     },
     BindingDeclaration,
     MacroDeclaration {
-        name: Range<u32>,
+        name_hash: u64,
         position: BufferPosition,
         param_count: u8,
     },
@@ -561,6 +552,12 @@ impl<'source, 'data> Parser<'source, 'data> {
             next: 0,
         });
     }
+
+    pub fn hash_from_previous_token(&self) -> u64 {
+        let range = &self.previous_token.range;
+        let text = &self.tokenizer.source[range.start as usize..range.end as usize];
+        hash_bytes(text.as_bytes())
+    }
 }
 
 fn parse(parser: &mut Parser) -> Result<(), CommandError> {
@@ -640,7 +637,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         let index = parser.ast.nodes.len();
         parser.add_statement();
         parser.ast.nodes.push(AstNode::MacroDeclaration {
-            name: parser.previous_token.range.clone(),
+            name_hash: parser.hash_from_previous_token(),
             position: parser.previous_token.position,
             param_count: 0,
         });
@@ -752,10 +749,10 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         }
 
         let end_token_kind = find_end_token_kind(parser)?;
-
         let index = parser.ast.nodes.len();
+
         parser.ast.nodes.push(AstNode::CommandCall {
-            name: parser.previous_token.range.clone(),
+            name_hash: parser.hash_from_previous_token(),
             position: parser.previous_token.position,
             first_arg: 0,
             first_flag: 0,
@@ -792,7 +789,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                 }
                 last_flag = parser.ast.nodes.len();
                 parser.ast.nodes.push(AstNode::CommandCallFlag {
-                    name: parser.previous_token.range.clone(),
+                    name_hash: parser.hash_from_previous_token(),
                     next: 0,
                 });
 
@@ -930,25 +927,27 @@ enum CommandSource {
     Request(usize),
 }
 
-fn find_command(commands: &CommandCollection, name: &str) -> Option<CommandSource> {
-    if let Some(i) = commands.macro_commands.iter().position(|c| {
-        let range = c.name_range.start as usize..c.name_range.end as usize;
-        &commands.custom_command_names[range] == name
-    }) {
+fn find_command(commands: &CommandCollection, name_hash: u64) -> Option<CommandSource> {
+    if let Some(i) = commands
+        .macro_commands
+        .iter()
+        .position(|c| c.name_hash == name_hash)
+    {
         return Some(CommandSource::Macro(i));
     }
 
-    if let Some(i) = commands.request_commands.iter().position(|c| {
-        let range = c.name_range.start as usize..c.name_range.end as usize;
-        &commands.custom_command_names[range] == name
-    }) {
+    if let Some(i) = commands
+        .request_commands
+        .iter()
+        .position(|c| c.name_hash == name_hash)
+    {
         return Some(CommandSource::Request(i));
     }
 
     if let Some(i) = commands
         .builtin_commands
         .iter()
-        .position(|c| c.name == name || c.alias == name)
+        .position(|c| c.name_hash == name_hash || c.alias_hash == name_hash)
     {
         return Some(CommandSource::Builtin(i));
     }
@@ -1095,14 +1094,13 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                 },
             ),
             AstNode::CommandCall {
-                ref name,
+                name_hash,
                 position,
                 first_arg,
                 first_flag,
                 ..
             } => {
-                let command_name = &compiler.ast.texts[name.start as usize..name.end as usize];
-                let command_source = match find_command(compiler.commands, command_name) {
+                let command_source = match find_command(compiler.commands, name_hash) {
                     Some(source) => source,
                     None => {
                         return Err(CommandError {
@@ -1127,13 +1125,13 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                 match command_source {
                     CommandSource::Builtin(i) => {
                         fn find_flag_index(
-                            flags: &[&str],
-                            name: &str,
+                            flags: &[u64],
+                            name_hash: u64,
                             source_index: u8,
                             position: BufferPosition,
                         ) -> Result<usize, CommandError> {
                             for (i, &flag) in flags.iter().enumerate() {
-                                if flag == name {
+                                if flag == name_hash {
                                     return Ok(i);
                                 }
                             }
@@ -1145,12 +1143,12 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                         }
 
                         let mut flag_expressions = [0; u8::MAX as _];
-                        let flags = compiler.commands.builtin_commands[i].flags;
-                        while let AstNode::CommandCallFlag { ref name, next } =
+                        let flags = compiler.commands.builtin_commands[i].flags_hashes;
+                        while let AstNode::CommandCallFlag { name_hash, next } =
                             compiler.ast.nodes[flag]
                         {
-                            let name = &compiler.ast.texts[name.start as usize..name.end as usize];
-                            let flag_index = find_flag_index(flags, name, source_index, position)?;
+                            let flag_index =
+                                find_flag_index(flags, name_hash, source_index, position)?;
                             flag_expressions[flag_index] = flag + 1;
                             flag = next as _;
                         }
@@ -1267,13 +1265,12 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
 
         index += 1;
         if let AstNode::MacroDeclaration {
-            ref name,
+            name_hash,
             position,
             param_count,
         } = compiler.ast.nodes[index]
         {
-            let command_name = &compiler.ast.texts[name.start as usize..name.end as usize];
-            if find_command(compiler.commands, command_name).is_some() {
+            if find_command(compiler.commands, name_hash).is_some() {
                 return Err(CommandError {
                     kind: CommandErrorKind::CommandAlreadyExists,
                     source_index,
@@ -1287,9 +1284,8 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                 index = emit_statement(compiler, index)?;
             }
 
-            let name_range = compiler.commands.add_custom_command_name(command_name);
             compiler.commands.macro_commands.push(MacroCommand {
-                name_range,
+                name_hash,
                 op_start_index,
                 param_count,
             });
