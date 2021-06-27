@@ -20,8 +20,7 @@ pub enum CompletionSource {
     Custom(&'static [&'static str]),
 }
 
-type CommandFn =
-    for<'a> fn(&mut CommandContext<'a>) -> Result<Option<CommandOperation>, CommandErrorKind>;
+type CommandFn = fn(&mut CommandContext) -> Result<Option<CommandOperation>, CommandErrorKind>;
 
 pub struct CommandArgsBuilder {
     stack_index: u16,
