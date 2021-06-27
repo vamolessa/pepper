@@ -187,7 +187,7 @@ pub enum CommandTokenKind {
     CloseCurlyBrackets,
     OpenParenthesis,
     CloseParenthesis,
-    EndOfCommand,
+    EndOfLine,
     EndOfSource,
 }
 
@@ -253,22 +253,11 @@ impl<'a> CommandTokenizer<'a> {
         let source_bytes = self.source.as_bytes();
 
         loop {
-            if self.index == source_bytes.len() {
-                let position = self.position;
-                self.index += 1;
-                self.position.column_byte_index += 1;
-                return Ok(CommandToken {
-                    kind: CommandTokenKind::EndOfCommand,
-                    range: source_bytes.len() as _..source_bytes.len() as _,
-                    position,
-                });
-            }
-            if self.index > source_bytes.len() {
-                let position = self.position;
+            if self.index >= source_bytes.len() {
                 return Ok(CommandToken {
                     kind: CommandTokenKind::EndOfSource,
                     range: source_bytes.len() as _..source_bytes.len() as _,
-                    position,
+                    position: self.position,
                 });
             }
 
@@ -295,7 +284,7 @@ impl<'a> CommandTokenizer<'a> {
                         }
                     }
                     return Ok(CommandToken {
-                        kind: CommandTokenKind::EndOfCommand,
+                        kind: CommandTokenKind::EndOfLine,
                         range: from as _..self.index as _,
                         position,
                     });
@@ -517,7 +506,7 @@ impl<'source, 'data> Parser<'source, 'data> {
     }
 
     pub fn declare_binding_from_previous_token(&mut self) -> Result<(), CommandError> {
-        if self.bindings.len() >= 0 as _ {
+        if self.bindings.len() >= u8::MAX as _ {
             Err(CommandError {
                 kind: CommandErrorKind::TooManyBindings,
                 source_index: self.source_index,
@@ -542,7 +531,7 @@ impl<'source, 'data> Parser<'source, 'data> {
 
     pub fn add_statement(&mut self) {
         let index = self.ast.nodes.len() as _;
-        if self.previous_statement_index > 0 {
+        if !self.ast.nodes.is_empty() {
             match &mut self.ast.nodes[self.previous_statement_index as usize] {
                 AstNode::Statement { next, .. } => *next = index,
                 _ => unreachable!(),
@@ -568,7 +557,6 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             match parser.previous_token_str() {
                 "source" => return parse_source(parser),
                 "macro" => return parse_macro(parser),
-                "return" => return parse_return(parser, true),
                 _ => (),
             }
         }
@@ -634,16 +622,19 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
 
     fn parse_macro(parser: &mut Parser) -> Result<(), CommandError> {
         parser.next_token()?;
-        parser.consume_token(CommandTokenKind::Literal)?;
+
+        let fix_statement_index = parser.previous_statement_index;
+        parser.add_statement();
 
         let index = parser.ast.nodes.len();
-        parser.add_statement();
+        let position = parser.previous_token.position;
         parser.ast.nodes.push(AstNode::MacroDeclaration {
             name_hash: parser.hash_from_previous_token(),
-            position: parser.previous_token.position,
+            position,
             param_count: 0,
         });
-        parser.next_token()?;
+
+        parser.consume_token(CommandTokenKind::Literal)?;
 
         let previous_bindings_len = parser.bindings.len();
         loop {
@@ -677,26 +668,49 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         }
         parser.next_token()?;
 
-        parser.bindings.clear();
-        Ok(())
-    }
+        match &mut parser.ast.nodes[fix_statement_index as usize] {
+            AstNode::Statement { next, .. } => *next = 0,
+            _ => unreachable!(),
+        }
 
-    fn parse_return(parser: &mut Parser, is_top_level: bool) -> Result<(), CommandError> {
-        parser.add_statement();
-        parser.ast.nodes.push(AstNode::Return {
-            position: parser.previous_token.position,
-        });
-        parser.next_token()?;
-        parse_expression(parser, is_top_level)?;
+        let last_statement_index = parser.previous_statement_index as usize + 1;
+        if !matches!(parser.ast.nodes[last_statement_index], AstNode::Return { .. }) {
+            parser.add_statement();
+            parser.ast.nodes.push(AstNode::Return {
+                position,
+            });
+            parser.ast.nodes.push(AstNode::Literal {
+                range: 0..0,
+                position,
+            });
+        }
+
+        parser.bindings.clear();
+        parser.previous_statement_index = index as _;
+
         Ok(())
     }
 
     fn parse_statement(parser: &mut Parser, is_top_level: bool) -> Result<(), CommandError> {
         loop {
             match parser.previous_token.kind {
-                CommandTokenKind::Literal | CommandTokenKind::OpenParenthesis => {
+                CommandTokenKind::Literal => {
                     parser.add_statement();
-                    return parse_command_call(parser, is_top_level);
+                    match parser.previous_token_str() {
+                        "return" => {
+                            parser.next_token()?;
+                            parser.ast.nodes.push(AstNode::Return {
+                                position: parser.previous_token.position,
+                            });
+                            return parse_expression_or_command_call(parser, is_top_level);
+                        }
+                        _ => return parse_command_call(parser, is_top_level, false),
+                    };
+                }
+                CommandTokenKind::OpenParenthesis => {
+                    parser.add_statement();
+                    parse_expression(parser, is_top_level)?;
+                    return Ok(());
                 }
                 CommandTokenKind::Binding => {
                     if is_top_level {
@@ -714,10 +728,10 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                     parser.next_token()?;
                     parser.consume_token(CommandTokenKind::Equals)?;
 
-                    parse_expression(parser, is_top_level)?;
+                    parse_expression_or_command_call(parser, is_top_level)?;
                     return Ok(());
                 }
-                CommandTokenKind::EndOfCommand => parser.next_token()?,
+                CommandTokenKind::EndOfLine => parser.next_token()?,
                 CommandTokenKind::EndOfSource => return Ok(()),
                 _ => {
                     return Err(CommandError {
@@ -730,27 +744,11 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         }
     }
 
-    fn parse_command_call(parser: &mut Parser, is_top_level: bool) -> Result<(), CommandError> {
-        fn find_end_token_kind(parser: &mut Parser) -> Result<CommandTokenKind, CommandError> {
-            match parser.previous_token.kind {
-                CommandTokenKind::Literal => return Ok(CommandTokenKind::EndOfCommand),
-                CommandTokenKind::OpenParenthesis => {
-                    parser.next_token()?;
-                    if let CommandTokenKind::Literal = parser.previous_token.kind {
-                        return Ok(CommandTokenKind::CloseParenthesis);
-                    }
-                }
-                _ => (),
-            }
-
-            Err(CommandError {
-                kind: CommandErrorKind::ExpectedToken(CommandTokenKind::Literal),
-                source_index: parser.source_index,
-                position: parser.previous_token.position,
-            })
-        }
-
-        let end_token_kind = find_end_token_kind(parser)?;
+    fn parse_command_call(
+        parser: &mut Parser,
+        is_top_level: bool,
+        ignore_end_of_command: bool,
+    ) -> Result<(), CommandError> {
         let index = parser.ast.nodes.len();
 
         parser.ast.nodes.push(AstNode::CommandCall {
@@ -768,79 +766,99 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         let mut last_flag = 0;
 
         loop {
-            if parser.previous_token.kind == CommandTokenKind::Flag {
-                let len = parser.ast.nodes.len() as _;
+            match parser.previous_token.kind {
+                CommandTokenKind::Flag => {
+                    let len = parser.ast.nodes.len() as _;
 
-                match flag_count {
-                    0 => match &mut parser.ast.nodes[index] {
-                        AstNode::CommandCall { first_flag, .. } => *first_flag = len,
-                        _ => unreachable!(),
-                    },
-                    u8::MAX => {
+                    match flag_count {
+                        0 => match &mut parser.ast.nodes[index] {
+                            AstNode::CommandCall { first_flag, .. } => *first_flag = len,
+                            _ => unreachable!(),
+                        },
+                        u8::MAX => {
+                            return Err(CommandError {
+                                kind: CommandErrorKind::TooManyFlags,
+                                source_index: parser.source_index,
+                                position: parser.previous_token.position,
+                            });
+                        }
+                        _ => (),
+                    }
+
+                    if let AstNode::CommandCallFlag { next, .. } = &mut parser.ast.nodes[last_flag]
+                    {
+                        *next = len;
+                    }
+                    last_flag = parser.ast.nodes.len();
+                    parser.ast.nodes.push(AstNode::CommandCallFlag {
+                        name_hash: parser.hash_from_previous_token(),
+                        next: 0,
+                    });
+
+                    let position = parser.previous_token.position;
+                    parser.next_token()?;
+                    match parser.previous_token.kind {
+                        CommandTokenKind::Equals => {
+                            parser.next_token()?;
+                            parse_expression(parser, is_top_level)?;
+                        }
+                        _ => parser.ast.nodes.push(AstNode::Literal {
+                            range: 0..0,
+                            position,
+                        }),
+                    }
+
+                    flag_count += 1;
+                }
+                CommandTokenKind::EndOfLine => {
+                    parser.next_token()?;
+                    if !ignore_end_of_command {
+                        break;
+                    }
+                }
+                CommandTokenKind::CloseParenthesis
+                | CommandTokenKind::CloseCurlyBrackets
+                | CommandTokenKind::EndOfSource => break,
+                _ => {
+                    let len = parser.ast.nodes.len() as _;
+
+                    if arg_count == 0 {
+                        match &mut parser.ast.nodes[index] {
+                            AstNode::CommandCall { first_arg, .. } => *first_arg = len,
+                            _ => unreachable!(),
+                        }
+                    }
+                    if let AstNode::CommandCallArg { next, .. } = &mut parser.ast.nodes[last_arg] {
+                        *next = len;
+                    }
+                    last_arg = parser.ast.nodes.len();
+                    parser.ast.nodes.push(AstNode::CommandCallArg { next: 0 });
+
+                    let expression_position = parse_expression(parser, is_top_level)?;
+                    if arg_count == u8::MAX {
                         return Err(CommandError {
-                            kind: CommandErrorKind::TooManyFlags,
+                            kind: CommandErrorKind::WrongNumberOfArgs,
                             source_index: parser.source_index,
-                            position: parser.previous_token.position,
+                            position: expression_position,
                         });
                     }
-                    _ => (),
-                }
 
-                if let AstNode::CommandCallFlag { next, .. } = &mut parser.ast.nodes[last_flag] {
-                    *next = len;
+                    arg_count += 1;
                 }
-                last_flag = parser.ast.nodes.len();
-                parser.ast.nodes.push(AstNode::CommandCallFlag {
-                    name_hash: parser.hash_from_previous_token(),
-                    next: 0,
-                });
-
-                let position = parser.previous_token.position;
-                parser.next_token()?;
-                match parser.previous_token.kind {
-                    CommandTokenKind::Equals => {
-                        parser.next_token()?;
-                        parse_expression(parser, is_top_level)?;
-                    }
-                    _ => parser.ast.nodes.push(AstNode::Literal {
-                        range: 0..0,
-                        position,
-                    }),
-                }
-
-                flag_count += 1;
-            } else if parser.previous_token.kind == end_token_kind {
-                parser.next_token()?;
-                break;
-            } else {
-                let len = parser.ast.nodes.len() as _;
-
-                if arg_count == 0 {
-                    match &mut parser.ast.nodes[index] {
-                        AstNode::CommandCall { first_arg, .. } => *first_arg = len,
-                        _ => unreachable!(),
-                    }
-                }
-                if let AstNode::CommandCallArg { next, .. } = &mut parser.ast.nodes[last_arg] {
-                    *next = len;
-                }
-                last_arg = parser.ast.nodes.len();
-                parser.ast.nodes.push(AstNode::CommandCallArg { next: 0 });
-
-                let expression_position = parse_expression(parser, is_top_level)?;
-                if arg_count == u8::MAX {
-                    return Err(CommandError {
-                        kind: CommandErrorKind::WrongNumberOfArgs,
-                        source_index: parser.source_index,
-                        position: expression_position,
-                    });
-                }
-
-                arg_count += 1;
             }
         }
 
         Ok(())
+    }
+
+    fn parse_expression_or_command_call(parser: &mut Parser, is_top_level: bool) -> Result<(), CommandError> {
+        match parser.previous_token.kind {
+            CommandTokenKind::Literal => parse_command_call(parser, is_top_level, false),
+            _ => {
+                parse_expression(parser, is_top_level)?;
+                Ok(())
+            }
+        }
     }
 
     fn parse_expression(
@@ -864,7 +882,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             }
         }
 
-        while let CommandTokenKind::EndOfCommand = parser.previous_token.kind {
+        while let CommandTokenKind::EndOfLine = parser.previous_token.kind {
             parser.next_token()?;
         }
 
@@ -885,8 +903,10 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                 Ok(position)
             }
             CommandTokenKind::OpenParenthesis => {
+                parser.next_token()?;
                 let position = parser.previous_token.position;
-                parse_command_call(parser, is_top_level)?;
+                parse_command_call(parser, is_top_level, true)?;
+                parser.consume_token(CommandTokenKind::CloseParenthesis)?;
                 Ok(position)
             }
             CommandTokenKind::Binding => {
@@ -1383,6 +1403,7 @@ fn execute(
 ) -> Result<(), CommandError> {
     let mut vm = &mut editor.commands_next.virtual_machine;
     let mut op_index = 0;
+    let mut stack_start_index = 0;
 
     loop {
         match vm.ops[op_index] {
@@ -1397,6 +1418,7 @@ fn execute(
                 });
 
                 op_index = frame.op_index as _;
+                stack_start_index = frame.stack_len as _;
             }
             Op::Pop => drop(vm.stack.pop()),
             Op::PushLiteral { start, len } => {
@@ -1408,7 +1430,7 @@ fn execute(
                 });
             }
             Op::DuplicateAt(stack_index) => {
-                let value = vm.stack[stack_index as usize];
+                let value = vm.stack[stack_start_index + stack_index as usize];
                 vm.stack.push(value);
             }
             Op::PrepareStackFrame => {
@@ -1417,6 +1439,7 @@ fn execute(
                     texts_len: vm.texts.len() as _,
                     stack_len: vm.stack.len() as _,
                 };
+                stack_start_index = frame.stack_len as _;
                 vm.prepared_frames.push(frame);
             }
             Op::CallBuiltinCommand(index) => {
@@ -1492,20 +1515,11 @@ mod tests {
 
         use CommandTokenKind::*;
 
-        assert_eq!(vec![(EndOfCommand, "", pos(0, 0))], collect(""));
-        assert_eq!(vec![(EndOfCommand, "", pos(0, 2))], collect("  "));
+        assert_eq!(0, collect("").len());
+        assert_eq!(0, collect("  ").len());
+        assert_eq!(vec![(Literal, "command", pos(0, 0)),], collect("command"),);
         assert_eq!(
-            vec![
-                (Literal, "command", pos(0, 0)),
-                (EndOfCommand, "", pos(0, 7))
-            ],
-            collect("command"),
-        );
-        assert_eq!(
-            vec![
-                (QuotedLiteral, "'text'", pos(0, 0)),
-                (EndOfCommand, "", pos(0, 6))
-            ],
+            vec![(QuotedLiteral, "'text'", pos(0, 0)),],
             collect("'text'"),
         );
         assert_eq!(
@@ -1514,7 +1528,6 @@ mod tests {
                 (OpenParenthesis, "(", pos(0, 4)),
                 (Literal, "subcmd", pos(0, 5)),
                 (CloseParenthesis, ")", pos(0, 11)),
-                (EndOfCommand, "", pos(0, 12)),
             ],
             collect("cmd (subcmd)"),
         );
@@ -1527,7 +1540,6 @@ mod tests {
                 (Literal, "value", pos(0, 19)),
                 (Equals, "=", pos(0, 25)),
                 (Literal, "not-flag", pos(0, 27)),
-                (EndOfCommand, "", pos(0, 35)),
             ],
             collect("cmd $binding -flag=value = not-flag"),
         );
@@ -1535,9 +1547,8 @@ mod tests {
             vec![
                 (Literal, "cmd0", pos(0, 0)),
                 (Literal, "cmd1", pos(0, 5)),
-                (EndOfCommand, "\n\n \t \n  ", pos(0, 12)),
+                (EndOfLine, "\n\n \t \n  ", pos(0, 12)),
                 (Literal, "cmd2", pos(3, 2)),
-                (EndOfCommand, "", pos(3, 6)),
             ],
             collect("cmd0 cmd1 \t\r\n\n \t \n  cmd2"),
         );
@@ -1560,6 +1571,8 @@ mod tests {
                 previous_statement_index: 0,
             };
             parse(&mut parser).unwrap();
+
+            dbg!(&ast.nodes);
 
             static BUILTIN_COMMANDS: &[BuiltinCommand] = &[BuiltinCommand {
                 name_hash: hash_bytes(b"cmd"),
@@ -1599,7 +1612,7 @@ mod tests {
                 CallBuiltinCommand(0),
                 Pop,
                 PushLiteral { start: 0, len: 0 },
-                Return
+                Return,
             ],
             compile_source("cmd").ops,
         );
@@ -1620,7 +1633,7 @@ mod tests {
                 CallBuiltinCommand(0),
                 Pop,
                 PushLiteral { start: 0, len: 0 },
-                Return
+                Return,
             ],
             compile_source("cmd arg0 arg1").ops,
         );
@@ -1640,7 +1653,7 @@ mod tests {
                 CallBuiltinCommand(0),
                 Pop,
                 PushLiteral { start: 0, len: 0 },
-                Return
+                Return,
             ],
             compile_source("cmd -switch arg -option=opt").ops,
         );
@@ -1670,7 +1683,7 @@ mod tests {
                 CallBuiltinCommand(0),
                 Pop,
                 PushLiteral { start: 0, len: 0 },
-                Return
+                Return,
             ],
             compile_source("cmd arg0 -option=(cmd arg1) arg2").ops,
         );
@@ -1691,11 +1704,27 @@ mod tests {
                 CallBuiltinCommand(0),
                 Pop,
                 PushLiteral { start: 0, len: 0 },
-                Return
+                Return,
             ],
             compile_source("(cmd \n arg0 \n arg2)").ops,
         );
-        
+
+        eprintln!("==================================================================== 1");
+        assert_eq!(
+            vec![
+                PrepareStackFrame,
+                PushLiteral { start: 0, len: 0 },
+                DuplicateAt(1),
+                DuplicateAt(0),
+                CallBuiltinCommand(0),
+                Return,
+                PushLiteral { start: 0, len: 0 },
+                Return,
+            ],
+            compile_source("macro c $a $b {\n\treturn cmd $a -option=$b\n}").ops,
+        );
+        eprintln!("==================================================================== 2");
+
         assert_eq!(
             vec![
                 // begin macro
@@ -1704,26 +1733,32 @@ mod tests {
                 PushLiteral { start: 0, len: 0 },
                 DuplicateAt(0),
                 CallBuiltinCommand(0),
+                Pop,
                 PushLiteral { start: 0, len: 0 },
                 Return,
                 // end macro
-
                 PrepareStackFrame,
                 PushLiteral { start: 0, len: 0 },
                 PushLiteral { start: 0, len: 0 },
-                PushLiteral { start: 0, len: "0".len() as _ },
+                PushLiteral {
+                    start: 0,
+                    len: "0".len() as _
+                },
                 CallBuiltinCommand(0),
-
+                Pop,
                 PrepareStackFrame,
                 PushLiteral { start: 0, len: 0 },
                 PushLiteral { start: 0, len: 0 },
-                PushLiteral { start: "0".len() as _, len: "1".len() as _ },
+                PushLiteral {
+                    start: "0".len() as _,
+                    len: "1".len() as _
+                },
                 CallBuiltinCommand(0),
-
+                Pop,
                 PushLiteral { start: 0, len: 0 },
                 Return,
             ],
-            compile_source("cmd '0'\n macro c $v { cmd $p } cmd '1'").ops,
+            compile_source("cmd '0'\n macro c $p { cmd $p } cmd '1'").ops,
         );
     }
 }

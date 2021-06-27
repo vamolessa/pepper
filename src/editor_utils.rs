@@ -159,11 +159,10 @@ impl StringPool {
 // or should we just jump directly to a more complex hash that is simd-friendly?
 pub const fn hash_bytes(mut bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
-    while let [b, rest @ .. ] = bytes {
+    while let [b, rest @ ..] = bytes {
         hash ^= *b as u64;
         hash = hash.wrapping_mul(0x100000001b3);
         bytes = rest;
     }
     return hash;
 }
-
