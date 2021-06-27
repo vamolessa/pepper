@@ -1546,15 +1546,13 @@ mod tests {
     fn command_compiler() {
         fn compile_source(source: &str) -> VirtualMachine {
             let mut paths = SourcePathCollection::default();
-            let mut texts = String::new();
-            let mut ast = Vec::new();
+            let mut ast = Ast::default();
             let mut bindings = Vec::new();
 
             let mut parser = Parser {
                 tokenizer: CommandTokenizer::new(source),
                 source_index: 0,
                 paths: &mut paths,
-                texts: &mut texts,
                 ast: &mut ast,
                 bindings: &mut bindings,
                 previous_token: CommandToken::default(),
@@ -1562,21 +1560,22 @@ mod tests {
             };
             parse(&mut parser).unwrap();
 
-            dbg!(&ast);
+            dbg!(&ast.nodes);
 
-            let mut commands = CommandCollection::default();
-            commands.builtin_commands = &[BuiltinCommand {
-                name: "cmd",
-                alias: "",
+            static BUILTIN_COMMANDS: &[BuiltinCommand] = &[BuiltinCommand {
+                name_hash: hash_bytes(b"cmd"),
+                alias_hash: hash_bytes(b""),
                 hidden: false,
                 completions: &[],
-                flags: &["-switch", "-option"],
+                flags_hashes: &[hash_bytes(b"-switch"), hash_bytes(b"-option")],
                 func: || (),
             }];
+
+            let mut commands = CommandCollection::default();
+            commands.builtin_commands = BUILTIN_COMMANDS;
             let mut virtual_machine = VirtualMachine::default();
 
             let mut compiler = Compiler {
-                texts: &texts,
                 ast: &ast,
                 commands: &mut commands,
                 virtual_machine: &mut virtual_machine,
@@ -1632,11 +1631,11 @@ mod tests {
                 PrepareStackFrame,
                 PushLiteral { start: 0, len: 0 },
                 PushLiteral {
-                    start: "arg".len() as _,
+                    start: 0,
                     len: "opt".len() as _,
                 },
                 PushLiteral {
-                    start: 0,
+                    start: "opt".len() as _,
                     len: "arg".len() as _,
                 },
                 CallBuiltinCommand(0),
