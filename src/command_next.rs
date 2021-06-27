@@ -674,11 +674,12 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         }
 
         let last_statement_index = parser.previous_statement_index as usize + 1;
-        if !matches!(parser.ast.nodes[last_statement_index], AstNode::Return { .. }) {
+        if !matches!(
+            parser.ast.nodes[last_statement_index],
+            AstNode::Return { .. }
+        ) {
             parser.add_statement();
-            parser.ast.nodes.push(AstNode::Return {
-                position,
-            });
+            parser.ast.nodes.push(AstNode::Return { position });
             parser.ast.nodes.push(AstNode::Literal {
                 range: 0..0,
                 position,
@@ -686,7 +687,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         }
 
         parser.bindings.clear();
-        parser.previous_statement_index = index as _;
+        parser.previous_statement_index = (index - 1) as _;
 
         Ok(())
     }
@@ -851,7 +852,10 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         Ok(())
     }
 
-    fn parse_expression_or_command_call(parser: &mut Parser, is_top_level: bool) -> Result<(), CommandError> {
+    fn parse_expression_or_command_call(
+        parser: &mut Parser,
+        is_top_level: bool,
+    ) -> Result<(), CommandError> {
         match parser.previous_token.kind {
             CommandTokenKind::Literal => parse_command_call(parser, is_top_level, false),
             _ => {
@@ -1709,7 +1713,6 @@ mod tests {
             compile_source("(cmd \n arg0 \n arg2)").ops,
         );
 
-        eprintln!("==================================================================== 1");
         assert_eq!(
             vec![
                 PrepareStackFrame,
@@ -1723,8 +1726,8 @@ mod tests {
             ],
             compile_source("macro c $a $b {\n\treturn cmd $a -option=$b\n}").ops,
         );
-        eprintln!("==================================================================== 2");
 
+        eprintln!("==================================================================== 2");
         assert_eq!(
             vec![
                 // begin macro
