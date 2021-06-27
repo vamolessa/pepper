@@ -1798,6 +1798,7 @@ mod tests {
                     alias_hash: hash_bytes(b""),
                     hidden: false,
                     completions: &[],
+                    accepts_bang: true,
                     flags_hashes: &[hash_bytes(b"-switch"), hash_bytes(b"-option")],
                     func: |_| Ok(None),
                 },
@@ -1806,6 +1807,7 @@ mod tests {
                     alias_hash: hash_bytes(b""),
                     hidden: false,
                     completions: &[],
+                    accepts_bang: false,
                     flags_hashes: &[],
                     func: |_| Ok(None),
                 },
@@ -1839,7 +1841,7 @@ mod tests {
                 PushStringLiteral { start: 0, len: 0 },
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: false,
                 },
                 Pop,
                 PushStringLiteral { start: 0, len: 0 },
@@ -1863,19 +1865,19 @@ mod tests {
                 },
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: true,
                 },
                 Pop,
                 PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
-            compile_source("cmd arg0 arg1").ops,
+            compile_source("cmd! arg0 arg1").ops,
         );
 
         assert_eq!(
             vec![
                 PrepareStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
+                PushAscii(b'\0'),
                 PushStringLiteral {
                     start: 0,
                     len: "opt".len() as _,
@@ -1886,7 +1888,7 @@ mod tests {
                 },
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: false,
                 },
                 Pop,
                 PushStringLiteral { start: 0, len: 0 },
@@ -1909,7 +1911,7 @@ mod tests {
                 },
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: false,
                 },
                 // end nested call
                 PushStringLiteral {
@@ -1922,7 +1924,7 @@ mod tests {
                 },
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: false,
                 },
                 Pop,
                 PushStringLiteral { start: 0, len: 0 },
@@ -1946,7 +1948,7 @@ mod tests {
                 },
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: false,
                 },
                 Pop,
                 PushStringLiteral { start: 0, len: 0 },
@@ -1963,7 +1965,7 @@ mod tests {
                 DuplicateAt(0),
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: false,
                 },
                 Return,
                 PushStringLiteral { start: 0, len: 0 },
@@ -1981,7 +1983,7 @@ mod tests {
                 DuplicateAt(0),
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: false,
                 },
                 Pop,
                 PushStringLiteral { start: 0, len: 0 },
@@ -1996,7 +1998,7 @@ mod tests {
                 },
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: false,
                 },
                 Pop,
                 PrepareStackFrame,
@@ -2008,7 +2010,7 @@ mod tests {
                 },
                 CallBuiltinCommand {
                     index: 0,
-                    bang: false
+                    bang: false,
                 },
                 Pop,
                 PushStringLiteral { start: 0, len: 0 },
