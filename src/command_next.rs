@@ -1,5 +1,5 @@
 use std::{
-    fs,
+    fmt, fs,
     ops::Range,
     path::{Path, PathBuf},
 };
@@ -20,13 +20,135 @@ pub enum CompletionSource {
     Custom(&'static [&'static str]),
 }
 
+type CommandFn =
+    for<'a> fn(&mut CommandContext<'a>) -> Result<Option<CommandOperation>, CommandErrorKind>;
+
+pub struct CommandArgsBuilder {
+    stack_index: u16,
+    bang: bool,
+}
+impl CommandArgsBuilder {
+    pub fn with<'a>(&self, commands: &'a CommandManager) -> CommandArgs<'a> {
+        CommandArgs {
+            virtual_machine: &commands.virtual_machine,
+            stack_index: self.stack_index,
+            bang: self.bang,
+        }
+    }
+}
+
+pub struct CommandArgs<'a> {
+    virtual_machine: &'a VirtualMachine,
+    stack_index: u16,
+    pub bang: bool,
+}
+impl<'a> CommandArgs<'a> {
+    pub fn get_flags(&mut self, flags: &mut [&'a str]) {
+        let start = self.stack_index as usize;
+        self.stack_index += flags.len() as u16;
+        let end = self.stack_index as usize;
+
+        for (slot, value) in flags
+            .iter_mut()
+            .zip(&self.virtual_machine.stack[start..end])
+        {
+            let range = value.start as usize..value.end as usize;
+            *slot = &self.virtual_machine.texts[range];
+        }
+    }
+
+    pub fn try_next(&mut self) -> Option<&'a str> {
+        let index = self.stack_index as usize;
+        let value = self.virtual_machine.stack.get(index)?;
+        let range = value.start as usize..value.end as usize;
+        Some(&self.virtual_machine.texts[range])
+    }
+
+    pub fn next(&mut self) -> Result<&'a str, CommandErrorKind> {
+        match self.try_next() {
+            Some(text) => Ok(text),
+            None => Err(CommandErrorKind::TooFewArguments),
+        }
+    }
+
+    pub fn assert_empty(&mut self) -> Result<(), CommandErrorKind> {
+        match self.try_next() {
+            Some(_) => Err(CommandErrorKind::TooManyArguments),
+            None => Ok(()),
+        }
+    }
+}
+
+pub struct CommandContext<'a> {
+    pub editor: &'a mut Editor,
+    pub platform: &'a mut Platform,
+    pub clients: &'a mut ClientManager,
+    pub client_handle: Option<ClientHandle>,
+    pub args: CommandArgsBuilder,
+}
+impl<'a> CommandContext<'a> {
+    /*
+    pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError> {
+        match self
+            .client_handle
+            .and_then(|h| self.clients.get(h))
+            .and_then(Client::buffer_view_handle)
+        {
+            Some(handle) => Ok(handle),
+            None => Err(CommandError::NoBufferOpened),
+        }
+    }
+
+    pub fn current_buffer_handle(&self) -> Result<BufferHandle, CommandError> {
+        let buffer_view_handle = self.current_buffer_view_handle()?;
+        match self
+            .editor
+            .buffer_views
+            .get(buffer_view_handle)
+            .map(|v| v.buffer_handle)
+        {
+            Some(handle) => Ok(handle),
+            None => Err(CommandError::NoBufferOpened),
+        }
+    }
+
+    pub fn assert_can_discard_all_buffers(&self) -> Result<(), CommandError> {
+        if self.args.bang || !self.editor.buffers.iter().any(Buffer::needs_save) {
+            Ok(())
+        } else {
+            Err(CommandError::UnsavedChanges)
+        }
+    }
+
+    pub fn assert_can_discard_buffer(&self, handle: BufferHandle) -> Result<(), CommandError> {
+        let buffer = self
+            .editor
+            .buffers
+            .get(handle)
+            .ok_or(CommandError::InvalidBufferHandle(handle))?;
+        if self.args.bang || !buffer.needs_save() {
+            Ok(())
+        } else {
+            Err(CommandError::UnsavedChanges)
+        }
+    }
+    */
+}
+
+pub enum CommandOperation {
+    Suspend,
+    Quit,
+    QuitAll,
+}
+
 pub struct BuiltinCommand {
     pub name_hash: u64,
     pub alias_hash: u64,
     pub hidden: bool,
     pub completions: &'static [CompletionSource],
+    pub accepts_bang: bool,
     pub flags_hashes: &'static [u64],
-    pub func: fn(),
+    pub func: CommandFn,
 }
 
 struct MacroCommand {
@@ -103,7 +225,23 @@ pub struct CommandManager {
     virtual_machine: VirtualMachine,
 }
 impl CommandManager {
-    pub fn eval(editor: &mut Editor, source: &str) -> Result<(), CommandError> {
+    pub fn write_output(&mut self, output: &str) {
+        self.virtual_machine.texts.push_str(output);
+    }
+
+    pub fn fmt_output(&mut self, args: fmt::Arguments) {
+        let _ = fmt::write(&mut self.virtual_machine.texts, args);
+    }
+
+    pub fn eval(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: Option<ClientHandle>,
+        source: &str,
+        output: &mut String,
+    ) -> Result<(), CommandError> {
+        output.clear();
         let commands = &mut editor.commands_next;
 
         commands.ast.clear();
@@ -126,6 +264,13 @@ impl CommandManager {
             virtual_machine: &mut commands.virtual_machine,
         };
         let definitions_len = compile(&mut compiler)?;
+
+        execute(editor, platform, clients, client_handle)?;
+
+        let commands = &mut editor.commands_next;
+        let value = commands.virtual_machine.stack.pop().unwrap();
+        let text = &commands.virtual_machine.texts[value.start as usize..value.end as usize];
+        output.push_str(text);
 
         commands
             .virtual_machine
@@ -165,6 +310,10 @@ pub enum CommandErrorKind {
     TooManyFlags,
     CouldNotSourceFile,
     CommandAlreadyExists,
+
+    CommandDoesNotAcceptBang,
+    TooFewArguments,
+    TooManyArguments,
 }
 
 const _ASSERT_COMMAND_ERROR_SIZE: [(); 12] = [(); std::mem::size_of::<CommandError>()];
@@ -410,6 +559,10 @@ const _ASSERT_AST_NODE_SIZE: [(); 24] = [(); std::mem::size_of::<AstNode>()];
 
 #[derive(Debug)]
 enum AstNode {
+    AsciiLiteral {
+        byte: u8,
+        position: BufferPosition,
+    },
     Literal {
         range: Range<u32>,
         position: BufferPosition,
@@ -428,6 +581,7 @@ enum AstNode {
     },
     CommandCall {
         name_hash: u64,
+        bang: bool,
         position: BufferPosition,
         first_arg: u16,
         first_flag: u16,
@@ -752,8 +906,15 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
     ) -> Result<(), CommandError> {
         let index = parser.ast.nodes.len();
 
+        let command_name = parser.previous_token_str();
+        let (command_name, bang) = match command_name.strip_suffix('!') {
+            Some(name) => (name, true),
+            None => (command_name, false),
+        };
+
         parser.ast.nodes.push(AstNode::CommandCall {
-            name_hash: parser.hash_from_previous_token(),
+            name_hash: hash_bytes(command_name.as_bytes()),
+            bang,
             position: parser.previous_token.position,
             first_arg: 0,
             first_flag: 0,
@@ -803,8 +964,8 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                             parser.next_token()?;
                             parse_expression(parser, is_top_level)?;
                         }
-                        _ => parser.ast.nodes.push(AstNode::Literal {
-                            range: 0..0,
+                        _ => parser.ast.nodes.push(AstNode::AsciiLiteral {
+                            byte: b'\0',
                             position,
                         }),
                     }
@@ -997,7 +1158,7 @@ impl<'data> Compiler<'data> {
         self.virtual_machine.texts.push_str(literal);
         let len = self.virtual_machine.texts.len() - start;
         self.emit(
-            Op::PushLiteral {
+            Op::PushStringLiteral {
                 start: start as _,
                 len: len as _,
             },
@@ -1037,7 +1198,7 @@ impl<'data> Compiler<'data> {
 
         let len = self.virtual_machine.texts.len() - start;
         self.emit(
-            Op::PushLiteral {
+            Op::PushStringLiteral {
                 start: start as _,
                 len: len as _,
             },
@@ -1065,7 +1226,7 @@ impl DefinitionsLen {
 fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
     fn emit_final_return(compiler: &mut Compiler) {
         compiler.emit(
-            Op::PushLiteral { start: 0, len: 0 },
+            Op::PushStringLiteral { start: 0, len: 0 },
             SourceLocation {
                 source_index: 0,
                 position: BufferPosition::zero(),
@@ -1086,6 +1247,13 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
         index: usize,
     ) -> Result<(), CommandError> {
         match compiler.ast.nodes[index] {
+            AstNode::AsciiLiteral { byte, position } => compiler.emit(
+                Op::PushAscii(byte),
+                SourceLocation {
+                    source_index,
+                    position,
+                },
+            ),
             AstNode::Literal {
                 ref range,
                 position,
@@ -1120,6 +1288,7 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
             ),
             AstNode::CommandCall {
                 name_hash,
+                bang,
                 position,
                 first_arg,
                 first_flag,
@@ -1167,6 +1336,14 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                             })
                         }
 
+                        if bang && !compiler.commands.builtin_commands[i].accepts_bang {
+                            return Err(CommandError {
+                                kind: CommandErrorKind::CommandDoesNotAcceptBang,
+                                source_index,
+                                position,
+                            });
+                        }
+
                         let mut flag_expressions = [0; u8::MAX as _];
                         let flags = compiler.commands.builtin_commands[i].flags_hashes;
                         while let AstNode::CommandCallFlag { name_hash, next } =
@@ -1181,7 +1358,7 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                         for &expression in &flag_expressions[..flags.len()] {
                             if expression == 0 {
                                 compiler.emit(
-                                    Op::PushLiteral { start: 0, len: 0 },
+                                    Op::PushStringLiteral { start: 0, len: 0 },
                                     SourceLocation {
                                         source_index,
                                         position,
@@ -1192,38 +1369,61 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                             }
                         }
                     }
-                    _ => match compiler.ast.nodes[flag] {
-                        AstNode::CommandCallFlag { .. } => {
+                    _ => {
+                        if bang {
                             return Err(CommandError {
-                                kind: CommandErrorKind::NoSuchFlag,
+                                kind: CommandErrorKind::CommandDoesNotAcceptBang,
                                 source_index,
                                 position,
                             });
                         }
-                        _ => (),
-                    },
+                        match compiler.ast.nodes[flag] {
+                            AstNode::CommandCallFlag { .. } => {
+                                return Err(CommandError {
+                                    kind: CommandErrorKind::NoSuchFlag,
+                                    source_index,
+                                    position,
+                                });
+                            }
+                            _ => (),
+                        }
+                    }
                 }
 
+                let mut arg_count = 0;
                 while let AstNode::CommandCallArg { next } = compiler.ast.nodes[arg] {
                     emit_expression(compiler, source_index, arg + 1)?;
                     arg = next as _;
+                    arg_count += 1;
                 }
 
                 match command_source {
                     CommandSource::Builtin(i) => compiler.emit(
-                        Op::CallBuiltinCommand(i as _),
+                        Op::CallBuiltinCommand {
+                            index: i as _,
+                            bang,
+                        },
                         SourceLocation {
                             source_index,
                             position,
                         },
                     ),
-                    CommandSource::Macro(i) => compiler.emit(
-                        Op::CallMacroCommand(i as _),
-                        SourceLocation {
-                            source_index,
-                            position,
-                        },
-                    ),
+                    CommandSource::Macro(i) => {
+                        if arg_count != compiler.commands.macro_commands[i].param_count as _ {
+                            return Err(CommandError {
+                                kind: CommandErrorKind::WrongNumberOfArgs,
+                                source_index,
+                                position,
+                            });
+                        }
+                        compiler.emit(
+                            Op::CallMacroCommand(i as _),
+                            SourceLocation {
+                                source_index,
+                                position,
+                            },
+                        );
+                    }
                     CommandSource::Request(i) => compiler.emit(
                         Op::CallRequestCommand(i as _),
                         SourceLocation {
@@ -1355,10 +1555,11 @@ const _ASSERT_OP_SIZE: [(); 4] = [(); std::mem::size_of::<Op>()];
 enum Op {
     Return,
     Pop,
-    PushLiteral { start: u16, len: u8 },
+    PushAscii(u8),
+    PushStringLiteral { start: u16, len: u8 },
     DuplicateAt(u16),
     PrepareStackFrame,
-    CallBuiltinCommand(u8),
+    CallBuiltinCommand { index: u8, bang: bool },
     CallMacroCommand(u16),
     CallRequestCommand(u16),
 }
@@ -1425,7 +1626,15 @@ fn execute(
                 stack_start_index = frame.stack_len as _;
             }
             Op::Pop => drop(vm.stack.pop()),
-            Op::PushLiteral { start, len } => {
+            Op::PushAscii(byte) => {
+                let start = vm.texts.len() as _;
+                vm.stack.push(StackValue {
+                    start,
+                    end: start + 1,
+                });
+                vm.texts.push(byte as _);
+            }
+            Op::PushStringLiteral { start, len } => {
                 let start = start as usize;
                 let end = start + len as usize;
                 vm.stack.push(StackValue {
@@ -1446,13 +1655,31 @@ fn execute(
                 stack_start_index = frame.stack_len as _;
                 vm.prepared_frames.push(frame);
             }
-            Op::CallBuiltinCommand(index) => {
+            Op::CallBuiltinCommand { index, bang } => {
                 let frame = vm.prepared_frames.pop().unwrap();
                 let return_start = vm.texts.len();
 
-                let command_fn =
-                    &editor.commands_next.commands.builtin_commands[index as usize].func;
-                command_fn();
+                let command = &editor.commands_next.commands.builtin_commands[index as usize];
+                let command_fn = command.func;
+
+                let mut ctx = CommandContext {
+                    editor,
+                    platform,
+                    clients,
+                    client_handle,
+                    args: CommandArgsBuilder {
+                        stack_index: frame.stack_len,
+                        bang,
+                    },
+                };
+                if let Err(kind) = command_fn(&mut ctx) {
+                    let location = &editor.commands_next.virtual_machine.op_locations[op_index];
+                    return Err(CommandError {
+                        kind,
+                        source_index: location.source_index,
+                        position: location.position,
+                    });
+                }
 
                 vm = &mut editor.commands_next.virtual_machine;
                 vm.texts.drain(frame.texts_len as usize..return_start);
@@ -1464,18 +1691,7 @@ fn execute(
             }
             Op::CallMacroCommand(index) => {
                 let frame = vm.prepared_frames.pop().unwrap();
-                let arg_count = vm.stack.len() - frame.stack_len as usize;
-
                 let command = &editor.commands_next.commands.macro_commands[index as usize];
-                if arg_count != command.param_count as _ {
-                    let location = &vm.op_locations[op_index];
-                    return Err(CommandError {
-                        kind: CommandErrorKind::WrongNumberOfArgs,
-                        source_index: location.source_index,
-                        position: location.position,
-                    });
-                }
-
                 op_index = command.op_start_index as _;
                 vm.frames.push(frame);
             }
@@ -1576,14 +1792,24 @@ mod tests {
             };
             parse(&mut parser).unwrap();
 
-            static BUILTIN_COMMANDS: &[BuiltinCommand] = &[BuiltinCommand {
-                name_hash: hash_bytes(b"cmd"),
-                alias_hash: hash_bytes(b""),
-                hidden: false,
-                completions: &[],
-                flags_hashes: &[hash_bytes(b"-switch"), hash_bytes(b"-option")],
-                func: || (),
-            }];
+            static BUILTIN_COMMANDS: &[BuiltinCommand] = &[
+                BuiltinCommand {
+                    name_hash: hash_bytes(b"cmd"),
+                    alias_hash: hash_bytes(b""),
+                    hidden: false,
+                    completions: &[],
+                    flags_hashes: &[hash_bytes(b"-switch"), hash_bytes(b"-option")],
+                    func: |_| Ok(None),
+                },
+                BuiltinCommand {
+                    name_hash: hash_bytes(b"append"),
+                    alias_hash: hash_bytes(b""),
+                    hidden: false,
+                    completions: &[],
+                    flags_hashes: &[],
+                    func: |_| Ok(None),
+                },
+            ];
 
             let mut commands = CommandCollection::default();
             commands.builtin_commands = BUILTIN_COMMANDS;
@@ -1602,18 +1828,21 @@ mod tests {
         use Op::*;
 
         assert_eq!(
-            vec![PushLiteral { start: 0, len: 0 }, Return],
+            vec![PushStringLiteral { start: 0, len: 0 }, Return],
             compile_source("").ops,
         );
 
         assert_eq!(
             vec![
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral { start: 0, len: 0 },
-                CallBuiltinCommand(0),
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 Pop,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_source("cmd").ops,
@@ -1622,19 +1851,22 @@ mod tests {
         assert_eq!(
             vec![
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral {
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral {
                     start: 0,
                     len: "arg0".len() as _,
                 },
-                PushLiteral {
+                PushStringLiteral {
                     start: "arg0".len() as _,
                     len: "arg1".len() as _,
                 },
-                CallBuiltinCommand(0),
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 Pop,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_source("cmd arg0 arg1").ops,
@@ -1643,18 +1875,21 @@ mod tests {
         assert_eq!(
             vec![
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral {
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral {
                     start: 0,
                     len: "opt".len() as _,
                 },
-                PushLiteral {
+                PushStringLiteral {
                     start: "opt".len() as _,
                     len: "arg".len() as _,
                 },
-                CallBuiltinCommand(0),
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 Pop,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_source("cmd -switch arg -option=opt").ops,
@@ -1663,28 +1898,34 @@ mod tests {
         assert_eq!(
             vec![
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 // begin nested call
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral {
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral {
                     start: 0,
                     len: "arg1".len() as _,
                 },
-                CallBuiltinCommand(0),
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 // end nested call
-                PushLiteral {
+                PushStringLiteral {
                     start: "arg1".len() as _,
                     len: "arg0".len() as _,
                 },
-                PushLiteral {
+                PushStringLiteral {
                     start: "arg1arg0".len() as _,
                     len: "arg2".len() as _,
                 },
-                CallBuiltinCommand(0),
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 Pop,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_source("cmd arg0 -option=(cmd arg1) arg2").ops,
@@ -1693,19 +1934,22 @@ mod tests {
         assert_eq!(
             vec![
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral {
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral {
                     start: 0,
                     len: "arg0".len() as _,
                 },
-                PushLiteral {
+                PushStringLiteral {
                     start: "arg0".len() as _,
                     len: "arg1".len() as _,
                 },
-                CallBuiltinCommand(0),
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 Pop,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_source("(cmd \n arg0 \n arg2)").ops,
@@ -1714,12 +1958,15 @@ mod tests {
         assert_eq!(
             vec![
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 DuplicateAt(1),
                 DuplicateAt(0),
-                CallBuiltinCommand(0),
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 Return,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_source("macro c $a $b {\n\treturn cmd $a -option=$b\n}").ops,
@@ -1729,33 +1976,42 @@ mod tests {
             vec![
                 // begin macro
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 DuplicateAt(0),
-                CallBuiltinCommand(0),
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 Pop,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 Return,
                 // end macro
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral {
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral {
                     start: 0,
                     len: "0".len() as _
                 },
-                CallBuiltinCommand(0),
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 Pop,
                 PrepareStackFrame,
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral { start: 0, len: 0 },
-                PushLiteral {
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral {
                     start: "0".len() as _,
                     len: "1".len() as _
                 },
-                CallBuiltinCommand(0),
+                CallBuiltinCommand {
+                    index: 0,
+                    bang: false
+                },
                 Pop,
-                PushLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_source("cmd '0'\n macro c $p { cmd $p } cmd '1'").ops,
