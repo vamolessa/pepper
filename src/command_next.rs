@@ -623,7 +623,6 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
     fn parse_macro(parser: &mut Parser) -> Result<(), CommandError> {
         parser.next_token()?;
 
-        let fix_statement_index = parser.previous_statement_index;
         parser.add_statement();
 
         let index = parser.ast.nodes.len();
@@ -668,11 +667,6 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         }
         parser.next_token()?;
 
-        match &mut parser.ast.nodes[fix_statement_index as usize] {
-            AstNode::Statement { next, .. } => *next = 0,
-            _ => unreachable!(),
-        }
-
         let last_statement_index = parser.previous_statement_index as usize + 1;
         if !matches!(
             parser.ast.nodes[last_statement_index],
@@ -686,8 +680,14 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             });
         }
 
+        let declaration_index = (index - 1) as _;
+        match &mut parser.ast.nodes[declaration_index as usize] {
+            AstNode::Statement { next, .. } => *next = 0,
+            _ => unreachable!(),
+        }
+
         parser.bindings.clear();
-        parser.previous_statement_index = (index - 1) as _;
+        parser.previous_statement_index = declaration_index;
 
         Ok(())
     }
@@ -1576,8 +1576,6 @@ mod tests {
             };
             parse(&mut parser).unwrap();
 
-            dbg!(&ast.nodes);
-
             static BUILTIN_COMMANDS: &[BuiltinCommand] = &[BuiltinCommand {
                 name_hash: hash_bytes(b"cmd"),
                 alias_hash: hash_bytes(b""),
@@ -1727,7 +1725,6 @@ mod tests {
             compile_source("macro c $a $b {\n\treturn cmd $a -option=$b\n}").ops,
         );
 
-        eprintln!("==================================================================== 2");
         assert_eq!(
             vec![
                 // begin macro
