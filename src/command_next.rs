@@ -1539,6 +1539,8 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
         Ok(next as _)
     }
 
+    compiler.virtual_machine.start_op_index = 0;
+
     if compiler.ast.nodes.is_empty() {
         emit_final_return(compiler);
         return Ok(DefinitionsLen::from_virtual_machine(
@@ -1598,6 +1600,7 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
 
     let definitions_len = DefinitionsLen::from_virtual_machine(&compiler.virtual_machine);
 
+    compiler.virtual_machine.start_op_index = definitions_len.ops;
     index = 0;
 
     loop {
@@ -1670,6 +1673,7 @@ struct VirtualMachine {
     frames: Vec<StackFrame>,
     prepared_frames: Vec<StackFrame>,
 
+    start_op_index: u32,
     op_locations: Vec<SourceLocation>,
     paths: SourcePathCollection,
 }
@@ -1681,8 +1685,8 @@ fn execute(
     client_handle: Option<ClientHandle>,
 ) -> Result<Option<CommandOperation>, CommandError> {
     let mut vm = &mut editor.commands_next.virtual_machine;
-    let mut op_index = 0;
     let mut stack_start_index = 0;
+    let mut op_index = vm.start_op_index as usize;
 
     loop {
         match vm.ops[op_index] {
@@ -1691,8 +1695,20 @@ fn execute(
                     Some(frame) => frame,
                     None => return Ok(None),
                 };
-                let return_start = vm.stack.last().unwrap().start as usize;
-                vm.texts.drain(frame.texts_len as usize..return_start);
+
+                let value = vm.stack.last().unwrap();
+                if value.start > frame.texts_len {
+                    let return_text_start = frame.texts_len as usize;
+                    let return_text_range = value.start as usize..value.end as usize;
+                    let return_text_len = return_text_range.end - return_text_range.start;
+                    unsafe {
+                        let bytes = vm.texts.as_mut_vec();
+                        bytes.copy_within(return_text_range, return_text_start);
+                        bytes.truncate(return_text_start + return_text_len);
+                    }
+                } else {
+                    vm.texts.truncate(frame.texts_len as _);
+                }
                 vm.stack.truncate(frame.stack_len as _);
                 vm.stack.push(StackValue {
                     start: frame.texts_len,
@@ -1857,17 +1873,13 @@ mod tests {
         );
     }
 
-    fn compile_source(source: &str) -> VirtualMachine {
-        let mut paths = SourcePathCollection::default();
-        let mut ast = Ast::default();
-        let mut bindings = Vec::new();
-
+    fn compile_into(commands: &mut CommandManager, source: &str) {
         let mut parser = Parser {
             tokenizer: CommandTokenizer::new(source),
             source_index: 0,
-            paths: &mut paths,
-            ast: &mut ast,
-            bindings: &mut bindings,
+            paths: &mut commands.virtual_machine.paths,
+            ast: &mut commands.ast,
+            bindings: &mut commands.bindings,
             previous_token: CommandToken::default(),
             previous_statement_index: 0,
         };
@@ -1902,20 +1914,25 @@ mod tests {
             },
         ];
 
-        let mut commands = CommandCollection::default();
-        commands.builtin_commands = BUILTIN_COMMANDS;
-        let mut virtual_machine = VirtualMachine::default();
+        commands.commands.builtin_commands = BUILTIN_COMMANDS;
 
         let mut compiler = Compiler {
-            ast: &ast,
-            commands: &mut commands,
-            virtual_machine: &mut virtual_machine,
+            ast: &commands.ast,
+            commands: &mut commands.commands,
+            virtual_machine: &mut commands.virtual_machine,
         };
         compile(&mut compiler).unwrap();
 
-        assert_eq!(virtual_machine.ops.len(), virtual_machine.op_locations.len());
+        assert_eq!(
+            commands.virtual_machine.ops.len(),
+            commands.virtual_machine.op_locations.len()
+        );
+    }
 
-        virtual_machine
+    fn compile_into_ops(source: &str) -> Vec<Op> {
+        let mut commands = CommandManager::default();
+        compile_into(&mut commands, source);
+        commands.virtual_machine.ops
     }
 
     #[test]
@@ -1924,7 +1941,7 @@ mod tests {
 
         assert_eq!(
             vec![PushStringLiteral { start: 0, len: 0 }, Return],
-            compile_source("").ops,
+            compile_into_ops(""),
         );
 
         assert_eq!(
@@ -1940,7 +1957,7 @@ mod tests {
                 PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
-            compile_source("cmd").ops,
+            compile_into_ops("cmd"),
         );
 
         assert_eq!(
@@ -1964,7 +1981,7 @@ mod tests {
                 PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
-            compile_source("cmd! arg0 arg1").ops,
+            compile_into_ops("cmd! arg0 arg1"),
         );
 
         assert_eq!(
@@ -1987,7 +2004,7 @@ mod tests {
                 PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
-            compile_source("cmd -switch arg -option=opt").ops,
+            compile_into_ops("cmd -switch arg -option=opt"),
         );
 
         assert_eq!(
@@ -2023,7 +2040,7 @@ mod tests {
                 PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
-            compile_source("cmd arg0 -option=(cmd arg1) arg2").ops,
+            compile_into_ops("cmd arg0 -option=(cmd arg1) arg2"),
         );
 
         assert_eq!(
@@ -2047,7 +2064,7 @@ mod tests {
                 PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
-            compile_source("(cmd \n arg0 \n arg2)").ops,
+            compile_into_ops("(cmd \n arg0 \n arg1)"),
         );
 
         assert_eq!(
@@ -2064,7 +2081,7 @@ mod tests {
                 PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
-            compile_source("macro c $a $b {\n\treturn cmd $a -option=$b\n}").ops,
+            compile_into_ops("macro c $a $b {\n\treturn cmd $a -option=$b\n}"),
         );
 
         assert_eq!(
@@ -2109,7 +2126,7 @@ mod tests {
                 PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
-            compile_source("cmd '0'\n macro c $p { cmd $p } cmd '1'").ops,
+            compile_into_ops("cmd '0'\n macro c $p { cmd $p } cmd '1'"),
         );
     }
 
@@ -2121,20 +2138,25 @@ mod tests {
             let mut platform = Platform::new(|| (), request_sender);
             let mut clients = ClientManager::default();
 
-            let vm = compile_source(source);
-            dbg!(&vm.ops);
-            editor.commands_next.virtual_machine = vm;
+            compile_into(&mut editor.commands_next, source);
+            let vm = &editor.commands_next.virtual_machine;
+            dbg!(vm.start_op_index, &vm.ops);
             execute(&mut editor, &mut platform, &mut clients, None).unwrap();
 
-            let vm = &mut editor.commands_next.virtual_machine;
+            let vm = &editor.commands_next.virtual_machine;
             assert_eq!(1, vm.stack.len());
             assert_eq!(0, vm.frames.len());
             assert_eq!(0, vm.prepared_frames.len());
-            let value = vm.stack.pop().unwrap();
+            let value = vm.stack.last().unwrap();
             vm.texts[value.start as usize..value.end as usize].into()
         }
 
         assert_eq!("", eval(""));
+        assert_eq!("abc", eval("return 'abc'"));
+        assert_eq!("", eval("macro c { }"));
+        assert_eq!("", eval("macro c $a { return $a }"));
+        eprintln!("=============================================================================");
+        assert_eq!("", eval("macro c $a { return $a }\n c 'abc'"));
     }
 }
 
