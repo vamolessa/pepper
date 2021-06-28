@@ -1679,7 +1679,7 @@ fn execute(
     platform: &mut Platform,
     clients: &mut ClientManager,
     client_handle: Option<ClientHandle>,
-) -> Result<(), CommandError> {
+) -> Result<Option<CommandOperation>, CommandError> {
     let mut vm = &mut editor.commands_next.virtual_machine;
     let mut op_index = 0;
     let mut stack_start_index = 0;
@@ -1687,7 +1687,10 @@ fn execute(
     loop {
         match vm.ops[op_index] {
             Op::Return => {
-                let frame = vm.frames.pop().unwrap();
+                let frame = match vm.frames.pop() {
+                    Some(frame) => frame,
+                    None => return Ok(None),
+                };
                 let return_start = vm.stack.last().unwrap().start as usize;
                 vm.texts.drain(frame.texts_len as usize..return_start);
                 vm.stack.truncate(frame.stack_len as _);
@@ -1746,13 +1749,19 @@ fn execute(
                         bang,
                     },
                 };
-                if let Err(kind) = command_fn(&mut ctx) {
-                    let location = &editor.commands_next.virtual_machine.op_locations[op_index];
-                    return Err(CommandError {
-                        kind,
-                        source_index: location.source_index,
-                        position: location.position,
-                    });
+                match command_fn(&mut ctx) {
+                    Ok(Some(op)) => return Ok(Some(op)),
+                    Ok(None) => (),
+                    Err(kind) => {
+                        vm = &mut editor.commands_next.virtual_machine;
+                        vm.frames.push(frame);
+                        let location = &vm.op_locations[op_index];
+                        return Err(CommandError {
+                            kind,
+                            source_index: location.source_index,
+                            position: location.position,
+                        });
+                    }
                 }
 
                 vm = &mut editor.commands_next.virtual_machine;
@@ -1848,67 +1857,69 @@ mod tests {
         );
     }
 
+    fn compile_source(source: &str) -> VirtualMachine {
+        let mut paths = SourcePathCollection::default();
+        let mut ast = Ast::default();
+        let mut bindings = Vec::new();
+
+        let mut parser = Parser {
+            tokenizer: CommandTokenizer::new(source),
+            source_index: 0,
+            paths: &mut paths,
+            ast: &mut ast,
+            bindings: &mut bindings,
+            previous_token: CommandToken::default(),
+            previous_statement_index: 0,
+        };
+        parse(&mut parser).unwrap();
+
+        static BUILTIN_COMMANDS: &[BuiltinCommand] = &[
+            BuiltinCommand {
+                name_hash: hash_bytes(b"cmd"),
+                alias_hash: hash_bytes(b""),
+                hidden: false,
+                completions: &[],
+                accepts_bang: true,
+                flags_hashes: &[hash_bytes(b"-switch"), hash_bytes(b"-option")],
+                func: |_| Ok(None),
+            },
+            BuiltinCommand {
+                name_hash: hash_bytes(b"append"),
+                alias_hash: hash_bytes(b""),
+                hidden: false,
+                completions: &[],
+                accepts_bang: false,
+                flags_hashes: &[],
+                func: |ctx| {
+                    let mut args = ctx.args.with(&ctx.editor.commands_next);
+                    let mut output = String::new();
+                    while let Some(arg) = args.try_next() {
+                        output.push_str(arg);
+                    }
+                    ctx.editor.commands_next.write_output(&output);
+                    Ok(None)
+                },
+            },
+        ];
+
+        let mut commands = CommandCollection::default();
+        commands.builtin_commands = BUILTIN_COMMANDS;
+        let mut virtual_machine = VirtualMachine::default();
+
+        let mut compiler = Compiler {
+            ast: &ast,
+            commands: &mut commands,
+            virtual_machine: &mut virtual_machine,
+        };
+        compile(&mut compiler).unwrap();
+
+        assert_eq!(virtual_machine.ops.len(), virtual_machine.op_locations.len());
+
+        virtual_machine
+    }
+
     #[test]
     fn command_compiler() {
-        fn compile_source(source: &str) -> VirtualMachine {
-            let mut paths = SourcePathCollection::default();
-            let mut ast = Ast::default();
-            let mut bindings = Vec::new();
-
-            let mut parser = Parser {
-                tokenizer: CommandTokenizer::new(source),
-                source_index: 0,
-                paths: &mut paths,
-                ast: &mut ast,
-                bindings: &mut bindings,
-                previous_token: CommandToken::default(),
-                previous_statement_index: 0,
-            };
-            parse(&mut parser).unwrap();
-
-            static BUILTIN_COMMANDS: &[BuiltinCommand] = &[
-                BuiltinCommand {
-                    name_hash: hash_bytes(b"cmd"),
-                    alias_hash: hash_bytes(b""),
-                    hidden: false,
-                    completions: &[],
-                    accepts_bang: true,
-                    flags_hashes: &[hash_bytes(b"-switch"), hash_bytes(b"-option")],
-                    func: |_| Ok(None),
-                },
-                BuiltinCommand {
-                    name_hash: hash_bytes(b"append"),
-                    alias_hash: hash_bytes(b""),
-                    hidden: false,
-                    completions: &[],
-                    accepts_bang: false,
-                    flags_hashes: &[],
-                    func: |ctx| {
-                        let mut args = ctx.args.with(&ctx.editor.commands_next);
-                        let mut output = String::new();
-                        while let Some(arg) = args.try_next() {
-                            output.push_str(arg);
-                        }
-                        ctx.editor.commands_next.write_output(&output);
-                        Ok(None)
-                    },
-                },
-            ];
-
-            let mut commands = CommandCollection::default();
-            commands.builtin_commands = BUILTIN_COMMANDS;
-            let mut virtual_machine = VirtualMachine::default();
-
-            let mut compiler = Compiler {
-                ast: &ast,
-                commands: &mut commands,
-                virtual_machine: &mut virtual_machine,
-            };
-            compile(&mut compiler).unwrap();
-
-            virtual_machine
-        }
-
         use Op::*;
 
         assert_eq!(
@@ -2100,6 +2111,30 @@ mod tests {
             ],
             compile_source("cmd '0'\n macro c $p { cmd $p } cmd '1'").ops,
         );
+    }
+
+    #[test]
+    fn command_execution() {
+        fn eval(source: &str) -> String {
+            let mut editor = Editor::new(PathBuf::new());
+            let (request_sender, _) = std::sync::mpsc::channel();
+            let mut platform = Platform::new(|| (), request_sender);
+            let mut clients = ClientManager::default();
+
+            let vm = compile_source(source);
+            dbg!(&vm.ops);
+            editor.commands_next.virtual_machine = vm;
+            execute(&mut editor, &mut platform, &mut clients, None).unwrap();
+
+            let vm = &mut editor.commands_next.virtual_machine;
+            assert_eq!(1, vm.stack.len());
+            assert_eq!(0, vm.frames.len());
+            assert_eq!(0, vm.prepared_frames.len());
+            let value = vm.stack.pop().unwrap();
+            vm.texts[value.start as usize..value.end as usize].into()
+        }
+
+        assert_eq!("", eval(""));
     }
 }
 

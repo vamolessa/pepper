@@ -214,6 +214,7 @@ impl Client {
     }
 }
 
+#[derive(Default)]
 pub struct ClientManager {
     focused_client: Option<ClientHandle>,
     previous_focused_client: Option<ClientHandle>,
@@ -221,14 +222,6 @@ pub struct ClientManager {
 }
 
 impl ClientManager {
-    pub fn new() -> Self {
-        Self {
-            focused_client: None,
-            previous_focused_client: None,
-            clients: Vec::new(),
-        }
-    }
-
     pub fn focused_client(&self) -> Option<ClientHandle> {
         self.focused_client
     }
