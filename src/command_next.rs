@@ -1697,7 +1697,7 @@ fn execute(
                 };
 
                 let value = vm.stack.last().unwrap();
-                if value.start > frame.texts_len {
+                let value = if value.start > frame.texts_len {
                     let return_text_start = frame.texts_len as usize;
                     let return_text_range = value.start as usize..value.end as usize;
                     let return_text_len = return_text_range.end - return_text_range.start;
@@ -1706,16 +1706,19 @@ fn execute(
                         bytes.copy_within(return_text_range, return_text_start);
                         bytes.truncate(return_text_start + return_text_len);
                     }
+                    StackValue {
+                        start: return_text_start as _,
+                        end: return_text_len as _,
+                    }
                 } else {
                     vm.texts.truncate(frame.texts_len as _);
-                }
-                vm.stack.truncate(frame.stack_len as _);
-                vm.stack.push(StackValue {
-                    start: frame.texts_len,
-                    end: vm.texts.len() as _,
-                });
+                    value.clone()
+                };
 
-                op_index = frame.op_index as _;
+                vm.stack.truncate(frame.stack_len as _);
+                vm.stack.push(value);
+
+                op_index = frame.op_index as usize;
                 stack_start_index = frame.stack_len as _;
             }
             Op::Pop => drop(vm.stack.pop()),
@@ -1741,7 +1744,7 @@ fn execute(
             }
             Op::PrepareStackFrame => {
                 let frame = StackFrame {
-                    op_index: (op_index + 2) as _,
+                    op_index: 0,
                     texts_len: vm.texts.len() as _,
                     stack_len: vm.stack.len() as _,
                 };
@@ -1749,7 +1752,7 @@ fn execute(
                 vm.prepared_frames.push(frame);
             }
             Op::CallBuiltinCommand { index, bang } => {
-                let frame = vm.prepared_frames.pop().unwrap();
+                let mut frame = vm.prepared_frames.pop().unwrap();
                 let return_start = vm.texts.len();
 
                 let command = &editor.commands_next.commands.builtin_commands[index as usize];
@@ -1770,6 +1773,7 @@ fn execute(
                     Ok(None) => (),
                     Err(kind) => {
                         vm = &mut editor.commands_next.virtual_machine;
+                        frame.op_index = op_index as _;
                         vm.frames.push(frame);
                         let location = &vm.op_locations[op_index];
                         return Err(CommandError {
@@ -1789,13 +1793,15 @@ fn execute(
                 });
             }
             Op::CallMacroCommand(index) => {
-                let frame = vm.prepared_frames.pop().unwrap();
+                let mut frame = vm.prepared_frames.pop().unwrap();
                 let command = &editor.commands_next.commands.macro_commands[index as usize];
+                frame.op_index = op_index as _;
                 op_index = command.op_start_index as _;
                 vm.frames.push(frame);
             }
             Op::CallRequestCommand(index) => {
-                let frame = vm.prepared_frames.pop().unwrap();
+                let mut frame = vm.prepared_frames.pop().unwrap();
+                frame.op_index = op_index as _;
                 // TODO: send request
                 vm.texts.truncate(frame.texts_len as _);
                 vm.stack.truncate(frame.stack_len as _);
@@ -2139,11 +2145,22 @@ mod tests {
             let mut clients = ClientManager::default();
 
             compile_into(&mut editor.commands_next, source);
-            let vm = &editor.commands_next.virtual_machine;
-            dbg!(vm.start_op_index, &vm.ops);
             execute(&mut editor, &mut platform, &mut clients, None).unwrap();
 
             let vm = &editor.commands_next.virtual_machine;
+
+            if vm.stack.len() != 1 {
+                dbg!(vm.start_op_index, &vm.ops);
+
+                eprintln!("\nstack:");
+                for value in &vm.stack {
+                    let range = value.start as usize..value.end as usize;
+                    eprintln!("\t{}..{} = '{}'", value.start, value.end, &vm.texts[range]);
+                }
+                eprintln!("texts: '{}'", &vm.texts);
+                eprintln!();
+            }
+
             assert_eq!(1, vm.stack.len());
             assert_eq!(0, vm.frames.len());
             assert_eq!(0, vm.prepared_frames.len());
@@ -2156,7 +2173,8 @@ mod tests {
         assert_eq!("", eval("macro c { }"));
         assert_eq!("", eval("macro c $a { return $a }"));
         eprintln!("=============================================================================");
-        assert_eq!("", eval("macro c $a { return $a }\n c 'abc'"));
+        assert_eq!("", eval("macro c $a { return $a }\n c 'abc' \n c 'def'"));
+        assert_eq!("abc", eval("macro c $a { return $a }\n return c 'abc'"));
     }
 }
 
