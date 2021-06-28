@@ -180,31 +180,41 @@ struct SourcePathCollection {
     ranges: Vec<Range<u16>>,
 }
 impl SourcePathCollection {
-    pub fn get(&self, index: usize) -> &Path {
-        let range = self.ranges[index].clone();
+    pub fn get(&self, index: u8) -> &Path {
+        let range = self.ranges[index as usize].clone();
         let range = range.start as usize..range.end as usize;
         Path::new(&self.buf[range])
     }
 
-    pub fn index_of(&mut self, path: &Path) -> usize {
+    pub fn index_of(&mut self, path: &Path) -> Option<u8> {
         let path = match path.to_str() {
             Some(path) => path,
-            None => return 0,
+            None => return Some(0),
         };
 
         for (i, range) in self.ranges.iter().enumerate() {
             let range = range.start as usize..range.end as usize;
             if &self.buf[range] == path {
-                return i;
+                return Some(i as _);
             }
+        }
+
+        let index = self.ranges.len();
+        if index > u8::MAX as _ {
+            return None;
         }
 
         let start = self.buf.len();
         self.buf.push_str(path);
         let end = self.buf.len();
-        let index = self.ranges.len();
+
+        if end > u16::MAX as _ {
+            self.buf.truncate(start);
+            return None;
+        }
+
         self.ranges.push(start as _..end as _);
-        index
+        Some(index as _)
     }
 }
 impl Default for SourcePathCollection {
@@ -295,12 +305,16 @@ pub enum CommandErrorKind {
     InvalidBindingName,
 
     TooManySources,
+    AstTooLong,
+    TooManyMacroCommands,
+    TooManyLiterals,
+    LiteralTooLong,
     ExpectedToken(CommandTokenKind),
     ExpectedStatement,
     ExpectedExpression,
     InvalidBindingDeclarationAtTopLevel,
-    LiteralTooBig,
     InvalidLiteralEscaping,
+    TooManyParameters,
     TooManyBindings,
     UndeclaredBinding,
     NoSuchCommand,
@@ -659,7 +673,7 @@ impl<'source, 'data> Parser<'source, 'data> {
     }
 
     pub fn declare_binding_from_previous_token(&mut self) -> Result<(), CommandError> {
-        if self.bindings.len() >= u8::MAX as _ {
+        if self.bindings.len() >= u16::MAX as _ {
             Err(CommandError {
                 kind: CommandErrorKind::TooManyBindings,
                 source_index: self.source_index,
@@ -682,8 +696,22 @@ impl<'source, 'data> Parser<'source, 'data> {
             .map(|i| i as _)
     }
 
-    pub fn add_statement(&mut self) {
-        let index = self.ast.nodes.len() as _;
+    pub fn ast_len(&self) -> Result<u16, CommandError> {
+        let len = self.ast.nodes.len();
+        if len < u16::MAX as _ {
+            Ok(len as _)
+        } else {
+            Err(CommandError {
+                kind: CommandErrorKind::AstTooLong,
+                source_index: self.source_index,
+                position: self.previous_token.position,
+            })
+        }
+    }
+
+    pub fn add_statement(&mut self) -> Result<(), CommandError> {
+        let index = self.ast_len()?;
+
         if !self.ast.nodes.is_empty() {
             match &mut self.ast.nodes[self.previous_statement_index as usize] {
                 AstNode::Statement { next, .. } => *next = index,
@@ -695,6 +723,7 @@ impl<'source, 'data> Parser<'source, 'data> {
             source: self.source_index,
             next: 0,
         });
+        Ok(())
     }
 
     pub fn hash_from_previous_token(&self) -> u64 {
@@ -727,7 +756,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             path.into()
         } else {
             let mut buf = PathBuf::new();
-            let current_path = parser.paths.get(parser.source_index as _);
+            let current_path = parser.paths.get(parser.source_index);
             if !current_path.as_os_str().is_empty() {
                 buf.push(current_path);
             }
@@ -746,20 +775,22 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             }
         };
 
-        let source_index = parser.paths.index_of(&path);
-        if source_index > u8::MAX as _ {
-            return Err(CommandError {
-                kind: CommandErrorKind::TooManySources,
-                source_index: parser.source_index,
-                position: parser.previous_token.position,
-            });
-        }
+        let source_index = match parser.paths.index_of(&path) {
+            Some(index) => index,
+            None => {
+                return Err(CommandError {
+                    kind: CommandErrorKind::TooManySources,
+                    source_index: parser.source_index,
+                    position: parser.previous_token.position,
+                })
+            }
+        };
 
         parser.next_token()?;
 
         let mut source_parser = Parser {
             tokenizer: CommandTokenizer::new(&source),
-            source_index: source_index as _,
+            source_index,
             paths: parser.paths,
             ast: parser.ast,
             bindings: parser.bindings,
@@ -776,7 +807,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
     fn parse_macro(parser: &mut Parser) -> Result<(), CommandError> {
         parser.next_token()?;
 
-        parser.add_statement();
+        parser.add_statement()?;
 
         let index = parser.ast.nodes.len();
         let position = parser.previous_token.position;
@@ -788,13 +819,21 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
 
         parser.consume_token(CommandTokenKind::Literal)?;
 
-        let previous_bindings_len = parser.bindings.len();
         loop {
             match parser.previous_token.kind {
                 CommandTokenKind::OpenCurlyBrackets => {
                     match &mut parser.ast.nodes[index] {
                         AstNode::MacroDeclaration { param_count, .. } => {
-                            *param_count = (parser.bindings.len() - previous_bindings_len) as _;
+                            let binding_count = parser.bindings.len();
+                            if binding_count > u8::MAX as _ {
+                                return Err(CommandError {
+                                    kind: CommandErrorKind::TooManyParameters,
+                                    source_index: parser.source_index,
+                                    position,
+                                });
+                            }
+
+                            *param_count = binding_count as _;
                         }
                         _ => unreachable!(),
                     }
@@ -825,7 +864,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             parser.ast.nodes[last_statement_index],
             AstNode::Return { .. }
         ) {
-            parser.add_statement();
+            parser.add_statement()?;
             parser.ast.nodes.push(AstNode::Return { position });
             parser.ast.nodes.push(AstNode::Literal {
                 range: 0..0,
@@ -849,7 +888,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         loop {
             match parser.previous_token.kind {
                 CommandTokenKind::Literal => {
-                    parser.add_statement();
+                    parser.add_statement()?;
                     match parser.previous_token_str() {
                         "return" => {
                             parser.next_token()?;
@@ -862,7 +901,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                     };
                 }
                 CommandTokenKind::OpenParenthesis => {
-                    parser.add_statement();
+                    parser.add_statement()?;
                     parse_expression(parser, is_top_level)?;
                     return Ok(());
                 }
@@ -876,7 +915,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                     }
 
                     parser.declare_binding_from_previous_token()?;
-                    parser.add_statement();
+                    parser.add_statement()?;
                     parser.ast.nodes.push(AstNode::BindingDeclaration);
 
                     parser.next_token()?;
@@ -929,7 +968,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         loop {
             match parser.previous_token.kind {
                 CommandTokenKind::Flag => {
-                    let len = parser.ast.nodes.len() as _;
+                    let len = parser.ast_len()?;
 
                     match flag_count {
                         0 => match &mut parser.ast.nodes[index] {
@@ -981,7 +1020,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                 | CommandTokenKind::CloseCurlyBrackets
                 | CommandTokenKind::EndOfSource => break,
                 _ => {
-                    let len = parser.ast.nodes.len() as _;
+                    let len = parser.ast_len()?;
 
                     if arg_count == 0 {
                         match &mut parser.ast.nodes[index] {
@@ -1029,21 +1068,12 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         parser: &mut Parser,
         is_top_level: bool,
     ) -> Result<BufferPosition, CommandError> {
-        fn consume_literal_range(parser: &mut Parser) -> Result<Range<u32>, CommandError> {
+        fn literal_range_from_previous_token(parser: &mut Parser) -> Range<u32> {
             let range = parser.previous_token.range();
-            if range.end - range.start <= u8::MAX as _ {
-                let start = parser.ast.texts.len();
-                parser.ast.texts.push_str(&parser.tokenizer.source[range]);
-                let end = parser.ast.texts.len();
-                parser.next_token()?;
-                Ok(start as _..end as _)
-            } else {
-                Err(CommandError {
-                    kind: CommandErrorKind::LiteralTooBig,
-                    source_index: parser.source_index,
-                    position: parser.previous_token.position,
-                })
-            }
+            let start = parser.ast.texts.len();
+            parser.ast.texts.push_str(&parser.tokenizer.source[range]);
+            let end = parser.ast.texts.len();
+            start as _..end as _
         }
 
         while let CommandTokenKind::EndOfLine = parser.previous_token.kind {
@@ -1053,13 +1083,15 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         match parser.previous_token.kind {
             CommandTokenKind::Literal => {
                 let position = parser.previous_token.position;
-                let range = consume_literal_range(parser)?;
+                let range = literal_range_from_previous_token(parser);
+                parser.next_token()?;
                 parser.ast.nodes.push(AstNode::Literal { range, position });
                 Ok(position)
             }
             CommandTokenKind::QuotedLiteral => {
                 let position = parser.previous_token.position;
-                let range = consume_literal_range(parser)?;
+                let range = literal_range_from_previous_token(parser);
+                parser.next_token()?;
                 parser
                     .ast
                     .nodes
@@ -1151,11 +1183,30 @@ impl<'data> Compiler<'data> {
         self.virtual_machine.op_locations.push(location);
     }
 
-    pub fn emit_push_literal(&mut self, range: Range<u32>, location: SourceLocation) {
+    pub fn emit_push_literal(
+        &mut self,
+        range: Range<u32>,
+        location: SourceLocation,
+    ) -> Result<(), CommandError> {
         let literal = &self.ast.texts[range.start as usize..range.end as usize];
         let start = self.virtual_machine.texts.len();
+        if start > u16::MAX as _ {
+            return Err(CommandError {
+                kind: CommandErrorKind::TooManyLiterals,
+                source_index: location.source_index,
+                position: location.position,
+            });
+        }
         self.virtual_machine.texts.push_str(literal);
         let len = self.virtual_machine.texts.len() - start;
+        if len > u8::MAX as _ {
+            return Err(CommandError {
+                kind: CommandErrorKind::LiteralTooLong,
+                source_index: location.source_index,
+                position: location.position,
+            });
+        }
+
         self.emit(
             Op::PushStringLiteral {
                 start: start as _,
@@ -1163,6 +1214,7 @@ impl<'data> Compiler<'data> {
             },
             location,
         );
+        Ok(())
     }
 
     pub fn emit_push_escaped_literal(
@@ -1171,6 +1223,13 @@ impl<'data> Compiler<'data> {
         location: SourceLocation,
     ) -> Result<(), CommandError> {
         let start = self.virtual_machine.texts.len();
+        if start > u16::MAX as _ {
+            return Err(CommandError {
+                kind: CommandErrorKind::TooManyLiterals,
+                source_index: location.source_index,
+                position: location.position,
+            });
+        }
 
         let mut literal = &self.ast.texts[range.start as usize..range.end as usize];
         while let Some(i) = literal.find('\\') {
@@ -1196,6 +1255,14 @@ impl<'data> Compiler<'data> {
         self.virtual_machine.texts.push_str(literal);
 
         let len = self.virtual_machine.texts.len() - start;
+        if len > u8::MAX as _ {
+            return Err(CommandError {
+                kind: CommandErrorKind::LiteralTooLong,
+                source_index: location.source_index,
+                position: location.position,
+            });
+        }
+
         self.emit(
             Op::PushStringLiteral {
                 start: start as _,
@@ -1262,7 +1329,7 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
                     source_index,
                     position,
                 },
-            ),
+            )?,
             AstNode::QuotedLiteral {
                 ref range,
                 position,
@@ -1506,6 +1573,14 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
             index += 1;
             while index != 0 {
                 index = emit_statement(compiler, index)?;
+            }
+
+            if compiler.commands.macro_commands.len() > u16::MAX as _ {
+                return Err(CommandError {
+                    kind: CommandErrorKind::TooManyMacroCommands,
+                    source_index,
+                    position,
+                });
             }
 
             compiler.commands.macro_commands.push(MacroCommand {
@@ -1808,7 +1883,15 @@ mod tests {
                     completions: &[],
                     accepts_bang: false,
                     flags_hashes: &[],
-                    func: |_| Ok(None),
+                    func: |ctx| {
+                        let mut args = ctx.args.with(&ctx.editor.commands_next);
+                        let mut output = String::new();
+                        while let Some(arg) = args.try_next() {
+                            output.push_str(arg);
+                        }
+                        ctx.editor.commands_next.write_output(&output);
+                        Ok(None)
+                    },
                 },
             ];
 
