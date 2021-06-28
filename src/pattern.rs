@@ -1,4 +1,4 @@
-use std::{convert::From, fmt, ops::AddAssign, str::Chars};
+use std::{convert::TryInto, fmt, str::Chars, num::TryFromIntError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {
@@ -15,6 +15,7 @@ pub enum PatternErrorKind {
     Unescaped(char),
     EmptyGroup,
     GroupWithElementsOfDifferentSize,
+    PatternTooLong,
 }
 impl fmt::Display for PatternErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -27,7 +28,13 @@ impl fmt::Display for PatternErrorKind {
             Self::GroupWithElementsOfDifferentSize => {
                 write!(f, "pattern group has elements of different size")
             }
+            Self::PatternTooLong => write!(f, "pattern is too long"),
         }
+    }
+}
+impl From<TryFromIntError> for PatternErrorKind {
+    fn from(_: TryFromIntError) -> Self {
+        Self::PatternTooLong
     }
 }
 
@@ -387,27 +394,29 @@ impl fmt::Debug for Pattern {
 
 #[derive(Debug, Clone, Copy)]
 struct Length(u16);
-impl From<usize> for Length {
-    fn from(value: usize) -> Self {
-        Self(value as _)
-    }
-}
-impl AddAssign for Length {
-    fn add_assign(&mut self, other: Self) {
-        self.0 += other.0;
+impl Length {
+    pub fn add(&mut self, other: Self) -> Result<(), PatternErrorKind> {
+        match self.0.checked_add(other.0) {
+            Some(result) => {
+                self.0 = result;
+                Ok(())
+            }
+            None => Err(PatternErrorKind::UnexpectedEndOfPattern),
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Jump(u16);
-impl From<usize> for Jump {
-    fn from(value: usize) -> Self {
-        Self(value as _)
-    }
-}
-impl AddAssign for Jump {
-    fn add_assign(&mut self, other: Self) {
-        self.0 += other.0;
+impl Jump {
+    pub fn add(&mut self, other: Self) -> Result<(), PatternErrorKind> {
+        match self.0.checked_add(other.0) {
+            Some(result) => {
+                self.0 = result;
+                Ok(())
+            }
+            None => Err(PatternErrorKind::UnexpectedEndOfPattern),
+        }
     }
 }
 
@@ -570,31 +579,32 @@ impl<'a> PatternCompiler<'a> {
     }
 
     fn parse_subpatterns(&mut self) -> Result<(), PatternErrorKind> {
-        fn add_reset_jump(compiler: &mut PatternCompiler) -> Jump {
-            let jump = (compiler.ops.len() + 2).into();
+        fn add_reset_jump(compiler: &mut PatternCompiler) -> Result<Jump, PatternErrorKind> {
+            let jump = Jump((compiler.ops.len() + 2).try_into()?);
             compiler.ops.push(Op::Unwind(jump, Length(0)));
-            let jump = compiler.ops.len().into();
+            let jump = Jump(compiler.ops.len().try_into()?);
             compiler.ops.push(Op::Reset(jump));
-            jump
+            Ok(jump)
         }
-        fn patch_reset_jump(compiler: &mut PatternCompiler, reset_jump: Jump) {
-            let jump = compiler.ops.len().into();
+        fn patch_reset_jump(compiler: &mut PatternCompiler, reset_jump: Jump) -> Result<(), PatternErrorKind> {
+            let jump = Jump(compiler.ops.len().try_into()?);
             if let Op::Reset(j) = &mut compiler.ops[reset_jump.0 as usize] {
                 *j = jump;
             } else {
                 unreachable!();
             }
+            Ok(())
         }
 
-        let mut reset_jump = add_reset_jump(self);
+        let mut reset_jump = add_reset_jump(self)?;
         if let Ok(_) = self.next() {
             self.parse_stmt(JumpFrom::Beginning(reset_jump))?;
             while let Ok(_) = self.next() {
                 if self.current_char == '|' {
                     self.next()?;
                     self.ops.push(Op::Unwind(Jump(1), Length(0)));
-                    patch_reset_jump(self, reset_jump);
-                    reset_jump = add_reset_jump(self);
+                    patch_reset_jump(self, reset_jump)?;
+                    reset_jump = add_reset_jump(self)?;
                 }
                 self.parse_stmt(JumpFrom::Beginning(reset_jump))?;
             }
@@ -624,39 +634,41 @@ impl<'a> PatternCompiler<'a> {
         Ok(len)
     }
 
-    fn get_absolute_jump(&mut self, jump: JumpFrom) -> Jump {
+    fn get_absolute_jump(&mut self, jump: JumpFrom) -> Result<Jump, PatternErrorKind> {
         match jump {
-            JumpFrom::Beginning(jump) => jump,
+            JumpFrom::Beginning(jump) => Ok(jump),
             JumpFrom::End(_) => {
-                let jump = (self.ops.len() + 2).into();
+                let jump = Jump((self.ops.len() + 2).try_into()?);
                 self.ops.push(Op::Unwind(jump, Length(0)));
-                let jump = self.ops.len().into();
+                let jump = Jump(self.ops.len().try_into()?);
                 self.ops.push(Op::Unwind(jump, Length(0)));
-                jump
+                Ok(jump)
             }
         }
     }
 
-    fn patch_unwind_jump(&mut self, jump: JumpFrom, unwind_jump: Jump) {
+    fn patch_unwind_jump(&mut self, jump: JumpFrom, unwind_jump: Jump) -> Result<(), PatternErrorKind> {
         if let JumpFrom::End(mut jump) = jump {
-            jump += self.ops.len().into();
+            jump.add(Jump(self.ops.len().try_into()?))?;
             if let Op::Unwind(j, Length(0)) = &mut self.ops[unwind_jump.0 as usize] {
                 *j = jump;
             } else {
                 unreachable!();
             }
         }
+        Ok(())
     }
 
-    fn jump_at_end(&mut self, jump: JumpFrom) {
+    fn jump_at_end(&mut self, jump: JumpFrom) -> Result<(), PatternErrorKind> {
         match jump {
             JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, Length(0))),
             JumpFrom::End(Jump(0)) => (),
             JumpFrom::End(mut jump) => {
-                jump += (self.ops.len() + 1).into();
+                jump.add(Jump((self.ops.len() + 1).try_into()?))?;
                 self.ops.push(Op::Unwind(jump, Length(0)));
             }
         }
+        Ok(())
     }
 
     fn skip(&mut self, okj: Jump, erj: Jump, len: Length) {
@@ -668,8 +680,8 @@ impl<'a> PatternCompiler<'a> {
     }
 
     fn parse_repeat_stmt(&mut self, erj: JumpFrom) -> Result<(), PatternErrorKind> {
-        let start_jump = self.ops.len().into();
-        let end_jump = self.get_absolute_jump(JumpFrom::End(Jump(0)));
+        let start_jump = Jump(self.ops.len().try_into()?);
+        let end_jump = self.get_absolute_jump(JumpFrom::End(Jump(0)))?;
 
         let mut has_cancel_pattern = false;
         while !self.next_is('}')? {
@@ -686,10 +698,10 @@ impl<'a> PatternCompiler<'a> {
         }
 
         if has_cancel_pattern {
-            self.jump_at_end(erj);
+            self.jump_at_end(erj)?;
         }
 
-        self.patch_unwind_jump(JumpFrom::End(Jump(0)), end_jump);
+        self.patch_unwind_jump(JumpFrom::End(Jump(0)), end_jump)?;
 
         self.assert_current('}')?;
         Ok(())
@@ -704,30 +716,30 @@ impl<'a> PatternCompiler<'a> {
         let mut len = Length(0);
 
         if self.next()? == '!' {
-            let abs_erj = self.get_absolute_jump(erj);
+            let abs_erj = self.get_absolute_jump(erj)?;
             while !self.next_is(')')? {
                 let expr_len = self.parse_expr(JumpFrom::End(Jump(2)), JumpFrom::End(Jump(0)))?;
                 self.skip(
-                    (self.ops.len() + 3).into(),
-                    (self.ops.len() + 1).into(),
+                    Jump((self.ops.len() + 3).try_into()?),
+                    Jump((self.ops.len() + 1).try_into()?),
                     expr_len,
                 );
                 self.ops.push(Op::Unwind(abs_erj, len));
-                len += expr_len;
+                len.add(expr_len)?;
             }
             self.ops.push(Op::Unwind(abs_erj, len));
-            self.jump_at_end(okj);
-            self.patch_unwind_jump(erj, abs_erj);
+            self.jump_at_end(okj)?;
+            self.patch_unwind_jump(erj, abs_erj)?;
         } else {
             self.text = previous_state;
-            let abs_erj = self.get_absolute_jump(erj);
+            let abs_erj = self.get_absolute_jump(erj)?;
             while !self.next_is(')')? {
                 let expr_len = self.parse_expr(JumpFrom::End(Jump(1)), JumpFrom::End(Jump(0)))?;
                 self.ops.push(Op::Unwind(abs_erj, len));
-                len += expr_len;
+                len.add(expr_len)?;
             }
-            self.jump_at_end(okj);
-            self.patch_unwind_jump(erj, abs_erj);
+            self.jump_at_end(okj)?;
+            self.patch_unwind_jump(erj, abs_erj)?;
         }
 
         self.assert_current(')')?;
@@ -743,7 +755,7 @@ impl<'a> PatternCompiler<'a> {
         let mut len = None;
 
         if self.next()? == '!' {
-            let abs_erj = self.get_absolute_jump(erj);
+            let abs_erj = self.get_absolute_jump(erj)?;
             while !self.next_is(']')? {
                 let expr_len = self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::End(Jump(1)))?;
                 self.ops.push(Op::Unwind(abs_erj, expr_len));
@@ -758,14 +770,14 @@ impl<'a> PatternCompiler<'a> {
             match okj {
                 JumpFrom::Beginning(jump) => self.skip(jump, abs_erj, len),
                 JumpFrom::End(mut jump) => {
-                    jump += (self.ops.len() + 1).into();
+                    jump.add(Jump((self.ops.len() + 1).try_into()?))?;
                     self.skip(jump, abs_erj, len);
                 }
             }
-            self.patch_unwind_jump(erj, abs_erj);
+            self.patch_unwind_jump(erj, abs_erj)?;
         } else {
             self.text = previous_state;
-            let abs_okj = self.get_absolute_jump(okj);
+            let abs_okj = self.get_absolute_jump(okj)?;
             while !self.next_is(']')? {
                 let expr_len =
                     self.parse_expr(JumpFrom::Beginning(abs_okj), JumpFrom::End(Jump(0)))?;
@@ -775,8 +787,8 @@ impl<'a> PatternCompiler<'a> {
                 }
                 len = Some(expr_len);
             }
-            self.jump_at_end(erj);
-            self.patch_unwind_jump(okj, abs_okj);
+            self.jump_at_end(erj)?;
+            self.patch_unwind_jump(okj, abs_okj)?;
         }
 
         self.assert_current(']')?;
@@ -791,16 +803,16 @@ impl<'a> PatternCompiler<'a> {
         let okj = match okj {
             JumpFrom::Beginning(jump) => jump,
             JumpFrom::End(mut jump) => {
-                jump += self.ops.len().into();
-                jump += 1.into();
+                jump.add(Jump(self.ops.len().try_into()?))?;
+                jump.add(Jump(1))?;
                 jump
             }
         };
         let erj = match erj {
             JumpFrom::Beginning(jump) => jump,
             JumpFrom::End(mut jump) => {
-                jump += self.ops.len().into();
-                jump += 1.into();
+                jump.add(Jump(self.ops.len().try_into()?))?;
+                jump.add(Jump(1))?;
                 jump
             }
         };
