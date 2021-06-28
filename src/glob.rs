@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, str::Chars};
+use std::{convert::TryInto, error::Error, fmt, num::TryFromIntError, str::Chars};
 
 #[derive(Debug)]
 pub struct InvalidGlobError;
@@ -8,6 +8,11 @@ impl fmt::Display for InvalidGlobError {
     }
 }
 impl Error for InvalidGlobError {}
+impl From<TryFromIntError> for InvalidGlobError {
+    fn from(_: TryFromIntError) -> Self {
+        Self
+    }
+}
 
 pub enum Op {
     Slice { from: u16, to: u16 },
@@ -89,7 +94,7 @@ impl Glob {
                             false
                         }
                     };
-                    let from = self.texts.len() as _;
+                    let from = self.texts.len().try_into()?;
                     loop {
                         let from = match pattern.next() {
                             None => return Err(InvalidGlobError),
@@ -117,7 +122,7 @@ impl Glob {
                         self.texts.push(from);
                         self.texts.push(to);
                     }
-                    let to = self.texts.len() as _;
+                    let to = self.texts.len().try_into()?;
                     if inverse {
                         self.ops.push(Op::ExceptWithinRanges { from, to })
                     } else {
@@ -137,7 +142,9 @@ impl Glob {
 
                         let ops_count = self.ops.len();
                         match &mut self.ops[fix_index] {
-                            Op::SubPattern { len } => *len = (ops_count - fix_index - 1) as _,
+                            Op::SubPattern { len } => {
+                                *len = (ops_count - fix_index - 1).try_into()?;
+                            }
                             _ => unreachable!(),
                         }
 
@@ -150,7 +157,9 @@ impl Glob {
 
                     let ops_count = self.ops.len();
                     match &mut self.ops[fix_index] {
-                        Op::SubPatternGroup { len } => *len = (ops_count - fix_index - 1) as _,
+                        Op::SubPatternGroup { len } => {
+                            *len = (ops_count - fix_index - 1).try_into()?;
+                        }
                         _ => unreachable!(),
                     }
 
@@ -159,14 +168,14 @@ impl Glob {
                 Some('}' | ',') => return Ok(previous_state),
                 Some('/') => self.ops.push(Op::Separator),
                 Some(c) => match self.ops[start_ops_index..].last_mut() {
-                    Some(Op::Slice { to, .. }) if *to == self.texts.len() as _ => {
+                    Some(Op::Slice { to, .. }) if *to == self.texts.len().try_into()? => {
                         self.texts.push(c);
-                        *to = self.texts.len() as _;
+                        *to = self.texts.len().try_into()?;
                     }
                     _ => {
-                        let from = self.texts.len() as _;
+                        let from = self.texts.len().try_into()?;
                         self.texts.push(c);
-                        let to = self.texts.len() as _;
+                        let to = self.texts.len().try_into()?;
                         self.ops.push(Op::Slice { from, to });
                     }
                 },
@@ -414,3 +423,4 @@ mod tests {
         assert_glob(&mut glob, false, "**/*.{é,ç}", "p.c");
     }
 }
+
