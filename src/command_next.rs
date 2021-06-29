@@ -57,9 +57,9 @@ impl<'a> CommandArgs<'a> {
     }
 
     pub fn try_next(&mut self) -> Option<&'a str> {
-        let index = self.stack_index as usize;
-        let value = self.virtual_machine.stack.get(index)?;
+        let value = self.virtual_machine.stack.get(self.stack_index as usize)?;
         let range = value.start as usize..value.end as usize;
+        self.stack_index += 1;
         Some(&self.virtual_machine.texts[range])
     }
 
@@ -885,55 +885,54 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
     }
 
     fn parse_statement(parser: &mut Parser, is_top_level: bool) -> Result<(), CommandError> {
-        loop {
-            match parser.previous_token.kind {
-                CommandTokenKind::Literal => {
-                    parser.add_statement()?;
-                    match parser.previous_token_str() {
-                        "return" => {
-                            parser.next_token()?;
-                            parser.ast.nodes.push(AstNode::Return {
-                                position: parser.previous_token.position,
-                            });
-                            return parse_expression_or_command_call(parser, is_top_level);
-                        }
-                        _ => return parse_command_call(parser, is_top_level, false),
-                    };
-                }
-                CommandTokenKind::OpenParenthesis => {
-                    parser.add_statement()?;
-                    parse_expression(parser, is_top_level)?;
-                    return Ok(());
-                }
-                CommandTokenKind::Binding => {
-                    if is_top_level {
-                        return Err(CommandError {
-                            kind: CommandErrorKind::InvalidBindingDeclarationAtTopLevel,
-                            source_index: parser.source_index,
+        match parser.previous_token.kind {
+            CommandTokenKind::Literal => {
+                parser.add_statement()?;
+                match parser.previous_token_str() {
+                    "return" => {
+                        parser.next_token()?;
+                        parser.ast.nodes.push(AstNode::Return {
                             position: parser.previous_token.position,
                         });
+                        parse_expression_or_command_call(parser, is_top_level)
                     }
-
-                    parser.declare_binding_from_previous_token()?;
-                    parser.add_statement()?;
-                    parser.ast.nodes.push(AstNode::BindingDeclaration);
-
-                    parser.next_token()?;
-                    parser.consume_token(CommandTokenKind::Equals)?;
-
-                    parse_expression_or_command_call(parser, is_top_level)?;
-                    return Ok(());
+                    _ => parse_command_call(parser, is_top_level, false),
                 }
-                CommandTokenKind::EndOfLine => parser.next_token()?,
-                CommandTokenKind::EndOfSource => return Ok(()),
-                _ => {
+            }
+            CommandTokenKind::OpenParenthesis => {
+                parser.add_statement()?;
+                parse_expression(parser, is_top_level)?;
+                Ok(())
+            }
+            CommandTokenKind::Binding => {
+                if is_top_level {
                     return Err(CommandError {
-                        kind: CommandErrorKind::ExpectedStatement,
+                        kind: CommandErrorKind::InvalidBindingDeclarationAtTopLevel,
                         source_index: parser.source_index,
                         position: parser.previous_token.position,
                     });
                 }
+
+                parser.declare_binding_from_previous_token()?;
+                parser.add_statement()?;
+                parser.ast.nodes.push(AstNode::BindingDeclaration);
+
+                parser.next_token()?;
+                parser.consume_token(CommandTokenKind::Equals)?;
+
+                parse_expression_or_command_call(parser, is_top_level)?;
+                Ok(())
             }
+            CommandTokenKind::EndOfLine => {
+                parser.next_token()?;
+                Ok(())
+            }
+            CommandTokenKind::EndOfSource => return Ok(()),
+            _ => Err(CommandError {
+                kind: CommandErrorKind::ExpectedStatement,
+                source_index: parser.source_index,
+                position: parser.previous_token.position,
+            }),
         }
     }
 
@@ -1685,7 +1684,8 @@ fn execute(
     client_handle: Option<ClientHandle>,
 ) -> Result<Option<CommandOperation>, CommandError> {
     let mut vm = &mut editor.commands_next.virtual_machine;
-    let mut stack_start_index = 0;
+    let mut initial_texts_len = vm.texts.len();
+    let mut start_stack_index = 0;
     let mut op_index = vm.start_op_index as usize;
 
     loop {
@@ -1719,9 +1719,18 @@ fn execute(
                 vm.stack.push(value);
 
                 op_index = frame.op_index as usize;
-                stack_start_index = frame.stack_len as _;
+                start_stack_index = frame.stack_len as _;
             }
-            Op::Pop => drop(vm.stack.pop()),
+            Op::Pop => {
+                let texts_start = match vm.frames.last() {
+                    Some(frame) => frame.texts_len,
+                    None => initial_texts_len as _,
+                };
+                let value = vm.stack.pop().unwrap();
+                if value.start == texts_start && value.end == vm.texts.len() as _ {
+                    vm.texts.truncate(texts_start as _);
+                }
+            }
             Op::PushAscii(byte) => {
                 let start = vm.texts.len() as _;
                 vm.stack.push(StackValue {
@@ -1739,7 +1748,7 @@ fn execute(
                 });
             }
             Op::DuplicateAt(stack_index) => {
-                let value = vm.stack[stack_start_index + stack_index as usize];
+                let value = vm.stack[start_stack_index + stack_index as usize];
                 vm.stack.push(value);
             }
             Op::PrepareStackFrame => {
@@ -1748,7 +1757,7 @@ fn execute(
                     texts_len: vm.texts.len() as _,
                     stack_len: vm.stack.len() as _,
                 };
-                stack_start_index = frame.stack_len as _;
+                start_stack_index = frame.stack_len as _;
                 vm.prepared_frames.push(frame);
             }
             Op::CallBuiltinCommand { index, bang } => {
@@ -1798,6 +1807,7 @@ fn execute(
                 frame.op_index = op_index as _;
                 op_index = command.op_start_index as _;
                 vm.frames.push(frame);
+                continue;
             }
             Op::CallRequestCommand(index) => {
                 let mut frame = vm.prepared_frames.pop().unwrap();
@@ -2139,19 +2149,28 @@ mod tests {
     #[test]
     fn command_execution() {
         fn eval(source: &str) -> String {
+            eval_debug(source, false)
+        }
+
+        fn eval_debug(source: &str, debug: bool) -> String {
             let mut editor = Editor::new(PathBuf::new());
             let (request_sender, _) = std::sync::mpsc::channel();
             let mut platform = Platform::new(|| (), request_sender);
             let mut clients = ClientManager::default();
 
             compile_into(&mut editor.commands_next, source);
+
+            if debug {
+                let c = &editor.commands_next;
+                dbg!(&c.ast.nodes);
+                dbg!(c.virtual_machine.start_op_index, &c.virtual_machine.ops);
+            }
+
             execute(&mut editor, &mut platform, &mut clients, None).unwrap();
 
             let vm = &editor.commands_next.virtual_machine;
 
-            if vm.stack.len() != 1 {
-                dbg!(vm.start_op_index, &vm.ops);
-
+            if debug {
                 eprintln!("\nstack:");
                 for value in &vm.stack {
                     let range = value.start as usize..value.end as usize;
@@ -2172,9 +2191,28 @@ mod tests {
         assert_eq!("abc", eval("return 'abc'"));
         assert_eq!("", eval("macro c { }"));
         assert_eq!("", eval("macro c $a { return $a }"));
-        eprintln!("=============================================================================");
         assert_eq!("", eval("macro c $a { return $a }\n c 'abc' \n c 'def'"));
         assert_eq!("abc", eval("macro c $a { return $a }\n return c 'abc'"));
+        assert_eq!(
+            "a",
+            eval("macro first $a $b { return $a }\n return first a b")
+        );
+        assert_eq!(
+            "b",
+            eval("macro second $a $b { return $b }\n return second a b")
+        );
+        eprintln!("==================");
+        assert_eq!(
+            "ab",
+            eval_debug(
+                concat!(
+                    "macro first $a $b { return $a }\n",
+                    "macro second $a $b { return first $b x }\n",
+                    "return append (first a y) (second a b)",
+                ),
+                true
+            )
+        );
     }
 }
 
