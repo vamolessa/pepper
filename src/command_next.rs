@@ -1684,11 +1684,24 @@ fn execute(
     client_handle: Option<ClientHandle>,
 ) -> Result<Option<CommandOperation>, CommandError> {
     let mut vm = &mut editor.commands_next.virtual_machine;
-    let mut initial_texts_len = vm.texts.len();
+    let initial_texts_len = vm.texts.len();
     let mut start_stack_index = 0;
     let mut op_index = vm.start_op_index as usize;
 
     loop {
+        /*
+        eprint!("\nstack: ");
+        for value in &vm.stack {
+            let range = value.start as usize..value.end as usize;
+            eprint!("{}:{}={}, ", value.start, value.end, &vm.texts[range]);
+        }
+        eprintln!("\ntexts: '{}'", &vm.texts);
+        eprintln!(
+            "[{}] {:?} (stack_start: {})",
+            op_index, &vm.ops[op_index], start_stack_index
+        );
+        */
+
         match vm.ops[op_index] {
             Op::Return => {
                 let frame = match vm.frames.pop() {
@@ -1757,7 +1770,6 @@ fn execute(
                     texts_len: vm.texts.len() as _,
                     stack_len: vm.stack.len() as _,
                 };
-                start_stack_index = frame.stack_len as _;
                 vm.prepared_frames.push(frame);
             }
             Op::CallBuiltinCommand { index, bang } => {
@@ -1803,9 +1815,12 @@ fn execute(
             }
             Op::CallMacroCommand(index) => {
                 let mut frame = vm.prepared_frames.pop().unwrap();
+                start_stack_index = frame.stack_len as _;
+
                 let command = &editor.commands_next.commands.macro_commands[index as usize];
                 frame.op_index = op_index as _;
                 op_index = command.op_start_index as _;
+
                 vm.frames.push(frame);
                 continue;
             }
@@ -1816,6 +1831,8 @@ fn execute(
                 vm.texts.truncate(frame.texts_len as _);
                 vm.stack.truncate(frame.stack_len as _);
                 vm.stack.push(StackValue { start: 0, end: 0 });
+
+                todo!();
             }
         }
         op_index += 1;
@@ -2201,17 +2218,13 @@ mod tests {
             "b",
             eval("macro second $a $b { return $b }\n return second a b")
         );
-        eprintln!("==================");
         assert_eq!(
             "ab",
-            eval_debug(
-                concat!(
-                    "macro first $a $b { return $a }\n",
-                    "macro second $a $b { return first $b x }\n",
-                    "return append (first a y) (second a b)",
-                ),
-                true
-            )
+            eval(concat!(
+                "macro first $a $b { return $a }\n",
+                "macro second $a $b { return first $b x }\n",
+                "return append (first a y) (second a b)",
+            ))
         );
     }
 }
