@@ -243,7 +243,6 @@ impl<'stdout> ClientApplication<'stdout> {
     }
 
     pub const fn connection_buffer_len() -> usize {
-        //2 * 1024 // TODO: increase to 32 * 1024 ??
         48 * 1024
     }
 

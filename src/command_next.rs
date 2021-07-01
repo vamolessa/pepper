@@ -321,8 +321,8 @@ pub enum CommandErrorKind {
     NoSuchFlag,
     WrongNumberOfArgs,
     TooManyFlags,
-    CouldNotSourceFile,
-    CommandAlreadyExists,
+    CouldNotSourceFile, // catched by try
+    CommandAlreadyExists, // catched by try
 
     CommandDoesNotAcceptBang,
     TooFewArguments,
