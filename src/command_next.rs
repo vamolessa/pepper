@@ -306,13 +306,15 @@ pub enum CommandErrorKind {
 
     TooManySources,
     AstTooLong,
+    InvalidSourceNotAtTopLevel,
+    InvalidMacroDefinitionNotAtTopLevel,
+    InvalidBindingDeclarationAtTopLevel,
     TooManyMacroCommands,
     TooManyLiterals,
     LiteralTooLong,
     ExpectedToken(CommandTokenKind),
     ExpectedStatement,
     ExpectedExpression,
-    InvalidBindingDeclarationAtTopLevel,
     InvalidLiteralEscaping,
     TooManyParameters,
     TooManyBindings,
@@ -321,8 +323,8 @@ pub enum CommandErrorKind {
     NoSuchFlag,
     WrongNumberOfArgs,
     TooManyFlags,
-    CouldNotSourceFile, // catched by try
-    CommandAlreadyExists, // catched by try
+    CouldNotSourceFile,
+    CommandAlreadyExists,
 
     CommandDoesNotAcceptBang,
     TooFewArguments,
@@ -612,6 +614,7 @@ enum AstNode {
         position: BufferPosition,
         param_count: u8,
     },
+    Try,
     Return {
         position: BufferPosition,
     },
@@ -631,6 +634,10 @@ impl Ast {
 
 struct Binding {
     pub name_hash: u64,
+}
+
+struct Block {
+    statement_index: u16,
 }
 
 struct Parser<'source, 'data> {
@@ -709,7 +716,7 @@ impl<'source, 'data> Parser<'source, 'data> {
         }
     }
 
-    pub fn add_statement(&mut self) -> Result<(), CommandError> {
+    pub fn add_statement(&mut self) -> Result<Block, CommandError> {
         let index = self.ast_len()?;
 
         if !self.ast.nodes.is_empty() {
@@ -719,11 +726,21 @@ impl<'source, 'data> Parser<'source, 'data> {
             }
         }
         self.previous_statement_index = index;
+        let statement_index = self.ast_len()?;
         self.ast.nodes.push(AstNode::Statement {
             source: self.source_index,
             next: 0,
         });
-        Ok(())
+
+        Ok(Block { statement_index })
+    }
+
+    pub fn end_block(&mut self, block: Block) {
+        match &mut self.ast.nodes[block.statement_index as usize] {
+            AstNode::Statement { next, .. } => *next = 0,
+            _ => unreachable!(),
+        }
+        self.previous_statement_index = block.statement_index;
     }
 
     pub fn hash_from_previous_token(&self) -> u64 {
@@ -734,17 +751,92 @@ impl<'source, 'data> Parser<'source, 'data> {
 }
 
 fn parse(parser: &mut Parser) -> Result<(), CommandError> {
-    fn parse_top_level(parser: &mut Parser) -> Result<(), CommandError> {
-        if let CommandTokenKind::Literal = parser.previous_token.kind {
-            match parser.previous_token_str() {
-                "source" => return parse_source(parser),
-                "macro" => return parse_macro(parser),
-                _ => (),
+    fn parse_statement(parser: &mut Parser, is_top_level: bool) -> Result<(), CommandError> {
+        match parser.previous_token.kind {
+            CommandTokenKind::Literal => match parser.previous_token_str() {
+                "source" => match is_top_level {
+                    true => parse_source(parser),
+                    false => Err(CommandError {
+                        kind: CommandErrorKind::InvalidSourceNotAtTopLevel,
+                        source_index: parser.source_index,
+                        position: parser.previous_token.position,
+                    }),
+                },
+                "macro" => match is_top_level {
+                    true => parse_macro(parser),
+                    false => Err(CommandError {
+                        kind: CommandErrorKind::InvalidMacroDefinitionNotAtTopLevel,
+                        source_index: parser.source_index,
+                        position: parser.previous_token.position,
+                    }),
+                },
+                "try" => {
+                    let block = parser.add_statement()?;
+                    parser.consume_token(CommandTokenKind::OpenCurlyBrackets)?;
+                    parser.ast.nodes.push(AstNode::Try);
+                    while parser.previous_token.kind != CommandTokenKind::CloseCurlyBrackets {
+                        match parse_statement(parser, is_top_level) {
+                            Ok(())
+                            | Err(CommandError {
+                                kind: CommandErrorKind::CouldNotSourceFile,
+                                ..
+                            }) => (),
+                            Err(error) => return Err(error),
+                        }
+                    }
+                    parser.end_block(block);
+                    Ok(())
+                }
+                "return" => {
+                    parser.add_statement()?;
+                    parser.next_token()?;
+                    parser.ast.nodes.push(AstNode::Return {
+                        position: parser.previous_token.position,
+                    });
+                    parse_expression_or_command_call(parser, is_top_level)?;
+                    Ok(())
+                }
+                _ => {
+                    parser.add_statement()?;
+                    parse_command_call(parser, is_top_level, false)?;
+                    Ok(())
+                }
+            },
+            CommandTokenKind::OpenParenthesis => {
+                parser.add_statement()?;
+                parse_expression(parser, is_top_level)?;
+                Ok(())
             }
-        }
+            CommandTokenKind::Binding => {
+                if is_top_level {
+                    return Err(CommandError {
+                        kind: CommandErrorKind::InvalidBindingDeclarationAtTopLevel,
+                        source_index: parser.source_index,
+                        position: parser.previous_token.position,
+                    });
+                }
 
-        parse_statement(parser, true)?;
-        Ok(())
+                parser.declare_binding_from_previous_token()?;
+                parser.add_statement()?;
+                parser.ast.nodes.push(AstNode::BindingDeclaration);
+
+                parser.next_token()?;
+                parser.consume_token(CommandTokenKind::Equals)?;
+
+                parse_expression_or_command_call(parser, is_top_level)?;
+                Ok(())
+            }
+            CommandTokenKind::EndOfLine => {
+                parser.next_token()?;
+                Ok(())
+            }
+            CommandTokenKind::EndOfSource => return Ok(()),
+            _ => Err(CommandError {
+                kind: CommandErrorKind::ExpectedStatement,
+                source_index: parser.source_index,
+                position: parser.previous_token.position,
+            }),
+        }
     }
 
     fn parse_source(parser: &mut Parser) -> Result<(), CommandError> {
@@ -764,14 +856,16 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             buf
         };
 
+        let mut result = Ok(());
         let source = match fs::read_to_string(&path) {
             Ok(source) => source,
             Err(_) => {
-                return Err(CommandError {
+                result = Err(CommandError {
                     kind: CommandErrorKind::CouldNotSourceFile,
                     source_index: parser.source_index,
                     position: parser.previous_token.position,
-                })
+                });
+                String::new()
             }
         };
 
@@ -797,17 +891,16 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             previous_token: CommandToken::default(),
             previous_statement_index: parser.previous_statement_index,
         };
-        parse(&mut source_parser)?;
+        let source_result = parse(&mut source_parser);
 
         parser.previous_statement_index = source_parser.previous_statement_index;
-
-        Ok(())
+        source_result.and(result)
     }
 
     fn parse_macro(parser: &mut Parser) -> Result<(), CommandError> {
         parser.next_token()?;
 
-        parser.add_statement()?;
+        let block = parser.add_statement()?;
 
         let index = parser.ast.nodes.len();
         let position = parser.previous_token.position;
@@ -854,6 +947,8 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             }
         }
 
+        debug_assert_eq!(index - 1, block.statement_index as _);
+
         while parser.previous_token.kind != CommandTokenKind::CloseCurlyBrackets {
             parse_statement(parser, false)?;
         }
@@ -872,68 +967,9 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             });
         }
 
-        let declaration_index = (index - 1) as _;
-        match &mut parser.ast.nodes[declaration_index as usize] {
-            AstNode::Statement { next, .. } => *next = 0,
-            _ => unreachable!(),
-        }
-
+        parser.end_block(block);
         parser.bindings.clear();
-        parser.previous_statement_index = declaration_index;
-
         Ok(())
-    }
-
-    fn parse_statement(parser: &mut Parser, is_top_level: bool) -> Result<(), CommandError> {
-        match parser.previous_token.kind {
-            CommandTokenKind::Literal => {
-                parser.add_statement()?;
-                match parser.previous_token_str() {
-                    "return" => {
-                        parser.next_token()?;
-                        parser.ast.nodes.push(AstNode::Return {
-                            position: parser.previous_token.position,
-                        });
-                        parse_expression_or_command_call(parser, is_top_level)
-                    }
-                    _ => parse_command_call(parser, is_top_level, false),
-                }
-            }
-            CommandTokenKind::OpenParenthesis => {
-                parser.add_statement()?;
-                parse_expression(parser, is_top_level)?;
-                Ok(())
-            }
-            CommandTokenKind::Binding => {
-                if is_top_level {
-                    return Err(CommandError {
-                        kind: CommandErrorKind::InvalidBindingDeclarationAtTopLevel,
-                        source_index: parser.source_index,
-                        position: parser.previous_token.position,
-                    });
-                }
-
-                parser.declare_binding_from_previous_token()?;
-                parser.add_statement()?;
-                parser.ast.nodes.push(AstNode::BindingDeclaration);
-
-                parser.next_token()?;
-                parser.consume_token(CommandTokenKind::Equals)?;
-
-                parse_expression_or_command_call(parser, is_top_level)?;
-                Ok(())
-            }
-            CommandTokenKind::EndOfLine => {
-                parser.next_token()?;
-                Ok(())
-            }
-            CommandTokenKind::EndOfSource => return Ok(()),
-            _ => Err(CommandError {
-                kind: CommandErrorKind::ExpectedStatement,
-                source_index: parser.source_index,
-                position: parser.previous_token.position,
-            }),
-        }
     }
 
     fn parse_command_call(
@@ -1130,7 +1166,7 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
     parser.next_token()?;
 
     while parser.previous_token.kind != CommandTokenKind::EndOfSource {
-        parse_top_level(parser)?;
+        parse_statement(parser, true)?;
     }
 
     Ok(())
