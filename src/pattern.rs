@@ -1,4 +1,4 @@
-use std::{convert::TryInto, fmt, str::Chars, num::TryFromIntError};
+use std::{convert::TryInto, fmt, num::TryFromIntError, str::Chars};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {
@@ -586,7 +586,10 @@ impl<'a> PatternCompiler<'a> {
             compiler.ops.push(Op::Reset(jump));
             Ok(jump)
         }
-        fn patch_reset_jump(compiler: &mut PatternCompiler, reset_jump: Jump) -> Result<(), PatternErrorKind> {
+        fn patch_reset_jump(
+            compiler: &mut PatternCompiler,
+            reset_jump: Jump,
+        ) -> Result<(), PatternErrorKind> {
             let jump = Jump(compiler.ops.len().try_into()?);
             if let Op::Reset(j) = &mut compiler.ops[reset_jump.0 as usize] {
                 *j = jump;
@@ -647,7 +650,11 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    fn patch_unwind_jump(&mut self, jump: JumpFrom, unwind_jump: Jump) -> Result<(), PatternErrorKind> {
+    fn patch_unwind_jump(
+        &mut self,
+        jump: JumpFrom,
+        unwind_jump: Jump,
+    ) -> Result<(), PatternErrorKind> {
         if let JumpFrom::End(mut jump) = jump {
             jump.add(Jump(self.ops.len().try_into()?))?;
             if let Op::Unwind(j, Length(0)) = &mut self.ops[unwind_jump.0 as usize] {
