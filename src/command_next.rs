@@ -614,7 +614,10 @@ enum AstNode {
         position: BufferPosition,
         param_count: u8,
     },
-    Try,
+    If {
+        position: BufferPosition,
+        start: u16,
+    },
     Return {
         position: BufferPosition,
     },
@@ -755,7 +758,15 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         match parser.previous_token.kind {
             CommandTokenKind::Literal => match parser.previous_token_str() {
                 "source" => match is_top_level {
-                    true => parse_source(parser),
+                    true => parse_source(parser, false),
+                    false => Err(CommandError {
+                        kind: CommandErrorKind::InvalidSourceNotAtTopLevel,
+                        source_index: parser.source_index,
+                        position: parser.previous_token.position,
+                    }),
+                },
+                "source!" => match is_top_level {
+                    true => parse_source(parser, true),
                     false => Err(CommandError {
                         kind: CommandErrorKind::InvalidSourceNotAtTopLevel,
                         source_index: parser.source_index,
@@ -770,22 +781,8 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                         position: parser.previous_token.position,
                     }),
                 },
-                "try" => {
-                    let block = parser.add_statement()?;
-                    parser.consume_token(CommandTokenKind::OpenCurlyBrackets)?;
-                    parser.ast.nodes.push(AstNode::Try);
-                    while parser.previous_token.kind != CommandTokenKind::CloseCurlyBrackets {
-                        match parse_statement(parser, is_top_level) {
-                            Ok(())
-                            | Err(CommandError {
-                                kind: CommandErrorKind::CouldNotSourceFile,
-                                ..
-                            }) => (),
-                            Err(error) => return Err(error),
-                        }
-                    }
-                    parser.end_block(block);
-                    Ok(())
+                "if" => {
+                    //parse_expression(parser, is_top_level)?;
                 }
                 "return" => {
                     parser.add_statement()?;
@@ -839,7 +836,10 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
         }
     }
 
-    fn parse_source(parser: &mut Parser) -> Result<(), CommandError> {
+    fn parse_source(
+        parser: &mut Parser,
+        ignore_if_does_not_exist: bool,
+    ) -> Result<(), CommandError> {
         parser.next_token()?;
         parser.consume_token(CommandTokenKind::QuotedLiteral)?;
 
@@ -856,19 +856,6 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
             buf
         };
 
-        let mut result = Ok(());
-        let source = match fs::read_to_string(&path) {
-            Ok(source) => source,
-            Err(_) => {
-                result = Err(CommandError {
-                    kind: CommandErrorKind::CouldNotSourceFile,
-                    source_index: parser.source_index,
-                    position: parser.previous_token.position,
-                });
-                String::new()
-            }
-        };
-
         let source_index = match parser.paths.index_of(&path) {
             Some(index) => index,
             None => {
@@ -879,22 +866,32 @@ fn parse(parser: &mut Parser) -> Result<(), CommandError> {
                 })
             }
         };
-
         parser.next_token()?;
 
-        let mut source_parser = Parser {
-            tokenizer: CommandTokenizer::new(&source),
-            source_index,
-            paths: parser.paths,
-            ast: parser.ast,
-            bindings: parser.bindings,
-            previous_token: CommandToken::default(),
-            previous_statement_index: parser.previous_statement_index,
-        };
-        let source_result = parse(&mut source_parser);
-
-        parser.previous_statement_index = source_parser.previous_statement_index;
-        source_result.and(result)
+        match fs::read_to_string(&path) {
+            Ok(source) => {
+                let mut source_parser = Parser {
+                    tokenizer: CommandTokenizer::new(&source),
+                    source_index,
+                    paths: parser.paths,
+                    ast: parser.ast,
+                    bindings: parser.bindings,
+                    previous_token: CommandToken::default(),
+                    previous_statement_index: parser.previous_statement_index,
+                };
+                parse(&mut source_parser)?;
+                parser.previous_statement_index = source_parser.previous_statement_index;
+                Ok(())
+            }
+            Err(_) => match ignore_if_does_not_exist {
+                true => Ok(()),
+                false => Err(CommandError {
+                    kind: CommandErrorKind::CouldNotSourceFile,
+                    source_index: parser.source_index,
+                    position: parser.previous_token.position,
+                }),
+            },
+        }
     }
 
     fn parse_macro(parser: &mut Parser) -> Result<(), CommandError> {
@@ -1583,55 +1580,60 @@ fn compile(compiler: &mut Compiler) -> Result<DefinitionsLen, CommandError> {
         ));
     }
 
-    let mut index = 0;
+    fn emit_definitions(compiler: &mut Compiler, mut index: usize) -> Result<(), CommandError> {
+        loop {
+            let (source_index, next) = match compiler.ast.nodes[index] {
+                AstNode::Statement { source, next } => (source, next),
+                _ => unreachable!(),
+            };
 
-    loop {
-        let (source_index, next) = match compiler.ast.nodes[index] {
-            AstNode::Statement { source, next } => (source, next),
-            _ => unreachable!(),
-        };
-
-        index += 1;
-        if let AstNode::MacroDeclaration {
-            name_hash,
-            position,
-            param_count,
-        } = compiler.ast.nodes[index]
-        {
-            if find_command(compiler.commands, name_hash).is_some() {
-                return Err(CommandError {
-                    kind: CommandErrorKind::CommandAlreadyExists,
-                    source_index,
-                    position,
-                });
-            }
-
-            let op_start_index = compiler.virtual_machine.ops.len() as _;
             index += 1;
-            while index != 0 {
-                index = emit_statement(compiler, index)?;
-            }
-
-            if compiler.commands.macro_commands.len() > u16::MAX as _ {
-                return Err(CommandError {
-                    kind: CommandErrorKind::TooManyMacroCommands,
-                    source_index,
+            match compiler.ast.nodes[index] {
+                AstNode::MacroDeclaration {
+                    name_hash,
                     position,
-                });
+                    param_count,
+                } => {
+                    if find_command(compiler.commands, name_hash).is_some() {
+                        return Err(CommandError {
+                            kind: CommandErrorKind::CommandAlreadyExists,
+                            source_index,
+                            position,
+                        });
+                    }
+
+                    let op_start_index = compiler.virtual_machine.ops.len() as _;
+                    index += 1;
+                    while index != 0 {
+                        index = emit_statement(compiler, index)?;
+                    }
+
+                    if compiler.commands.macro_commands.len() > u16::MAX as _ {
+                        return Err(CommandError {
+                            kind: CommandErrorKind::TooManyMacroCommands,
+                            source_index,
+                            position,
+                        });
+                    }
+
+                    compiler.commands.macro_commands.push(MacroCommand {
+                        name_hash,
+                        op_start_index,
+                        param_count,
+                    });
+                }
+                _ => (),
             }
 
-            compiler.commands.macro_commands.push(MacroCommand {
-                name_hash,
-                op_start_index,
-                param_count,
-            });
+            if next == 0 {
+                break;
+            }
+            index = next as _;
         }
-
-        if next == 0 {
-            break;
-        }
-        index = next as _;
+        Ok(())
     }
+
+    emit_definitions(compiler, 0)?;
 
     let definitions_len = DefinitionsLen::from_virtual_machine(&compiler.virtual_machine);
 

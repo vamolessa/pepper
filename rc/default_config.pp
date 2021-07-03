@@ -75,6 +75,15 @@ syntax "**/*.lua" {
 	comments = {--{.}|--%[%[{!(%]%]).$}}
 }
 
+# https://docs.python.org/3/reference/lexical_analysis.html#keywords
+syntax "**/*.py" {
+	keywords = {and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield}
+	symbols = {+|-|*|/|%%|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.}
+	literals = {None|Flase|True|%d{%d_}%.%w{%w_}|%d{%w_}}
+	strings = {'{(\')!'.}|"{(\")!".}}
+	comments = {#{.}}
+}
+
 syntax "**/*.md" {
 	keywords = "#{.}$"
 	symbols = {%||%!|-}

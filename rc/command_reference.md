@@ -139,7 +139,8 @@ Prints `<values>` to the status bar.
 
 ## `source`
 Sources file at `<path>` and executes its contents as commands.
-- usage: `source <path>`
+With '!' will do nothing if file does not exist instead of raising an error.
+- usage: `source[!] <path>`
 
 ## `open`
 Opens a buffer up for editting.

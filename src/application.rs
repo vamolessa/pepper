@@ -271,7 +271,7 @@ impl<'stdout> ClientApplication<'stdout> {
                 if config.throw_error {
                     writeln!(commands, "source '{}'", &config.path).unwrap();
                 } else {
-                    writeln!(commands, "try {{ source '{}' }}", &config.path).unwrap();
+                    writeln!(commands, "try-source '{}'", &config.path).unwrap();
                 }
             }
         }
