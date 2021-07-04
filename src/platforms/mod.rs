@@ -16,6 +16,8 @@ mod sys;
 #[path = "bsd.rs"]
 mod sys;
 
+// TODO: maybe an web platform? https://xtermjs.org/
+
 pub fn main() {
     sys::main();
 }
