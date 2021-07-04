@@ -1,8 +1,4 @@
-use std::{
-    fmt,
-    ops::Range,
-    path::{Path, PathBuf},
-};
+use std::{fmt, ops::Range, path::Path};
 
 use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex},
@@ -57,7 +53,10 @@ impl<'a> CommandArgs<'a> {
     }
 
     pub fn try_next(&mut self) -> Option<&'a str> {
-        let value = self.virtual_machine.value_stack.get(self.stack_index as usize)?;
+        let value = self
+            .virtual_machine
+            .value_stack
+            .get(self.stack_index as usize)?;
         let range = value.start as usize..value.end as usize;
         self.stack_index += 1;
         Some(&self.virtual_machine.texts[range])
@@ -894,11 +893,23 @@ fn compile(compiler: &mut Compiler) -> Result<(), CommandError> {
         compiler.consume_token(CommandTokenKind::Literal)?;
 
         let mut arg_count = 0;
+        let mut flag_count = 0;
+
         loop {
             match compiler.previous_token.kind {
                 CommandTokenKind::Flag => {
-                    let flag_name = &compiler.previous_token_str()[1..];
                     let position = compiler.previous_token.position;
+
+                    if flag_count == u8::MAX {
+                        return Err(CommandError {
+                            kind: CommandErrorKind::TooManyFlags,
+                            source: compiler.source,
+                            position,
+                        });
+                    }
+                    flag_count += 1;
+
+                    let flag_name = &compiler.previous_token_str()[1..];
                     compiler.next_token()?;
 
                     let command_flags = match command_source {
@@ -967,8 +978,8 @@ fn compile(compiler: &mut Compiler) -> Result<(), CommandError> {
 
         let op = match command_source {
             CommandSource::Builtin(i) => Op::CallBuiltinCommand {
-                index: i as _,
-                bang,
+                index_and_bang: (i as _) & (bang as _ << 7),
+                flag_count,
                 arg_count,
             },
             CommandSource::Macro(i) => Op::CallMacroCommand(i as _),
@@ -1000,17 +1011,11 @@ const _ASSERT_OP_SIZE: [(); 4] = [(); std::mem::size_of::<Op>()];
 enum Op {
     Return,
     Pop,
-    PushStringLiteral {
-        start: u16,
-        len: u8,
-    },
+    PushStringLiteral { start: u16, len: u8 },
     DuplicateAt(u8),
     PopAsFlag(u8),
-    CallBuiltinCommand {
-        index: u8,
-        bang: bool,
-        arg_count: u8,
-    },
+    PushStackFrame,
+    CallBuiltinCommand { index: u8, bang: bool },
     CallMacroCommand(u16),
     CallRequestCommand(u16),
 }
@@ -1030,7 +1035,8 @@ struct StackFlag {
 struct StackFrame {
     op_index: u32,
     texts_len: u32,
-    stack_len: u16,
+    flag_stack_len: u16,
+    value_stack_len: u16,
 }
 
 struct SourceLocation {
@@ -1042,9 +1048,10 @@ struct SourceLocation {
 struct VirtualMachine {
     ops: Vec<Op>,
     texts: String,
-    value_stack: Vec<StackValue>,
     flag_stack: Vec<StackFlag>,
+    value_stack: Vec<StackValue>,
     frames: Vec<StackFrame>,
+    pending_frames: Vec<StackFrame>,
     op_locations: Vec<SourceLocation>,
 }
 
@@ -1053,11 +1060,12 @@ fn execute(
     platform: &mut Platform,
     clients: &mut ClientManager,
     client_handle: Option<ClientHandle>,
-    mut op_index: usize,
 ) -> Result<Option<CommandOperation>, CommandError> {
     let mut vm = &mut editor.commands_next.virtual_machine;
-    let initial_texts_len = vm.texts.len();
+    let mut op_index = 0;
     let mut start_stack_index = 0;
+
+    // TODO: initial frame
 
     loop {
         /*
@@ -1075,10 +1083,7 @@ fn execute(
 
         match vm.ops[op_index] {
             Op::Return => {
-                let frame = match vm.frames.pop() {
-                    Some(frame) => frame,
-                    None => return Ok(None),
-                };
+                let frame = vm.frames.pop().unwrap();
 
                 let value = vm.value_stack.last().unwrap();
                 let value = if value.start > frame.texts_len {
@@ -1099,17 +1104,18 @@ fn execute(
                     value.clone()
                 };
 
-                vm.value_stack.truncate(frame.stack_len as _);
+                vm.value_stack.truncate(frame.value_stack_len as _);
                 vm.value_stack.push(value);
 
                 op_index = frame.op_index as usize;
-                start_stack_index = frame.stack_len as _;
+                start_stack_index = frame.value_stack_len as _;
+
+                if vm.frames.is_empty() {
+                    return Ok(None);
+                }
             }
             Op::Pop => {
-                let texts_start = match vm.frames.last() {
-                    Some(frame) => frame.texts_len,
-                    None => initial_texts_len as _,
-                };
+                let texts_start = vm.frames.last().unwrap().texts_len;
                 let value = vm.value_stack.pop().unwrap();
                 if value.start == texts_start && value.end == vm.texts.len() as _ {
                     vm.texts.truncate(texts_start as _);
@@ -1127,20 +1133,32 @@ fn execute(
                 let value = vm.value_stack[start_stack_index + stack_index as usize];
                 vm.value_stack.push(value);
             }
-            Op::PrepareStackFrame => {
+            Op::PopAsFlag(index) => {
+                let value = vm.value_stack.pop().unwrap();
+                vm.flag_stack.push(StackFlag {
+                    index,
+                    start: value.start,
+                    end: value.end,
+                });
+            }
+            Op::PushStackFrame => {
                 let frame = StackFrame {
                     op_index: 0,
                     texts_len: vm.texts.len() as _,
-                    stack_len: vm.value_stack.len() as _,
+                    flag_stack_len: vm.flag_stack.len() as _,
+                    value_stack_len: vm.value_stack.len() as _,
                 };
-                vm.prepared_frames.push(frame);
+                vm.pending_frames.push(frame);
             }
-            Op::CallBuiltinCommand { index, bang } => {
-                let mut frame = vm.prepared_frames.pop().unwrap();
-                let return_start = vm.texts.len();
-
+            Op::CallBuiltinCommand {
+                index,
+                bang,
+            } => {
+                let mut frame = vm.pending_frames.pop().unwrap();
                 let command = &editor.commands_next.commands.builtin_commands[index as usize];
                 let command_fn = command.func;
+                
+                let return_text_start = vm.texts.len();
 
                 let mut ctx = CommandContext {
                     editor,
@@ -1148,7 +1166,7 @@ fn execute(
                     clients,
                     client_handle,
                     args: CommandArgsBuilder {
-                        stack_index: frame.stack_len,
+                        stack_index: frame.value_stack_len,
                         bang,
                     },
                 };
@@ -1157,19 +1175,19 @@ fn execute(
                     Ok(None) => (),
                     Err(kind) => {
                         vm = &mut editor.commands_next.virtual_machine;
-                        frame.op_index = op_index as _;
                         vm.frames.push(frame);
                         let location = &vm.op_locations[op_index];
                         return Err(CommandError {
                             kind,
-                            source_index: location.source_index,
+                            source: location.source,
                             position: location.position,
                         });
                     }
                 }
 
                 vm = &mut editor.commands_next.virtual_machine;
-                vm.texts.drain(frame.texts_len as usize..return_start);
+                vm.texts
+                    .drain(return_text_start..frame.texts_len as usize);
                 vm.value_stack.truncate(frame.stack_len as _);
                 vm.value_stack.push(StackValue {
                     start: frame.texts_len as _,
@@ -1591,3 +1609,4 @@ mod tests {
         );
     }
 }
+
