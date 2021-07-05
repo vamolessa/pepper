@@ -199,7 +199,10 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
 
     let (request_sender, request_receiver) = ServerApplication::platform_request_channel();
     let platform = Platform::new(flush_requests, request_sender);
-    let event_sender = ServerApplication::run(args, platform);
+    let event_sender = match ServerApplication::run(args, platform) {
+        Some(sender) => sender,
+        None => return Ok(()),
+    };
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];

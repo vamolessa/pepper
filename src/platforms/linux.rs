@@ -188,7 +188,10 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
         || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );
-    let event_sender = ServerApplication::run(args, platform);
+    let event_sender = match ServerApplication::run(args, platform) {
+        Some(sender) => sender,
+        None => return Ok(()),
+    };
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];

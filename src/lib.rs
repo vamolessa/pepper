@@ -4,7 +4,6 @@ pub mod buffer_position;
 pub mod buffer_view;
 pub mod client;
 pub mod command;
-pub mod command_next;
 pub mod config;
 pub mod cursor;
 pub mod editor;
@@ -29,8 +28,8 @@ pub mod ui;
 pub mod word_database;
 
 pub struct ArgsConfig {
-    path: String,
-    throw_error: bool,
+    pub path: String,
+    pub suppress_file_not_found: bool,
 }
 
 #[derive(Default)]
@@ -69,7 +68,7 @@ fn print_help() {
     println!("  --as-client <client-id>  sends events as if it was client with id <client-id>");
     println!("  --server                 only run as server (ignores files and configs arguments)");
     println!("  -c, --config             sources config file at path (repeatable)");
-    println!("  --try-config             tries to source a config file at path, throws no error if fails (repeatable)");
+    println!("  --try-config             like `--config` but suppresses the 'file not found' error (repeatable)");
     println!(
         "  --no-default-config      does not source the default config included in the editor"
     );
@@ -136,7 +135,7 @@ impl Args {
                         let arg = arg_to_str(&arg);
                         parsed.configs.push(ArgsConfig {
                             path: arg.into(),
-                            throw_error: true,
+                            suppress_file_not_found: false,
                         });
                     }
                     None => error(format_args!("expected config path after {}", arg)),
@@ -146,7 +145,7 @@ impl Args {
                         let arg = arg_to_str(&arg);
                         parsed.configs.push(ArgsConfig {
                             path: arg.into(),
-                            throw_error: false,
+                            suppress_file_not_found: true,
                         });
                     }
                     None => error(format_args!("expected config path after {}", arg)),

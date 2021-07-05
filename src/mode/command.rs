@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::{
-    command::{CommandManager, CommandToken, CommandTokenIter, CommandTokenKind, CompletionSource},
+    command::{CommandManager, CommandToken, CommandTokenizer, CommandTokenKind, CompletionSource},
     editor::KeysIterator,
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -97,6 +97,7 @@ impl ModeState for State {
                 ctx.editor.commands.add_to_history(input);
 
                 let command = ctx.editor.string_pool.acquire_with(input);
+                /*
                 let operation = CommandManager::eval_and_then_output(
                     ctx.editor,
                     ctx.platform,
@@ -106,6 +107,8 @@ impl ModeState for State {
                     None,
                 )
                 .map(From::from);
+                */
+                let operation = todo!();
                 ctx.editor.string_pool.release(command);
 
                 if ctx.editor.mode.kind() == ModeKind::Command {
@@ -130,7 +133,8 @@ fn apply_completion(ctx: &mut ModeContext, cursor_movement: isize) {
 }
 
 fn update_autocomplete_entries(ctx: &mut ModeContext) {
-    fn find_command_token(tokens: &mut CommandTokenIter) -> Option<CommandToken> {
+    /*
+    fn find_command_token(tokens: &mut CommandTokenizer) -> Option<CommandToken> {
         match tokens.next() {
             Some((CommandTokenKind::Identifier, token)) => Some(token),
             Some((CommandTokenKind::Register, _)) => match tokens.next() {
@@ -147,7 +151,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     let state = &mut ctx.editor.mode.command_state;
 
     let input = ctx.editor.read_line.input();
-    let mut tokens = CommandTokenIter::new(input);
+    let mut tokens = CommandTokenizer::new(input);
 
     let command_name = match find_command_token(&mut tokens) {
         Some(token) => token.as_str(input).trim_end_matches('!'),
@@ -301,4 +305,5 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
 
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
+    */
 }

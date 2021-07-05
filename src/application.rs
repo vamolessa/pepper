@@ -74,32 +74,76 @@ impl ServerApplication {
         Duration::from_secs(1)
     }
 
-    pub fn run(args: Args, mut platform: Platform) -> ApplicationEventSender {
-        let current_dir = env::current_dir().expect("could not retrieve the current directory");
-        let editor = Editor::new(current_dir);
-        let clients = ClientManager::default();
+    pub fn run(args: Args, mut platform: Platform) -> Option<ApplicationEventSender> {
+        fn eval_source(
+            editor: &mut Editor,
+            platform: &mut Platform,
+            clients: &mut ClientManager,
+            path: &str,
+            content: &str,
+        ) -> Option<()> {
+            match CommandManager::eval_source(
+                editor,
+                platform,
+                clients,
+                None,
+                path,
+                content,
+            ) {
+                Ok(Some(CommandOperation::Quit | CommandOperation::QuitAll)) => None,
+                Err(error) => {
+                    todo!();
+                }
+                _ => Some(()),
+            }
+        }
 
-        let source_default_config = !args.no_default_config;
+        let current_dir = env::current_dir().expect("could not retrieve the current directory");
+        let mut editor = Editor::new(current_dir);
+        let mut clients = ClientManager::default();
+
+        if !args.no_default_config {
+            let source = include_str!("../rc/default_config.pp");
+            eval_source(
+                &mut editor,
+                &mut platform,
+                &mut clients,
+                "default_config.pp",
+                source,
+            )?;
+        }
+
+        for config in args.configs {
+            let path = Path::new(&config.path);
+            if config.suppress_file_not_found && !path.exists() {
+                continue;
+            }
+            let source = match fs::read_to_string(path) {
+                Ok(source) => source,
+                Err(error) => todo!(),
+            };
+            eval_source(
+                &mut editor,
+                &mut platform,
+                &mut clients,
+                &config.path,
+                &source,
+            )?;
+        }
+
         let (event_sender, event_receiver) = mpsc::channel();
         let application_event_sender = ApplicationEventSender(event_sender.clone());
         std::thread::spawn(move || {
-            let _ = Self::run_application(
-                source_default_config,
-                editor,
-                clients,
-                &mut platform,
-                event_sender,
-                event_receiver,
-            );
+            let _ =
+                Self::run_application(editor, clients, &mut platform, event_sender, event_receiver);
             platform.enqueue_request(PlatformRequest::Exit);
             platform.flush_requests();
         });
 
-        application_event_sender
+        Some(application_event_sender)
     }
 
     fn run_application(
-        source_default_config: bool,
         mut editor: Editor,
         mut clients: ClientManager,
         platform: &mut Platform,
@@ -108,21 +152,6 @@ impl ServerApplication {
     ) -> Result<(), AnyError> {
         let mut is_first_client = true;
         let mut client_event_receiver = ClientEventReceiver::default();
-
-        if source_default_config {
-            let source = include_str!("../rc/default_config.pp");
-            match CommandManager::eval_and_then_output(
-                &mut editor,
-                platform,
-                &mut clients,
-                None,
-                source,
-                Some(Path::new("default_config.pp")),
-            ) {
-                Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) => return Ok(()),
-                _ => (),
-            }
-        }
 
         'event_loop: loop {
             let mut event = event_receiver.recv()?;
@@ -268,7 +297,7 @@ impl<'stdout> ClientApplication<'stdout> {
         if is_first_client {
             for config in &args.configs {
                 use fmt::Write;
-                if config.throw_error {
+                if config.suppress_file_not_found {
                     writeln!(commands, "source '{}'", &config.path).unwrap();
                 } else {
                     writeln!(commands, "try-source '{}'", &config.path).unwrap();
@@ -420,3 +449,4 @@ pub fn set_panic_hook() {
         }
     }));
 }
+

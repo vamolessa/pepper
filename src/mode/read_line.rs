@@ -631,6 +631,7 @@ pub mod custom {
                     ctx.editor
                         .registers
                         .set(RETURN_REGISTER, ctx.editor.read_line.input());
+                    /*
                     let operation = CommandManager::eval_and_then_output(
                         ctx.editor,
                         ctx.platform,
@@ -640,6 +641,8 @@ pub mod custom {
                         None,
                     )
                     .map(Into::into);
+                    */
+                    let operation = todo!();
                     ctx.editor.string_pool.release(continuation);
 
                     if ctx.editor.mode.kind() == ModeKind::ReadLine

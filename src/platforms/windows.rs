@@ -891,7 +891,10 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
         request_sender,
     );
     platform.set_clipboard_api(read_from_clipboard, write_to_clipboard);
-    let event_sender = ServerApplication::run(args, platform);
+    let event_sender = match ServerApplication::run(args, platform) {
+        Some(sender) => sender,
+        None => return Ok(()),
+    };
 
     let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
