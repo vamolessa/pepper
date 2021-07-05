@@ -9,6 +9,8 @@ use crate::{
     platform::Platform,
 };
 
+pub const HISTORY_CAPACITY: usize = 10;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionSource {
     Commands,
@@ -202,8 +204,6 @@ impl SourcePathCollection {
     }
 }
 
-pub const HISTORY_CAPACITY: usize = 10;
-
 pub struct CommandManager {
     commands: CommandCollection,
     virtual_machine: VirtualMachine,
@@ -260,6 +260,26 @@ impl CommandManager {
         let _ = fmt::write(&mut self.virtual_machine.texts, args);
     }
 
+    pub fn call_macro_command(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: Option<ClientHandle>,
+        index: usize,
+    ) -> Result<Option<CommandOperation>, CommandError> {
+        let command = &editor.commands.commands.macro_commands[index];
+        let op_index = command.op_start_index;
+        let op = execute(
+            editor,
+            platform,
+            clients,
+            client_handle,
+            op_index,
+        )?;
+
+        Ok(op)
+    }
+
     pub fn eval_expression(
         editor: &mut Editor,
         platform: &mut Platform,
@@ -274,15 +294,9 @@ impl CommandManager {
             &mut editor.commands.commands,
             &mut editor.commands.virtual_machine,
         );
-        let init_block = compile_expression(&mut compiler)?;
+        let vm_state = compile_expression(&mut compiler)?;
 
-        let op = execute(
-            editor,
-            platform,
-            clients,
-            client_handle,
-            init_block.ops_start,
-        )?;
+        let op = execute(editor, platform, clients, client_handle, vm_state.ops_len)?;
 
         let commands = &mut editor.commands;
         let value = commands.virtual_machine.value_stack.pop().unwrap();
@@ -290,7 +304,7 @@ impl CommandManager {
         output.clear();
         output.push_str(text);
 
-        init_block.truncate_virtual_machine(&mut commands.virtual_machine);
+        vm_state.restore(&mut commands.virtual_machine);
         Ok(op)
     }
 
@@ -310,17 +324,11 @@ impl CommandManager {
             &mut editor.commands.commands,
             &mut editor.commands.virtual_machine,
         );
-        let init_block = compile_source(&mut compiler)?;
+        let vm_state = compile_source(&mut compiler)?;
 
-        let op = execute(
-            editor,
-            platform,
-            clients,
-            client_handle,
-            init_block.ops_start,
-        )?;
+        let op = execute(editor, platform, clients, client_handle, vm_state.ops_len)?;
 
-        init_block.truncate_virtual_machine(&mut editor.commands.virtual_machine);
+        vm_state.restore(&mut editor.commands.virtual_machine);
         Ok(op)
     }
 }
@@ -1018,32 +1026,32 @@ fn expression_or_command_call(compiler: &mut Compiler) -> Result<(), CommandErro
     }
 }
 
-struct InitBlock {
-    pub texts_start: u32,
-    pub ops_start: u32,
+struct VirtualMachineState {
+    pub texts_len: u32,
+    pub ops_len: u32,
 }
-impl InitBlock {
-    pub fn from_virtual_machine(vm: &VirtualMachine) -> Self {
+impl VirtualMachineState {
+    pub fn save(vm: &VirtualMachine) -> Self {
         Self {
-            texts_start: vm.texts.len() as _,
-            ops_start: vm.ops.len() as _,
+            texts_len: vm.texts.len() as _,
+            ops_len: vm.ops.len() as _,
         }
     }
 
-    pub fn truncate_virtual_machine(&self, vm: &mut VirtualMachine) {
-        vm.texts.truncate(self.texts_start as _);
-        vm.ops.truncate(self.ops_start as _);
-        vm.op_locations.truncate(self.ops_start as _);
+    pub fn restore(&self, vm: &mut VirtualMachine) {
+        vm.texts.truncate(self.texts_len as _);
+        vm.ops.truncate(self.ops_len as _);
+        vm.op_locations.truncate(self.ops_len as _);
     }
 }
 
-fn compile_expression(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
+fn compile_expression(compiler: &mut Compiler) -> Result<VirtualMachineState, CommandError> {
     compiler.next_token()?;
     while let CommandTokenKind::EndOfLine = compiler.previous_token.kind {
         compiler.next_token()?;
     }
 
-    let init_block = InitBlock::from_virtual_machine(&compiler.virtual_machine);
+    let vm_state = VirtualMachineState::save(&compiler.virtual_machine);
 
     if let CommandTokenKind::EndOfSource = compiler.previous_token.kind {
         compiler.emit(
@@ -1051,7 +1059,7 @@ fn compile_expression(compiler: &mut Compiler) -> Result<InitBlock, CommandError
             BufferPosition::zero(),
         );
         compiler.emit(Op::Return, BufferPosition::zero());
-        return Ok(init_block);
+        return Ok(vm_state);
     }
 
     if compiler.virtual_machine.texts.is_empty() {
@@ -1066,10 +1074,10 @@ fn compile_expression(compiler: &mut Compiler) -> Result<InitBlock, CommandError
     }
     compiler.consume_token(CommandTokenKind::EndOfSource)?;
 
-    Ok(init_block)
+    Ok(vm_state)
 }
 
-fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
+fn compile_source(compiler: &mut Compiler) -> Result<VirtualMachineState, CommandError> {
     fn definition_block(
         compiler: &mut Compiler,
         position: BufferPosition,
@@ -1092,14 +1100,14 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
         Ok(())
     }
 
-    fn init_block_definition(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
+    fn init_block(compiler: &mut Compiler) -> Result<VirtualMachineState, CommandError> {
         let position = compiler.previous_token.position;
         compiler.next_token()?;
         compiler.consume_token(CommandTokenKind::OpenCurlyBrackets)?;
 
-        let init_block = InitBlock::from_virtual_machine(&compiler.virtual_machine);
+        let vm_state = VirtualMachineState::save(&compiler.virtual_machine);
         definition_block(compiler, position)?;
-        Ok(init_block)
+        Ok(vm_state)
     }
 
     fn macro_definition(compiler: &mut Compiler) -> Result<(), CommandError> {
@@ -1211,13 +1219,13 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
         compiler.virtual_machine.texts.push('\0');
     }
 
-    let mut init_block = None;
+    let mut vm_state = None;
     loop {
         match compiler.previous_token.kind {
             CommandTokenKind::Literal => match compiler.previous_token_str() {
                 "macro" => macro_definition(compiler)?,
                 "init" => {
-                    init_block = Some(init_block_definition(compiler)?);
+                    vm_state = Some(init_block(compiler)?);
                     while let CommandTokenKind::EndOfLine = compiler.previous_token.kind {
                         compiler.next_token()?;
                     }
@@ -1254,20 +1262,20 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
         }
     }
 
-    let init_block = match init_block {
-        Some(block) => block,
+    let vm_state = match vm_state {
+        Some(state) => state,
         None => {
-            let block = InitBlock::from_virtual_machine(&compiler.virtual_machine);
+            let state = VirtualMachineState::save(&compiler.virtual_machine);
             compiler.emit(
                 Op::PushStringLiteral { start: 0, len: 0 },
                 BufferPosition::zero(),
             );
             compiler.emit(Op::Return, BufferPosition::zero());
-            block
+            state
         }
     };
 
-    Ok(init_block)
+    Ok(vm_state)
 }
 
 const _ASSERT_OP_SIZE: [(); 4] = [(); std::mem::size_of::<Op>()];
@@ -1330,6 +1338,8 @@ fn execute(
     let mut vm = &mut editor.commands.virtual_machine;
     let mut start_stack_index = 0;
 
+    // TODO: make sure the frame is already there and do not clean stacks
+
     vm.flag_stack.clear();
     vm.value_stack.clear();
     vm.frames.clear();
@@ -1343,7 +1353,7 @@ fn execute(
     });
 
     loop {
-        //*
+        /*
         eprint!("\nstack: ");
         for value in &vm.value_stack {
             let range = value.start as usize..value.end as usize;
@@ -1354,7 +1364,8 @@ fn execute(
             "[{}] {:?} (stack_start: {})",
             op_index, &vm.ops[op_index as usize], start_stack_index
         );
-        //*/
+        // */
+
         match vm.ops[op_index as usize] {
             Op::Return => {
                 let frame = vm.frames.pop().unwrap();
@@ -1582,7 +1593,7 @@ mod tests {
         commands: &mut CommandManager,
         source: &str,
         mode: CompilationMode,
-    ) -> InitBlock {
+    ) -> VirtualMachineState {
         static BUILTIN_COMMANDS: &[BuiltinCommand] = &[
             BuiltinCommand {
                 name_hash: hash_bytes(b"cmd"),
@@ -1619,7 +1630,7 @@ mod tests {
             &mut commands.commands,
             &mut commands.virtual_machine,
         );
-        let init_block = match mode {
+        let vm_state = match mode {
             CompilationMode::Expression => compile_expression(&mut compiler).unwrap(),
             CompilationMode::Source => compile_source(&mut compiler).unwrap(),
         };
@@ -1629,7 +1640,7 @@ mod tests {
             commands.virtual_machine.op_locations.len()
         );
 
-        init_block
+        vm_state
     }
 
     fn compile_into_ops(source: &str, mode: CompilationMode) -> Vec<Op> {
@@ -1832,12 +1843,12 @@ mod tests {
             let mut platform = Platform::new(|| (), request_sender);
             let mut clients = ClientManager::default();
 
-            let init_block = compile_into(&mut editor.commands, source, CompilationMode::Source);
+            let vm_state = compile_into(&mut editor.commands, source, CompilationMode::Source);
 
             if debug {
                 eprintln!("==================================================================");
                 let c = &editor.commands;
-                dbg!(init_block.ops_start, &c.virtual_machine.ops);
+                dbg!(vm_state.ops_len, &c.virtual_machine.ops);
             }
 
             execute(
@@ -1845,7 +1856,7 @@ mod tests {
                 &mut platform,
                 &mut clients,
                 None,
-                init_block.ops_start,
+                vm_state.ops_len,
             )
             .unwrap();
 
