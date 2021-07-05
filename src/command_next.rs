@@ -1238,25 +1238,24 @@ fn execute(
     });
 
     loop {
-        /*
+        //*
         eprint!("\nstack: ");
-        for value in &vm.stack {
+        for value in &vm.value_stack {
             let range = value.start as usize..value.end as usize;
             eprint!("{}:{}={}, ", value.start, value.end, &vm.texts[range]);
         }
         eprintln!("\ntexts: '{}'", &vm.texts);
         eprintln!(
             "[{}] {:?} (stack_start: {})",
-            op_index, &vm.ops[op_index], start_stack_index
+            op_index, &vm.ops[op_index as usize], start_stack_index
         );
-        */
-
+        //*/
         match vm.ops[op_index as usize] {
             Op::Return => {
                 let frame = vm.frames.pop().unwrap();
 
                 let value = vm.value_stack.last().unwrap();
-                let value = if value.start > frame.texts_start {
+                let value = if value.start >= frame.texts_start {
                     let return_text_start = frame.texts_start as usize;
                     let return_text_range = value.start as usize..value.end as usize;
                     let return_text_len = return_text_range.end - return_text_range.start;
@@ -1266,8 +1265,8 @@ fn execute(
                         bytes.truncate(return_text_start + return_text_len);
                     }
                     StackValue {
-                        start: return_text_start as _,
-                        end: return_text_len as _,
+                        start: frame.texts_start,
+                        end: vm.texts.len() as _,
                     }
                 } else {
                     vm.texts.truncate(frame.texts_start as _);
@@ -1743,6 +1742,7 @@ mod tests {
                 compile_into(&mut editor.commands_next, source, CompilationMode::Source);
 
             if debug {
+                eprintln!("==================================================================");
                 let c = &editor.commands_next;
                 dbg!(init_block.ops_start, &c.virtual_machine.ops);
             }
