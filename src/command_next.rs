@@ -917,6 +917,13 @@ fn command_call(compiler: &mut Compiler, ignore_end_of_line: bool) -> Result<(),
     Ok(())
 }
 
+fn expression_or_command_call(compiler: &mut Compiler) -> Result<(), CommandError> {
+    match compiler.previous_token.kind {
+        CommandTokenKind::Literal => command_call(compiler, false),
+        _ => expression(compiler),
+    }
+}
+
 struct InitBlock {
     pub texts_start: u32,
     pub ops_start: u32,
@@ -939,6 +946,8 @@ fn compile_expression(compiler: &mut Compiler) -> Result<InitBlock, CommandError
     let init_block = InitBlock::from_virtual_machine(&compiler.virtual_machine);
 
     if let CommandTokenKind::EndOfSource = compiler.previous_token.kind {
+        compiler.emit(Op::PushStringLiteral { start: 0, len: 0 }, BufferPosition::zero());
+        compiler.emit(Op::Return, BufferPosition::zero());
         return Ok(init_block);
     }
 
@@ -946,7 +955,7 @@ fn compile_expression(compiler: &mut Compiler) -> Result<InitBlock, CommandError
         compiler.virtual_machine.texts.push('\0');
     }
 
-    expression(compiler)?;
+    expression_or_command_call(compiler)?;
     compiler.emit(Op::Return, BufferPosition::zero());
 
     while let CommandTokenKind::EndOfLine = compiler.previous_token.kind {
@@ -1091,13 +1100,6 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
                 source: compiler.source,
                 position: compiler.previous_token.position,
             }),
-        }
-    }
-
-    fn expression_or_command_call(compiler: &mut Compiler) -> Result<(), CommandError> {
-        match compiler.previous_token.kind {
-            CommandTokenKind::Literal => command_call(compiler, false),
-            _ => expression(compiler),
         }
     }
 
@@ -1475,7 +1477,7 @@ mod tests {
                 hidden: false,
                 completions: &[],
                 accepts_bang: true,
-                flags: &["-switch", "-option"],
+                flags: &["switch", "option"],
                 func: |_| Ok(None),
             },
             BuiltinCommand {
@@ -1535,14 +1537,10 @@ mod tests {
         assert_eq!(
             vec![
                 PushStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
-                PushStringLiteral { start: 0, len: 0 },
                 CallBuiltinCommand {
                     index: 0,
                     bang: false,
                 },
-                Pop,
-                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_into_ops("cmd", CompilationMode::Expression),
@@ -1551,22 +1549,18 @@ mod tests {
         assert_eq!(
             vec![
                 PushStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
-                PushStringLiteral { start: 0, len: 0 },
                 PushStringLiteral {
-                    start: 0,
+                    start: 1,
                     len: "arg0".len() as _,
                 },
                 PushStringLiteral {
-                    start: "arg0".len() as _,
+                    start: (1 + "arg0".len()) as _,
                     len: "arg1".len() as _,
                 },
                 CallBuiltinCommand {
                     index: 0,
                     bang: true,
                 },
-                Pop,
-                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_into_ops("cmd! arg0 arg1", CompilationMode::Expression),
@@ -1577,18 +1571,22 @@ mod tests {
                 PushStackFrame,
                 PushStringLiteral {
                     start: 0,
-                    len: "opt".len() as _,
+                    len: 1,
                 },
+                PopAsFlag(0),
                 PushStringLiteral {
-                    start: "opt".len() as _,
+                    start: 1,
                     len: "arg".len() as _,
                 },
+                PushStringLiteral {
+                    start: (1 + "arg".len()) as _,
+                    len: "opt".len() as _,
+                },
+                PopAsFlag(1),
                 CallBuiltinCommand {
                     index: 0,
                     bang: false,
                 },
-                Pop,
-                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_into_ops("cmd -switch arg -option=opt", CompilationMode::Expression),
@@ -1597,34 +1595,27 @@ mod tests {
         assert_eq!(
             vec![
                 PushStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
+                PushStringLiteral { start: 1, len: "arg0".len() as _ },
                 // begin nested call
                 PushStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
-                PushStringLiteral { start: 0, len: 0 },
                 PushStringLiteral {
-                    start: 0,
+                    start: (1 + "arg0".len()) as _,
                     len: "arg1".len() as _,
                 },
                 CallBuiltinCommand {
                     index: 0,
                     bang: false,
                 },
+                PopAsFlag(1),
                 // end nested call
                 PushStringLiteral {
-                    start: "arg1".len() as _,
-                    len: "arg0".len() as _,
-                },
-                PushStringLiteral {
-                    start: "arg1arg0".len() as _,
+                    start: (1 + "arg0arg1".len()) as _,
                     len: "arg2".len() as _,
                 },
                 CallBuiltinCommand {
                     index: 0,
                     bang: false,
                 },
-                Pop,
-                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_into_ops(
@@ -1636,22 +1627,18 @@ mod tests {
         assert_eq!(
             vec![
                 PushStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
-                PushStringLiteral { start: 0, len: 0 },
                 PushStringLiteral {
-                    start: 0,
+                    start: 1,
                     len: "arg0".len() as _,
                 },
                 PushStringLiteral {
-                    start: "arg0".len() as _,
+                    start: (1 + "arg0".len()) as _,
                     len: "arg1".len() as _,
                 },
                 CallBuiltinCommand {
                     index: 0,
                     bang: false,
                 },
-                Pop,
-                PushStringLiteral { start: 0, len: 0 },
                 Return,
             ],
             compile_into_ops("(cmd \n arg0 \n arg1)", CompilationMode::Expression),
@@ -1660,9 +1647,9 @@ mod tests {
         assert_eq!(
             vec![
                 PushStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
-                DuplicateAt(1),
                 DuplicateAt(0),
+                DuplicateAt(1),
+                PopAsFlag(1),
                 CallBuiltinCommand {
                     index: 0,
                     bang: false,
@@ -1672,7 +1659,7 @@ mod tests {
                 Return,
             ],
             compile_into_ops(
-                "macro c $a $b {\n\treturn cmd $a -option=$b\n}",
+                "macro c $a $b {\n\t return cmd $a -option=$b\n}",
                 CompilationMode::Source
             ),
         );
@@ -1681,8 +1668,6 @@ mod tests {
             vec![
                 // begin macro
                 PushStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
-                PushStringLiteral { start: 0, len: 0 },
                 DuplicateAt(0),
                 CallBuiltinCommand {
                     index: 0,
@@ -1693,10 +1678,8 @@ mod tests {
                 Return,
                 // end macro
                 PushStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
-                PushStringLiteral { start: 0, len: 0 },
                 PushStringLiteral {
-                    start: 0,
+                    start: 1,
                     len: "0".len() as _
                 },
                 CallBuiltinCommand {
@@ -1705,10 +1688,8 @@ mod tests {
                 },
                 Pop,
                 PushStackFrame,
-                PushStringLiteral { start: 0, len: 0 },
-                PushStringLiteral { start: 0, len: 0 },
                 PushStringLiteral {
-                    start: "0".len() as _,
+                    start: (1 + "0".len()) as _,
                     len: "1".len() as _
                 },
                 CallBuiltinCommand {
@@ -1720,8 +1701,8 @@ mod tests {
                 Return,
             ],
             compile_into_ops(
-                "cmd '0'\n macro c $p { cmd $p } cmd '1'",
-                CompilationMode::Expression
+                "macro c $p { cmd $p } init { cmd '0' \n cmd '1' }",
+                CompilationMode::Source
             ),
         );
     }
