@@ -734,9 +734,15 @@ fn expression(compiler: &mut Compiler) -> Result<(), CommandError> {
                 });
             }
 
-            compiler.emit_push_literal_from_previous_token()
+            compiler.emit_push_literal_from_previous_token()?;
+            compiler.next_token()?;
+            Ok(())
         }
-        CommandTokenKind::QuotedLiteral => compiler.emit_push_literal_from_previous_token(),
+        CommandTokenKind::QuotedLiteral => {
+            compiler.emit_push_literal_from_previous_token()?;
+            compiler.next_token()?;
+            Ok(())
+        }
         CommandTokenKind::OpenParenthesis => {
             compiler.next_token()?;
             command_call(compiler, true)?;
@@ -800,6 +806,7 @@ fn command_call(compiler: &mut Compiler, ignore_end_of_line: bool) -> Result<(),
     }
 
     compiler.consume_token(CommandTokenKind::Literal)?;
+    compiler.emit(Op::PushStackFrame, position);
 
     let mut arg_count = 0;
     let mut flag_count = 0;
@@ -924,25 +931,62 @@ impl InitBlock {
 
 fn compile_expression(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
     compiler.next_token()?;
+    while let CommandTokenKind::EndOfLine = compiler.previous_token.kind {
+        compiler.next_token()?;
+    }
+
+    let init_block = InitBlock::from_virtual_machine(&compiler.virtual_machine);
+
+    if let CommandTokenKind::EndOfSource = compiler.previous_token.kind {
+        return Ok(init_block);
+    }
+
     if compiler.virtual_machine.texts.is_empty() {
         compiler.virtual_machine.texts.push('\0');
     }
 
-    let init_block = InitBlock::from_virtual_machine(&compiler.virtual_machine);
     expression(compiler)?;
+    compiler.emit(Op::Return, BufferPosition::zero());
+
+    while let CommandTokenKind::EndOfLine = compiler.previous_token.kind {
+        compiler.next_token()?;
+    }
+    compiler.consume_token(CommandTokenKind::EndOfSource)?;
 
     Ok(init_block)
 }
 
 fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
+    fn definition_block(
+        compiler: &mut Compiler,
+        position: BufferPosition,
+    ) -> Result<(), CommandError> {
+        loop {
+            if let CommandTokenKind::CloseCurlyBrackets | CommandTokenKind::EndOfSource =
+                compiler.previous_token.kind
+            {
+                break;
+            }
+            statement(compiler)?;
+        }
+        compiler.consume_token(CommandTokenKind::CloseCurlyBrackets)?;
+
+        if !matches!(compiler.virtual_machine.ops.last(), Some(Op::Return)) {
+            compiler.emit(Op::PushStringLiteral { start: 0, len: 0 }, position);
+            compiler.emit(Op::Return, position);
+        }
+
+        Ok(())
+    }
+
     fn init_block_definition(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
         let position = compiler.previous_token.position;
         compiler.next_token()?;
         compiler.consume_token(CommandTokenKind::OpenCurlyBrackets)?;
 
-        let block = InitBlock::from_virtual_machine(&compiler.virtual_machine);
-
-        Ok(block)
+        let init_block = InitBlock::from_virtual_machine(&compiler.virtual_machine);
+        definition_block(compiler, position)?;
+        Ok(init_block)
     }
 
     fn macro_definition(compiler: &mut Compiler) -> Result<(), CommandError> {
@@ -970,8 +1014,6 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
         }
         compiler.consume_token(CommandTokenKind::Literal)?;
 
-        compiler.emit(Op::PushStackFrame, position);
-
         loop {
             match compiler.previous_token.kind {
                 CommandTokenKind::OpenCurlyBrackets => {
@@ -995,10 +1037,7 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
         let param_count = compiler.bindings_len;
         let op_start_index = compiler.virtual_machine.ops.len() as _;
 
-        while compiler.previous_token.kind != CommandTokenKind::CloseCurlyBrackets {
-            statement(compiler)?;
-        }
-        compiler.next_token()?;
+        definition_block(compiler, position)?;
 
         compiler.commands.macro_commands.push(MacroCommand {
             name_hash,
@@ -1023,6 +1062,7 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
                 }
                 "return" => {
                     let position = compiler.previous_token.position;
+                    compiler.next_token()?;
                     expression(compiler)?;
                     compiler.emit(Op::Return, position);
                     Ok(())
@@ -1098,6 +1138,7 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
                     })
                 }
             },
+            CommandTokenKind::EndOfLine => compiler.next_token()?,
             CommandTokenKind::EndOfSource => break,
             _ => {
                 return Err(CommandError {
@@ -1111,8 +1152,17 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
 
     let init_block = match init_block {
         Some(block) => block,
-        None => InitBlock::from_virtual_machine(&compiler.virtual_machine),
+        None => {
+            let block = InitBlock::from_virtual_machine(&compiler.virtual_machine);
+            compiler.emit(
+                Op::PushStringLiteral { start: 0, len: 0 },
+                BufferPosition::zero(),
+            );
+            compiler.emit(Op::Return, BufferPosition::zero());
+            block
+        }
     };
+
     Ok(init_block)
 }
 
@@ -1731,8 +1781,14 @@ mod tests {
         assert_eq!("abc", eval("init { return 'abc' }"));
         assert_eq!("", eval("macro c { }"));
         assert_eq!("", eval("macro c $a { return $a }"));
-        assert_eq!("", eval("macro c $a { return $a }\n init { c 'abc' \n c 'def' }"));
-        assert_eq!("abc", eval("macro c $a { return $a }\n init { return c 'abc' }"));
+        assert_eq!(
+            "",
+            eval("macro c $a { return $a }\n init { c 'abc' \n c 'def' }")
+        );
+        assert_eq!(
+            "abc",
+            eval("macro c $a { return $a }\n init { return c 'abc' }")
+        );
         assert_eq!(
             "a",
             eval("macro first $a $b { return $a }\n init { return first a b }")
@@ -1751,4 +1807,3 @@ mod tests {
         );
     }
 }
-
