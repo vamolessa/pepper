@@ -775,6 +775,8 @@ fn expression(compiler: &mut Compiler) -> Result<(), CommandError> {
 fn command_call(compiler: &mut Compiler, ignore_end_of_line: bool) -> Result<(), CommandError> {
     let position = compiler.previous_token.position;
     let command_name = compiler.previous_token_str();
+    compiler.consume_token(CommandTokenKind::Literal)?;
+
     let (command_name, bang) = match command_name.strip_suffix('!') {
         Some(name) => (name, true),
         None => (command_name, false),
@@ -805,7 +807,6 @@ fn command_call(compiler: &mut Compiler, ignore_end_of_line: bool) -> Result<(),
         }
     }
 
-    compiler.consume_token(CommandTokenKind::Literal)?;
     compiler.emit(Op::PushStackFrame, position);
 
     let mut arg_count = 0;
@@ -1053,17 +1054,15 @@ fn compile_source(compiler: &mut Compiler) -> Result<InitBlock, CommandError> {
     fn statement(compiler: &mut Compiler) -> Result<(), CommandError> {
         match compiler.previous_token.kind {
             CommandTokenKind::Literal => match compiler.previous_token_str() {
-                "macro" => {
-                    return Err(CommandError {
-                        kind: CommandErrorKind::ExpectedStatement,
-                        source: compiler.source,
-                        position: compiler.previous_token.position,
-                    })
-                }
+                "macro" => Err(CommandError {
+                    kind: CommandErrorKind::ExpectedStatement,
+                    source: compiler.source,
+                    position: compiler.previous_token.position,
+                }),
                 "return" => {
                     let position = compiler.previous_token.position;
                     compiler.next_token()?;
-                    expression(compiler)?;
+                    expression_or_command_call(compiler)?;
                     compiler.emit(Op::Return, position);
                     Ok(())
                 }
@@ -1807,3 +1806,4 @@ mod tests {
         );
     }
 }
+
