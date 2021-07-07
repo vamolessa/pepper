@@ -82,6 +82,8 @@ impl ServerApplication {
             path: &str,
             content: &str,
         ) -> Option<()> {
+            todo!();
+            /*
             match CommandManager::eval_source(
                 editor,
                 platform,
@@ -96,6 +98,7 @@ impl ServerApplication {
                 }
                 _ => Some(()),
             }
+            */
         }
 
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
