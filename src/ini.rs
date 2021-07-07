@@ -1,8 +1,7 @@
-use std::ops::Range;
+use std::{fmt, ops::Range};
 
 use crate::buffer_position::BufferPosition;
 
-#[derive(Debug)]
 pub enum IniErrorKind {
     ExpectedSection,
     ExpectedEquals,
@@ -11,7 +10,21 @@ pub enum IniErrorKind {
     EmptySectionName,
     EmptyPropertyName,
 }
-#[derive(Debug)]
+impl fmt::Display for IniErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::ExpectedSection => f.write_str("expected section"),
+            Self::ExpectedEquals => f.write_str("expected '='"),
+            Self::ExpectedCloseSquareBrackets => f.write_str("expected ']'"),
+            Self::SectionNotEndedWithCloseSquareBrackets => {
+                f.write_str("section did not end with ']'")
+            }
+            Self::EmptySectionName => f.write_str("sections can not have an empty name"),
+            Self::EmptyPropertyName => f.write_str("properties can not have an empty name"),
+        }
+    }
+}
+
 pub struct IniError {
     pub kind: IniErrorKind,
     pub position: BufferPosition,
@@ -164,27 +177,42 @@ struct Property<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn valid() {
-        let ini = concat!(
-            "; comment\n",
-            "[sec0]\n",
-            "key0=value0\n",
-            ";key1=commented\n",
-            "key2=\n",
-            ";[sec1]\n",
-            "[ sec2 ]\n",
-            "key3=;value3\n",
-            "[sec3]\n",
-        );
-
-        let mut parser = Ini::default();
-        if let Err(error) = parser.parse(ini) {
-            panic!("{:?}", error);
+        fn get_sections<'parser, 'data>(
+            parser: &'parser mut Ini<'data>,
+            ini: &'data str,
+        ) -> SectionIterator<'parser, 'data> {
+            parser.clear();
+            if let Err(error) = parser.parse(ini) {
+                panic!("{} at {}", error.kind, error.position);
+            }
+            parser.sections()
         }
 
-        let mut sections = parser.sections();
+        let mut parser = Ini::default();
+
+        let mut sections = get_sections(&mut parser, "");
+        assert!(sections.next().is_none());
+
+        let mut sections = get_sections(
+            &mut parser,
+            concat!(
+                "\n",
+                "; comment\n",
+                "[sec0]\n",
+                "key0=value0\n",
+                ";key1=commented\n",
+                "key2=\n",
+                "\n",
+                ";[sec1]\n",
+                "[ sec2 ]\n",
+                "key3=;value3\n",
+                "[sec3]\n",
+                "\n",
+            ),
+        );
 
         let (name, mut properties) = sections.next().unwrap();
         assert_eq!("sec0", name);
@@ -203,4 +231,35 @@ mod tests {
 
         assert!(sections.next().is_none());
     }
+
+    #[test]
+    fn invalid() {
+        fn get_error(ini: &str) -> IniErrorKind {
+            let mut parser = Ini::default();
+            match parser.parse(ini) {
+                Ok(()) => panic!("ini parsed successfully"),
+                Err(error) => error.kind,
+            }
+        }
+
+        assert!(matches!(get_error("a=b"), IniErrorKind::ExpectedSection));
+        assert!(matches!(
+            get_error("[section]\na"),
+            IniErrorKind::ExpectedEquals
+        ));
+        assert!(matches!(
+            get_error("[section"),
+            IniErrorKind::ExpectedCloseSquareBrackets
+        ));
+        assert!(matches!(
+            get_error("[section] "),
+            IniErrorKind::SectionNotEndedWithCloseSquareBrackets
+        ));
+        assert!(matches!(get_error("[]"), IniErrorKind::EmptySectionName));
+        assert!(matches!(
+            get_error("[section]\n=b"),
+            IniErrorKind::EmptyPropertyName,
+        ));
+    }
 }
+
