@@ -31,7 +31,7 @@ pub enum Key {
 }
 
 pub enum PlatformRequest {
-    Exit,
+    Quit,
     WriteToClient {
         handle: ClientHandle,
         buf: SharedBuf,

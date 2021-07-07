@@ -136,7 +136,7 @@ impl ServerApplication {
         std::thread::spawn(move || {
             let _ =
                 Self::run_application(editor, clients, &mut platform, event_sender, event_receiver);
-            platform.enqueue_request(PlatformRequest::Exit);
+            platform.enqueue_request(PlatformRequest::Quit);
             platform.flush_requests();
         });
 

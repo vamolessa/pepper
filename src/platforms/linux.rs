@@ -223,7 +223,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                     new_request_event.read();
                     for request in request_receiver.try_iter() {
                         match request {
-                            PlatformRequest::Exit => return Ok(()),
+                            PlatformRequest::Quit => return Ok(()),
                             PlatformRequest::WriteToClient { handle, buf } => {
                                 let index = handle.into_index();
                                 if let Some(ref mut connection) = client_connections[index] {

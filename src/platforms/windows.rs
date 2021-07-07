@@ -922,7 +922,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             Some(EventSource::NewRequest) => {
                 for request in request_receiver.try_iter() {
                     match request {
-                        PlatformRequest::Exit => return Ok(()),
+                        PlatformRequest::Quit => return Ok(()),
                         PlatformRequest::WriteToClient { handle, buf } => {
                             if let Some(ref mut connection) =
                                 client_connections[handle.into_index()]

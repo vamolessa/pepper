@@ -10,7 +10,7 @@ init {
 	map -normal o dgli<enter>
 	map -normal O dgii<enter><up>
 	map -normal J djgivkgli<space><esc>
-	
+
 	map -normal K :<space>lsp-hover<enter>
 	map -normal gd :<space>lsp-definition<enter>
 	map -normal gr ": lsp-references -context=2<enter>"
