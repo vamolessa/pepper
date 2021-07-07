@@ -157,22 +157,21 @@ impl fmt::Display for KeyParseAllError {
 impl Error for KeyParseAllError {}
 
 pub struct KeyParser<'a> {
-    raw: &'a str,
     chars: Chars<'a>,
+    raw: &'a str,
 }
 impl<'a> KeyParser<'a> {
     pub fn new(raw: &'a str) -> Self {
         Self {
-            raw,
             chars: raw.chars(),
+            raw,
         }
     }
 }
 impl<'a> Iterator for KeyParser<'a> {
     type Item = Result<Key, KeyParseAllError>;
-
     fn next(&mut self) -> Option<Self::Item> {
-        if self.chars.as_str().is_empty() {
+        if self.raw.is_empty() {
             return None;
         }
         match parse_key(&mut self.chars) {
@@ -184,14 +183,14 @@ impl<'a> Iterator for KeyParser<'a> {
                     .next_back()
                     .map(|(i, _)| i)
                     .unwrap_or(0);
-
+                self.raw = "";
                 Some(Err(KeyParseAllError { index, error }))
             }
         }
     }
 }
 
-fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseError> {
+fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
     #[inline]
     fn next(chars: &mut impl Iterator<Item = char>) -> Result<char, KeyParseError> {
         match chars.next() {
@@ -224,9 +223,16 @@ fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseErro
                 consume_str(chars, "ackspace>")?;
                 Key::Backspace
             }
-            's' => {
-                consume_str(chars, "pace>")?;
-                Key::Char(' ')
+            's' => match next(chars)? {
+                'p' => {
+                    consume_str(chars, "ace>")?;
+                    Key::Char(' ')
+                }
+                'e' => {
+                    consume_str(chars, "micolon>")?;
+                    Key::Char(';')
+                }
+                c => return Err(KeyParseError::InvalidCharacter(c)),
             }
             'e' => match next(chars)? {
                 'n' => match next(chars)? {
@@ -240,6 +246,10 @@ fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseErro
                     }
                     c => return Err(KeyParseError::InvalidCharacter(c)),
                 },
+                'q' => {
+                    consume_str(chars, "uals>")?;
+                    Key::Char('=')
+                }
                 's' => {
                     consume_str(chars, "c>")?;
                     Key::Esc
@@ -352,7 +362,7 @@ fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseErro
             }
             c => return Err(KeyParseError::InvalidCharacter(c)),
         },
-        c @ '>' => return Err(KeyParseError::InvalidCharacter(c)),
+        '>' => return Err(KeyParseError::InvalidCharacter('>')),
         c => Key::Char(c),
     };
 
@@ -377,8 +387,11 @@ impl fmt::Display for Key {
             Key::Delete => f.write_str("<delete>"),
             Key::F(n) => write!(f, "<f{}>", n),
             Key::Char(' ') => f.write_str("<space>"),
+            Key::Char(';') => f.write_str("<semicolon>"),
+            Key::Char('\n') => f.write_str("<newline>"),
             Key::Char('<') => f.write_str("<less>"),
             Key::Char('>') => f.write_str("<greater>"),
+            Key::Char('=') => f.write_str("<equals>"),
             Key::Char(c) => write!(f, "{}", c),
             Key::Ctrl(c) => write!(f, "<c-{}>", c),
             Key::Alt(c) => write!(f, "<a-{}>", c),
@@ -675,8 +688,10 @@ mod tests {
         assert_eq!(Key::Char('0'), parse_key(&mut "0".chars()).unwrap());
         assert_eq!(Key::Char('9'), parse_key(&mut "9".chars()).unwrap());
         assert_eq!(Key::Char('_'), parse_key(&mut "_".chars()).unwrap());
+        assert_eq!(Key::Char(';'), parse_key(&mut "<semicolon>".chars()).unwrap());
         assert_eq!(Key::Char('<'), parse_key(&mut "<less>".chars()).unwrap());
         assert_eq!(Key::Char('>'), parse_key(&mut "<greater>".chars()).unwrap());
+        assert_eq!(Key::Char('='), parse_key(&mut "<equals>".chars()).unwrap());
         assert_eq!(Key::Char('\\'), parse_key(&mut "\\".chars()).unwrap());
     }
 
@@ -781,3 +796,4 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
+
