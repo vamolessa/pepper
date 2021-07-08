@@ -94,13 +94,12 @@ pub fn load_config<'content>(
         output: &mut EditorOutputWrite,
     ) {
         for (key, value, line_index) in bindings {
-            match keymaps.parse_and_map(mode, from, to) {
+            match keymaps.parse_and_map(mode, key, value) {
                 Ok(()) => (),
-                Err(ParseKeyMapError::From(error)) => {
-                    output.fmt(format_args!("invalid from binding '{}' at {}:{}", 
-                        key,
-                    ))
-                }
+                Err(ParseKeyMapError::From(error)) => output.fmt(format_args!(
+                    "invalid from binding '{}' at {}:{}",
+                    key, config_name, line_index,
+                )),
             }
         }
     }
