@@ -8,7 +8,7 @@ pub enum MatchResult {
 }
 
 #[derive(Debug)]
-pub enum PatternErrorKind {
+pub enum PatternError {
     UnexpectedEndOfPattern,
     Expected(char),
     InvalidEscaping(char),
@@ -17,7 +17,7 @@ pub enum PatternErrorKind {
     GroupWithElementsOfDifferentSize,
     PatternTooLong,
 }
-impl fmt::Display for PatternErrorKind {
+impl fmt::Display for PatternError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::UnexpectedEndOfPattern => write!(f, "unexpected end of pattern"),
@@ -32,20 +32,9 @@ impl fmt::Display for PatternErrorKind {
         }
     }
 }
-impl From<TryFromIntError> for PatternErrorKind {
+impl From<TryFromIntError> for PatternError {
     fn from(_: TryFromIntError) -> Self {
         Self::PatternTooLong
-    }
-}
-
-#[derive(Debug)]
-pub struct PatternError<'a> {
-    pub pattern: &'a str,
-    pub kind: PatternErrorKind,
-}
-impl<'a> fmt::Display for PatternError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "invalid pattern '{}': {}", self.pattern, self.kind)
     }
 }
 
@@ -134,15 +123,15 @@ impl Pattern {
         self.start_jump = Jump(0);
     }
 
-    pub fn compile<'a>(&mut self, pattern: &'a str) -> Result<(), PatternError<'a>> {
+    pub fn compile<'a>(&mut self, pattern: &'a str) -> Result<(), PatternError> {
         match PatternCompiler::new(&mut self.ops, pattern).compile() {
             Ok(start_jump) => {
                 self.start_jump = start_jump;
                 Ok(())
             }
-            Err(kind) => {
+            Err(error) => {
                 self.clear();
-                Err(PatternError { pattern, kind })
+                Err(error)
             }
         }
     }
@@ -152,7 +141,7 @@ impl Pattern {
     // "F/" for 'fixed' searcher case sensitive
     // "p/" for 'pattern' searcher smart case
     // "P/" for 'pattern' searcher case sensitive
-    pub fn compile_searcher<'a>(&mut self, pattern: &'a str) -> Result<(), PatternError<'a>> {
+    pub fn compile_searcher<'a>(&mut self, pattern: &'a str) -> Result<(), PatternError> {
         let (ignore_case, pattern) = match pattern.strip_prefix('_') {
             Some(pattern) => (false, pattern),
             None => {
@@ -395,13 +384,13 @@ impl fmt::Debug for Pattern {
 #[derive(Debug, Clone, Copy)]
 struct Length(u16);
 impl Length {
-    pub fn add(&mut self, other: Self) -> Result<(), PatternErrorKind> {
+    pub fn add(&mut self, other: Self) -> Result<(), PatternError> {
         match self.0.checked_add(other.0) {
             Some(result) => {
                 self.0 = result;
                 Ok(())
             }
-            None => Err(PatternErrorKind::UnexpectedEndOfPattern),
+            None => Err(PatternError::UnexpectedEndOfPattern),
         }
     }
 }
@@ -409,13 +398,13 @@ impl Length {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Jump(u16);
 impl Jump {
-    pub fn add(&mut self, other: Self) -> Result<(), PatternErrorKind> {
+    pub fn add(&mut self, other: Self) -> Result<(), PatternError> {
         match self.0.checked_add(other.0) {
             Some(result) => {
                 self.0 = result;
                 Ok(())
             }
-            None => Err(PatternErrorKind::UnexpectedEndOfPattern),
+            None => Err(PatternError::UnexpectedEndOfPattern),
         }
     }
 }
@@ -545,7 +534,7 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    pub fn compile(mut self) -> Result<Jump, PatternErrorKind> {
+    pub fn compile(mut self) -> Result<Jump, PatternError> {
         self.ops.push(Op::Error);
         self.ops.push(Op::Ok);
         self.parse_subpatterns()?;
@@ -553,33 +542,33 @@ impl<'a> PatternCompiler<'a> {
         Ok(self.start_jump)
     }
 
-    fn assert_current(&self, c: char) -> Result<(), PatternErrorKind> {
+    fn assert_current(&self, c: char) -> Result<(), PatternError> {
         if self.current_char == c {
             Ok(())
         } else {
-            Err(PatternErrorKind::Expected(c))
+            Err(PatternError::Expected(c))
         }
     }
 
-    fn next(&mut self) -> Result<char, PatternErrorKind> {
+    fn next(&mut self) -> Result<char, PatternError> {
         match self.text.next() {
             Some(c) => {
                 self.current_char = c;
                 Ok(c)
             }
-            None => Err(PatternErrorKind::UnexpectedEndOfPattern),
+            None => Err(PatternError::UnexpectedEndOfPattern),
         }
     }
 
-    fn next_is(&mut self, c: char) -> Result<bool, PatternErrorKind> {
+    fn next_is(&mut self, c: char) -> Result<bool, PatternError> {
         match self.next() {
             Ok(ch) => Ok(ch == c),
             Err(e) => Err(e),
         }
     }
 
-    fn parse_subpatterns(&mut self) -> Result<(), PatternErrorKind> {
-        fn add_reset_jump(compiler: &mut PatternCompiler) -> Result<Jump, PatternErrorKind> {
+    fn parse_subpatterns(&mut self) -> Result<(), PatternError> {
+        fn add_reset_jump(compiler: &mut PatternCompiler) -> Result<Jump, PatternError> {
             let jump = Jump((compiler.ops.len() + 2).try_into()?);
             compiler.ops.push(Op::Unwind(jump, Length(0)));
             let jump = Jump(compiler.ops.len().try_into()?);
@@ -589,7 +578,7 @@ impl<'a> PatternCompiler<'a> {
         fn patch_reset_jump(
             compiler: &mut PatternCompiler,
             reset_jump: Jump,
-        ) -> Result<(), PatternErrorKind> {
+        ) -> Result<(), PatternError> {
             let jump = Jump(compiler.ops.len().try_into()?);
             if let Op::Reset(j) = &mut compiler.ops[reset_jump.0 as usize] {
                 *j = jump;
@@ -617,7 +606,7 @@ impl<'a> PatternCompiler<'a> {
         Ok(())
     }
 
-    fn parse_stmt(&mut self, erj: JumpFrom) -> Result<(), PatternErrorKind> {
+    fn parse_stmt(&mut self, erj: JumpFrom) -> Result<(), PatternError> {
         match self.current_char {
             '{' => self.parse_repeat_stmt(erj),
             _ => match self.parse_expr(JumpFrom::End(Jump(0)), erj) {
@@ -627,7 +616,7 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    fn parse_expr(&mut self, okj: JumpFrom, erj: JumpFrom) -> Result<Length, PatternErrorKind> {
+    fn parse_expr(&mut self, okj: JumpFrom, erj: JumpFrom) -> Result<Length, PatternError> {
         let len = match self.current_char {
             '(' => self.parse_sequence_expr(okj, erj)?,
             '[' => self.parse_group_expr(okj, erj)?,
@@ -637,7 +626,7 @@ impl<'a> PatternCompiler<'a> {
         Ok(len)
     }
 
-    fn get_absolute_jump(&mut self, jump: JumpFrom) -> Result<Jump, PatternErrorKind> {
+    fn get_absolute_jump(&mut self, jump: JumpFrom) -> Result<Jump, PatternError> {
         match jump {
             JumpFrom::Beginning(jump) => Ok(jump),
             JumpFrom::End(_) => {
@@ -650,11 +639,7 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    fn patch_unwind_jump(
-        &mut self,
-        jump: JumpFrom,
-        unwind_jump: Jump,
-    ) -> Result<(), PatternErrorKind> {
+    fn patch_unwind_jump(&mut self, jump: JumpFrom, unwind_jump: Jump) -> Result<(), PatternError> {
         if let JumpFrom::End(mut jump) = jump {
             jump.add(Jump(self.ops.len().try_into()?))?;
             if let Op::Unwind(j, Length(0)) = &mut self.ops[unwind_jump.0 as usize] {
@@ -666,7 +651,7 @@ impl<'a> PatternCompiler<'a> {
         Ok(())
     }
 
-    fn jump_at_end(&mut self, jump: JumpFrom) -> Result<(), PatternErrorKind> {
+    fn jump_at_end(&mut self, jump: JumpFrom) -> Result<(), PatternError> {
         match jump {
             JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, Length(0))),
             JumpFrom::End(Jump(0)) => (),
@@ -686,7 +671,7 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    fn parse_repeat_stmt(&mut self, erj: JumpFrom) -> Result<(), PatternErrorKind> {
+    fn parse_repeat_stmt(&mut self, erj: JumpFrom) -> Result<(), PatternError> {
         let start_jump = Jump(self.ops.len().try_into()?);
         let end_jump = self.get_absolute_jump(JumpFrom::End(Jump(0)))?;
 
@@ -718,7 +703,7 @@ impl<'a> PatternCompiler<'a> {
         &mut self,
         okj: JumpFrom,
         erj: JumpFrom,
-    ) -> Result<Length, PatternErrorKind> {
+    ) -> Result<Length, PatternError> {
         let previous_state = self.text.clone();
         let mut len = Length(0);
 
@@ -753,11 +738,7 @@ impl<'a> PatternCompiler<'a> {
         Ok(len)
     }
 
-    fn parse_group_expr(
-        &mut self,
-        okj: JumpFrom,
-        erj: JumpFrom,
-    ) -> Result<Length, PatternErrorKind> {
+    fn parse_group_expr(&mut self, okj: JumpFrom, erj: JumpFrom) -> Result<Length, PatternError> {
         let previous_state = self.text.clone();
         let mut len = None;
 
@@ -768,12 +749,12 @@ impl<'a> PatternCompiler<'a> {
                 self.ops.push(Op::Unwind(abs_erj, expr_len));
 
                 if len.unwrap_or(expr_len).0 != expr_len.0 {
-                    return Err(PatternErrorKind::GroupWithElementsOfDifferentSize);
+                    return Err(PatternError::GroupWithElementsOfDifferentSize);
                 }
                 len = Some(expr_len);
             }
 
-            let len = len.ok_or(PatternErrorKind::EmptyGroup)?;
+            let len = len.ok_or(PatternError::EmptyGroup)?;
             match okj {
                 JumpFrom::Beginning(jump) => self.skip(jump, abs_erj, len),
                 JumpFrom::End(mut jump) => {
@@ -790,7 +771,7 @@ impl<'a> PatternCompiler<'a> {
                     self.parse_expr(JumpFrom::Beginning(abs_okj), JumpFrom::End(Jump(0)))?;
 
                 if len.unwrap_or(expr_len).0 != expr_len.0 {
-                    return Err(PatternErrorKind::GroupWithElementsOfDifferentSize);
+                    return Err(PatternError::GroupWithElementsOfDifferentSize);
                 }
                 len = Some(expr_len);
             }
@@ -799,14 +780,10 @@ impl<'a> PatternCompiler<'a> {
         }
 
         self.assert_current(']')?;
-        len.ok_or(PatternErrorKind::EmptyGroup)
+        len.ok_or(PatternError::EmptyGroup)
     }
 
-    fn parse_class_expr(
-        &mut self,
-        okj: JumpFrom,
-        erj: JumpFrom,
-    ) -> Result<Length, PatternErrorKind> {
+    fn parse_class_expr(&mut self, okj: JumpFrom, erj: JumpFrom) -> Result<Length, PatternError> {
         let okj = match okj {
             JumpFrom::Beginning(jump) => jump,
             JumpFrom::End(mut jump) => {
@@ -842,21 +819,21 @@ impl<'a> PatternCompiler<'a> {
                 '{' => Op::Char(okj, erj, '{'),
                 '}' => Op::Char(okj, erj, '}'),
                 '|' => Op::Char(okj, erj, '|'),
-                c => return Err(PatternErrorKind::InvalidEscaping(c)),
+                c => return Err(PatternError::InvalidEscaping(c)),
             },
             '$' => {
                 self.ops.push(Op::EndAnchor(okj, erj));
                 return Ok(Length(0));
             }
             '.' => Op::SkipOne(okj, erj),
-            '!' => return Err(PatternErrorKind::Unescaped('!')),
-            '(' => return Err(PatternErrorKind::Unescaped('(')),
-            ')' => return Err(PatternErrorKind::Unescaped(')')),
-            '[' => return Err(PatternErrorKind::Unescaped('[')),
-            ']' => return Err(PatternErrorKind::Unescaped(']')),
-            '{' => return Err(PatternErrorKind::Unescaped('{')),
-            '}' => return Err(PatternErrorKind::Unescaped('}')),
-            '|' => return Err(PatternErrorKind::Unescaped('|')),
+            '!' => return Err(PatternError::Unescaped('!')),
+            '(' => return Err(PatternError::Unescaped('(')),
+            ')' => return Err(PatternError::Unescaped(')')),
+            '[' => return Err(PatternError::Unescaped('[')),
+            ']' => return Err(PatternError::Unescaped(']')),
+            '{' => return Err(PatternError::Unescaped('{')),
+            '}' => return Err(PatternError::Unescaped('}')),
+            '|' => return Err(PatternError::Unescaped('|')),
             c => Op::Char(okj, erj, c),
         };
 
@@ -1409,10 +1386,7 @@ mod tests {
     fn pattern_composition() {
         assert!(matches!(
             try_new_pattern("[(ab)c]"),
-            Err(PatternError {
-                kind: PatternErrorKind::GroupWithElementsOfDifferentSize,
-                ..
-            })
+            Err(PatternError::GroupWithElementsOfDifferentSize)
         ));
 
         let p = new_pattern("[(ab)(cd)]");
@@ -1488,87 +1462,52 @@ mod tests {
     fn bad_pattern() {
         assert!(matches!(
             try_new_pattern("("),
-            Err(PatternError {
-                kind: PatternErrorKind::UnexpectedEndOfPattern,
-                ..
-            })
+            Err(PatternError::UnexpectedEndOfPattern)
         ));
         assert!(matches!(
             try_new_pattern(")"),
-            Err(PatternError {
-                kind: PatternErrorKind::Unescaped(')'),
-                ..
-            })
+            Err(PatternError::Unescaped(')'))
         ));
         assert!(matches!(
             try_new_pattern("["),
-            Err(PatternError {
-                kind: PatternErrorKind::UnexpectedEndOfPattern,
-                ..
-            })
+            Err(PatternError::UnexpectedEndOfPattern)
         ));
         assert!(matches!(
             try_new_pattern("]"),
-            Err(PatternError {
-                kind: PatternErrorKind::Unescaped(']'),
-                ..
-            })
+            Err(PatternError::Unescaped(']'))
         ));
         assert!(matches!(
             try_new_pattern("[]"),
-            Err(PatternError {
-                kind: PatternErrorKind::EmptyGroup,
-                ..
-            })
+            Err(PatternError::EmptyGroup)
         ));
         assert!(matches!(
             try_new_pattern("{"),
-            Err(PatternError {
-                kind: PatternErrorKind::UnexpectedEndOfPattern,
-                ..
-            })
+            Err(PatternError::UnexpectedEndOfPattern)
         ));
         assert!(matches!(
             try_new_pattern("}"),
-            Err(PatternError {
-                kind: PatternErrorKind::Unescaped('}'),
-                ..
-            })
+            Err(PatternError::Unescaped('}'))
         ));
         assert!(matches!(
             try_new_pattern("%"),
-            Err(PatternError {
-                kind: PatternErrorKind::UnexpectedEndOfPattern,
-                ..
-            })
+            Err(PatternError::UnexpectedEndOfPattern)
         ));
         assert!(matches!(
             try_new_pattern("!"),
-            Err(PatternError {
-                kind: PatternErrorKind::Unescaped('!'),
-                ..
-            })
+            Err(PatternError::Unescaped('!'))
         ));
         assert!(matches!(
             try_new_pattern("%@"),
-            Err(PatternError {
-                kind: PatternErrorKind::InvalidEscaping('@'),
-                ..
-            })
+            Err(PatternError::InvalidEscaping('@'))
         ));
         assert!(matches!(
             try_new_pattern("|"),
-            Err(PatternError {
-                kind: PatternErrorKind::Unescaped('|'),
-                ..
-            })
+            Err(PatternError::Unescaped('|'))
         ));
         assert!(matches!(
             try_new_pattern("a|"),
-            Err(PatternError {
-                kind: PatternErrorKind::UnexpectedEndOfPattern,
-                ..
-            })
+            Err(PatternError::UnexpectedEndOfPattern)
         ));
     }
 }
+

@@ -6,12 +6,12 @@ pub static RETURN_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('z');
 pub struct RegisterKey(u8);
 
 impl RegisterKey {
-    const fn from_char_unchecked(key: char) -> RegisterKey {
+    const fn from_char_unchecked(key: char) -> Self {
         let key = key as u8;
         Self(key - b'a')
     }
 
-    pub const fn from_char(key: char) -> Option<RegisterKey> {
+    pub const fn from_char(key: char) -> Option<Self> {
         let key = key as u8;
         if key >= b'a' && key <= b'z' {
             Some(Self(key - b'a'))
@@ -20,7 +20,7 @@ impl RegisterKey {
         }
     }
 
-    pub fn from_str(key: &str) -> Option<RegisterKey> {
+    pub fn from_str(key: &str) -> Option<Self> {
         let key = key.as_bytes();
         if key.len() == 1 {
             Self::from_char(key[0] as _)

@@ -115,7 +115,7 @@ impl PartialOrd for BufferPosition {
 
 impl FromStr for BufferPosition {
     type Err = ();
-    fn from_str(s: &str) -> Result<BufferPosition, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         #[inline]
         fn is_non_ascii_digit(c: char) -> bool {
             !c.is_ascii_digit()

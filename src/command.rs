@@ -12,7 +12,7 @@ use crate::{
     editor::Editor,
     editor_utils::MessageKind,
     events::{KeyParseError, ServerEvent},
-    pattern::PatternErrorKind,
+    pattern::PatternError,
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     register::{RegisterCollection, RegisterKey, RETURN_REGISTER},
     serialization::Serialize,
@@ -108,7 +108,7 @@ pub enum CommandError {
     InvalidGlob(CommandToken),
     SyntaxExpectedEquals(CommandToken),
     SyntaxExpectedPattern(CommandToken),
-    PatternError(CommandToken, PatternErrorKind),
+    PatternError(CommandToken, PatternError),
     KeyParseError(CommandToken, KeyParseError),
     LspServerNotRunning,
     EvalCommandError {

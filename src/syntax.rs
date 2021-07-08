@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPositionIndex, BufferRange},
@@ -18,6 +20,21 @@ pub enum TokenKind {
     Comment,
     Text,
     Whitespace,
+}
+impl FromStr for TokenKind {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "keywords" => Ok(Self::Keyword),
+            "types" => Ok(Self::Type),
+            "symbols" => Ok(Self::Symbol),
+            "literals" => Ok(Self::Literal),
+            "strings" => Ok(Self::String),
+            "comments" => Ok(Self::Comment),
+            "texts" => Ok(Self::Text),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,7 +106,7 @@ impl Syntax {
         &mut self,
         kind: TokenKind,
         pattern: &'a str,
-    ) -> Result<(), PatternError<'a>> {
+    ) -> Result<(), PatternError> {
         self.rules[kind as usize].compile(pattern)
     }
 
@@ -694,3 +711,4 @@ mod tests {
         }
     }
 }
+

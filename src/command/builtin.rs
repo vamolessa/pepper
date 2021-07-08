@@ -1050,7 +1050,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             match value {
                 Some(value) => match ctx.editor.config.parse_config(key.text, value.text) {
                     Ok(()) => Ok(None),
-                    Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key.token)),
+                    Err(ParseConfigError::NoSuchConfig) => Err(CommandError::ConfigNotFound(key.token)),
                     Err(ParseConfigError::InvalidValue) => Err(CommandError::InvalidConfigValue {
                         key: key.token,
                         value: value.token,
@@ -1171,7 +1171,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 };
 
                 if let Err(error) = syntax.set_rule(token_kind, pattern.as_str(definition)) {
-                    return Err(CommandError::PatternError(pattern, error.kind));
+                    return Err(CommandError::PatternError(pattern, error));
                 }
             }
 

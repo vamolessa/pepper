@@ -1,6 +1,14 @@
 use std::{fmt, num::NonZeroU8};
 
-use crate::{editor::Editor, editor_utils::MessageKind, ini::Ini, theme::Color};
+use crate::{
+    editor::Editor,
+    editor_utils::{EditorOutputWrite, MessageKind},
+    ini::{Ini, PropertyIterator},
+    keymap::{KeyMapCollection, ParseKeyMapError},
+    mode::ModeKind,
+    syntax::{Syntax, TokenKind},
+    theme::Color,
+};
 
 pub enum ParseConfigError {
     NoSuchConfig,
@@ -78,10 +86,29 @@ pub fn load_config<'content>(
     config_name: &str,
     config_content: &'content str,
 ) {
-    let mut write = editor.status_bar.write(MessageKind::Error);
+    fn parse_bindings(
+        keymaps: &mut KeyMapCollection,
+        mode: ModeKind,
+        bindings: PropertyIterator,
+        config_name: &str,
+        output: &mut EditorOutputWrite,
+    ) {
+        for (key, value, line_index) in bindings {
+            match keymaps.parse_and_map(mode, from, to) {
+                Ok(()) => (),
+                Err(ParseKeyMapError::From(error)) => {
+                    output.fmt(format_args!("invalid from binding '{}' at {}:{}", 
+                        key,
+                    ))
+                }
+            }
+        }
+    }
+
+    let mut output = editor.status_bar.write(MessageKind::Error);
 
     if let Err(error) = ini.parse(config_content) {
-        write.fmt(format_args!(
+        output.fmt(format_args!(
             "error parsing config {}:{} : {}",
             config_name, error.line_index, error.kind,
         ));
@@ -94,11 +121,11 @@ pub fn load_config<'content>(
                 for (key, value, line_index) in properties {
                     match editor.config.parse_config(key, value) {
                         Ok(()) => (),
-                        Err(ParseConfigError::NoSuchConfig) => write.fmt(format_args!(
+                        Err(ParseConfigError::NoSuchConfig) => output.fmt(format_args!(
                             "no such config '{}' at {}:{}\n",
                             key, config_name, line_index
                         )),
-                        Err(ParseConfigError::InvalidValue) => write.fmt(format_args!(
+                        Err(ParseConfigError::InvalidValue) => output.fmt(format_args!(
                             "invalid config value '{}' at {}:{}\n",
                             value, config_name, line_index,
                         )),
@@ -110,7 +137,7 @@ pub fn load_config<'content>(
                     let color = match editor.theme.color_from_name(key) {
                         Some(color) => color,
                         None => {
-                            write.fmt(format_args!(
+                            output.fmt(format_args!(
                                 "no such color '{}' at {}:{}\n",
                                 key, config_name, line_index
                             ));
@@ -120,7 +147,7 @@ pub fn load_config<'content>(
                     let encoded = match u32::from_str_radix(value, 16) {
                         Ok(value) => value,
                         Err(_) => {
-                            write.fmt(format_args!(
+                            output.fmt(format_args!(
                                 "invalid color value '{}' at {}:{}\n",
                                 value, config_name, line_index
                             ));
@@ -132,38 +159,87 @@ pub fn load_config<'content>(
             }
             "syntax" => {
                 let mut syntax = Syntax::new();
+                let mut has_glob = false;
                 for (key, value, line_index) in properties {
                     match key {
-                        "glob" => {
-                            todo!();
-                        }
-                        _ => {
-                            write.fmt(format_args!(
-                                "no such token kind '{}' at {}:{}",
-                                key, config_name, line_index
-                            ));
-                            continue 'section_loop;
-                        }
+                        "glob" => match syntax.set_glob(value) {
+                            Ok(()) => has_glob = true,
+                            Err(_) => {
+                                output.fmt(format_args!(
+                                    "invalid glob '{}' at {}:{}",
+                                    value, config_name, line_index,
+                                ));
+                                continue 'section_loop;
+                            }
+                        },
+                        _ => match key.parse() {
+                            Ok(kind) => match syntax.set_rule(kind, value) {
+                                Ok(()) => (),
+                                Err(error) => {
+                                    output.fmt(format_args!(
+                                        "syntax pattern error '{}' at {}:{}",
+                                        error, config_name, line_index,
+                                    ));
+                                    continue 'section_loop;
+                                }
+                            },
+                            Err(_) => {
+                                output.fmt(format_args!(
+                                    "no such token kind '{}' at {}:{}",
+                                    key, config_name, line_index
+                                ));
+                                continue 'section_loop;
+                            }
+                        },
                     }
                 }
-                todo!();
+
+                if !has_glob {
+                    output.fmt(format_args!(
+                        "syntax has no glob property at {}:{}",
+                        config_name, line_index,
+                    ));
+                    continue;
+                }
+
+                editor.syntaxes.add(syntax);
             }
-            "normal-bindings" => {
-                todo!();
-            }
-            "insert-bindings" => {
-                todo!();
-            }
-            "command-bindings" => {
-                todo!();
-            }
-            "readline-bindings" => {
-                todo!();
-            }
-            "picker-bindings" => {
-                todo!();
-            }
-            _ => write.fmt(format_args!(
+            "normal-bindings" => parse_bindings(
+                &mut editor.keymaps,
+                ModeKind::Normal,
+                properties,
+                config_name,
+                &mut output,
+            ),
+            "insert-bindings" => parse_bindings(
+                &mut editor.keymaps,
+                ModeKind::Insert,
+                properties,
+                config_name,
+                &mut output,
+            ),
+            "command-bindings" => parse_bindings(
+                &mut editor.keymaps,
+                ModeKind::Command,
+                properties,
+                config_name,
+                &mut output,
+            ),
+            "readline-bindings" => parse_bindings(
+                &mut editor.keymaps,
+                ModeKind::ReadLine,
+                properties,
+                config_name,
+                &mut output,
+            ),
+            "picker-bindings" => parse_bindings(
+                &mut editor.keymaps,
+                ModeKind::Picker,
+                properties,
+                config_name,
+                &mut output,
+            ),
+            _ => output.fmt(format_args!(
                 "no such config '{}' at {}:{}\n",
                 section, config_name, line_index,
             )),
