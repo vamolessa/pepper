@@ -206,10 +206,10 @@ mod tests {
             parser: &'parser mut Ini,
             ini: &'source str,
         ) -> SectionIterator<'parser, 'source> {
-            if let Err(error) = parser.parse(ini) {
-                panic!("{} at line {}", error.kind, error.line_index + 1);
+            match parser.parse(ini) {
+                Ok(sections) => sections,
+                Err(error) => panic!("{} at line {}", error.kind, error.line_index + 1),
             }
-            parser.sections()
         }
 
         let mut parser = Ini::default();
@@ -235,18 +235,18 @@ mod tests {
             ),
         );
 
-        let (name, mut properties) = sections.next().unwrap();
+        let (name, _, mut properties) = sections.next().unwrap();
         assert_eq!("sec0", name);
-        assert_eq!(Some(("key0", "value0")), properties.next());
-        assert_eq!(Some(("key2", "")), properties.next());
+        assert_eq!(Some(("key0", "value0", 3)), properties.next());
+        assert_eq!(Some(("key2", "", 5)), properties.next());
         assert_eq!(None, properties.next());
 
-        let (name, mut properties) = sections.next().unwrap();
+        let (name, _, mut properties) = sections.next().unwrap();
         assert_eq!(" sec2 ", name);
-        assert_eq!(Some(("key3", ";value3")), properties.next());
+        assert_eq!(Some(("key3", ";value3", 9)), properties.next());
         assert_eq!(None, properties.next());
 
-        let (name, mut properties) = sections.next().unwrap();
+        let (name, _, mut properties) = sections.next().unwrap();
         assert_eq!("sec3", name);
         assert_eq!(None, properties.next());
 
@@ -258,7 +258,7 @@ mod tests {
         fn get_error(ini: &str) -> IniErrorKind {
             let mut parser = Ini::default();
             match parser.parse(ini) {
-                Ok(()) => panic!("ini parsed successfully"),
+                Ok(_) => panic!("ini parsed successfully"),
                 Err(error) => error.kind,
             }
         }
