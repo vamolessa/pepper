@@ -1,7 +1,5 @@
 use std::{fmt, ops::Range};
 
-use crate::buffer_position::BufferPosition;
-
 pub enum IniErrorKind {
     ExpectedSection,
     ExpectedEquals,
@@ -27,7 +25,7 @@ impl fmt::Display for IniErrorKind {
 
 pub struct IniError {
     pub kind: IniErrorKind,
-    pub position: BufferPosition,
+    pub line_index: usize,
 }
 
 pub struct SectionIterator<'ini, 'data> {
@@ -35,7 +33,7 @@ pub struct SectionIterator<'ini, 'data> {
     index: usize,
 }
 impl<'ini, 'data> Iterator for SectionIterator<'ini, 'data> {
-    type Item = (&'data str, PropertyIterator<'ini, 'data>);
+    type Item = (&'data str, usize, PropertyIterator<'ini, 'data>);
     fn next(&mut self) -> Option<Self::Item> {
         let section = self.ini.sections.get(self.index)?;
         self.index += 1;
@@ -43,7 +41,7 @@ impl<'ini, 'data> Iterator for SectionIterator<'ini, 'data> {
         let properties = PropertyIterator {
             properties: &self.ini.properties[properties_range],
         };
-        Some((section.name, properties))
+        Some((section.name, section.line_index as _, properties))
     }
 }
 
@@ -51,14 +49,18 @@ pub struct PropertyIterator<'ini, 'data> {
     properties: &'ini [Property<'data>],
 }
 impl<'ini, 'data> Iterator for PropertyIterator<'ini, 'data> {
-    type Item = (&'data str, &'data str);
+    type Item = (&'data str, &'data str, usize);
     fn next(&mut self) -> Option<Self::Item> {
         match self.properties {
             [] => None,
             [property, rest @ ..] => {
-                let &Property { key, value } = property;
+                let &Property {
+                    key,
+                    value,
+                    line_index,
+                } = property;
                 self.properties = rest;
-                Some((key, value))
+                Some((key, value, line_index as _))
             }
         }
     }
@@ -70,12 +72,10 @@ pub struct Ini<'a> {
     properties: Vec<Property<'a>>,
 }
 impl<'a> Ini<'a> {
-    pub fn clear(&mut self) {
+    pub fn parse(&mut self, text: &'a str) -> Result<(), IniError> {
         self.sections.clear();
         self.properties.clear();
-    }
 
-    pub fn parse(&mut self, text: &'a str) -> Result<(), IniError> {
         for (i, line) in text.lines().enumerate() {
             if line.is_empty() || line.starts_with(';') {
                 continue;
@@ -86,7 +86,7 @@ impl<'a> Ini<'a> {
                     Some(0) => {
                         return Err(IniError {
                             kind: IniErrorKind::EmptySectionName,
-                            position: BufferPosition::line_col(i as _, 1),
+                            line_index: i,
                         });
                     }
                     Some(j) => {
@@ -94,7 +94,7 @@ impl<'a> Ini<'a> {
                         if rest.len() > 1 {
                             return Err(IniError {
                                 kind: IniErrorKind::SectionNotEndedWithCloseSquareBrackets,
-                                position: BufferPosition::line_col(i as _, (j + 1) as _),
+                                line_index: i,
                             });
                         }
 
@@ -107,12 +107,13 @@ impl<'a> Ini<'a> {
                         self.sections.push(Section {
                             name,
                             properties: start..start,
+                            line_index: i as _,
                         });
                     }
                     None => {
                         return Err(IniError {
                             kind: IniErrorKind::ExpectedCloseSquareBrackets,
-                            position: BufferPosition::line_col(i as _, (rest.len() + 1) as _),
+                            line_index: i,
                         });
                     }
                 },
@@ -120,7 +121,7 @@ impl<'a> Ini<'a> {
                     if self.sections.is_empty() {
                         return Err(IniError {
                             kind: IniErrorKind::ExpectedSection,
-                            position: BufferPosition::line_col(i as _, 0),
+                            line_index: i,
                         });
                     }
 
@@ -128,7 +129,7 @@ impl<'a> Ini<'a> {
                         Some(0) => {
                             return Err(IniError {
                                 kind: IniErrorKind::EmptyPropertyName,
-                                position: BufferPosition::line_col(i as _, 0),
+                                line_index: i,
                             });
                         }
                         Some(j) => {
@@ -139,12 +140,16 @@ impl<'a> Ini<'a> {
                         None => {
                             return Err(IniError {
                                 kind: IniErrorKind::ExpectedEquals,
-                                position: BufferPosition::line_col(i as _, line.len() as _),
+                                line_index: i,
                             });
                         }
                     };
 
-                    self.properties.push(Property { key, value });
+                    self.properties.push(Property {
+                        key,
+                        value,
+                        line_index: i as _,
+                    });
                 }
             }
         }
@@ -166,12 +171,14 @@ impl<'a> Ini<'a> {
 
 struct Section<'a> {
     pub name: &'a str,
+    pub line_index: u32,
     pub properties: Range<u32>,
 }
 
 struct Property<'a> {
     pub key: &'a str,
     pub value: &'a str,
+    pub line_index: u32,
 }
 
 #[cfg(test)]
@@ -184,9 +191,8 @@ mod tests {
             parser: &'parser mut Ini<'data>,
             ini: &'data str,
         ) -> SectionIterator<'parser, 'data> {
-            parser.clear();
             if let Err(error) = parser.parse(ini) {
-                panic!("{} at {}", error.kind, error.position);
+                panic!("{} at line {}", error.kind, error.line_index + 1);
             }
             parser.sections()
         }
