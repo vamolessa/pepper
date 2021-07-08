@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    client::ClientHandle, command::parse_process_command, lsp, register::RegisterCollection,
+    client::ClientHandle, editor_utils::parse_process_command, lsp, register::RegisterCollection,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,7 +106,7 @@ impl Platform {
         text.clear();
         if self.paste_command.is_empty() {
             (self.read_from_clipboard)(&self.internal_clipboard, text);
-        } else if let Ok(mut command) = parse_process_command(registers, &self.paste_command, "") {
+        } else if let Some(mut command) = parse_process_command(&self.paste_command) {
             command.stdin(Stdio::null());
             command.stdout(Stdio::piped());
             command.stderr(Stdio::null());
@@ -123,7 +123,7 @@ impl Platform {
         self.internal_clipboard.clear();
         if self.copy_command.is_empty() {
             (self.write_to_clipboard)(&mut self.internal_clipboard, text);
-        } else if let Ok(mut command) = parse_process_command(registers, &self.copy_command, "") {
+        } else if let Some(mut command) = parse_process_command(&self.copy_command) {
             command.stdin(Stdio::piped());
             command.stdout(Stdio::null());
             command.stderr(Stdio::null());
@@ -200,3 +200,4 @@ impl BufPool {
         self.pool.push(buf);
     }
 }
+

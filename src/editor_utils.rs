@@ -1,10 +1,11 @@
-use std::fmt;
+use std::{fmt, process::Command};
 
 use crate::{
     config::ParseConfigError,
     editor::{BufferedKeys, Editor, KeysIterator},
     ini::{Ini, PropertyIterator},
     keymap::{KeyMapCollection, ParseKeyMapError},
+    command::CommandTokenizer,
     mode::ModeKind,
     platform::{Key, Platform},
     register::RegisterCollection,
@@ -173,6 +174,16 @@ pub const fn hash_bytes(mut bytes: &[u8]) -> u64 {
     return hash;
 }
 
+pub fn parse_process_command(command: &str) -> Option<Command> {
+    let mut tokenizer = CommandTokenizer(command);
+    let name = tokenizer.next()?;
+    let mut command = Command::new(name);
+    for arg in tokenizer {
+        command.arg(arg);
+    }
+    Some(command)
+}
+
 pub fn load_config<'content>(
     editor: &mut Editor,
     ini: &mut Ini<'content>,
@@ -338,6 +349,9 @@ pub fn load_config<'content>(
                 config_name,
                 &mut output,
             ),
+            "lsp" => {
+                todo!();
+            }
             _ => output.fmt(format_args!(
                 "no such config '{}' at {}:{}\n",
                 section, config_name, line_index,

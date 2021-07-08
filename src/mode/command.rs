@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::{
-    command::{CommandManager, CommandToken, CommandTokenIter, CommandTokenKind, CompletionSource},
+    command::{CommandManager, CommandTokenizer, CompletionSource},
     editor::KeysIterator,
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},

@@ -13,10 +13,9 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,
-    command::parse_process_command,
     cursor::Cursor,
     editor::Editor,
-    editor_utils::{hash_bytes, MessageKind, StatusBar},
+    editor_utils::{hash_bytes, parse_process_command, MessageKind, StatusBar},
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
     json::{
@@ -2599,7 +2598,6 @@ struct ClientRecipe {
     glob_hash: u64,
     glob: Glob,
     command: String,
-    environment: String,
     root: PathBuf,
     log_buffer_name: String,
     running_client: Option<ClientHandle>,
@@ -2642,7 +2640,6 @@ impl ClientManager {
         &mut self,
         glob: &str,
         command: &str,
-        environment: &str,
         root: Option<&Path>,
         log_buffer_name: Option<&str>,
     ) -> Result<(), InvalidGlobError> {
@@ -2651,8 +2648,6 @@ impl ClientManager {
             if recipe.glob_hash == glob_hash {
                 recipe.command.clear();
                 recipe.command.push_str(command);
-                recipe.environment.clear();
-                recipe.environment.push_str(environment);
                 recipe.root.clear();
                 if let Some(path) = root {
                     recipe.root.push(path);
@@ -2672,7 +2667,6 @@ impl ClientManager {
             glob_hash,
             glob: recipe_glob,
             command: command.into(),
-            environment: environment.into(),
             root: root.unwrap_or(Path::new("")).into(),
             log_buffer_name: log_buffer_name.unwrap_or("").into(),
             running_client: None,
@@ -2878,19 +2872,13 @@ impl ClientManager {
                 if recipe.running_client.is_some() {
                     continue;
                 }
-                let command = match parse_process_command(
-                    &editor.registers,
-                    &recipe.command,
-                    &recipe.environment,
-                ) {
-                    Ok(command) => command,
-                    Err(error) => {
-                        let error =
-                            error.display(&recipe.command, None, &editor.commands, &editor.buffers);
+                let command = match parse_process_command(&recipe.command) {
+                    Some(command) => command,
+                    None => {
                         editor
                             .status_bar
                             .write(MessageKind::Error)
-                            .fmt(format_args!("{}", error));
+                            .fmt(format_args!("invalid lsp command '{}'", &recipe.command));
                         continue;
                     }
                 };
@@ -2930,3 +2918,4 @@ impl ClientManager {
         }
     }
 }
+

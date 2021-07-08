@@ -124,7 +124,7 @@ impl<'state, 'command> CommandContext<'state, 'command> {
 }
 
 #[derive(Clone)]
-pub struct CommandTokenizer<'a>(&'a str);
+pub struct CommandTokenizer<'a>(pub &'a str);
 impl<'a> Iterator for CommandTokenizer<'a> {
     type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
