@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::{
-    command::{CommandManager, CommandTokenizer, CompletionSource},
+    command::{CommandManager, CommandSource, CommandTokenizer, CompletionSource},
     editor::KeysIterator,
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -133,28 +133,13 @@ fn apply_completion(ctx: &mut ModeContext, cursor_movement: isize) {
 }
 
 fn update_autocomplete_entries(ctx: &mut ModeContext) {
-    /*
-    fn find_command_token(tokens: &mut CommandTokenizer) -> Option<CommandToken> {
-        match tokens.next() {
-            Some((CommandTokenKind::Identifier, token)) => Some(token),
-            Some((CommandTokenKind::Register, _)) => match tokens.next() {
-                Some((CommandTokenKind::Equals, _)) => match tokens.next() {
-                    Some((CommandTokenKind::Identifier, token)) => Some(token),
-                    _ => None,
-                },
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
     let state = &mut ctx.editor.mode.command_state;
 
     let input = ctx.editor.read_line.input();
-    let mut tokens = CommandTokenizer::new(input);
+    let mut tokens = CommandTokenizer(input);
 
-    let command_name = match find_command_token(&mut tokens) {
-        Some(token) => token.as_str(input).trim_end_matches('!'),
+    let mut last_token = match tokens.next() {
+        Some(token) => token,
         None => {
             ctx.editor.picker.clear();
             state.completion_index = input.len();
@@ -166,65 +151,40 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             return;
         }
     };
+    let command_name = last_token.trim_end_matches('!');
 
     if let ReadCommandState::NavigatingHistory(_) = state.read_state {
         state.read_state = ReadCommandState::TypingCommand;
     }
 
-    let mut is_flag_value = false;
     let mut arg_count = 0;
-    let mut last_token = None;
     for token in tokens {
-        match token.0 {
-            CommandTokenKind::Identifier
-            | CommandTokenKind::String
-            | CommandTokenKind::Register => arg_count += !is_flag_value as usize,
-            CommandTokenKind::Flag => is_flag_value = false,
-            CommandTokenKind::Equals => is_flag_value = true,
-            CommandTokenKind::Unterminated => arg_count += 1,
-        }
-        last_token = Some(token);
+        arg_count += 1;
+        last_token = token;
     }
 
-    if input.ends_with(|c: char| c.is_ascii_whitespace()) {
-        match last_token {
-            Some((CommandTokenKind::Unterminated, _)) => (),
-            None => {
-                arg_count += 1;
-                last_token = Some((CommandTokenKind::String, CommandToken { from: 0, to: 0 }));
-            }
-            _ => arg_count += 1,
-        }
+    let mut pattern = last_token;
+
+    if input.ends_with(&[' ', '\t'][..]) {
+        arg_count += 1;
+        pattern = &input[input.len()..];
     }
 
-    let (completion_source, mut pattern) = match last_token {
-        Some((
-            CommandTokenKind::Identifier
-            | CommandTokenKind::String
-            | CommandTokenKind::Unterminated,
-            token,
-        )) if !is_flag_value => {
-            let mut completion_source = CompletionSource::Custom(&[]);
-            if arg_count > 0 {
-                for command in ctx.editor.commands.builtin_commands() {
-                    if command.name == command_name || command.alias == command_name {
-                        if let Some(&completion) = command.completions.get(arg_count - 1) {
-                            completion_source = completion;
-                        }
-                        break;
-                    }
+    let mut completion_source = CompletionSource::Custom(&[]);
+    if arg_count > 0 {
+        match ctx.editor.commands.find_command(command_name) {
+            Some(CommandSource::Builtin(i)) => {
+                let command = &ctx.editor.commands.builtin_commands()[i];
+                let completion_index = arg_count - 1;
+                if completion_index < command.completions.len() {
+                    completion_source = command.completions[completion_index];
                 }
             }
-            (completion_source, token.as_str(input))
+            _ => (),
         }
-        None => (CompletionSource::Commands, command_name),
-        _ => {
-            ctx.editor.picker.clear();
-            state.completion_index = input.len();
-            state.completion_source = CompletionSource::Custom(&[]);
-            return;
-        }
-    };
+    } else {
+        completion_source = CompletionSource::Commands;
+    }
 
     state.completion_index = pattern.as_ptr() as usize - input.as_ptr() as usize;
 
@@ -235,19 +195,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         match completion_source {
             CompletionSource::Commands => {
                 for command in ctx.editor.commands.builtin_commands() {
-                    if !command.hidden {
-                        ctx.editor.picker.add_custom_entry(command.name);
-                    }
-                }
-                for command in ctx.editor.commands.macro_commands() {
-                    if !command.hidden {
-                        ctx.editor.picker.add_custom_entry(&command.name);
-                    }
-                }
-                for command in ctx.editor.commands.request_commands() {
-                    if !command.hidden {
-                        ctx.editor.picker.add_custom_entry(&command.name);
-                    }
+                    ctx.editor.picker.add_custom_entry(command.name);
                 }
             }
             CompletionSource::Buffers => {
@@ -305,5 +253,5 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
 
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
-    */
 }
+

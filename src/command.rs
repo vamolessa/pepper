@@ -1,21 +1,12 @@
-use std::{
-    collections::VecDeque,
-    fmt, io,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-};
+use std::{collections::VecDeque, fmt};
 
 use crate::{
-    buffer::{Buffer, BufferCollection, BufferError, BufferHandle},
+    buffer::{Buffer, BufferHandle},
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
     editor::Editor,
     editor_utils::MessageKind,
-    events::{KeyParseError, ServerEvent},
-    pattern::PatternError,
-    platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
-    register::{RegisterCollection, RegisterKey, RETURN_REGISTER},
-    serialization::Serialize,
+    platform::Platform,
 };
 
 //mod builtin;
@@ -118,19 +109,16 @@ impl<'state, 'command> CommandContext<'state, 'command> {
     }
 
     pub fn assert_can_discard_buffer(&self, handle: BufferHandle) -> Result<(), CommandError> {
-        /*
         let buffer = self
             .editor
             .buffers
             .get(handle)
-            .ok_or(CommandError::InvalidBufferHandle(handle))?;
-        if self.args.bang || !buffer.needs_save() {
+            .ok_or(CommandError::NoBufferOpened)?;
+        if self.bang || !buffer.needs_save() {
             Ok(())
         } else {
             Err(CommandError::UnsavedChanges)
         }
-        */
-        todo!()
     }
 }
 
@@ -179,7 +167,6 @@ pub enum CommandSource {
 
 pub struct BuiltinCommand {
     pub name: &'static str,
-    pub hidden: bool,
     pub completions: &'static [CompletionSource],
     pub func: CommandFn,
 }
