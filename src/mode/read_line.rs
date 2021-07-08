@@ -43,7 +43,6 @@ impl ModeState for State {
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
             keys,
-            &ctx.editor.registers,
         );
         let func = ctx.editor.mode.read_line_state.on_client_keys;
         func(ctx, keys, poll)
@@ -631,18 +630,14 @@ pub mod custom {
                     ctx.editor
                         .registers
                         .set(RETURN_REGISTER, ctx.editor.read_line.input());
-                    /*
-                    let operation = CommandManager::eval_and_then_output(
+                    let operation = CommandManager::eval(
                         ctx.editor,
                         ctx.platform,
                         ctx.clients,
                         Some(ctx.client_handle),
                         &continuation,
-                        None,
                     )
                     .map(Into::into);
-                    */
-                    let operation = todo!();
                     ctx.editor.string_pool.release(continuation);
 
                     if ctx.editor.mode.kind() == ModeKind::ReadLine
@@ -667,3 +662,4 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 }
+

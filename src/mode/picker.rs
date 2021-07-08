@@ -50,7 +50,6 @@ impl ModeState for State {
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
             keys,
-            &ctx.editor.registers,
         );
         if let ReadLinePoll::Pending = poll {
             keys.put_back();
@@ -426,18 +425,14 @@ pub mod custom {
                     let mut operation = None;
                     if let Some((_, entry)) = entry {
                         ctx.editor.registers.set(RETURN_REGISTER, entry);
-                        /*
-                        operation = CommandManager::eval_and_then_output(
+                        operation = CommandManager::eval(
                             ctx.editor,
                             ctx.platform,
                             ctx.clients,
                             Some(ctx.client_handle),
                             &continuation,
-                            None,
                         )
                         .map(Into::into);
-                        */
-                        operation = todo!();
                         ctx.editor.string_pool.release(continuation);
                     }
 
@@ -466,3 +461,4 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
+

@@ -4,9 +4,7 @@ use std::{
     sync::{mpsc, Arc},
 };
 
-use crate::{
-    client::ClientHandle, editor_utils::parse_process_command, lsp, register::RegisterCollection,
-};
+use crate::{client::ClientHandle, editor_utils::parse_process_command, lsp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -101,7 +99,7 @@ impl Platform {
         self.write_to_clipboard = write_to_clipboard;
     }
 
-    pub fn read_from_clipboard(&self, registers: &RegisterCollection, text: &mut String) {
+    pub fn read_from_clipboard(&self, text: &mut String) {
         text.clear();
         if self.paste_command.is_empty() {
             (self.read_from_clipboard)(&self.internal_clipboard, text);
@@ -118,7 +116,7 @@ impl Platform {
         }
     }
 
-    pub fn write_to_clipboard(&mut self, registers: &RegisterCollection, text: &str) {
+    pub fn write_to_clipboard(&mut self, text: &str) {
         self.internal_clipboard.clear();
         if self.copy_command.is_empty() {
             (self.write_to_clipboard)(&mut self.internal_clipboard, text);

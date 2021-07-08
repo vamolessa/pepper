@@ -58,7 +58,6 @@ impl ModeState for State {
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
             keys,
-            &ctx.editor.registers,
         ) {
             ReadLinePoll::Pending => {
                 keys.put_back();
@@ -97,18 +96,14 @@ impl ModeState for State {
                 ctx.editor.commands.add_to_history(input);
 
                 let command = ctx.editor.string_pool.acquire_with(input);
-                /*
-                let operation = CommandManager::eval_and_then_output(
+                let operation = CommandManager::eval(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,
                     Some(ctx.client_handle),
                     &command,
-                    None,
                 )
                 .map(From::from);
-                */
-                let operation = todo!();
                 ctx.editor.string_pool.release(command);
 
                 if ctx.editor.mode.kind() == ModeKind::Command {
