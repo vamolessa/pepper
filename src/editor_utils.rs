@@ -1,11 +1,12 @@
-use std::{fmt, process::Command};
+use std::{fmt, process::Command, path::Path};
 
 use crate::{
+    command::CommandTokenizer,
     config::ParseConfigError,
     editor::{BufferedKeys, Editor, KeysIterator},
+    glob::InvalidGlobError,
     ini::{Ini, PropertyIterator},
     keymap::{KeyMapCollection, ParseKeyMapError},
-    command::CommandTokenizer,
     mode::ModeKind,
     platform::{Key, Platform},
     register::RegisterCollection,
@@ -350,7 +351,52 @@ pub fn load_config<'content>(
                 &mut output,
             ),
             "lsp" => {
-                todo!();
+                let mut glob = None;
+                let mut command = None;
+                let mut root = None;
+                let mut log = None;
+
+                for (key, value, line_index) in properties {
+                    match key {
+                        "glob" => glob = Some(value),
+                        "command" => command = Some(value),
+                        "root" => root = Some(value),
+                        "log" => log = Some(value),
+                        _ => output.fmt(format_args!(
+                            "no such lsp property '{}' at {}:{}",
+                            key, config_name, line_index,
+                        )),
+                    }
+                }
+
+                let glob = match glob {
+                    Some(glob) => glob,
+                    None => {
+                        output.fmt(format_args!(
+                            "lsp has no glob property at {}:{}",
+                            config_name, line_index,
+                        ));
+                        continue;
+                    }
+                };
+                let command = match command {
+                    Some(command) => command,
+                    None => {
+                        output.fmt(format_args!(
+                            "lsp has no command property at {}:{}",
+                            config_name, line_index,
+                        ));
+                        continue;
+                    }
+                };
+                let root = root.map(Path::new);
+
+                if let Err(InvalidGlobError) = editor.lsp.add_recipe(glob, command, root, log) {
+                    output.fmt(format_args!(
+                        "invalid lsp glob '{}' at {}:{}",
+                        glob, config_name, line_index
+                    ));
+                }
             }
             _ => output.fmt(format_args!(
                 "no such config '{}' at {}:{}\n",
