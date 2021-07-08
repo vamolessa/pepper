@@ -22,370 +22,13 @@ mod builtin;
 
 pub const HISTORY_CAPACITY: usize = 10;
 
-#[derive(Clone, Copy)]
-pub enum CommandTokenKind {
-    Identifier,
-    String,
-    Register,
-    Flag,
-    Equals,
-    Unterminated,
-}
-
-#[derive(Clone, Copy)]
-pub struct CommandToken {
-    pub from: usize,
-    pub to: usize,
-}
-impl CommandToken {
-    pub fn as_str<'a>(&self, command: &'a str) -> &'a str {
-        &command[self.from..self.to]
-    }
-}
-
-pub enum RawCommandValue {
-    Literal(CommandToken),
-    Register(CommandToken, RegisterKey),
-}
-
-pub struct CommandValue<'a> {
-    pub token: CommandToken,
-    pub text: &'a str,
-}
-impl<'a> CommandValue<'a> {
-    pub fn from_raw(
-        raw: &'a str,
-        value: RawCommandValue,
-        registers: &'a RegisterCollection,
-    ) -> Self {
-        match value {
-            RawCommandValue::Literal(token) => Self {
-                token,
-                text: token.as_str(raw),
-            },
-            RawCommandValue::Register(token, register) => Self {
-                token,
-                text: registers.get(register),
-            },
-        }
-    }
-}
-
 pub enum CommandError {
-    InvalidCommandName(CommandToken),
-    CommandNotFound(CommandToken),
-    CommandDoesNotAcceptBang,
-    UnterminatedToken(CommandToken),
-    InvalidToken(CommandToken),
-    TooFewArguments(usize),
-    TooManyArguments(CommandToken, usize),
-    InvalidRegisterKey(CommandToken),
-    UnknownFlag(CommandToken),
-    UnsavedChanges,
-    NoBufferOpened,
-    InvalidBufferHandle(BufferHandle),
-    InvalidPath(CommandToken),
-    ParseCommandValueError {
-        value: CommandToken,
-        type_name: &'static str,
-    },
-    OpenFileError {
-        path: CommandToken,
-        error: io::Error,
-    },
-    BufferError(BufferHandle, BufferError),
-    BufferedKeysParseError(CommandToken),
-    ConfigNotFound(CommandToken),
-    InvalidConfigValue {
-        key: CommandToken,
-        value: CommandToken,
-    },
-    ColorNotFound(CommandToken),
-    InvalidColorValue {
-        key: CommandToken,
-        value: CommandToken,
-    },
-    InvalidGlob(CommandToken),
-    SyntaxExpectedEquals(CommandToken),
-    SyntaxExpectedPattern(CommandToken),
-    PatternError(CommandToken, PatternError),
-    KeyParseError(CommandToken, KeyParseError),
-    LspServerNotRunning,
-    EvalCommandError {
-        command: String,
-        error: Box<CommandError>,
-    },
-    MacroCommandError {
-        index: usize,
-        command: String,
-        error: Box<CommandError>,
-    },
-}
-impl CommandError {
-    pub fn display<'command, 'error>(
-        &'error self,
-        command: &'command str,
-        source_path: Option<&'command Path>,
-        commands: &'error CommandManager,
-        buffers: &'error BufferCollection,
-    ) -> CommandErrorDisplay<'command, 'error> {
-        CommandErrorDisplay {
-            command,
-            source_path,
-            commands,
-            buffers,
-            error: self,
-        }
-    }
+    NoSuchCommand,
+    TooManyArguments,
+    TooFewArguments,
 }
 
-pub struct CommandErrorDisplay<'command, 'error> {
-    command: &'command str,
-    source_path: Option<&'command Path>,
-    commands: &'error CommandManager,
-    buffers: &'error BufferCollection,
-    error: &'error CommandError,
-}
-impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fn write(
-            this: &CommandErrorDisplay,
-            f: &mut fmt::Formatter,
-            error_token: &CommandToken,
-            message: fmt::Arguments,
-        ) -> fmt::Result {
-            let error_len = this.command[error_token.from..error_token.to]
-                .chars()
-                .count()
-                .max(1);
-            let error_offset = this
-                .command
-                .char_indices()
-                .take_while(|&(i, _)| i < error_token.from)
-                .count();
-
-            if let Some(path) = this.source_path {
-                writeln!(f, "@ {:?}", path)?;
-            }
-
-            write!(
-                f,
-                "{}\n{: >offset$}{:^<len$}\n{}",
-                this.command,
-                "",
-                "",
-                message,
-                offset = error_offset,
-                len = error_len
-            )
-        }
-
-        let c = self.command;
-        match self.error {
-            CommandError::InvalidCommandName(token) => write(
-                self,
-                f,
-                token,
-                format_args!("invalid command name '{}'", token.as_str(c)),
-            ),
-            CommandError::CommandNotFound(command) => write(
-                self,
-                f,
-                command,
-                format_args!("no such command '{}'", command.as_str(c)),
-            ),
-            CommandError::CommandDoesNotAcceptBang => {
-                let mut tokens = CommandTokenIter::new(c);
-                let token = match tokens.next() {
-                    Some((_, token)) => token,
-                    None => tokens.end_token(),
-                };
-
-                write(
-                    self,
-                    f,
-                    &token,
-                    format_args!("command does not accept bang"),
-                )
-            }
-            CommandError::UnterminatedToken(token) => {
-                write(self, f, token, format_args!("unterminated token"))
-            }
-            CommandError::InvalidToken(token) => write(
-                self,
-                f,
-                token,
-                format_args!("invalid token '{}'", token.as_str(c)),
-            ),
-            CommandError::TooFewArguments(min) => write(
-                self,
-                f,
-                &CommandTokenIter::new(c).end_token(),
-                format_args!("command expects at least {} arguments", min),
-            ),
-            CommandError::TooManyArguments(token, max) => write(
-                self,
-                f,
-                token,
-                format_args!("command expects at most {} arguments", max),
-            ),
-            CommandError::InvalidRegisterKey(key) => write(
-                self,
-                f,
-                key,
-                format_args!("invalid register key '{}'", key.as_str(c)),
-            ),
-            CommandError::UnknownFlag(token) => write(
-                self,
-                f,
-                token,
-                format_args!("unknown flag '{}'", token.as_str(c)),
-            ),
-            CommandError::UnsavedChanges => f.write_str(
-                "there are unsaved changes. try appending a '!' to command name to force execute",
-            ),
-            CommandError::NoBufferOpened => f.write_str(
-                "no buffer opened. use command `:open <file-path>` to open one or `:help open` for more info",
-            ),
-            CommandError::InvalidBufferHandle(handle) => {
-                write!(f, "invalid buffer handle {}", handle)
-            }
-            CommandError::InvalidPath(path) => write(
-                self,
-                f,
-                path,
-                format_args!("invalid path '{}'", path.as_str(c)),
-            ),
-            CommandError::ParseCommandValueError { value, type_name } => write(
-                self,
-                f,
-                value,
-                format_args!("could not parse '{}' as {}", value.as_str(c), type_name),
-            ),
-            CommandError::OpenFileError { path, error } => write(
-                self,
-                f,
-                path,
-                format_args!("could not open file '{}': {}", path.as_str(c), error),
-            ),
-            CommandError::BufferError(handle, error) => match self.buffers.get(*handle) {
-                Some(buffer) => write!(f, "{}", error.display(buffer)),
-                None => Ok(()),
-            },
-            CommandError::BufferedKeysParseError(token) => write(
-                self,
-                f,
-                token,
-                format_args!("could not parse keys '{}'", token.as_str(c)),
-            ),
-            CommandError::ConfigNotFound(key) => write(
-                self,
-                f,
-                key,
-                format_args!("no such config '{}'", key.as_str(c)),
-            ),
-            CommandError::InvalidConfigValue { key, value } => write(
-                self,
-                f,
-                value,
-                format_args!(
-                    "invalid value '{}' for config '{}'",
-                    value.as_str(c),
-                    key.as_str(c)
-                ),
-            ),
-            CommandError::ColorNotFound(key) => write(
-                self,
-                f,
-                key,
-                format_args!("no such theme color '{}'", key.as_str(c)),
-            ),
-            CommandError::InvalidColorValue { key, value } => write(
-                self,
-                f,
-                value,
-                format_args!(
-                    "invalid value '{}' for theme color '{}'",
-                    value.as_str(c),
-                    key.as_str(c)
-                ),
-            ),
-            CommandError::InvalidGlob(glob) => write(
-                self,
-                f,
-                glob,
-                format_args!("invalid glob '{}'", glob.as_str(c)),
-            ),
-            CommandError::SyntaxExpectedEquals(end) => write(
-                self,
-                f,
-                end,
-                format_args!("syntax definition expected '=' token here"),
-            ),
-            CommandError::SyntaxExpectedPattern(end) => write(
-                self,
-                f,
-                end,
-                format_args!("syntax definition expected a pattern here"),
-            ),
-            CommandError::PatternError(pattern, error) => {
-                write(self, f, pattern, format_args!("{}", error))
-            }
-            CommandError::KeyParseError(keys, error) => {
-                write(self, f, keys, format_args!("{}", error))
-            }
-            CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
-            CommandError::EvalCommandError { command, error } => {
-                let error_display = CommandErrorDisplay {
-                    command: &command,
-                    source_path: self.source_path,
-                    commands: self.commands,
-                    buffers: self.buffers,
-                    error: &error,
-                };
-                write(
-                    self,
-                    f,
-                    &CommandToken {
-                        from: 0,
-                        to: c.len(),
-                    },
-                    format_args!("\n@ eval \n{}", error_display),
-                )
-            }
-            CommandError::MacroCommandError {
-                index,
-                command,
-                error,
-            } => {
-                let macro_command = &self.commands.macro_commands()[*index];
-                let error_display = CommandErrorDisplay {
-                    command: &command,
-                    source_path: macro_command.source_path.as_ref().map(PathBuf::as_path),
-                    commands: self.commands,
-                    buffers: self.buffers,
-                    error: &error,
-                };
-                write(
-                    self,
-                    f,
-                    &CommandToken {
-                        from: 0,
-                        to: c.len(),
-                    },
-                    format_args!(
-                        "\n@ command macro '{}':\n{}",
-                        &macro_command.name, error_display
-                    ),
-                )
-            }
-        }
-    }
-}
-
-type CommandFn = for<'state, 'command> fn(
-    &mut CommandContext<'state, 'command>,
-) -> Result<Option<CommandOperation>, CommandError>;
+type CommandFn = fn(&mut CommandContext) -> Result<Option<CommandOperation>, CommandError>;
 
 pub enum CommandOperation {
     Suspend,
@@ -406,11 +49,29 @@ pub struct CommandContext<'state, 'command> {
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
-    pub source_path: Option<&'command Path>,
-    pub args: CommandArgsBuilder<'command>,
-    pub output: &'state mut String,
+
+    tokenizer: CommandTokenizer<'command>,
+    pub bang: bool,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
+    pub fn try_next_arg(&mut self) -> Option<&'command str> {
+        self.tokenizer.next()
+    }
+
+    pub fn next_arg(&mut self) -> Result<&'command str, CommandError> {
+        match self.try_next_arg()? {
+            Some(value) => Ok(value),
+            None => Err(CommandError::TooFewArguments),
+        }
+    }
+
+    pub fn assert_empty_args(&mut self) -> Result<(), CommandError> {
+        match self.try_next_arg() {
+            Some(_) => Err(CommandError::TooManyArguments),
+            None => Ok(()),
+        }
+    }
+
     pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError> {
         match self
             .client_handle
@@ -454,29 +115,6 @@ impl<'state, 'command> CommandContext<'state, 'command> {
         } else {
             Err(CommandError::UnsavedChanges)
         }
-    }
-}
-
-fn find_balanced(bytes: &[u8], start: u8, end: u8) -> Option<usize> {
-    let mut balance: usize = 1;
-    let mut i = 0;
-
-    loop {
-        if i == bytes.len() {
-            return None;
-        }
-
-        let b = bytes[i];
-        if b == start {
-            balance += 1;
-        } else if b == end {
-            balance -= 1;
-            if balance == 0 {
-                return Some(i);
-            }
-        }
-
-        i += 1;
     }
 }
 
@@ -540,434 +178,73 @@ impl<'a> Iterator for CommandIter<'a> {
 }
 
 #[derive(Clone)]
-pub struct CommandTokenIter<'a> {
-    raw: &'a str,
-    rest: &'a str,
-}
-impl<'a> CommandTokenIter<'a> {
-    pub fn new(command: &'a str) -> Self {
-        Self {
-            raw: command,
-            rest: command,
-        }
-    }
-
-    pub fn end_token(&self) -> CommandToken {
-        let len = self.raw.len();
-        CommandToken { from: len, to: len }
-    }
-}
-impl<'a> Iterator for CommandTokenIter<'a> {
-    type Item = (CommandTokenKind, CommandToken);
+pub struct CommandTokenizer<'a>(&'a str);
+impl<'a> Iterator for CommandTokenizer<'a> {
+    type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
-        #[inline]
-        fn current_from_index(this: &CommandTokenIter) -> usize {
-            this.raw.len() - this.rest.len()
-        }
-        fn trim_until_boundary(s: &str) -> &str {
-            match s.find(|c: char| c.is_ascii_whitespace() || matches!(c, '"' | '\'' | '{' | '=')) {
-                Some(i) => &s[i..],
-                None => "",
+        fn next_literal(s: &str) -> (&str, &str) {
+            match s.find(&[' ', '\t', '"', '\''][..]) {
+                Some(i) => s.split_at(i),
+                None => (s, ""),
             }
         }
 
-        self.rest = self
-            .rest
-            .trim_start_matches(|c: char| c.is_ascii_whitespace());
-        if self.rest.is_empty() {
-            return None;
-        }
-
-        match self.rest.as_bytes()[0] {
-            delim @ (b'"' | b'\'') => {
-                self.rest = &self.rest[1..];
-                match self.rest.find(delim as char) {
+        self.0 = self.0.trim_start_matches(&[' ', '\t'][..]);
+        match self.0.chars().next()? {
+            delim @ ('"' | '\'') => {
+                let rest = &self.0[1..];
+                match self.0.find(delim) {
                     Some(i) => {
-                        let from = current_from_index(self);
-                        self.rest = &self.rest[i + 1..];
-                        Some((
-                            CommandTokenKind::String,
-                            CommandToken { from, to: from + i },
-                        ))
+                        let token = &rest[..i];
+                        self.0 = &self.0[i + 1..];
+                        Some(token)
                     }
                     None => {
-                        let from = current_from_index(self);
-                        self.rest = "";
-                        Some((
-                            CommandTokenKind::Unterminated,
-                            CommandToken {
-                                from,
-                                to: self.raw.len(),
-                            },
-                        ))
+                        let (token, rest) = next_literal(self.0);
+                        self.0 = rest;
+                        Some(token)
                     }
                 }
-            }
-            b'{' => {
-                self.rest = &self.rest[1..];
-                match find_balanced(self.rest.as_bytes(), b'{', b'}') {
-                    Some(i) => {
-                        let from = current_from_index(self);
-                        self.rest = &self.rest[i + 1..];
-                        Some((
-                            CommandTokenKind::String,
-                            CommandToken { from, to: from + i },
-                        ))
-                    }
-                    None => {
-                        let from = current_from_index(self);
-                        self.rest = "";
-                        Some((
-                            CommandTokenKind::Unterminated,
-                            CommandToken {
-                                from,
-                                to: self.raw.len(),
-                            },
-                        ))
-                    }
-                }
-            }
-            b'%' => {
-                let from = current_from_index(self);
-                self.rest = trim_until_boundary(&self.rest);
-                let to = current_from_index(self);
-                Some((CommandTokenKind::Register, CommandToken { from, to }))
-            }
-            b'-' => {
-                let from = current_from_index(self);
-                self.rest = trim_until_boundary(&self.rest);
-                let to = current_from_index(self);
-                Some((CommandTokenKind::Flag, CommandToken { from, to }))
-            }
-            b'=' => {
-                let from = current_from_index(self);
-                self.rest = &self.rest[1..];
-                Some((
-                    CommandTokenKind::Equals,
-                    CommandToken { from, to: from + 1 },
-                ))
             }
             _ => {
-                let from = current_from_index(self);
-                self.rest = trim_until_boundary(&self.rest);
-                let to = current_from_index(self);
-                Some((CommandTokenKind::Identifier, CommandToken { from, to }))
+                let (token, rest) = next_literal(self.0);
+                self.0 = rest;
+                Some(token)
             }
         }
-    }
-}
-
-fn parse_register_key(raw: &str, token: CommandToken) -> Result<RegisterKey, CommandError> {
-    let name_token = CommandToken {
-        from: token.from + 1,
-        to: token.to,
-    };
-    let register = name_token.as_str(raw);
-    match RegisterKey::from_str(register) {
-        Some(key) => Ok(key),
-        None => Err(CommandError::InvalidRegisterKey(token)),
-    }
-}
-
-fn assert_no_bang(bang: bool) -> Result<(), CommandError> {
-    if bang {
-        Err(CommandError::CommandDoesNotAcceptBang)
-    } else {
-        Ok(())
-    }
-}
-
-fn get_flags<'a>(
-    mut tokens: CommandTokenIter<'a>,
-    registers: &'a RegisterCollection,
-    flags: &mut [(&'static str, Option<CommandValue<'a>>)],
-) -> Result<(), CommandError> {
-    let raw = tokens.raw;
-    loop {
-        match tokens.next() {
-            Some((
-                CommandTokenKind::Identifier
-                | CommandTokenKind::String
-                | CommandTokenKind::Register,
-                _,
-            )) => (),
-            Some((CommandTokenKind::Flag, token)) => {
-                let key = &token.as_str(raw)[1..];
-                let value = match flags.iter_mut().find(|(k, _)| *k == key) {
-                    Some((_, value)) => value,
-                    None => break Err(CommandError::UnknownFlag(token)),
-                };
-
-                let previous_state = tokens.rest;
-                let raw_value = match tokens.next() {
-                    Some((CommandTokenKind::Identifier | CommandTokenKind::String, _)) => {
-                        RawCommandValue::Literal(token)
-                    }
-                    Some((CommandTokenKind::Register, token)) => {
-                        let register = parse_register_key(raw, token)?;
-                        RawCommandValue::Register(token, register)
-                    }
-                    Some((CommandTokenKind::Flag, _)) => {
-                        tokens.rest = previous_state;
-                        RawCommandValue::Literal(token)
-                    }
-                    Some((CommandTokenKind::Equals, _)) => match tokens.next() {
-                        Some((CommandTokenKind::Identifier | CommandTokenKind::String, token)) => {
-                            RawCommandValue::Literal(token)
-                        }
-                        Some((CommandTokenKind::Register, token)) => {
-                            let register = parse_register_key(raw, token)?;
-                            RawCommandValue::Register(token, register)
-                        }
-                        Some((CommandTokenKind::Flag | CommandTokenKind::Equals, token)) => {
-                            break Err(CommandError::InvalidToken(token))
-                        }
-                        Some((CommandTokenKind::Unterminated, token)) => {
-                            break Err(CommandError::UnterminatedToken(token))
-                        }
-                        None => break Err(CommandError::InvalidToken(token)),
-                    },
-                    Some((CommandTokenKind::Unterminated, token)) => {
-                        break Err(CommandError::UnterminatedToken(token))
-                    }
-                    None => RawCommandValue::Literal(token),
-                };
-
-                *value = Some(CommandValue::from_raw(raw, raw_value, registers));
-            }
-            Some((CommandTokenKind::Equals, token)) => {
-                break Err(CommandError::InvalidToken(token))
-            }
-            Some((CommandTokenKind::Unterminated, token)) => {
-                break Err(CommandError::UnterminatedToken(token))
-            }
-            None => break Ok(()),
-        }
-    }
-}
-
-fn try_next_raw_value(
-    tokens: &mut CommandTokenIter,
-) -> Result<Option<RawCommandValue>, CommandError> {
-    let raw = tokens.raw;
-    loop {
-        match tokens.next() {
-            Some((CommandTokenKind::Identifier | CommandTokenKind::String, token)) => {
-                break Ok(Some(RawCommandValue::Literal(token)))
-            }
-            Some((CommandTokenKind::Register, token)) => {
-                let register = parse_register_key(raw, token)?;
-                break Ok(Some(RawCommandValue::Register(token, register)));
-            }
-            Some((CommandTokenKind::Flag, _)) => {
-                let previous_state = tokens.rest;
-                match tokens.next() {
-                    Some((CommandTokenKind::Identifier | CommandTokenKind::String, token)) => {
-                        break Ok(Some(RawCommandValue::Literal(token)))
-                    }
-                    Some((CommandTokenKind::Register, token)) => {
-                        let register = parse_register_key(raw, token)?;
-                        break Ok(Some(RawCommandValue::Register(token, register)));
-                    }
-                    Some((CommandTokenKind::Flag, _)) => tokens.rest = previous_state,
-                    Some((CommandTokenKind::Equals, _)) => {
-                        tokens.next();
-                    }
-                    Some((CommandTokenKind::Unterminated, token)) => {
-                        break Err(CommandError::UnterminatedToken(token))
-                    }
-                    None => break Ok(None),
-                }
-            }
-            Some((CommandTokenKind::Equals, token)) => {
-                break Err(CommandError::InvalidToken(token))
-            }
-            Some((CommandTokenKind::Unterminated, token)) => {
-                break Err(CommandError::UnterminatedToken(token))
-            }
-            None => break Ok(None),
-        }
-    }
-}
-
-fn assert_empty(tokens: &mut CommandTokenIter, max: usize) -> Result<(), CommandError> {
-    loop {
-        match tokens.next() {
-            Some((
-                CommandTokenKind::Identifier
-                | CommandTokenKind::String
-                | CommandTokenKind::Register,
-                token,
-            )) => break Err(CommandError::TooManyArguments(token, max)),
-            Some((CommandTokenKind::Flag, _)) => match tokens.next() {
-                Some((
-                    CommandTokenKind::Identifier
-                    | CommandTokenKind::String
-                    | CommandTokenKind::Register,
-                    token,
-                )) => break Err(CommandError::TooManyArguments(token, max)),
-                Some((CommandTokenKind::Flag, _)) => (),
-                Some((CommandTokenKind::Equals, _)) => {
-                    tokens.next();
-                }
-                Some((CommandTokenKind::Unterminated, token)) => {
-                    break Err(CommandError::UnterminatedToken(token))
-                }
-                None => (),
-            },
-            Some((CommandTokenKind::Equals, token)) => {
-                break Err(CommandError::InvalidToken(token))
-            }
-            Some((CommandTokenKind::Unterminated, token)) => {
-                break Err(CommandError::UnterminatedToken(token))
-            }
-            None => break Ok(()),
-        }
-    }
-}
-
-pub struct CommandArgsBuilder<'a> {
-    tokens: CommandTokenIter<'a>,
-    bang: bool,
-}
-impl<'a> CommandArgsBuilder<'a> {
-    pub fn with(&self, registers: &'a RegisterCollection) -> CommandArgs<'a> {
-        CommandArgs {
-            tokens: self.tokens.clone(),
-            bang: self.bang,
-            len: 0,
-            registers,
-        }
-    }
-}
-
-pub struct CommandArgs<'a> {
-    tokens: CommandTokenIter<'a>,
-    bang: bool,
-    len: usize,
-    registers: &'a RegisterCollection,
-}
-impl<'a> CommandArgs<'a> {
-    pub fn assert_no_bang(&self) -> Result<(), CommandError> {
-        assert_no_bang(self.bang)
-    }
-
-    pub fn get_flags(
-        &self,
-        flags: &mut [(&'static str, Option<CommandValue<'a>>)],
-    ) -> Result<(), CommandError> {
-        get_flags(self.tokens.clone(), self.registers, flags)
-    }
-
-    pub fn try_next(&mut self) -> Result<Option<CommandValue<'a>>, CommandError> {
-        self.len += 1;
-        match try_next_raw_value(&mut self.tokens)? {
-            Some(value) => Ok(Some(CommandValue::from_raw(
-                self.tokens.raw,
-                value,
-                self.registers,
-            ))),
-            None => Ok(None),
-        }
-    }
-
-    pub fn next(&mut self) -> Result<CommandValue<'a>, CommandError> {
-        match self.try_next()? {
-            Some(value) => Ok(value),
-            None => Err(CommandError::TooFewArguments(self.len)),
-        }
-    }
-
-    pub fn assert_empty(&mut self) -> Result<(), CommandError> {
-        assert_empty(&mut self.tokens, self.len)
     }
 }
 
 #[derive(Clone, Copy)]
 pub enum CommandSource {
     Builtin(usize),
-    Macro(usize),
-    Request(usize),
 }
 
 pub struct BuiltinCommand {
     pub name: &'static str,
-    pub alias: &'static str,
     pub hidden: bool,
     pub completions: &'static [CompletionSource],
     pub func: CommandFn,
 }
 
-pub struct MacroCommand {
-    pub name: String,
-    pub hidden: bool,
-    pub params: Vec<RegisterKey>,
-    pub body: String,
-    pub source_path: Option<PathBuf>,
-}
-
-pub struct RequestCommand {
-    pub name: String,
-    pub hidden: bool,
-    pub client_handle: ClientHandle,
-}
-
-enum ParsedExpression<'command> {
-    Literal(&'command str),
-    Register(RegisterKey),
-    Command {
-        source: CommandSource,
-        args: CommandArgsBuilder<'command>,
-    },
-}
-
-struct ParsedStatement<'command> {
-    pub target_register: Option<RegisterKey>,
-    pub expression: ParsedExpression<'command>,
-}
-
-#[derive(Default)]
-struct Process {
-    pub alive: bool,
-    pub client_handle: Option<ClientHandle>,
-    pub input: Option<SharedBuf>,
-    pub output: Vec<u8>,
-    pub split_on_byte: Option<u8>,
-    pub on_output: String,
-}
-
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
-    macro_commands: Vec<MacroCommand>,
-    request_commands: Vec<RequestCommand>,
     history: VecDeque<String>,
-    spawned_processes: Vec<Process>,
 }
 
 impl CommandManager {
     pub fn new() -> Self {
         Self {
             builtin_commands: builtin::COMMANDS,
-            macro_commands: Vec::new(),
-            request_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
-            spawned_processes: Vec::new(),
         }
     }
 
     pub fn find_command(&self, name: &str) -> Option<CommandSource> {
-        if let Some(i) = self.macro_commands.iter().position(|c| c.name == name) {
-            return Some(CommandSource::Macro(i));
-        }
-
-        if let Some(i) = self.request_commands.iter().position(|c| c.name == name) {
-            return Some(CommandSource::Request(i));
-        }
-
         if let Some(i) = self
             .builtin_commands
             .iter()
-            .position(|c| c.alias == name || c.name == name)
+            .position(|c| c.name == name)
         {
             return Some(CommandSource::Builtin(i));
         }
@@ -977,34 +254,6 @@ impl CommandManager {
 
     pub fn builtin_commands(&self) -> &[BuiltinCommand] {
         &self.builtin_commands
-    }
-
-    pub fn macro_commands(&self) -> &[MacroCommand] {
-        &self.macro_commands
-    }
-
-    pub fn request_commands(&self) -> &[RequestCommand] {
-        &self.request_commands
-    }
-
-    pub fn register_macro(&mut self, command: MacroCommand) {
-        for m in &mut self.macro_commands {
-            if m.name == command.name {
-                *m = command;
-                return;
-            }
-        }
-        self.macro_commands.push(command);
-    }
-
-    pub fn register_request(&mut self, command: RequestCommand) {
-        for m in &mut self.request_commands {
-            if m.name == command.name {
-                *m = command;
-                return;
-            }
-        }
-        self.request_commands.push(command);
     }
 
     pub fn history_len(&self) -> usize {
@@ -1037,6 +286,40 @@ impl CommandManager {
         s.clear();
         s.push_str(entry);
         self.history.push_back(s);
+    }
+    
+    pub fn eval(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: Option<ClientHandle>,
+        command: &str,
+    ) -> Result<Option<CommandOperation>, CommandError> {
+        let mut tokenizer = CommandTokenizer(command);
+        let command = match tokenizer.next() {
+            Some(command) => command,
+            None => return Err(CommandError::NoSuchCommand),
+        };
+        let (command, bang) = match command.strip_suffix('!') {
+            Some(command) => (command, true),
+            None => (command, false),
+        };
+        let command = match editor.commands.find_command(command) {
+            Some(CommandSource::Builtin(i)) => &editor.commands.builtin_commands[i],
+            None => return Err(CommandError::NoSuchCommand),
+        };
+
+        let mut ctx = CommandContext {
+            editor,
+            platform,
+            clients,
+            client_handle,
+            args,
+        };
+        let args = CommandArgs(tokenizer);
+        (command.func)(&mut ctx, args, bang)
+
+        Ok(None)
     }
 
     pub fn eval_and_then_output<'command>(
