@@ -100,6 +100,10 @@ pub fn load_config<'content>(
                     "invalid from binding '{}' at {}:{}",
                     key, config_name, line_index,
                 )),
+                Err(ParseKeyMapError::To(error)) => output.fmt(format_args!(
+                    "invalid to binding '{}' at {}:{}",
+                    value, config_name, line_index,
+                ))
             }
         }
     }
