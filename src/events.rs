@@ -151,7 +151,7 @@ pub struct KeyParseAllError {
 }
 impl fmt::Display for KeyParseAllError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} at index: {}", self.error, self.index)
+        write!(f, "{} at char: {}", self.error, self.index)
     }
 }
 impl Error for KeyParseAllError {}
