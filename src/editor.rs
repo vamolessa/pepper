@@ -286,20 +286,10 @@ impl Editor {
         event: ClientEvent,
     ) -> EditorControlFlow {
         match event {
-            ClientEvent::Command(client_handle, commands) => {
-                /*
-                let result = CommandManager::eval_and_then_output(
-                    self,
-                    platform,
-                    clients,
-                    Some(client_handle),
-                    commands,
-                    None,
-                );
-                */
-                let result = todo!();
-                self.trigger_event_handlers(platform, clients);
-                match result {
+            ClientEvent::Command(client_handle, command) => {
+                let op =
+                    CommandManager::eval(self, platform, clients, Some(client_handle), command);
+                match op {
                     None => EditorControlFlow::Continue,
                     Some(CommandOperation::Suspend) => EditorControlFlow::Suspend,
                     Some(CommandOperation::Quit) => EditorControlFlow::Quit,
@@ -352,10 +342,6 @@ impl Editor {
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
             }
-            ProcessTag::Command(index) => {
-                todo!();
-                //self.commands.on_process_spawned(platform, index, handle),
-            }
         }
     }
 
@@ -376,10 +362,6 @@ impl Editor {
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_output(self, platform, clients, client_handle, bytes)
             }
-            ProcessTag::Command(index) => {
-                todo!();
-                //CommandManager::on_process_output(self, platform, clients, index, bytes)
-            }
         }
 
         self.trigger_event_handlers(platform, clients);
@@ -398,10 +380,6 @@ impl Editor {
             }
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_exit(self, client_handle)
-            }
-            ProcessTag::Command(index) => {
-                todo!();
-                //CommandManager::on_process_exit(self, platform, clients, index)
             }
         }
 
@@ -484,3 +462,4 @@ impl Editor {
         }
     }
 }
+

@@ -59,7 +59,6 @@ pub enum PlatformRequest {
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
     Buffer(usize),
-    Command(usize),
     Lsp(lsp::ClientHandle),
 }
 

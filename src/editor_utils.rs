@@ -185,11 +185,11 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
     Some(command)
 }
 
-pub fn load_config<'content>(
+pub fn load_config(
     editor: &mut Editor,
-    ini: &mut Ini<'content>,
+    ini: &mut Ini,
     config_name: &str,
-    config_content: &'content str,
+    config_content: &str,
 ) {
     fn parse_bindings(
         keymaps: &mut KeyMapCollection,
@@ -215,15 +215,18 @@ pub fn load_config<'content>(
 
     let mut output = editor.status_bar.write(MessageKind::Error);
 
-    if let Err(error) = ini.parse(config_content) {
-        output.fmt(format_args!(
-            "error parsing config {}:{} : {}",
-            config_name, error.line_index, error.kind,
-        ));
-        return;
-    }
+    let sections = match ini.parse(config_content) {
+        Ok(sections) => sections,
+        Err(error) => {
+            output.fmt(format_args!(
+                "error parsing config {}:{} : {}",
+                config_name, error.line_index, error.kind,
+            ));
+            return;
+        }
+    };
 
-    'section_loop: for (section, line_index, properties) in ini.sections() {
+    'section_loop: for (section, line_index, properties) in sections {
         match section {
             "config" => {
                 for (key, value, line_index) in properties {

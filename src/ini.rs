@@ -28,38 +28,47 @@ pub struct IniError {
     pub line_index: usize,
 }
 
-pub struct SectionIterator<'ini, 'data> {
-    ini: &'ini Ini<'data>,
+pub struct SectionIterator<'ini, 'source> {
+    source: &'source str,
+    ini: &'ini Ini,
     index: usize,
 }
-impl<'ini, 'data> Iterator for SectionIterator<'ini, 'data> {
-    type Item = (&'data str, usize, PropertyIterator<'ini, 'data>);
+impl<'ini, 'source> Iterator for SectionIterator<'ini, 'source> {
+    type Item = (&'source str, usize, PropertyIterator<'ini, 'source>);
     fn next(&mut self) -> Option<Self::Item> {
         let section = self.ini.sections.get(self.index)?;
         self.index += 1;
+        let name = &self.source[section.name.start as usize..section.name.end as usize];
         let properties_range = section.properties.start as usize..section.properties.end as usize;
         let properties = PropertyIterator {
+            source: self.source,
             properties: &self.ini.properties[properties_range],
         };
-        Some((section.name, section.line_index as _, properties))
+
+        Some((name, section.line_index as _, properties))
     }
 }
 
-pub struct PropertyIterator<'ini, 'data> {
-    properties: &'ini [Property<'data>],
+pub struct PropertyIterator<'ini, 'source> {
+    source: &'source str,
+    properties: &'ini [Property],
 }
-impl<'ini, 'data> Iterator for PropertyIterator<'ini, 'data> {
-    type Item = (&'data str, &'data str, usize);
+impl<'ini, 'source> Iterator for PropertyIterator<'ini, 'source> {
+    type Item = (&'source str, &'source str, usize);
     fn next(&mut self) -> Option<Self::Item> {
         match self.properties {
             [] => None,
             [property, rest @ ..] => {
                 let &Property {
-                    key,
-                    value,
+                    ref key,
+                    ref value,
                     line_index,
                 } = property;
+
                 self.properties = rest;
+                let key = &self.source[key.start as usize..key.end as usize];
+                let value = &self.source[value.start as usize..value.end as usize];
+
                 Some((key, value, line_index as _))
             }
         }
@@ -67,16 +76,25 @@ impl<'ini, 'data> Iterator for PropertyIterator<'ini, 'data> {
 }
 
 #[derive(Default)]
-pub struct Ini<'a> {
-    sections: Vec<Section<'a>>,
-    properties: Vec<Property<'a>>,
+pub struct Ini {
+    sections: Vec<Section>,
+    properties: Vec<Property>,
 }
-impl<'a> Ini<'a> {
-    pub fn parse(&mut self, text: &'a str) -> Result<(), IniError> {
+impl Ini {
+    pub fn parse<'this, 'source>(
+        &'this mut self,
+        source: &'source str,
+    ) -> Result<SectionIterator<'this, 'source>, IniError> {
+        fn get_range(source: &str, sub: &str) -> Range<u32> {
+            let start = sub.as_ptr() as u32 - source.as_ptr() as u32;
+            let end = start + sub.len() as u32;
+            start..end
+        }
+
         self.sections.clear();
         self.properties.clear();
 
-        for (i, line) in text.lines().enumerate() {
+        for (i, line) in source.lines().enumerate() {
             if line.is_empty() || line.starts_with(';') {
                 continue;
             }
@@ -105,7 +123,7 @@ impl<'a> Ini<'a> {
                         }
 
                         self.sections.push(Section {
-                            name,
+                            name: get_range(source, name),
                             properties: start..start,
                             line_index: i as _,
                         });
@@ -146,8 +164,8 @@ impl<'a> Ini<'a> {
                     };
 
                     self.properties.push(Property {
-                        key,
-                        value,
+                        key: get_range(source, key),
+                        value: get_range(source, value),
                         line_index: i as _,
                     });
                 }
@@ -158,26 +176,23 @@ impl<'a> Ini<'a> {
             section.properties.end = self.properties.len() as _;
         }
 
-        Ok(())
-    }
-
-    pub fn sections<'this>(&'this self) -> SectionIterator<'this, 'a> {
-        SectionIterator {
+        Ok(SectionIterator {
+            source,
             ini: self,
             index: 0,
-        }
+        })
     }
 }
 
-struct Section<'a> {
-    pub name: &'a str,
+struct Section {
+    pub name: Range<u32>,
     pub line_index: u32,
     pub properties: Range<u32>,
 }
 
-struct Property<'a> {
-    pub key: &'a str,
-    pub value: &'a str,
+struct Property {
+    pub key: Range<u32>,
+    pub value: Range<u32>,
     pub line_index: u32,
 }
 
@@ -187,10 +202,10 @@ mod tests {
 
     #[test]
     fn valid() {
-        fn get_sections<'parser, 'data>(
-            parser: &'parser mut Ini<'data>,
-            ini: &'data str,
-        ) -> SectionIterator<'parser, 'data> {
+        fn get_sections<'parser, 'source>(
+            parser: &'parser mut Ini,
+            ini: &'source str,
+        ) -> SectionIterator<'parser, 'source> {
             if let Err(error) = parser.parse(ini) {
                 panic!("{} at line {}", error.kind, error.line_index + 1);
             }

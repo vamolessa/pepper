@@ -3,9 +3,10 @@ use std::{env, fmt, fs, io, panic, path::Path, sync::mpsc, time::Duration};
 use crate::{
     buffer::parse_path_and_position,
     client::{ClientHandle, ClientManager},
-    command::{CommandManager, CommandOperation},
     editor::{Editor, EditorControlFlow},
+    editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent},
+    ini::Ini,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     serialization::{DeserializeError, Serialize},
     ui, Args,
@@ -75,45 +76,13 @@ impl ServerApplication {
     }
 
     pub fn run(args: Args, mut platform: Platform) -> Option<ApplicationEventSender> {
-        fn eval_source(
-            editor: &mut Editor,
-            platform: &mut Platform,
-            clients: &mut ClientManager,
-            path: &str,
-            content: &str,
-        ) -> Option<()> {
-            todo!();
-            /*
-            match CommandManager::eval_source(
-                editor,
-                platform,
-                clients,
-                None,
-                path,
-                content,
-            ) {
-                Ok(Some(CommandOperation::Quit | CommandOperation::QuitAll)) => None,
-                Err(error) => {
-                    todo!();
-                }
-                _ => Some(()),
-            }
-            */
-        }
-
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
-        let mut clients = ClientManager::default();
 
+        let mut ini = Ini::default();
         if !args.no_default_config {
-            let source = include_str!("../rc/default_config.pp");
-            eval_source(
-                &mut editor,
-                &mut platform,
-                &mut clients,
-                "default_config.pp",
-                source,
-            )?;
+            let source = include_str!("../rc/default_config.ini");
+            load_config(&mut editor, &mut ini, "default_config.ini", source);
         }
 
         for config in args.configs {
@@ -121,24 +90,19 @@ impl ServerApplication {
             if config.suppress_file_not_found && !path.exists() {
                 continue;
             }
-            let source = match fs::read_to_string(path) {
-                Ok(source) => source,
-                Err(error) => todo!(),
-            };
-            eval_source(
-                &mut editor,
-                &mut platform,
-                &mut clients,
-                &config.path,
-                &source,
-            )?;
+            match fs::read_to_string(path) {
+                Ok(source) => load_config(&mut editor, &mut ini, &config.path, &source),
+                Err(_) => editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!("could not load config '{}'", config.path)),
+            }
         }
 
         let (event_sender, event_receiver) = mpsc::channel();
         let application_event_sender = ApplicationEventSender(event_sender.clone());
         std::thread::spawn(move || {
-            let _ =
-                Self::run_application(editor, clients, &mut platform, event_sender, event_receiver);
+            let _ = Self::run_application(editor, &mut platform, event_sender, event_receiver);
             platform.enqueue_request(PlatformRequest::Quit);
             platform.flush_requests();
         });
@@ -148,11 +112,11 @@ impl ServerApplication {
 
     fn run_application(
         mut editor: Editor,
-        mut clients: ClientManager,
         platform: &mut Platform,
         event_sender: mpsc::Sender<ApplicationEvent>,
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
+        let mut clients = ClientManager::default();
         let mut is_first_client = true;
         let mut client_event_receiver = ClientEventReceiver::default();
 

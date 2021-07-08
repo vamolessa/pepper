@@ -29,6 +29,17 @@ pub enum CommandError {
     NoBufferOpened,
     UnsavedChanges,
 }
+impl fmt::Display for CommandError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::NoSuchCommand => f.write_str("no such command"),
+            Self::TooManyArguments => f.write_str("too many arguments"),
+            Self::TooFewArguments => f.write_str("too few arguments"),
+            Self::NoBufferOpened => f.write_str("no buffer opened"),
+            Self::UnsavedChanges => f.write_str("unsaved changes"),
+        }
+    }
+}
 
 type CommandFn = fn(&mut CommandContext) -> Result<Option<CommandOperation>, CommandError>;
 
@@ -188,11 +199,7 @@ impl CommandManager {
     }
 
     pub fn find_command(&self, name: &str) -> Option<CommandSource> {
-        if let Some(i) = self
-            .builtin_commands
-            .iter()
-            .position(|c| c.name == name)
-        {
+        if let Some(i) = self.builtin_commands.iter().position(|c| c.name == name) {
             return Some(CommandSource::Builtin(i));
         }
 
@@ -241,6 +248,25 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: &str,
+    ) -> Option<CommandOperation> {
+        match Self::try_eval(editor, platform, clients, client_handle, command) {
+            Ok(op) => op,
+            Err(error) => {
+                editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!("{}", error));
+                None
+            }
+        }
+    }
+
+    pub fn try_eval(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: Option<ClientHandle>,
+        command: &str,
     ) -> Result<Option<CommandOperation>, CommandError> {
         let mut tokenizer = CommandTokenizer(command);
         let command = match tokenizer.next() {
@@ -264,7 +290,9 @@ impl CommandManager {
             tokenizer,
             bang,
         };
-        (command.func)(&mut ctx)
+        let result = (command.func)(&mut ctx);
+        editor.trigger_event_handlers(platform, clients);
+        result
     }
 }
 
@@ -534,3 +562,4 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
+
