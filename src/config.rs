@@ -88,7 +88,7 @@ pub fn load_config<'content>(
         return;
     }
 
-    for (section, line_index, properties) in ini.sections() {
+    'section_loop: for (section, line_index, properties) in ini.sections() {
         match section {
             "config" => {
                 for (key, value, line_index) in properties {
@@ -131,6 +131,21 @@ pub fn load_config<'content>(
                 }
             }
             "syntax" => {
+                let mut syntax = Syntax::new();
+                for (key, value, line_index) in properties {
+                    match key {
+                        "glob" => {
+                            todo!();
+                        }
+                        _ => {
+                            write.fmt(format_args!(
+                                "no such token kind '{}' at {}:{}",
+                                key, config_name, line_index
+                            ));
+                            continue 'section_loop;
+                        }
+                    }
+                }
                 todo!();
             }
             "normal-bindings" => {
