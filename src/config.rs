@@ -69,4 +69,3 @@ config_values! {
     completion_min_len: u8 = 3,
     picker_max_height: u8 = 8,
 }
-

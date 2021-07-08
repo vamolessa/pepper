@@ -233,7 +233,7 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
                     Key::Char(';')
                 }
                 c => return Err(KeyParseError::InvalidCharacter(c)),
-            }
+            },
             'e' => match next(chars)? {
                 'n' => match next(chars)? {
                     't' => {
@@ -688,7 +688,10 @@ mod tests {
         assert_eq!(Key::Char('0'), parse_key(&mut "0".chars()).unwrap());
         assert_eq!(Key::Char('9'), parse_key(&mut "9".chars()).unwrap());
         assert_eq!(Key::Char('_'), parse_key(&mut "_".chars()).unwrap());
-        assert_eq!(Key::Char(';'), parse_key(&mut "<semicolon>".chars()).unwrap());
+        assert_eq!(
+            Key::Char(';'),
+            parse_key(&mut "<semicolon>".chars()).unwrap()
+        );
         assert_eq!(Key::Char('<'), parse_key(&mut "<less>".chars()).unwrap());
         assert_eq!(Key::Char('>'), parse_key(&mut "<greater>".chars()).unwrap());
         assert_eq!(Key::Char('='), parse_key(&mut "<equals>".chars()).unwrap());
@@ -796,4 +799,3 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
-

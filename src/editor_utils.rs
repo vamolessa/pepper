@@ -1,4 +1,4 @@
-use std::{fmt, process::Command, path::Path};
+use std::{fmt, path::Path, process::Command};
 
 use crate::{
     command::CommandTokenizer,
@@ -183,12 +183,7 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
     Some(command)
 }
 
-pub fn load_config(
-    editor: &mut Editor,
-    ini: &mut Ini,
-    config_name: &str,
-    config_content: &str,
-) {
+pub fn load_config(editor: &mut Editor, ini: &mut Ini, config_name: &str, config_content: &str) {
     fn parse_bindings(
         keymaps: &mut KeyMapCollection,
         mode: ModeKind,
@@ -406,4 +401,3 @@ pub fn load_config(
         }
     }
 }
-

@@ -302,13 +302,13 @@ mod tests {
         assert_eq!(Some("cmd"), tokens.next());
         assert_eq!(Some("arg"), tokens.next());
         assert_eq!(None, tokens.next());
-    
+
         let mut tokens = CommandTokenizer("cmd 'arg0 \"arg1 ");
         assert_eq!(Some("cmd"), tokens.next());
         assert_eq!(Some("'arg0"), tokens.next());
         assert_eq!(Some("\"arg1"), tokens.next());
         assert_eq!(None, tokens.next());
-    
+
         let mut tokens = CommandTokenizer("cmd 'arg\"0' \"arg'1\"");
         assert_eq!(Some("cmd"), tokens.next());
         assert_eq!(Some("arg\"0"), tokens.next());
@@ -316,4 +316,3 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
-
