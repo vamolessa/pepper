@@ -1,15 +1,17 @@
-use std::{collections::VecDeque, fmt};
+use std::{collections::VecDeque, fmt, io};
 
 use crate::{
     buffer::{Buffer, BufferHandle},
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
+    config::ParseConfigError,
     editor::Editor,
     editor_utils::MessageKind,
+    keymap::ParseKeyMapError,
     platform::Platform,
 };
 
-//mod builtin;
+mod builtin;
 
 pub const HISTORY_CAPACITY: usize = 10;
 
@@ -19,6 +21,12 @@ pub enum CommandError {
     TooFewArguments,
     NoBufferOpened,
     UnsavedChanges,
+    IoError(io::Error),
+    ConfigError(ParseConfigError),
+    NoSuchColor,
+    InvalidColorValue,
+    KeyMapError(ParseKeyMapError),
+    LspServerNotRunning,
 }
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -28,6 +36,12 @@ impl fmt::Display for CommandError {
             Self::TooFewArguments => f.write_str("too few arguments"),
             Self::NoBufferOpened => f.write_str("no buffer opened"),
             Self::UnsavedChanges => f.write_str("unsaved changes"),
+            Self::IoError(error) => write!(f, "{}", error),
+            Self::ConfigError(error) => write!(f, "{}", error),
+            Self::NoSuchColor => f.write_str("no such color"),
+            Self::InvalidColorValue => f.write_str("invalid color value"),
+            Self::KeyMapError(error) => write!(f, "{}", error),
+            Self::LspServerNotRunning => f.write_str("no lsp server running"),
         }
     }
 }
@@ -48,34 +62,37 @@ pub enum CompletionSource {
     Custom(&'static [&'static str]),
 }
 
+pub struct CommandArgs<'command>(CommandTokenizer<'command>);
+impl<'command> CommandArgs<'command> {
+    pub fn try_next(&mut self) -> Option<&'command str> {
+        self.0.next()
+    }
+
+    pub fn next(&mut self) -> Result<&'command str, CommandError> {
+        match self.try_next() {
+            Some(value) => Ok(value),
+            None => Err(CommandError::TooFewArguments),
+        }
+    }
+
+    pub fn assert_empty(&mut self) -> Result<(), CommandError> {
+        match self.try_next() {
+            Some(_) => Err(CommandError::TooManyArguments),
+            None => Ok(()),
+        }
+    }
+}
+
 pub struct CommandContext<'state, 'command> {
     pub editor: &'state mut Editor,
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
 
-    tokenizer: CommandTokenizer<'command>,
+    pub args: CommandArgs<'command>,
     pub bang: bool,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
-    pub fn try_next_arg(&mut self) -> Option<&'command str> {
-        self.tokenizer.next()
-    }
-
-    pub fn next_arg(&mut self) -> Result<&'command str, CommandError> {
-        match self.try_next_arg() {
-            Some(value) => Ok(value),
-            None => Err(CommandError::TooFewArguments),
-        }
-    }
-
-    pub fn assert_empty_args(&mut self) -> Result<(), CommandError> {
-        match self.try_next_arg() {
-            Some(_) => Err(CommandError::TooManyArguments),
-            None => Ok(()),
-        }
-    }
-
     pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError> {
         match self
             .client_handle
@@ -182,8 +199,7 @@ pub struct CommandManager {
 impl CommandManager {
     pub fn new() -> Self {
         Self {
-            //builtin_commands: builtin::COMMANDS,
-            builtin_commands: &[],
+            builtin_commands: builtin::COMMANDS,
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
     }
@@ -277,7 +293,7 @@ impl CommandManager {
             platform,
             clients,
             client_handle,
-            tokenizer,
+            args: CommandArgs(tokenizer),
             bang,
         };
         let result = (command.func)(&mut ctx);

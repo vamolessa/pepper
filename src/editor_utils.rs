@@ -2,11 +2,10 @@ use std::{fmt, path::Path, process::Command};
 
 use crate::{
     command::CommandTokenizer,
-    config::ParseConfigError,
     editor::{BufferedKeys, Editor, KeysIterator},
     glob::InvalidGlobError,
     ini::{Ini, PropertyIterator},
-    keymap::{KeyMapCollection, ParseKeyMapError},
+    keymap::KeyMapCollection,
     mode::ModeKind,
     platform::{Key, Platform},
     syntax::Syntax,
@@ -183,7 +182,13 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
     Some(command)
 }
 
-pub fn load_config(editor: &mut Editor, ini: &mut Ini, config_name: &str, config_content: &str) {
+pub fn load_config(
+    editor: &mut Editor,
+    platform: &mut Platform,
+    ini: &mut Ini,
+    config_name: &str,
+    config_content: &str,
+) {
     fn parse_bindings(
         keymaps: &mut KeyMapCollection,
         mode: ModeKind,
@@ -194,14 +199,9 @@ pub fn load_config(editor: &mut Editor, ini: &mut Ini, config_name: &str, config
         for (key, value, line_index) in bindings {
             match keymaps.parse_and_map(mode, key, value) {
                 Ok(()) => (),
-                Err(ParseKeyMapError::From(error)) => output.fmt(format_args!(
-                    "from binding parse error '{}' at {}:{}",
-                    error, config_name, line_index,
-                )),
-                Err(ParseKeyMapError::To(error)) => output.fmt(format_args!(
-                    "to binding parse error '{}' at {}:{}",
-                    error, config_name, line_index,
-                )),
+                Err(error) => {
+                    output.fmt(format_args!("{} at {}:{}", error, config_name, line_index))
+                }
             }
         }
     }
@@ -212,7 +212,7 @@ pub fn load_config(editor: &mut Editor, ini: &mut Ini, config_name: &str, config
         Ok(sections) => sections,
         Err(error) => {
             output.fmt(format_args!(
-                "error parsing config {}:{} : {}",
+                "error parsing config at {}:{} : {}",
                 config_name, error.line_index, error.kind,
             ));
             return;
@@ -225,14 +225,9 @@ pub fn load_config(editor: &mut Editor, ini: &mut Ini, config_name: &str, config
                 for (key, value, line_index) in properties {
                     match editor.config.parse_config(key, value) {
                         Ok(()) => (),
-                        Err(ParseConfigError::NoSuchConfig) => output.fmt(format_args!(
-                            "no such config '{}' at {}:{}\n",
-                            key, config_name, line_index
-                        )),
-                        Err(ParseConfigError::InvalidValue) => output.fmt(format_args!(
-                            "invalid config value '{}' at {}:{}\n",
-                            value, config_name, line_index,
-                        )),
+                        Err(error) => {
+                            output.fmt(format_args!("{} at {}:{}", error, config_name, line_index))
+                        }
                     }
                 }
             }
@@ -307,6 +302,24 @@ pub fn load_config(editor: &mut Editor, ini: &mut Ini, config_name: &str, config
                 }
 
                 editor.syntaxes.add(syntax);
+            }
+            "clipboard" => {
+                for (key, value, line_index) in properties {
+                    match key {
+                        "copy" => {
+                            platform.copy_command.clear();
+                            platform.copy_command.push_str(value);
+                        }
+                        "paste" => {
+                            platform.paste_command.clear();
+                            platform.paste_command.push_str(value);
+                        }
+                        _ => output.fmt(format_args!(
+                            "no such clipboard property '{}' at {}:{}",
+                            key, config_name, line_index
+                        )),
+                    }
+                }
             }
             "alias" => {
                 todo!();

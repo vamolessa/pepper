@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::{
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
@@ -14,6 +16,14 @@ pub enum MatchResult<'a> {
 pub enum ParseKeyMapError {
     From(KeyParseAllError),
     To(KeyParseAllError),
+}
+impl fmt::Display for ParseKeyMapError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::From(error) => write!(f, "invalid 'from' binding '{}'", error),
+            Self::To(error) => write!(f, "invalid 'to' binding '{}'", error),
+        }
+    }
 }
 
 struct KeyMap {

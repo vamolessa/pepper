@@ -4,6 +4,14 @@ pub enum ParseConfigError {
     NoSuchConfig,
     InvalidValue,
 }
+impl fmt::Display for ParseConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::NoSuchConfig => f.write_str("no such config"),
+            Self::InvalidValue => f.write_str("invalid config value"),
+        }
+    }
+}
 
 macro_rules! config_values {
     ($($name:ident: $type:ty = $default:expr,)*) => {

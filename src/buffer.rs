@@ -721,40 +721,6 @@ impl BufferCapabilities {
     }
 }
 
-pub enum BufferError {
-    CouldNotReadFile,
-    CouldNotCreateFile,
-    CouldNotWriteFile,
-}
-impl BufferError {
-    pub fn display<'a>(&'a self, buffer: &'a Buffer) -> BufferErrorDisplay<'a> {
-        BufferErrorDisplay {
-            error: self,
-            buffer,
-        }
-    }
-}
-pub struct BufferErrorDisplay<'a> {
-    error: &'a BufferError,
-    buffer: &'a Buffer,
-}
-impl<'a> fmt::Display for BufferErrorDisplay<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let path = self.buffer.path.as_path();
-        match self.error {
-            BufferError::CouldNotReadFile => {
-                f.write_fmt(format_args!("could not read from file '{:?}'", path))
-            }
-            BufferError::CouldNotCreateFile => {
-                f.write_fmt(format_args!("could not create file '{:?}'", path))
-            }
-            BufferError::CouldNotWriteFile => {
-                f.write_fmt(format_args!("could not write to file '{:?}'", path))
-            }
-        }
-    }
-}
-
 pub struct Buffer {
     alive: bool,
     handle: BufferHandle,
@@ -1112,7 +1078,7 @@ impl Buffer {
         &mut self,
         new_path: Option<&Path>,
         events: &mut EditorEventQueue,
-    ) -> Result<(), BufferError> {
+    ) -> io::Result<()> {
         let new_path = match new_path {
             Some(path) => {
                 self.capabilities.can_save = true;
@@ -1127,12 +1093,8 @@ impl Buffer {
             return Ok(());
         }
 
-        let file = File::create(&self.path).map_err(|_| BufferError::CouldNotCreateFile)?;
-        let mut writer = io::BufWriter::new(file);
-
-        self.content
-            .write(&mut writer)
-            .map_err(|_| BufferError::CouldNotWriteFile)?;
+        let file = File::create(&self.path)?;
+        self.content.write(&mut io::BufWriter::new(file))?;
 
         self.capabilities.can_save = true;
         self.needs_save = false;
@@ -1148,7 +1110,7 @@ impl Buffer {
         &mut self,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
-    ) -> Result<(), BufferError> {
+    ) -> io::Result<()> {
         if !self.capabilities.can_save {
             return Ok(());
         }
@@ -1166,14 +1128,10 @@ impl Buffer {
         });
 
         if let Some(mut reader) = help::open(&self.path) {
-            self.content
-                .read(&mut reader)
-                .map_err(|_| BufferError::CouldNotReadFile)?;
+            self.content.read(&mut reader)?;
         } else if let Ok(file) = File::open(&self.path) {
             let mut reader = io::BufReader::new(file);
-            self.content
-                .read(&mut reader)
-                .map_err(|_| BufferError::CouldNotReadFile)?;
+            self.content.read(&mut reader)?;
         }
 
         self.highlighted.on_insert(BufferRange::between(

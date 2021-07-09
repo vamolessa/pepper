@@ -82,7 +82,13 @@ impl ServerApplication {
         let mut ini = Ini::default();
         if !args.no_default_config {
             let source = include_str!("../rc/default_config.ini");
-            load_config(&mut editor, &mut ini, "default_config.ini", source);
+            load_config(
+                &mut editor,
+                &mut platform,
+                &mut ini,
+                "default_config.ini",
+                source,
+            );
         }
 
         for config in args.configs {
@@ -91,7 +97,9 @@ impl ServerApplication {
                 continue;
             }
             match fs::read_to_string(path) {
-                Ok(source) => load_config(&mut editor, &mut ini, &config.path, &source),
+                Ok(source) => {
+                    load_config(&mut editor, &mut platform, &mut ini, &config.path, &source)
+                }
                 Err(_) => editor
                     .status_bar
                     .write(MessageKind::Error)
