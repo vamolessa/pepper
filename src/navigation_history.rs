@@ -61,6 +61,10 @@ impl NavigationHistory {
 
         if let NavigationState::IterIndex(index) = self.state {
             self.snapshots.truncate(index);
+            match self.snapshots.last() {
+                Some(snapshot) => self.cursors.truncate(snapshot.cursor_range().end),
+                None => self.cursors.clear(),
+            }
         }
         self.state = NavigationState::Insert;
 
@@ -124,32 +128,52 @@ impl NavigationHistory {
                 history.snapshots[history_index].clone()
             }
             NavigationMovement::PreviousBuffer => {
-                let mut index = history_index;
-                if index < history.snapshots.len() {
-                    let current_buffer_handle = history.snapshots[index].buffer_handle;
-                    match history.snapshots[index + 1..]
+                let buffer_view =
+                    current_buffer_view_handle.and_then(|h| editor.buffer_views.get(h));
+
+                if history_index < history.snapshots.len() {
+                    let buffer_handle = match buffer_view {
+                        Some(buffer_view) => buffer_view.buffer_handle,
+                        None => history.snapshots[history_index].buffer_handle,
+                    };
+
+                    if let Some(i) = history.snapshots[history_index..]
                         .iter()
-                        .position(|s| s.buffer_handle != current_buffer_handle)
+                        .position(|s| s.buffer_handle != buffer_handle)
                     {
-                        Some(i) => index = i,
-                        None => return,
+                        history_index += i;
+                    } else if let Some(i) = history.snapshots[..history_index]
+                        .iter()
+                        .rposition(|s| s.buffer_handle != buffer_handle)
+                    {
+                        history_index = i;
+                    } else {
+                        return;
                     }
                 } else {
-                    let current_buffer_handle = match history.snapshots.last() {
-                        Some(snapshot) => snapshot.buffer_handle,
-                        None => return,
-                    };
-                    match history
-                        .snapshots
-                        .iter()
-                        .rposition(|s| s.buffer_handle != current_buffer_handle)
-                    {
-                        Some(i) => index = i,
-                        None => return,
+                    match buffer_view {
+                        Some(buffer_view) => match history
+                            .snapshots
+                            .iter()
+                            .rposition(|s| s.buffer_handle != buffer_view.buffer_handle)
+                        {
+                            Some(i) => {
+                                history.add_snapshot(buffer_view);
+                                history_index = i
+                            }
+                            None => return,
+                        },
+                        None => {
+                            history_index = history.snapshots.len();
+                            if history_index == 0 {
+                                return;
+                            }
+                            history_index -= 1;
+                        }
                     }
                 }
 
-                history.snapshots[index].clone()
+                history.snapshots[history_index].clone()
             }
         };
 
@@ -211,3 +235,4 @@ impl Default for NavigationHistory {
         }
     }
 }
+
