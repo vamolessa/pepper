@@ -334,8 +334,8 @@ impl CommandManager {
     ) -> Result<Option<CommandOperation>, CommandError> {
         if let Some(alias) = CommandTokenizer(command).next() {
             if let Some(aliased) = editor.commands.aliases.find(alias) {
-                let start = aliased.as_ptr() as usize - command.as_ptr() as usize;
-                let end = start + aliased.len();
+                let start = alias.as_ptr() as usize - command.as_ptr() as usize;
+                let end = start + alias.len();
                 command.replace_range(start..end, aliased);
             }
         }

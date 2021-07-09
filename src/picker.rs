@@ -201,6 +201,7 @@ fn filtered_to_picker_entry<'a>(
     }
 }
 
+const FIRST_CHAR_SCORE: u32 = 1;
 const WORD_BOUNDARY_MATCH_SCORE: u32 = 2;
 const CONSECUTIVE_MATCH_SCORE: u32 = 3;
 
@@ -233,7 +234,7 @@ impl FuzzyMatcher {
                 let mut previous_text_char = '\0';
                 for (i, text_char) in text[previous_match.rest_index as usize..].char_indices() {
                     if text_char.eq_ignore_ascii_case(&pattern_char) {
-                        let (matched, score) = if i == 0 && previous_match.rest_index != 0 {
+                        let (matched, mut score) = if i == 0 && previous_match.rest_index != 0 {
                             (true, CONSECUTIVE_MATCH_SCORE)
                         } else if !text_char.is_ascii_alphanumeric() {
                             (true, 0)
@@ -244,7 +245,12 @@ impl FuzzyMatcher {
                                     && text_char.is_ascii_uppercase());
                             (is_word_boundary, WORD_BOUNDARY_MATCH_SCORE)
                         };
+
                         if matched {
+                            if i == 0 && previous_match.rest_index == 0 {
+                                score += FIRST_CHAR_SCORE;
+                            }
+
                             let rest_index =
                                 previous_match.rest_index + (i + text_char.len_utf8()) as u32;
                             let score = previous_match.score + score;
@@ -290,33 +296,33 @@ mod tests {
         assert_eq!(0, fuzzy_matcher.score("a", "xyz"));
 
         assert_eq!(
-            WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 3 + 1,
+            FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 3 + 1,
             fuzzy_matcher.score("word", "word"),
         );
 
         assert_eq!(
-            WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 2,
+            FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 2,
             fuzzy_matcher.score("word", "wor"),
         );
 
         assert_eq!(0, fuzzy_matcher.score("word", "wrd"),);
 
         assert_eq!(
-            WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE,
+            FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE,
             fuzzy_matcher.score("first/second", "f/s")
         );
 
         assert_eq!(
-            (WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE) * 2,
+            FIRST_CHAR_SCORE + (WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE) * 2,
             fuzzy_matcher.score("camelCase", "caca"),
         );
 
         assert_eq!(
-            WORD_BOUNDARY_MATCH_SCORE * 3,
+            FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE * 3,
             fuzzy_matcher.score("ababAbA", "aaa")
         );
         assert_eq!(
-            WORD_BOUNDARY_MATCH_SCORE * 2,
+            FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE * 2,
             fuzzy_matcher.score("abc cde", "ac"),
         );
         assert_eq!(WORD_BOUNDARY_MATCH_SCORE, fuzzy_matcher.score("abc x", "x"));
@@ -326,11 +332,24 @@ mod tests {
             fuzzy_matcher.score("AxxBxx Abcd", "abcd")
         );
 
+        assert_eq!(
+            FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE,
+            fuzzy_matcher.score("abc", "a")
+        );
+        assert_eq!(
+            WORD_BOUNDARY_MATCH_SCORE,
+            fuzzy_matcher.score("xyz-abc", "a")
+        );
+
         let repetition_count = 100;
         let big_repetitive_text = "a".repeat(repetition_count);
         assert_eq!(
-            WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * (repetition_count - 1) as u32 + 1,
+            FIRST_CHAR_SCORE
+                + WORD_BOUNDARY_MATCH_SCORE
+                + CONSECUTIVE_MATCH_SCORE * (repetition_count - 1) as u32
+                + 1,
             fuzzy_matcher.score(&big_repetitive_text, &big_repetitive_text),
         );
     }
 }
+

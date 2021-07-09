@@ -109,7 +109,6 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                         buffer_view.buffer_handle,
                         range.from,
                         stdins[i].take(),
-                        Some(b'\n'),
                     );
                 }
             }
@@ -231,7 +230,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "reload",
+        name: "reopen",
         completions: &[],
         func: |ctx| {
             ctx.args.assert_empty()?;
@@ -251,12 +250,12 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             ctx.editor
                 .status_bar
                 .write(MessageKind::Info)
-                .str("buffer reloaded");
+                .str("buffer reopened");
             Ok(None)
         },
     },
     BuiltinCommand {
-        name: "reload-all",
+        name: "reopen-all",
         completions: &[],
         func: |ctx| {
             ctx.args.assert_empty()?;
@@ -276,7 +275,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             ctx.editor
                 .status_bar
                 .write(MessageKind::Info)
-                .fmt(format_args!("{} buffers reloaded", count));
+                .fmt(format_args!("{} buffers reopened", count));
             Ok(None)
         },
     },

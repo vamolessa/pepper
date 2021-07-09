@@ -1174,7 +1174,6 @@ pub struct InsertProcess {
     pub position: BufferPosition,
     pub input: Option<SharedBuf>,
     pub output: Vec<u8>,
-    pub split_on_byte: Option<u8>,
 }
 
 #[derive(Default)]
@@ -1272,7 +1271,6 @@ impl BufferCollection {
         buffer_handle: BufferHandle,
         position: BufferPosition,
         stdin: Option<SharedBuf>,
-        split_on_byte: Option<u8>,
     ) {
         let mut index = None;
         for (i, process) in self.insert_processes.iter().enumerate() {
@@ -1291,7 +1289,6 @@ impl BufferCollection {
                     position,
                     input: None,
                     output: Vec::new(),
-                    split_on_byte: None,
                 });
                 index
             }
@@ -1303,7 +1300,6 @@ impl BufferCollection {
         process.position = position;
         process.input = stdin;
         process.output.clear();
-        process.split_on_byte = split_on_byte;
 
         let stdin = match process.input {
             Some(_) => Stdio::piped(),
@@ -1342,11 +1338,7 @@ impl BufferCollection {
         let process = &mut self.insert_processes[index];
         process.output.extend_from_slice(bytes);
 
-        let split_on_byte = match process.split_on_byte {
-            Some(byte) => byte,
-            None => return,
-        };
-        let len = match process.output.iter().rposition(|&b| b == split_on_byte) {
+        let len = match process.output.iter().rposition(|&b| b == b'\n') {
             Some(i) => i + 1,
             None => return,
         };
@@ -1904,3 +1896,4 @@ mod tests {
         );
     }
 }
+
