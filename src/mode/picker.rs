@@ -3,7 +3,6 @@ use std::path::Path;
 use crate::{
     buffer::parse_path_and_position,
     buffer_position::BufferPosition,
-    command::CommandManager,
     cursor::Cursor,
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
@@ -12,14 +11,12 @@ use crate::{
     navigation_history::NavigationHistory,
     picker::EntrySource,
     platform::Key,
-    register::RETURN_REGISTER,
     word_database::WordIndicesIter,
 };
 
 pub struct State {
     on_client_keys:
         fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
-    continuation: Option<String>,
     lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
@@ -27,7 +24,6 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _| None,
-            continuation: None,
             lsp_client_handle: None,
         }
     }
@@ -407,57 +403,3 @@ pub mod lsp_workspace_symbol {
     }
 }
 
-pub mod custom {
-    use super::*;
-
-    pub fn enter_mode(ctx: &mut ModeContext, continuation: String) {
-        fn on_client_keys(
-            ctx: &mut ModeContext,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
-            match poll {
-                ReadLinePoll::Pending => None,
-                ReadLinePoll::Submitted => {
-                    let continuation = ctx.editor.mode.picker_state.continuation.take().unwrap();
-                    let entry = ctx.editor.picker.current_entry(&ctx.editor.word_database);
-
-                    let mut operation = None;
-                    if let Some((_, entry)) = entry {
-                        ctx.editor.registers.set(RETURN_REGISTER, entry);
-                        operation = CommandManager::eval(
-                            ctx.editor,
-                            ctx.platform,
-                            ctx.clients,
-                            Some(ctx.client_handle),
-                            &continuation,
-                        )
-                        .map(Into::into);
-                        ctx.editor.string_pool.release(continuation);
-                    }
-
-                    if ctx.editor.mode.kind() == ModeKind::Picker
-                        && ctx.editor.mode.picker_state.continuation.is_none()
-                    {
-                        Mode::change_to(ctx, ModeKind::default());
-                    }
-
-                    operation
-                }
-                ReadLinePoll::Canceled => {
-                    Mode::change_to(ctx, ModeKind::default());
-                    None
-                }
-            }
-        }
-
-        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
-        ctx.editor.picker.move_cursor(0);
-
-        let state = &mut ctx.editor.mode.picker_state;
-        state.on_client_keys = on_client_keys;
-        state.continuation = Some(continuation);
-
-        Mode::change_to(ctx, ModeKind::Picker);
-    }
-}

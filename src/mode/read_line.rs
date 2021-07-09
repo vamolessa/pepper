@@ -2,19 +2,16 @@ use crate::{
     buffer_position::BufferPositionIndex,
     buffer_view::CursorMovementKind,
     client::Client,
-    command::CommandManager,
     cursor::CursorCollection,
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     pattern::Pattern,
-    register::{RETURN_REGISTER, SEARCH_REGISTER},
 };
 
 pub struct State {
     on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
-    continuation: Option<String>,
     lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
@@ -22,7 +19,6 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _| None,
-            continuation: None,
             lsp_client_handle: None,
         }
     }
@@ -52,7 +48,10 @@ impl ModeState for State {
 pub mod search {
     use super::*;
 
-    use crate::navigation_history::{NavigationDirection, NavigationHistory};
+    use crate::{
+        navigation_history::{NavigationDirection, NavigationHistory},
+        register::SEARCH_REGISTER,
+    };
 
     pub fn enter_mode(ctx: &mut ModeContext) {
         fn on_client_keys(
@@ -190,7 +189,10 @@ fn on_submitted(ctx: &mut ModeContext, poll: ReadLinePoll, proc: fn(&mut ModeCon
 pub mod filter_cursors {
     use super::*;
 
-    use crate::{buffer::BufferContent, buffer_position::BufferRange, cursor::Cursor};
+    use crate::{
+        buffer::BufferContent, buffer_position::BufferRange, cursor::Cursor,
+        register::SEARCH_REGISTER,
+    };
 
     pub fn enter_filter_mode(ctx: &mut ModeContext) {
         ctx.editor.read_line.set_prompt("filter:");
@@ -307,7 +309,7 @@ pub mod filter_cursors {
 pub mod split_cursors {
     use super::*;
 
-    use crate::{buffer_position::BufferPosition, cursor::Cursor};
+    use crate::{buffer_position::BufferPosition, cursor::Cursor, register::SEARCH_REGISTER};
 
     pub fn enter_by_pattern_mode(ctx: &mut ModeContext) {
         fn add_matches(
@@ -613,52 +615,3 @@ pub mod lsp_rename {
     }
 }
 
-pub mod custom {
-    use super::*;
-
-    pub fn enter_mode(ctx: &mut ModeContext, continuation: String) {
-        fn on_client_keys(
-            ctx: &mut ModeContext,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
-            match poll {
-                ReadLinePoll::Pending => None,
-                ReadLinePoll::Submitted => {
-                    let continuation = ctx.editor.mode.read_line_state.continuation.take().unwrap();
-
-                    ctx.editor
-                        .registers
-                        .set(RETURN_REGISTER, ctx.editor.read_line.input());
-                    let operation = CommandManager::eval(
-                        ctx.editor,
-                        ctx.platform,
-                        ctx.clients,
-                        Some(ctx.client_handle),
-                        &continuation,
-                    )
-                    .map(Into::into);
-                    ctx.editor.string_pool.release(continuation);
-
-                    if ctx.editor.mode.kind() == ModeKind::ReadLine
-                        && ctx.editor.mode.read_line_state.continuation.is_none()
-                    {
-                        Mode::change_to(ctx, ModeKind::default());
-                    }
-
-                    operation
-                }
-                ReadLinePoll::Canceled => {
-                    Mode::change_to(ctx, ModeKind::default());
-                    None
-                }
-            }
-        }
-
-        let state = &mut ctx.editor.mode.read_line_state;
-        state.on_client_keys = on_client_keys;
-        state.continuation = Some(continuation);
-
-        Mode::change_to(ctx, ModeKind::ReadLine);
-    }
-}

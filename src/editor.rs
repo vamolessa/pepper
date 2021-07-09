@@ -287,8 +287,16 @@ impl Editor {
     ) -> EditorControlFlow {
         match event {
             ClientEvent::Command(client_handle, command) => {
-                let op =
-                    CommandManager::eval(self, platform, clients, Some(client_handle), command);
+                let mut command = self.string_pool.acquire_with(command);
+                let op = CommandManager::eval(
+                    self,
+                    platform,
+                    clients,
+                    Some(client_handle),
+                    &mut command,
+                );
+                self.string_pool.release(command);
+
                 match op {
                     None => EditorControlFlow::Continue,
                     Some(CommandOperation::Suspend) => EditorControlFlow::Suspend,
@@ -462,3 +470,4 @@ impl Editor {
         }
     }
 }
+

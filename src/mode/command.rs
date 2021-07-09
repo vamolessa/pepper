@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::{
-    command::{CommandManager, CommandSource, CommandTokenizer, CompletionSource},
+    command::{CommandManager, CommandTokenizer, CompletionSource},
     editor::KeysIterator,
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -95,13 +95,13 @@ impl ModeState for State {
                 let input = ctx.editor.read_line.input();
                 ctx.editor.commands.add_to_history(input);
 
-                let command = ctx.editor.string_pool.acquire_with(input);
+                let mut command = ctx.editor.string_pool.acquire_with(input);
                 let operation = CommandManager::eval(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,
                     Some(ctx.client_handle),
-                    &command,
+                    &mut command,
                 )
                 .map(From::from);
                 ctx.editor.string_pool.release(command);
@@ -168,8 +168,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     let mut completion_source = CompletionSource::Custom(&[]);
     if arg_count > 0 {
         match ctx.editor.commands.find_command(command_name) {
-            Some(CommandSource::Builtin(i)) => {
-                let command = &ctx.editor.commands.builtin_commands()[i];
+            Some(command) => {
                 let completion_index = arg_count - 1;
                 if completion_index < command.completions.len() {
                     completion_source = command.completions[completion_index];

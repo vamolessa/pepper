@@ -1,6 +1,5 @@
 pub static SEARCH_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('s');
 pub static AUTO_MACRO_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('a');
-pub static RETURN_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('z');
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct RegisterKey(u8);
@@ -54,33 +53,5 @@ impl RegisterCollection {
 
     pub fn get_mut(&mut self, key: RegisterKey) -> &mut String {
         &mut self.registers[key.0 as usize]
-    }
-
-    pub fn set(&mut self, key: RegisterKey, value: &str) {
-        let register = &mut self.registers[key.0 as usize];
-        register.clear();
-        register.push_str(value);
-    }
-
-    pub fn copy(&mut self, from: RegisterKey, to: RegisterKey) {
-        let from_index = from.0 as usize;
-        let to_index = to.0 as usize;
-
-        let from;
-        let to;
-        if from_index < to_index {
-            let (a, b) = self.registers.split_at_mut(to_index);
-            from = &a[from_index];
-            to = &mut b[0];
-        } else if to_index < from_index {
-            let (a, b) = self.registers.split_at_mut(from_index);
-            from = &b[0];
-            to = &mut a[to_index];
-        } else {
-            return;
-        }
-
-        to.clear();
-        to.push_str(from);
     }
 }

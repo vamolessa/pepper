@@ -180,20 +180,81 @@ impl<'a> Iterator for CommandTokenizer<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum CommandSource {
-    Builtin(usize),
-}
-
 pub struct BuiltinCommand {
     pub name: &'static str,
     pub completions: &'static [CompletionSource],
     pub func: CommandFn,
 }
 
+struct Alias {
+    start: u32,
+    from_len: u16,
+    to_len: u16,
+}
+impl Alias {
+    pub fn from<'a>(&self, texts: &'a str) -> &'a str {
+        let end = self.start as usize + self.from_len as usize;
+        &texts[self.start as usize..end]
+    }
+
+    pub fn to<'a>(&self, texts: &'a str) -> &'a str {
+        let start = self.start as usize + self.from_len as usize;
+        let end = start + self.to_len as usize;
+        &texts[start..end]
+    }
+}
+
+#[derive(Default)]
+pub struct AliasCollection {
+    texts: String,
+    aliases: Vec<Alias>,
+}
+impl AliasCollection {
+    pub fn add(&mut self, from: &str, to: &str) {
+        if from.len() > u16::MAX as _ || to.len() > u16::MAX as _ {
+            return;
+        }
+
+        for (i, alias) in self.aliases.iter().enumerate() {
+            if from == alias.from(&self.texts) {
+                let alias_start = alias.start as usize;
+                let alias_len = alias.from_len as u32 + alias.to_len as u32;
+                self.aliases.remove(i);
+                for alias in &mut self.aliases[i..] {
+                    alias.start -= alias_len;
+                }
+                self.texts
+                    .drain(alias_start..alias_start + alias_len as usize);
+                break;
+            }
+        }
+
+        let start = self.texts.len() as _;
+        self.texts.push_str(from);
+        self.texts.push_str(to);
+
+        self.aliases.push(Alias {
+            start,
+            from_len: from.len() as _,
+            to_len: to.len() as _,
+        });
+    }
+
+    pub fn find(&self, from: &str) -> Option<&str> {
+        for alias in &self.aliases {
+            if from == alias.from(&self.texts) {
+                return Some(alias.to(&self.texts));
+            }
+        }
+
+        None
+    }
+}
+
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
     history: VecDeque<String>,
+    pub aliases: AliasCollection,
 }
 
 impl CommandManager {
@@ -201,15 +262,12 @@ impl CommandManager {
         Self {
             builtin_commands: builtin::COMMANDS,
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
+            aliases: AliasCollection::default(),
         }
     }
 
-    pub fn find_command(&self, name: &str) -> Option<CommandSource> {
-        if let Some(i) = self.builtin_commands.iter().position(|c| c.name == name) {
-            return Some(CommandSource::Builtin(i));
-        }
-
-        None
+    pub fn find_command(&self, name: &str) -> Option<&BuiltinCommand> {
+        self.builtin_commands.iter().find(|c| c.name == name)
     }
 
     pub fn builtin_commands(&self) -> &[BuiltinCommand] {
@@ -253,7 +311,7 @@ impl CommandManager {
         platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
-        command: &str,
+        command: &mut String,
     ) -> Option<CommandOperation> {
         match Self::try_eval(editor, platform, clients, client_handle, command) {
             Ok(op) => op,
@@ -272,6 +330,24 @@ impl CommandManager {
         platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
+        command: &mut String,
+    ) -> Result<Option<CommandOperation>, CommandError> {
+        if let Some(alias) = CommandTokenizer(command).next() {
+            if let Some(aliased) = editor.commands.aliases.find(alias) {
+                let start = aliased.as_ptr() as usize - command.as_ptr() as usize;
+                let end = start + aliased.len();
+                command.replace_range(start..end, aliased);
+            }
+        }
+
+        Self::do_eval(editor, platform, clients, client_handle, command)
+    }
+
+    fn do_eval(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: Option<ClientHandle>,
         command: &str,
     ) -> Result<Option<CommandOperation>, CommandError> {
         let mut tokenizer = CommandTokenizer(command);
@@ -283,8 +359,8 @@ impl CommandManager {
             Some(command) => (command, true),
             None => (command, false),
         };
-        let command = match editor.commands.find_command(command) {
-            Some(CommandSource::Builtin(i)) => &editor.commands.builtin_commands[i],
+        let command_func = match editor.commands.find_command(command) {
+            Some(command) => command.func,
             None => return Err(CommandError::NoSuchCommand),
         };
 
@@ -296,7 +372,7 @@ impl CommandManager {
             args: CommandArgs(tokenizer),
             bang,
         };
-        let result = (command.func)(&mut ctx);
+        let result = (command_func)(&mut ctx);
         editor.trigger_event_handlers(platform, clients);
         result
     }
@@ -332,3 +408,4 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
+

@@ -343,7 +343,9 @@ pub fn load_config(
                 }
             }
             "alias" => {
-                todo!();
+                for (from, to, _) in properties {
+                    editor.commands.aliases.add(from, to);
+                }
             }
             "normal-bindings" => parse_bindings(
                 &mut editor.keymaps,
