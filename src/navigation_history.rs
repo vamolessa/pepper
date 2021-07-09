@@ -95,6 +95,7 @@ impl NavigationHistory {
     ) {
         let current_buffer_view_handle = client.buffer_view_handle();
 
+        let client_handle = client.handle();
         let history = &mut client.navigation_history;
         let mut history_index = match history.state {
             NavigationState::IterIndex(index) => index,
@@ -133,7 +134,7 @@ impl NavigationHistory {
 
         let view_handle = editor
             .buffer_views
-            .buffer_view_handle_from_buffer_handle(client.handle(), snapshot.buffer_handle);
+            .buffer_view_handle_from_buffer_handle(client_handle, snapshot.buffer_handle);
         let mut cursors = match editor.buffer_views.get_mut(view_handle) {
             Some(view) => view.cursors.mut_guard(),
             None => return,
