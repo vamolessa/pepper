@@ -78,15 +78,15 @@ pub fn render(
     size: (u16, u16),
     scroll: (u32, u32),
     has_focus: bool,
-    buffer: &mut Vec<u8>,
+    render_buf: &mut Vec<u8>,
 ) {
     let view = View::new(editor, buffer_view_handle, size, scroll);
 
-    draw_buffer(buffer, editor, &view, has_focus);
+    draw_buffer(render_buf, editor, &view, has_focus);
     if has_focus {
-        draw_picker(buffer, editor, &view);
+        draw_picker(render_buf, editor, &view);
     }
-    draw_statusbar(buffer, editor, &view, has_focus);
+    draw_statusbar(render_buf, editor, &view, has_focus);
 }
 
 struct View<'a> {

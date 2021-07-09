@@ -6,7 +6,7 @@ use std::{
     ops::RangeBounds,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    str::{CharIndices, FromStr},
+    str::CharIndices,
 };
 
 use crate::{
@@ -1153,20 +1153,6 @@ impl Buffer {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct BufferHandle(pub u32);
-impl fmt::Display for BufferHandle {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-impl FromStr for BufferHandle {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.parse() {
-            Ok(i) => Ok(Self(i)),
-            Err(_) => Err(()),
-        }
-    }
-}
 
 pub struct InsertProcess {
     pub alive: bool,

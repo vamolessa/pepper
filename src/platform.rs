@@ -64,8 +64,8 @@ pub enum ProcessTag {
 pub struct ProcessHandle(pub usize);
 
 pub struct Platform {
-    read_from_clipboard: fn(&str, &mut String),
-    write_to_clipboard: fn(&mut String, &str),
+    read_from_clipboard: Option<fn(&mut String)>,
+    write_to_clipboard: Option<fn(&str)>,
     flush_requests: fn(),
     request_sender: mpsc::Sender<PlatformRequest>,
     needs_flushing: bool,
@@ -78,8 +78,8 @@ pub struct Platform {
 impl Platform {
     pub fn new(flush_requests: fn(), request_sender: mpsc::Sender<PlatformRequest>) -> Self {
         Self {
-            read_from_clipboard: |c, t| t.push_str(c),
-            write_to_clipboard: |c, t| c.push_str(t),
+            read_from_clipboard: None,
+            write_to_clipboard: None,
             flush_requests,
             request_sender,
             needs_flushing: false,
@@ -92,18 +92,15 @@ impl Platform {
 
     pub fn set_clipboard_api(
         &mut self,
-        read_from_clipboard: fn(&str, &mut String),
-        write_to_clipboard: fn(&mut String, &str),
+        read_from_clipboard: fn(&mut String),
+        write_to_clipboard: fn(&str),
     ) {
-        self.read_from_clipboard = read_from_clipboard;
-        self.write_to_clipboard = write_to_clipboard;
+        self.read_from_clipboard = Some(read_from_clipboard);
+        self.write_to_clipboard = Some(write_to_clipboard);
     }
 
     pub fn read_from_clipboard(&self, text: &mut String) {
-        text.clear();
-        if self.paste_command.is_empty() {
-            (self.read_from_clipboard)(&self.internal_clipboard, text);
-        } else if let Some(mut command) = parse_process_command(&self.paste_command) {
+        if let Some(mut command) = parse_process_command(&self.paste_command) {
             command.stdin(Stdio::null());
             command.stdout(Stdio::piped());
             command.stderr(Stdio::null());
@@ -113,14 +110,15 @@ impl Platform {
                     text.push_str(&output);
                 }
             }
+        } else if let Some(read_from_clipboard) = self.read_from_clipboard {
+            read_from_clipboard(text);
+        } else {
+            text.push_str(&self.internal_clipboard);
         }
     }
 
     pub fn write_to_clipboard(&mut self, text: &str) {
-        self.internal_clipboard.clear();
-        if self.copy_command.is_empty() {
-            (self.write_to_clipboard)(&mut self.internal_clipboard, text);
-        } else if let Some(mut command) = parse_process_command(&self.copy_command) {
+        if let Some(mut command) = parse_process_command(&self.copy_command) {
             command.stdin(Stdio::piped());
             command.stdout(Stdio::null());
             command.stderr(Stdio::null());
@@ -131,6 +129,11 @@ impl Platform {
                 }
                 let _ = child.wait();
             }
+        } else if let Some(write_to_clipboard) = self.write_to_clipboard {
+            write_to_clipboard(text);
+        } else {
+            self.internal_clipboard.clear();
+            self.internal_clipboard.push_str(text);
         }
     }
 

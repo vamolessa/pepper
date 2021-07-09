@@ -401,7 +401,7 @@ fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> O
     }
 }
 
-fn read_from_clipboard(_: &str, text: &mut String) {
+fn read_from_clipboard(text: &mut String) {
     let clipboard = Clipboard::open();
     let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
     if handle == NULL {
@@ -452,7 +452,7 @@ fn read_from_clipboard(_: &str, text: &mut String) {
     drop(clipboard);
 }
 
-fn write_to_clipboard(_: &mut String, text: &str) {
+fn write_to_clipboard(text: &str) {
     let clipboard = Clipboard::open();
     let len = unsafe {
         MultiByteToWideChar(

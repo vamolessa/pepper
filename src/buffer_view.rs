@@ -1,4 +1,4 @@
-use std::{fmt, num::NonZeroU8, str::FromStr};
+use std::num::NonZeroU8;
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferHandle, CharDisplayDistances},
@@ -508,20 +508,6 @@ impl BufferView {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferViewHandle(u32);
-impl fmt::Display for BufferViewHandle {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-impl FromStr for BufferViewHandle {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.parse() {
-            Ok(i) => Ok(Self(i)),
-            Err(_) => Err(()),
-        }
-    }
-}
 
 #[derive(Default)]
 pub struct BufferViewCollection {
@@ -765,3 +751,4 @@ mod tests {
         assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }
+
