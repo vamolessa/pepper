@@ -6,13 +6,13 @@ use crate::{
     client::ClientManager,
     command::{BuiltinCommand, CommandContext, CommandError, CommandOperation, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
-    cursor::{Cursor, CursorCollection},
+    cursor::Cursor,
     editor::Editor,
-    editor_utils::{parse_process_command, MessageKind},
+    editor_utils::MessageKind,
     help, lsp,
     mode::ModeKind,
     navigation_history::NavigationHistory,
-    platform::{Platform, SharedBuf},
+    platform::Platform,
     theme::{Color, THEME_COLOR_NAMES},
 };
 
@@ -46,74 +46,6 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
                 }
             }
-            Ok(None)
-        },
-    },
-    BuiltinCommand {
-        name: "replace-with-output",
-        completions: &[],
-        func: |ctx| {
-            let command = ctx.args.next()?;
-            ctx.args.assert_empty()?;
-
-            let buffer_view_handle = ctx.current_buffer_view_handle()?;
-            let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
-                Some(buffer_view) => buffer_view,
-                None => return Err(CommandError::NoBufferOpened),
-            };
-
-            const DEFAULT_SHARED_BUF: Option<SharedBuf> = None;
-            let mut stdins = [DEFAULT_SHARED_BUF; CursorCollection::capacity()];
-
-            let mut text = ctx.editor.string_pool.acquire();
-            for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-                let content = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
-                    Some(buffer) => buffer.content(),
-                    None => return Err(CommandError::NoBufferOpened),
-                };
-
-                let range = cursor.to_range();
-                text.clear();
-                content.append_range_text_to_string(range, &mut text);
-
-                let mut buf = ctx.platform.buf_pool.acquire();
-                let writer = buf.write();
-                writer.extend_from_slice(text.as_bytes());
-                let buf = buf.share();
-                ctx.platform.buf_pool.release(buf.clone());
-
-                stdins[i] = Some(buf);
-            }
-            ctx.editor.string_pool.release(text);
-
-            buffer_view.delete_text_in_cursor_ranges(
-                &mut ctx.editor.buffers,
-                &mut ctx.editor.word_database,
-                &mut ctx.editor.events,
-            );
-
-            let command = ctx.editor.string_pool.acquire_with(command);
-            ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
-
-            if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(buffer_view_handle) {
-                for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-                    let range = cursor.to_range();
-                    let command = match parse_process_command(&command) {
-                        Some(command) => command,
-                        None => continue,
-                    };
-
-                    ctx.editor.buffers.spawn_insert_process(
-                        ctx.platform,
-                        command,
-                        buffer_view.buffer_handle,
-                        range.from,
-                        stdins[i].take(),
-                    );
-                }
-            }
-
-            ctx.editor.string_pool.release(command);
             Ok(None)
         },
     },
@@ -696,3 +628,4 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
+

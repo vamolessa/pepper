@@ -4,10 +4,11 @@ use crate::{
     client::Client,
     cursor::CursorCollection,
     editor::KeysIterator,
-    editor_utils::{MessageKind, ReadLinePoll},
+    editor_utils::{parse_process_command, MessageKind, ReadLinePoll},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     pattern::Pattern,
+    platform::SharedBuf,
 };
 
 pub struct State {
@@ -570,6 +571,127 @@ pub mod goto {
         ctx.editor.read_line.set_prompt("goto-line:");
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::ReadLine);
+    }
+}
+
+pub mod process {
+    use super::*;
+
+    pub fn enter_replace_mode(ctx: &mut ModeContext) {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
+            match poll {
+                ReadLinePoll::Pending => None,
+                ReadLinePoll::Submitted => {
+                    spawn_process(ctx, true);
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+                ReadLinePoll::Canceled => {
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+            }
+        }
+
+        ctx.editor.read_line.set_prompt("replace-with-output:");
+        ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
+        Mode::change_to(ctx, ModeKind::ReadLine);
+    }
+
+    pub fn enter_insert_mode(ctx: &mut ModeContext) {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
+            match poll {
+                ReadLinePoll::Pending => None,
+                ReadLinePoll::Submitted => {
+                    spawn_process(ctx, false);
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+                ReadLinePoll::Canceled => {
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+            }
+        }
+
+        ctx.editor.read_line.set_prompt("insert-from-output:");
+        ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
+        Mode::change_to(ctx, ModeKind::ReadLine);
+    }
+
+    fn spawn_process(ctx: &mut ModeContext, pipe: bool) {
+        let buffer_view_handle = match ctx
+            .clients
+            .get(ctx.client_handle)
+            .and_then(|c| c.buffer_view_handle())
+        {
+            Some(handle) => handle,
+            None => return,
+        };
+        let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+            Some(buffer_view) => buffer_view,
+            None => return,
+        };
+        let content = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
+            Some(buffer) => buffer.content(),
+            None => return,
+        };
+
+        const DEFAULT_SHARED_BUF: Option<SharedBuf> = None;
+        let mut stdins = [DEFAULT_SHARED_BUF; CursorCollection::capacity()];
+
+        if pipe {
+            for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
+                let range = cursor.to_range();
+    
+                let mut text = ctx.editor.string_pool.acquire();
+                content.append_range_text_to_string(range, &mut text);
+    
+                let mut buf = ctx.platform.buf_pool.acquire();
+                let writer = buf.write();
+                writer.extend_from_slice(text.as_bytes());
+                let buf = buf.share();
+                ctx.platform.buf_pool.release(buf.clone());
+    
+                stdins[i] = Some(buf);
+    
+                ctx.editor.string_pool.release(text);
+            }
+        }
+
+        buffer_view.delete_text_in_cursor_ranges(
+            &mut ctx.editor.buffers,
+            &mut ctx.editor.word_database,
+            &mut ctx.editor.events,
+        );
+
+        ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
+
+        let command = ctx.editor.read_line.input();
+        if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+            for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
+                let command = match parse_process_command(&command) {
+                    Some(command) => command,
+                    None => continue,
+                };
+
+                ctx.editor.buffers.spawn_insert_process(
+                    ctx.platform,
+                    command,
+                    buffer_view.buffer_handle,
+                    cursor.position,
+                    stdins[i].take(),
+                );
+            }
+        }
     }
 }
 

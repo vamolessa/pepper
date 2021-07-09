@@ -1198,6 +1198,8 @@ impl State {
                 }
                 _ => (),
             },
+            Key::Char('|') => read_line::process::enter_replace_mode(ctx),
+            Key::Char('!') => read_line::process::enter_insert_mode(ctx),
             Key::Char('u') => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                 buffer_view.undo(

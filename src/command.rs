@@ -333,6 +333,7 @@ impl CommandManager {
         command: &mut String,
     ) -> Result<Option<CommandOperation>, CommandError> {
         if let Some(alias) = CommandTokenizer(command).next() {
+            let alias = alias.trim_end_matches('!');
             if let Some(aliased) = editor.commands.aliases.find(alias) {
                 let start = alias.as_ptr() as usize - command.as_ptr() as usize;
                 let end = start + alias.len();
@@ -372,9 +373,7 @@ impl CommandManager {
             args: CommandArgs(tokenizer),
             bang,
         };
-        let result = (command_func)(&mut ctx);
-        editor.trigger_event_handlers(platform, clients);
-        result
+        (command_func)(&mut ctx)
     }
 }
 
