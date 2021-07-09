@@ -41,7 +41,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 }
 
                 if let Some(client) = ctx.clients.get_mut(client_handle) {
-                    client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
+                    client.set_buffer_view_handle(handle, &mut ctx.editor.events);
                     client.scroll.0 = 0;
                     client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
                 }
@@ -105,7 +105,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             }
 
             if let Some(client) = ctx.clients.get_mut(client_handle) {
-                client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
+                client.set_buffer_view_handle(handle, &mut ctx.editor.events);
             }
 
             Ok(None)

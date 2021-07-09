@@ -141,17 +141,29 @@ impl State {
                         Key::Char('o') => picker::buffer::enter_mode(ctx),
                         Key::Char('b') => {
                             let client = ctx.clients.get_mut(ctx.client_handle)?;
-                            client.view_previous_buffer(ctx.editor);
+                            NavigationHistory::move_in_history(
+                                client,
+                                ctx.editor,
+                                NavigationMovement::PreviousBuffer,
+                            );
                         }
                         Key::Char('B') => {
                             let previous_client_handle = ctx.clients.previous_focused_client()?;
                             let previous_client = ctx.clients.get_mut(previous_client_handle)?;
                             let buffer_view_handle = previous_client.buffer_view_handle();
 
-                            previous_client.view_previous_buffer(ctx.editor);
+                            NavigationHistory::move_in_history(
+                                previous_client,
+                                ctx.editor,
+                                NavigationMovement::PreviousBuffer,
+                            );
                             let mut previous_buffer_view_handle =
                                 previous_client.buffer_view_handle();
-                            previous_client.view_previous_buffer(ctx.editor);
+                            NavigationHistory::move_in_history(
+                                previous_client,
+                                ctx.editor,
+                                NavigationMovement::PreviousBuffer,
+                            );
 
                             if previous_buffer_view_handle == buffer_view_handle {
                                 previous_buffer_view_handle = None;

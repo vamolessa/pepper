@@ -6,7 +6,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     editor::Editor,
     events::{EditorEvent, EditorEventQueue},
-    navigation_history::{NavigationMovement, NavigationHistory},
+    navigation_history::{NavigationHistory, NavigationMovement},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
@@ -61,20 +61,20 @@ impl FromStr for ClientHandle {
 }
 
 pub struct CustomViewRenderContext<'a> {
-    pub render_buf: &'a mut Vec<u8>,
     pub editor: &'a Editor,
     pub size: (u16, u16),
     pub scroll: u32,
 }
-pub type CustomViewRenderFn = fn(&mut CustomViewRenderContext);
+pub type CustomViewRenderFn = fn(&mut Vec<u8>, &CustomViewRenderContext);
 
-pub enum ViewTarget {
+#[derive(Clone, Copy)]
+pub enum ClientView {
     BufferView(BufferViewHandle),
     Custom(CustomViewRenderFn),
 }
-impl Default for ViewTarget {
+impl Default for ClientView {
     fn default() -> Self {
-        Self::Custom(|_| ())
+        Self::Custom(|_, _| ()) // TODO: change to welcome screen?
     }
 }
 
@@ -89,7 +89,7 @@ pub struct Client {
     pub height: u16,
     pub navigation_history: NavigationHistory,
 
-    buffer_view_handle: Option<BufferViewHandle>,
+    view: ClientView,
 }
 
 impl Client {
@@ -102,39 +102,40 @@ impl Client {
         self.height = 0;
         self.navigation_history.clear();
 
-        self.buffer_view_handle = None;
+        self.view = ClientView::default();
     }
 
     pub fn handle(&self) -> ClientHandle {
         self.handle
     }
 
-    pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {
-        self.buffer_view_handle
+    pub fn view(&self) -> ClientView {
+        self.view
     }
 
-    pub fn view_previous_buffer(&mut self, editor: &mut Editor) {
-        NavigationHistory::move_in_history(self, editor, NavigationMovement::PreviousBuffer);
+    pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {
+        match self.view {
+            ClientView::BufferView(handle) => Some(handle),
+            _ => None,
+        }
     }
 
     pub fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
         self.navigation_history
             .remove_snapshots_with_buffer_handle(buffer_handle);
-        self.view_previous_buffer(editor);
+        NavigationHistory::move_in_history(self, editor, NavigationMovement::PreviousBuffer);
     }
 
-    pub fn set_buffer_view_handle(
-        &mut self,
-        handle: Option<BufferViewHandle>,
-        events: &mut EditorEventQueue,
-    ) {
-        if self.buffer_view_handle != handle {
-            if let Some(handle) = self.buffer_view_handle {
-                events.enqueue(EditorEvent::BufferViewLostFocus { handle })
+    pub fn set_view(&mut self, view: ClientView, events: &mut EditorEventQueue) {
+        match (self.view, view) {
+            (ClientView::BufferView(current), ClientView::BufferView(next)) => {
+                if current != next {
+                    events.enqueue(EditorEvent::BufferViewLostFocus { handle: current });
+                }
             }
-
-            self.buffer_view_handle = handle;
+            _ => (),
         }
+        self.view = view;
     }
 
     pub fn has_ui(&self) -> bool {
