@@ -751,4 +751,3 @@ mod tests {
         assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }
-

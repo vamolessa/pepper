@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{
     buffer::{parse_path_and_position, BufferHandle},
     buffer_position::BufferPosition,
-    client::{ClientManager, CustomViewRenderContext},
+    client::{ClientManager, ClientView, CustomViewRenderContext},
     command::{BuiltinCommand, CommandContext, CommandError, CommandOperation, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
@@ -41,7 +41,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 }
 
                 if let Some(client) = ctx.clients.get_mut(client_handle) {
-                    client.set_buffer_view_handle(handle, &mut ctx.editor.events);
+                    client.set_view(ClientView::Buffer(handle), &mut ctx.editor.events);
                     client.scroll.0 = 0;
                     client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
                 }
@@ -105,7 +105,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             }
 
             if let Some(client) = ctx.clients.get_mut(client_handle) {
-                client.set_buffer_view_handle(handle, &mut ctx.editor.events);
+                client.set_view(ClientView::Buffer(handle), &mut ctx.editor.events);
             }
 
             Ok(None)
@@ -636,4 +636,3 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
-

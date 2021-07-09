@@ -50,7 +50,7 @@ pub mod search {
     use super::*;
 
     use crate::{
-        navigation_history::{NavigationMovement, NavigationHistory},
+        navigation_history::{NavigationHistory, NavigationMovement},
         register::SEARCH_REGISTER,
     };
 
@@ -512,7 +512,7 @@ pub mod goto {
     use crate::{
         buffer_position::BufferPosition,
         cursor::Cursor,
-        navigation_history::{NavigationMovement, NavigationHistory},
+        navigation_history::{NavigationHistory, NavigationMovement},
         word_database::WordKind,
     };
 
@@ -735,4 +735,3 @@ pub mod lsp_rename {
         ctx.editor.read_line.input_mut().push_str(placeholder);
     }
 }
-

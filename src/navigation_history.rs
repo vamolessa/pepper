@@ -3,7 +3,7 @@ use std::ops::Range;
 use crate::{
     buffer::BufferHandle,
     buffer_view::{BufferView, BufferViewCollection},
-    client::Client,
+    client::{Client, ClientView},
     cursor::Cursor,
     editor::Editor,
 };
@@ -174,7 +174,7 @@ impl NavigationHistory {
             }
         }
 
-        client.set_buffer_view_handle(Some(view_handle), &mut editor.events);
+        client.set_view(ClientView::Buffer(view_handle), &mut editor.events);
     }
 
     pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {
@@ -211,4 +211,3 @@ impl Default for NavigationHistory {
         }
     }
 }
-

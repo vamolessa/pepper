@@ -1110,7 +1110,10 @@ impl Client {
 
             let position = symbol.range.start.into();
             let buffer_view_handle = editor.buffer_view_handle_from_path(client_handle, path);
-            client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+            client.set_view(
+                client::ClientView::Buffer(buffer_view_handle),
+                &mut editor.events,
+            );
             let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
                 Some(buffer_view) => buffer_view,
                 None => return,
@@ -1404,8 +1407,8 @@ impl Client {
                             });
                         }
                         if let Some(true) = params.take_focus {
-                            client.set_buffer_view_handle(
-                                Some(buffer_view_handle),
+                            client.set_view(
+                                client::ClientView::Buffer(buffer_view_handle),
                                 &mut editor.events,
                             );
                         }
@@ -1733,8 +1736,8 @@ impl Client {
                         }
 
                         if let Some(client) = clients.get_mut(client_handle) {
-                            client.set_buffer_view_handle(
-                                Some(buffer_view_handle),
+                            client.set_view(
+                                client::ClientView::Buffer(buffer_view_handle),
                                 &mut editor.events,
                             );
                         }
@@ -1919,7 +1922,10 @@ impl Client {
                     editor.string_pool.release(text);
                 }
 
-                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                client.set_view(
+                    client::ClientView::Buffer(buffer_view_handle),
+                    &mut editor.events,
+                );
                 editor.trigger_event_handlers(platform, clients);
 
                 if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
@@ -2912,4 +2918,3 @@ impl ClientManager {
         }
     }
 }
-

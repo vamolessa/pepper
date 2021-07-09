@@ -69,12 +69,20 @@ pub type CustomViewRenderFn = fn(&mut Vec<u8>, &CustomViewRenderContext);
 
 #[derive(Clone, Copy)]
 pub enum ClientView {
-    BufferView(BufferViewHandle),
+    Buffer(BufferViewHandle),
     Custom(CustomViewRenderFn),
 }
 impl Default for ClientView {
     fn default() -> Self {
         Self::Custom(|_, _| ()) // TODO: change to welcome screen?
+    }
+}
+impl PartialEq for ClientView {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Buffer(a), Self::Buffer(b)) => a == b,
+            _ => false,
+        }
     }
 }
 
@@ -115,7 +123,7 @@ impl Client {
 
     pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {
         match self.view {
-            ClientView::BufferView(handle) => Some(handle),
+            ClientView::Buffer(handle) => Some(handle),
             _ => None,
         }
     }
@@ -128,7 +136,7 @@ impl Client {
 
     pub fn set_view(&mut self, view: ClientView, events: &mut EditorEventQueue) {
         match (self.view, view) {
-            (ClientView::BufferView(current), ClientView::BufferView(next)) => {
+            (ClientView::Buffer(current), ClientView::Buffer(next)) => {
                 if current != next {
                     events.enqueue(EditorEvent::BufferViewLostFocus { handle: current });
                 }
@@ -152,7 +160,7 @@ impl Client {
                 return None;
             }
 
-            let buffer_view = editor.buffer_views.get(this.buffer_view_handle?)?;
+            let buffer_view = editor.buffer_views.get(this.buffer_view_handle()?)?;
             let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
 
             let position = buffer_view.cursors.main_cursor().position;
@@ -279,4 +287,3 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
-
