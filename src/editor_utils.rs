@@ -196,12 +196,15 @@ pub fn load_config(
         config_name: &str,
         output: &mut EditorOutputWrite,
     ) {
-        for (key, value, line_index) in bindings {
-            match keymaps.parse_and_map(mode, key, value) {
+        for (from, to, line_index) in bindings {
+            match keymaps.parse_and_map(mode, from, to) {
                 Ok(()) => (),
-                Err(error) => {
-                    output.fmt(format_args!("{} at {}:{}", error, config_name, line_index))
-                }
+                Err(error) => output.fmt(format_args!(
+                    "{} at {}:{}\n",
+                    error,
+                    config_name,
+                    line_index + 1,
+                )),
             }
         }
     }
@@ -212,8 +215,10 @@ pub fn load_config(
         Ok(sections) => sections,
         Err(error) => {
             output.fmt(format_args!(
-                "error parsing config at {}:{} : {}",
-                config_name, error.line_index, error.kind,
+                "error parsing config at {}:{} : {}\n",
+                config_name,
+                error.line_index + 1,
+                error.kind,
             ));
             return;
         }
@@ -225,9 +230,12 @@ pub fn load_config(
                 for (key, value, line_index) in properties {
                     match editor.config.parse_config(key, value) {
                         Ok(()) => (),
-                        Err(error) => {
-                            output.fmt(format_args!("{} at {}:{}", error, config_name, line_index))
-                        }
+                        Err(error) => output.fmt(format_args!(
+                            "{} at {}:{}\n",
+                            error,
+                            config_name,
+                            line_index + 1
+                        )),
                     }
                 }
             }
@@ -238,7 +246,9 @@ pub fn load_config(
                         None => {
                             output.fmt(format_args!(
                                 "no such color '{}' at {}:{}\n",
-                                key, config_name, line_index
+                                key,
+                                config_name,
+                                line_index + 1
                             ));
                             continue;
                         }
@@ -248,7 +258,9 @@ pub fn load_config(
                         Err(_) => {
                             output.fmt(format_args!(
                                 "invalid color value '{}' at {}:{}\n",
-                                value, config_name, line_index
+                                value,
+                                config_name,
+                                line_index + 1
                             ));
                             continue;
                         }
@@ -265,8 +277,10 @@ pub fn load_config(
                             Ok(()) => has_glob = true,
                             Err(_) => {
                                 output.fmt(format_args!(
-                                    "invalid glob '{}' at {}:{}",
-                                    value, config_name, line_index,
+                                    "invalid glob '{}' at {}:{}\n",
+                                    value,
+                                    config_name,
+                                    line_index + 1,
                                 ));
                                 continue 'section_loop;
                             }
@@ -276,16 +290,20 @@ pub fn load_config(
                                 Ok(()) => (),
                                 Err(error) => {
                                     output.fmt(format_args!(
-                                        "syntax pattern error '{}' at {}:{}",
-                                        error, config_name, line_index,
+                                        "syntax pattern error '{}' at {}:{}\n",
+                                        error,
+                                        config_name,
+                                        line_index + 1,
                                     ));
                                     continue 'section_loop;
                                 }
                             },
                             Err(_) => {
                                 output.fmt(format_args!(
-                                    "no such token kind '{}' at {}:{}",
-                                    key, config_name, line_index
+                                    "no such token kind '{}' at {}:{}\n",
+                                    key,
+                                    config_name,
+                                    line_index + 1
                                 ));
                                 continue 'section_loop;
                             }
@@ -295,8 +313,9 @@ pub fn load_config(
 
                 if !has_glob {
                     output.fmt(format_args!(
-                        "syntax has no glob property at {}:{}",
-                        config_name, line_index,
+                        "syntax has no glob property at {}:{}\n",
+                        config_name,
+                        line_index + 1,
                     ));
                     continue;
                 }
@@ -315,8 +334,10 @@ pub fn load_config(
                             platform.paste_command.push_str(value);
                         }
                         _ => output.fmt(format_args!(
-                            "no such clipboard property '{}' at {}:{}",
-                            key, config_name, line_index
+                            "no such clipboard property '{}' at {}:{}\n",
+                            key,
+                            config_name,
+                            line_index + 1
                         )),
                     }
                 }
@@ -372,8 +393,10 @@ pub fn load_config(
                         "root" => root = Some(value),
                         "log" => log = Some(value),
                         _ => output.fmt(format_args!(
-                            "no such lsp property '{}' at {}:{}",
-                            key, config_name, line_index,
+                            "no such lsp property '{}' at {}:{}\n",
+                            key,
+                            config_name,
+                            line_index + 1,
                         )),
                     }
                 }
@@ -382,8 +405,9 @@ pub fn load_config(
                     Some(glob) => glob,
                     None => {
                         output.fmt(format_args!(
-                            "lsp has no glob property at {}:{}",
-                            config_name, line_index,
+                            "lsp has no glob property at {}:{}\n",
+                            config_name,
+                            line_index + 1,
                         ));
                         continue;
                     }
@@ -392,8 +416,9 @@ pub fn load_config(
                     Some(command) => command,
                     None => {
                         output.fmt(format_args!(
-                            "lsp has no command property at {}:{}",
-                            config_name, line_index,
+                            "lsp has no command property at {}:{}\n",
+                            config_name,
+                            line_index + 1,
                         ));
                         continue;
                     }
@@ -402,15 +427,20 @@ pub fn load_config(
 
                 if let Err(InvalidGlobError) = editor.lsp.add_recipe(glob, command, root, log) {
                     output.fmt(format_args!(
-                        "invalid lsp glob '{}' at {}:{}",
-                        glob, config_name, line_index
+                        "invalid lsp glob '{}' at {}:{}\n",
+                        glob,
+                        config_name,
+                        line_index + 1
                     ));
                 }
             }
             _ => output.fmt(format_args!(
                 "no such config '{}' at {}:{}\n",
-                section, config_name, line_index,
+                section,
+                config_name,
+                line_index + 1,
             )),
         }
     }
 }
+

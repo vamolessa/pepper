@@ -1,7 +1,6 @@
 use std::{env, fmt, fs, io, panic, path::Path, sync::mpsc, time::Duration};
 
 use crate::{
-    buffer::parse_path_and_position,
     client::{ClientHandle, ClientManager},
     editor::{Editor, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
@@ -280,21 +279,9 @@ impl<'stdout> ClientApplication<'stdout> {
             }
         }
         for path in &args.files {
-            use fmt::Write;
-            let (path, position) = parse_path_and_position(path);
-            match position {
-                Some(position) => {
-                    writeln!(
-                        commands,
-                        "open '{}' -line={} -column={}",
-                        path,
-                        position.line_index + 1,
-                        position.column_byte_index + 1,
-                    )
-                    .unwrap();
-                }
-                None => writeln!(commands, "open '{}'", path).unwrap(),
-            }
+            commands.push_str("open '");
+            commands.push_str(path);
+            commands.push('\'');
         }
 
         self.reinit_screen();
