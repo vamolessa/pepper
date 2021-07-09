@@ -27,6 +27,7 @@ pub enum CommandError {
     InvalidColorValue,
     KeyMapError(ParseKeyMapError),
     LspServerNotRunning,
+    LspServerNotLogging,
 }
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -42,6 +43,7 @@ impl fmt::Display for CommandError {
             Self::InvalidColorValue => f.write_str("invalid color value"),
             Self::KeyMapError(error) => write!(f, "{}", error),
             Self::LspServerNotRunning => f.write_str("no lsp server running"),
+            Self::LspServerNotLogging => f.write_str("lsp server is not logging"),
         }
     }
 }

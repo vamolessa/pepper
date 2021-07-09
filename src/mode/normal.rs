@@ -1,7 +1,9 @@
 use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
-    buffer::{find_path_and_position_at, parse_path_and_position, BufferContent},
+    buffer::{
+        find_path_and_position_at, parse_path_and_position, BufferCapabilities, BufferContent,
+    },
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{Client, ClientView},
@@ -647,9 +649,11 @@ impl State {
                                 }
                             }
 
-                            let handle = ctx
-                                .editor
-                                .buffer_view_handle_from_path(ctx.client_handle, path);
+                            let handle = ctx.editor.buffer_view_handle_from_path(
+                                ctx.client_handle,
+                                path,
+                                BufferCapabilities::text(),
+                            );
                             if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
                                 let mut cursors = buffer_view.cursors.mut_guard();
                                 cursors.clear();
@@ -1691,9 +1695,11 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
         None => {
             let path = path.to_str().unwrap_or("");
             let path = ctx.editor.string_pool.acquire_with(path);
-            let handle = ctx
-                .editor
-                .buffer_view_handle_from_path(ctx.client_handle, Path::new(&path));
+            let handle = ctx.editor.buffer_view_handle_from_path(
+                ctx.client_handle,
+                Path::new(&path),
+                BufferCapabilities::text(),
+            );
             ctx.editor.string_pool.release(path);
             handle
         }
@@ -1725,3 +1731,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     None
 }
+

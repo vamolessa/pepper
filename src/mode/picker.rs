@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    buffer::parse_path_and_position,
+    buffer::{parse_path_and_position, BufferCapabilities},
     buffer_position::BufferPosition,
     client::ClientView,
     cursor::Cursor,
@@ -128,9 +128,11 @@ pub mod buffer {
             }
 
             let path = ctx.editor.string_pool.acquire_with(path);
-            let buffer_view_handle = ctx
-                .editor
-                .buffer_view_handle_from_path(ctx.client_handle, Path::new(&path));
+            let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
+                ctx.client_handle,
+                Path::new(&path),
+                BufferCapabilities::text(),
+            );
             ctx.editor.string_pool.release(path);
 
             if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
@@ -195,9 +197,11 @@ pub mod lsp_definition {
                         }
 
                         let path = ctx.editor.string_pool.acquire_with(path);
-                        let buffer_view_handle = ctx
-                            .editor
-                            .buffer_view_handle_from_path(ctx.client_handle, Path::new(&path));
+                        let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
+                            ctx.client_handle,
+                            Path::new(&path),
+                            BufferCapabilities::text(),
+                        );
                         ctx.editor.string_pool.release(path);
                         if let Some(buffer_view) =
                             ctx.editor.buffer_views.get_mut(buffer_view_handle)
@@ -405,3 +409,4 @@ pub mod lsp_workspace_symbol {
         }
     }
 }
+

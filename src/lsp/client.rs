@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCapabilities, BufferCollection, BufferContent, BufferHandle},
+    buffer::{BufferCapabilities, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,
@@ -298,7 +298,7 @@ impl BufferDiagnosticCollection {
             });
         }
 
-        json.write(&mut self.diagnostics[self.len].data, &diagnostic.data);
+        let _ = json.write(&mut self.diagnostics[self.len].data, &diagnostic.data);
         self.len += 1;
     }
 
@@ -576,8 +576,7 @@ pub struct Client {
 
     initialized: bool,
     server_capabilities: ServerCapabilities,
-    log_write_buf: Vec<u8>,
-    pub log_buffer_handle: Option<BufferHandle>,
+
     document_selectors: Vec<Glob>,
     versioned_buffers: VersionedBufferCollection,
     diagnostics: DiagnosticCollection,
@@ -586,10 +585,21 @@ pub struct Client {
 
     request_state: RequestState,
     request_raw_json: Vec<u8>,
+
+    log_file_path: String,
+    log_file: Option<io::BufWriter<File>>,
 }
 
 impl Client {
-    fn new(handle: ClientHandle, root: PathBuf, log_buffer_handle: Option<BufferHandle>) -> Self {
+    fn new(handle: ClientHandle, root: PathBuf, log_file_path: Option<String>) -> Self {
+        let (log_file_path, log_file) = match log_file_path {
+            Some(path) => match File::create(&path) {
+                Ok(file) => (path, Some(io::BufWriter::new(file))),
+                Err(_) => (String::new(), None),
+            },
+            None => (String::new(), None),
+        };
+
         Self {
             handle,
             protocol: Protocol::new(),
@@ -600,9 +610,6 @@ impl Client {
             initialized: false,
             server_capabilities: ServerCapabilities::default(),
 
-            log_write_buf: Vec::new(),
-            log_buffer_handle,
-
             document_selectors: Vec::new(),
             versioned_buffers: VersionedBufferCollection::default(),
             diagnostics: DiagnosticCollection::default(),
@@ -610,6 +617,9 @@ impl Client {
             request_state: RequestState::Idle,
             request_raw_json: Vec::new(),
             temp_edits: Vec::new(),
+
+            log_file_path,
+            log_file,
         }
     }
 
@@ -622,6 +632,14 @@ impl Client {
             true
         } else {
             self.document_selectors.iter().any(|g| g.matches(path))
+        }
+    }
+
+    pub fn log_file_path(&self) -> Option<&str> {
+        if self.log_file_path.is_empty() {
+            None
+        } else {
+            Some(&self.log_file_path)
         }
     }
 
@@ -1109,7 +1127,11 @@ impl Client {
             };
 
             let position = symbol.range.start.into();
-            let buffer_view_handle = editor.buffer_view_handle_from_path(client_handle, path);
+            let buffer_view_handle = editor.buffer_view_handle_from_path(
+                client_handle,
+                path,
+                BufferCapabilities::text(),
+            );
             client.set_view(
                 client::ClientView::Buffer(buffer_view_handle),
                 &mut editor.events,
@@ -1206,29 +1228,14 @@ impl Client {
         self.request(platform, "textDocument/completion", params);
     }
 
-    // TODO: change to write to a file instead of a buffer
-    fn write_to_log_buffer<F>(&mut self, writer: F)
+    fn write_to_log_file<F>(&mut self, writer: F)
     where
-        F: FnOnce(&mut Vec<u8>, &mut Json),
+        F: FnOnce(&mut io::BufWriter<File>, &mut Json),
     {
-        if let Some(_) = self.log_buffer_handle {
-            writer(&mut self.log_write_buf, &mut self.json);
-            self.log_write_buf.extend_from_slice(b"\n----\n\n");
-        }
-    }
-
-    fn flush_log_buffer(&mut self, editor: &mut Editor) {
-        let buffers = &mut editor.buffers;
-        if let Some(buffer) = self.log_buffer_handle.and_then(|h| buffers.get_mut(h)) {
-            let position = buffer.content().end();
-            let text = String::from_utf8_lossy(&self.log_write_buf);
-            buffer.insert_text(
-                &mut editor.word_database,
-                position,
-                &text,
-                &mut editor.events,
-            );
-            self.log_write_buf.clear();
+        if let Some(ref mut buf) = self.log_file {
+            use io::Write;
+            writer(buf, &mut self.json);
+            let _ = buf.write_all(b"\n----\n\n");
         }
     }
 
@@ -1238,16 +1245,16 @@ impl Client {
         clients: &mut client::ClientManager,
         request: ServerRequest,
     ) -> Result<JsonValue, ProtocolError> {
-        self.write_to_log_buffer(|buf, json| {
+        self.write_to_log_file(|buf, json| {
             use io::Write;
             let _ = write!(buf, "receive request\nid: ");
-            json.write(buf, &request.id);
+            let _ = json.write(buf, &request.id);
             let _ = write!(
                 buf,
                 "\nmethod: '{}'\nparams:\n",
                 request.method.as_str(json)
             );
-            json.write(buf, &request.params);
+            let _ = json.write(buf, &request.params);
         });
 
         match request.method.as_str(&self.json) {
@@ -1395,8 +1402,11 @@ impl Client {
                     let mut closure = || {
                         let client_handle = clients.focused_client()?;
                         let client = clients.get_mut(client_handle)?;
-                        let buffer_view_handle =
-                            editor.buffer_view_handle_from_path(client_handle, path);
+                        let buffer_view_handle = editor.buffer_view_handle_from_path(
+                            client_handle,
+                            path,
+                            BufferCapabilities::text(),
+                        );
                         if let Some(range) = params.selection {
                             let buffer_view = editor.buffer_views.get_mut(buffer_view_handle)?;
                             let mut cursors = buffer_view.cursors.mut_guard();
@@ -1430,14 +1440,14 @@ impl Client {
         editor: &mut Editor,
         notification: ServerNotification,
     ) -> Result<(), ProtocolError> {
-        self.write_to_log_buffer(|buf, json| {
+        self.write_to_log_file(|buf, json| {
             use io::Write;
             let _ = write!(
                 buf,
                 "receive notification\nmethod: '{}'\nparams:\n",
                 notification.method.as_str(json)
             );
-            json.write(buf, &notification.params);
+            let _ = json.write(buf, &notification.params);
         });
 
         match notification.method.as_str(&self.json) {
@@ -1525,7 +1535,7 @@ impl Client {
             None => return Ok(()),
         };
 
-        self.write_to_log_buffer(|buf, json| {
+        self.write_to_log_file(|buf, json| {
             use io::Write;
             let _ = write!(
                 buf,
@@ -1535,7 +1545,7 @@ impl Client {
             match &response.result {
                 Ok(result) => {
                     let _ = write!(buf, "result:\n");
-                    json.write(buf, result);
+                    let _ = json.write(buf, result);
                 }
                 Err(error) => {
                     let _ = write!(
@@ -1544,7 +1554,7 @@ impl Client {
                         error.code,
                         error.message.as_str(json)
                     );
-                    json.write(buf, &error.data);
+                    let _ = json.write(buf, &error.data);
                 }
             }
         });
@@ -1723,8 +1733,11 @@ impl Client {
                             NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
                         }
 
-                        let buffer_view_handle =
-                            editor.buffer_view_handle_from_path(client_handle, path);
+                        let buffer_view_handle = editor.buffer_view_handle_from_path(
+                            client_handle,
+                            path,
+                            BufferCapabilities::text(),
+                        );
                         if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
                             let position = location.range.start.into();
                             let mut cursors = buffer_view.cursors.mut_guard();
@@ -1821,8 +1834,11 @@ impl Client {
                 }
                 buffer_name.push_str(".refs");
 
-                let buffer_view_handle =
-                    editor.buffer_view_handle_from_path(client.handle(), Path::new(&buffer_name));
+                let buffer_view_handle = editor.buffer_view_handle_from_path(
+                    client.handle(),
+                    Path::new(&buffer_name),
+                    BufferCapabilities::text(),
+                );
                 editor.string_pool.release(buffer_name);
 
                 let mut count = 0;
@@ -2047,7 +2063,7 @@ impl Client {
 
                 self.request_state = RequestState::FinishCodeAction;
                 self.request_raw_json.clear();
-                self.json.write(&mut self.request_raw_json, &actions.into());
+                let _ = self.json.write(&mut self.request_raw_json, &actions.into());
                 Ok(())
             }
             "textDocument/documentSymbol" => {
@@ -2098,7 +2114,7 @@ impl Client {
 
                 self.request_state = RequestState::FinishDocumentSymbols { buffer_view_handle };
                 self.request_raw_json.clear();
-                self.json.write(&mut self.request_raw_json, &symbols.into());
+                let _ = self.json.write(&mut self.request_raw_json, &symbols.into());
                 Ok(())
             }
             "workspace/symbol" => {
@@ -2141,7 +2157,7 @@ impl Client {
 
                 self.request_state = RequestState::FinishWorkspaceSymbols;
                 self.request_raw_json.clear();
-                self.json.write(&mut self.request_raw_json, &symbols.into());
+                let _ = self.json.write(&mut self.request_raw_json, &symbols.into());
                 Ok(())
             }
             "textDocument/formatting" => {
@@ -2263,9 +2279,6 @@ impl Client {
                     helper::send_did_save(self, editor, platform, handle);
                 }
                 &EditorEvent::BufferClose { handle } => {
-                    if self.log_buffer_handle == Some(handle) {
-                        self.log_buffer_handle = None;
-                    }
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
                     helper::send_pending_did_change(self, editor, platform);
@@ -2283,10 +2296,10 @@ impl Client {
         }
 
         let params = params.into();
-        self.write_to_log_buffer(|buf, json| {
+        self.write_to_log_file(|buf, json| {
             use io::Write;
             let _ = write!(buf, "send request\nmethod: '{}'\nparams:\n", method);
-            json.write(buf, &params);
+            let _ = json.write(buf, &params);
         });
         let id = self
             .protocol
@@ -2300,14 +2313,14 @@ impl Client {
         request_id: JsonValue,
         result: Result<JsonValue, ResponseError>,
     ) {
-        self.write_to_log_buffer(|buf, json| {
+        self.write_to_log_file(|buf, json| {
             use io::Write;
             let _ = write!(buf, "send response\nid: ");
-            json.write(buf, &request_id);
+            let _ = json.write(buf, &request_id);
             match &result {
                 Ok(result) => {
                     let _ = write!(buf, "\nresult:\n");
-                    json.write(buf, result);
+                    let _ = json.write(buf, result);
                 }
                 Err(error) => {
                     let _ = write!(
@@ -2316,7 +2329,7 @@ impl Client {
                         error.code,
                         error.message.as_str(json)
                     );
-                    json.write(buf, &error.data);
+                    let _ = json.write(buf, &error.data);
                 }
             }
         });
@@ -2326,10 +2339,10 @@ impl Client {
 
     fn notify(&mut self, platform: &mut Platform, method: &'static str, params: JsonObject) {
         let params = params.into();
-        self.write_to_log_buffer(|buf, json| {
+        self.write_to_log_file(|buf, json| {
             use io::Write;
             let _ = write!(buf, "send notification\nmethod: '{}'\nparams:\n", method);
-            json.write(buf, &params);
+            let _ = json.write(buf, &params);
         });
         self.protocol
             .notify(platform, &mut self.json, method, params);
@@ -2599,7 +2612,7 @@ struct ClientRecipe {
     glob: Glob,
     command: String,
     root: PathBuf,
-    log_buffer_name: String,
+    log_file_path: String,
     running_client: Option<ClientHandle>,
 }
 
@@ -2641,7 +2654,7 @@ impl ClientManager {
         glob: &str,
         command: &str,
         root: Option<&Path>,
-        log_buffer_name: Option<&str>,
+        log_file_path: Option<&str>,
     ) -> Result<(), InvalidGlobError> {
         let glob_hash = hash_bytes(glob.as_bytes());
         for recipe in &mut self.recipes {
@@ -2652,9 +2665,9 @@ impl ClientManager {
                 if let Some(path) = root {
                     recipe.root.push(path);
                 }
-                recipe.log_buffer_name.clear();
-                if let Some(name) = log_buffer_name {
-                    recipe.log_buffer_name.push_str(name);
+                recipe.log_file_path.clear();
+                if let Some(name) = log_file_path {
+                    recipe.log_file_path.push_str(name);
                 }
                 recipe.running_client = None;
                 return Ok(());
@@ -2668,7 +2681,7 @@ impl ClientManager {
             glob: recipe_glob,
             command: command.into(),
             root: root.unwrap_or(Path::new("")).into(),
-            log_buffer_name: log_buffer_name.unwrap_or("").into(),
+            log_file_path: log_file_path.unwrap_or("").into(),
             running_client: None,
         });
         Ok(())
@@ -2677,10 +2690,9 @@ impl ClientManager {
     pub fn start(
         &mut self,
         platform: &mut Platform,
-        buffers: &mut BufferCollection,
         mut command: Command,
         root: PathBuf,
-        log_buffer_name: Option<&str>,
+        log_file_path: Option<String>,
     ) -> ClientHandle {
         fn find_free_slot(this: &mut ClientManager) -> ClientHandle {
             for (i, slot) in this.entries.iter_mut().enumerate() {
@@ -2696,17 +2708,6 @@ impl ClientManager {
 
         let handle = find_free_slot(self);
 
-        let log_buffer_handle = log_buffer_name.map(|name| {
-            use fmt::Write;
-            let buffer = buffers.add_new();
-            buffer.capabilities = BufferCapabilities::log();
-            let mut path = String::new();
-            let _ = write!(path, "{}.{}", name, handle);
-            buffer.path.clear();
-            buffer.path.push(&path);
-            buffer.handle()
-        });
-
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -2716,8 +2717,9 @@ impl ClientManager {
             command,
             buf_len: protocol::BUFFER_LEN,
         });
-        self.entries[handle.0 as usize] =
-            ClientEntry::Occupied(Client::new(handle, root, log_buffer_handle));
+
+        let client = Client::new(handle, root, log_file_path);
+        self.entries[handle.0 as usize] = ClientEntry::Occupied(client);
         handle
     }
 
@@ -2797,10 +2799,10 @@ impl ClientManager {
         while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
             match event {
                 ServerEvent::ParseError => {
-                    client.write_to_log_buffer(|buf, json| {
+                    client.write_to_log_file(|buf, json| {
                         use io::Write;
                         let _ = write!(buf, "send parse error\nrequest_id: ");
-                        json.write(buf, &JsonValue::Null);
+                        let _ = json.write(buf, &JsonValue::Null);
                     });
                     client.respond(platform, JsonValue::Null, Err(ResponseError::parse_error()));
                 }
@@ -2825,7 +2827,6 @@ impl ClientManager {
                     let _ = client.on_response(editor, platform, clients, response);
                 }
             }
-            client.flush_log_buffer(editor);
         }
         events.finish(&mut client.protocol);
 
@@ -2837,11 +2838,10 @@ impl ClientManager {
         let mut entry = ClientEntry::Vacant;
         std::mem::swap(&mut entry, &mut editor.lsp.entries[index]);
         if let ClientEntry::Occupied(mut client) = entry {
-            client.write_to_log_buffer(|buf, _| {
+            client.write_to_log_file(|buf, _| {
                 use io::Write;
                 let _ = write!(buf, "lsp server stopped");
             });
-            client.flush_log_buffer(editor);
         }
 
         for recipe in &mut editor.lsp.recipes {
@@ -2888,33 +2888,23 @@ impl ClientManager {
                     recipe.root.clone()
                 };
 
-                let recipe_log_buffer_name =
-                    editor.string_pool.acquire_with(&recipe.log_buffer_name);
-                let log_buffer_name = if recipe_log_buffer_name.is_empty() {
+                let log_file_path = if recipe.log_file_path.is_empty() {
                     None
                 } else {
-                    Some(&recipe_log_buffer_name[..])
+                    Some(recipe.log_file_path.clone())
                 };
 
-                let client_handle = editor.lsp.start(
-                    platform,
-                    &mut editor.buffers,
-                    command,
-                    root,
-                    log_buffer_name,
-                );
-
+                let client_handle = editor.lsp.start(platform, command, root, log_file_path);
                 editor.lsp.recipes[index].running_client = Some(client_handle);
-                editor.string_pool.release(recipe_log_buffer_name);
             }
         }
 
         for i in 0..editor.lsp.entries.len() {
             if let Some(mut client) = editor.lsp.entries[i].reserve_and_take() {
                 client.on_editor_events(editor, platform);
-                client.flush_log_buffer(editor);
                 editor.lsp.entries[i] = ClientEntry::Occupied(client);
             }
         }
     }
 }
+

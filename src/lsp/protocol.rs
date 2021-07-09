@@ -1044,7 +1044,7 @@ impl Protocol {
         let mut buf = platform.buf_pool.acquire();
         let write = buf.write();
 
-        json.write(&mut self.body_buf, &body);
+        let _ = json.write(&mut self.body_buf, &body);
         let _ = write!(write, "Content-Length: {}\r\n\r\n", self.body_buf.len());
         write.append(&mut self.body_buf);
 

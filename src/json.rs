@@ -588,22 +588,28 @@ impl Json {
         read_value(self, reader)
     }
 
-    pub fn write(&self, buf: &mut Vec<u8>, value: &JsonValue) {
-        fn append_str(buf: &mut Vec<u8>, s: &str) {
-            buf.push(b'"');
+    pub fn write<W>(&self, buf: &mut W, value: &JsonValue) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        fn append_str<W>(buf: &mut W, s: &str) -> io::Result<()>
+        where
+            W: io::Write,
+        {
+            buf.write_all(b"\"")?;
             for c in s.chars() {
                 match c {
-                    '\"' => buf.extend_from_slice(b"\\\""),
-                    '\\' => buf.extend_from_slice(b"\\\\"),
-                    '\x08' => buf.extend_from_slice(b"\\b"),
-                    '\x0c' => buf.extend_from_slice(b"\\f"),
-                    '\n' => buf.extend_from_slice(b"\\n"),
-                    '\r' => buf.extend_from_slice(b"\\r"),
-                    '\t' => buf.extend_from_slice(b"\\t"),
+                    '\"' => buf.write_all(b"\\\"")?,
+                    '\\' => buf.write_all(b"\\\\")?,
+                    '\x08' => buf.write_all(b"\\b")?,
+                    '\x0c' => buf.write_all(b"\\f")?,
+                    '\n' => buf.write_all(b"\\n")?,
+                    '\r' => buf.write_all(b"\\r")?,
+                    '\t' => buf.write_all(b"\\t")?,
                     _ => {
                         let c = c as u32;
                         if c >= 32 && c <= 126 {
-                            buf.push(c as u8);
+                            buf.write_all(&[c as _])?;
                         } else {
                             fn to_hex_digit(n: u32) -> u8 {
                                 let n = (n & 0xf) as u8;
@@ -614,74 +620,69 @@ impl Json {
                                 }
                             }
 
-                            buf.extend_from_slice(b"\\u");
+                            buf.write_all(b"\\u")?;
                             let c = c.to_le();
-                            buf.extend_from_slice(&[
+                            buf.write_all(&[
                                 to_hex_digit(c >> 12),
                                 to_hex_digit(c >> 8),
                                 to_hex_digit(c >> 4),
                                 to_hex_digit(c),
-                            ]);
+                            ])?;
                         }
                     }
                 }
             }
-            buf.push(b'"');
+            buf.write_all(b"\"")?;
+            Ok(())
         }
 
         match value {
-            JsonValue::Null => {
-                buf.extend_from_slice(b"null");
-            }
-            JsonValue::Boolean(true) => {
-                buf.extend_from_slice(b"true");
-            }
-            JsonValue::Boolean(false) => {
-                buf.extend_from_slice(b"false");
-            }
+            JsonValue::Null => buf.write_all(b"null"),
+            JsonValue::Boolean(true) => buf.write_all(b"true"),
+            JsonValue::Boolean(false) => buf.write_all(b"false"),
             JsonValue::Integer(i) => {
-                use io::Write;
-                let _ = write!(buf, "{}", i);
+                write!(buf, "{}", i)
             }
             JsonValue::Number(n) => {
-                use io::Write;
-                let _ = write!(buf, "{}", n);
+                write!(buf, "{}", n)
             }
             JsonValue::Str(s) => append_str(buf, s),
             JsonValue::String(s) => append_str(buf, s.as_str(self)),
             JsonValue::Array(a) => {
-                buf.push(b'[');
+                buf.write_all(b"[")?;
                 let mut next = a.first as usize;
                 if next != 0 {
                     loop {
                         let element = &self.elements[next];
-                        self.write(buf, &element.value);
+                        self.write(buf, &element.value)?;
                         next = element.next as _;
                         if next == 0 {
                             break;
                         }
-                        buf.push(b',');
+                        buf.write_all(b",")?;
                     }
                 }
-                buf.push(b']');
+                buf.write_all(b"]")?;
+                Ok(())
             }
             JsonValue::Object(o) => {
-                buf.push(b'{');
+                buf.write_all(b"{")?;
                 let mut next = o.first as usize;
                 if next != 0 {
                     loop {
                         let member = &self.members[next];
-                        append_str(buf, member.key.as_str(self));
-                        buf.push(b':');
-                        self.write(buf, &member.value);
+                        append_str(buf, member.key.as_str(self))?;
+                        buf.write_all(b":")?;
+                        self.write(buf, &member.value)?;
                         next = member.next as _;
                         if next == 0 {
                             break;
                         }
-                        buf.push(b',');
+                        buf.write_all(b",")?;
                     }
                 }
-                buf.push(b'}');
+                buf.write_all(b"}")?;
+                Ok(())
             }
         }
     }
@@ -701,7 +702,7 @@ mod tests {
     fn write_value() {
         fn assert_json(buf: &mut Vec<u8>, expected: &str, value: JsonValue, json: &mut Json) {
             buf.clear();
-            json.write(buf, &value);
+            json.write(buf, &value).unwrap();
             assert_eq!(expected, std::str::from_utf8(buf).unwrap());
         }
 
@@ -861,3 +862,4 @@ mod tests {
         }
     }
 }
+

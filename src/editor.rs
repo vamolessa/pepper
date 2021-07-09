@@ -160,6 +160,7 @@ impl Editor {
         &mut self,
         client_handle: ClientHandle,
         path: &Path,
+        capabilities: BufferCapabilities,
     ) -> BufferViewHandle {
         if let Some(buffer_handle) = self.buffers.find_with_path(&self.current_directory, path) {
             self.buffer_views
@@ -169,7 +170,7 @@ impl Editor {
             let buffer = self.buffers.add_new();
             buffer.path.clear();
             buffer.path.push(path);
-            buffer.capabilities = BufferCapabilities::text();
+            buffer.capabilities = capabilities;
             let _ = buffer.discard_and_reload_from_file(&mut self.word_database, &mut self.events);
 
             self.buffer_views.add_new(client_handle, buffer.handle())
@@ -467,3 +468,4 @@ impl Editor {
         }
     }
 }
+
