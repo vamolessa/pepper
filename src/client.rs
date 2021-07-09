@@ -90,7 +90,6 @@ pub struct Client {
     pub navigation_history: NavigationHistory,
 
     buffer_view_handle: Option<BufferViewHandle>,
-    previous_buffer_view_handle: Option<BufferViewHandle>,
 }
 
 impl Client {
@@ -114,6 +113,10 @@ impl Client {
         self.buffer_view_handle
     }
 
+    pub fn previous_buffer_view_handle(&self) -> Option<BufferViewHandle> {
+        None
+    }
+
     pub fn go_to_previous_buffer(&mut self, editor: &mut Editor) {
         NavigationHistory::move_in_history(self, editor, NavigationDirection::Backward);
     }
@@ -121,22 +124,7 @@ impl Client {
     pub fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
         self.navigation_history
             .remove_snapshots_with_buffer_handle(buffer_handle);
-        // TODO: navigate back here?
-
         self.go_to_previous_buffer(editor);
-
-        if self
-            .buffer_view_handle
-            .and_then(|h| editor.buffer_views.get(h))
-            .map(|v| v.buffer_handle == buffer_handle)
-            .unwrap_or(false)
-        {
-            self.buffer_view_handle = None;
-            editor.events.enqueue(EditorEvent::ClientChangeBufferView {
-                client_handle: self.handle,
-                previous_buffer_handle: buffer_handle,
-            });
-        }
     }
 
     pub fn set_buffer_view_handle(
@@ -145,12 +133,11 @@ impl Client {
         events: &mut EditorEventQueue,
     ) {
         if self.buffer_view_handle != handle {
-            self.previous_buffer_view_handle = self.buffer_view_handle;
-            self.buffer_view_handle = handle;
+            if let Some(handle) = self.buffer_view_handle {
+                events.enqueue(EditorEvent::BufferViewLostFocus { handle })
+            }
 
-            events.enqueue(EditorEvent::ClientChangeBufferView {
-                handle: self.handle,
-            })
+            self.buffer_view_handle = handle;
         }
     }
 

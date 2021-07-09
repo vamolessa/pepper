@@ -427,20 +427,23 @@ impl Editor {
                             }
                         }
                     }
-                    &EditorEvent::BufferLostFocus { handle } => {
-                        let should_close = self
-                            .buffers
-                            .get(handle)
-                            .map(|b| b.capabilities.auto_close && !b.needs_save())
-                            .unwrap_or(false);
-                        let any_view = !clients
-                            .iter()
-                            .filter_map(Client::buffer_view_handle)
-                            .filter_map(|h| self.buffer_views.get(h))
-                            .any(|v| v.buffer_handle == handle);
+                    &EditorEvent::BufferViewLostFocus { handle } => {
+                        if let Some(buffer_view) = self.buffer_views.get(handle) {
+                            let buffer_handle = buffer_view.buffer_handle;
+                            let should_close = self
+                                .buffers
+                                .get(buffer_handle)
+                                .map(|b| b.capabilities.auto_close && !b.needs_save())
+                                .unwrap_or(false);
+                            let any_view = !clients
+                                .iter()
+                                .filter_map(Client::buffer_view_handle)
+                                .filter_map(|h| self.buffer_views.get(h))
+                                .any(|v| v.buffer_handle == buffer_handle);
 
-                        if should_close && !any_view {
-                            self.buffers.defer_remove(handle, &mut self.events);
+                            if should_close && !any_view {
+                                self.buffers.defer_remove(buffer_handle, &mut self.events);
+                            }
                         }
                     }
                     &EditorEvent::BufferClose { handle } => {

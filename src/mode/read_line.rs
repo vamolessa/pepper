@@ -113,11 +113,9 @@ pub mod search {
             None
         }
 
-        NavigationHistory::save_client_snapshot(
-            ctx.clients,
-            ctx.client_handle,
-            &mut ctx.editor.buffer_views,
-        );
+        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+        }
         ctx.editor.read_line.set_prompt("search:");
         update_search(ctx);
 

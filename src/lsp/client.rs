@@ -1034,17 +1034,16 @@ impl Client {
         }
 
         if let Ok(position) = find_symbol_position(symbols, &self.json, index) {
-            let position = position.into();
-            NavigationHistory::save_client_snapshot(
-                clients,
-                client_handle,
-                &mut editor.buffer_views,
-            );
+            if let Some(client) = clients.get_mut(client_handle) {
+                NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
+            }
 
             let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
                 Some(buffer_view) => buffer_view,
                 None => return,
             };
+
+            let position = position.into();
             let mut cursors = buffer_view.cursors.mut_guard();
             cursors.clear();
             cursors.add(Cursor {
@@ -1101,17 +1100,15 @@ impl Client {
                 Ok(Uri::Path(path)) => path,
                 Err(_) => return,
             };
-            let position = symbol.range.start.into();
-            NavigationHistory::save_client_snapshot(
-                clients,
-                client_handle,
-                &mut editor.buffer_views,
-            );
+            if let Some(client) = clients.get_mut(client_handle) {
+                NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
+            }
             let client = match clients.get_mut(client_handle) {
                 Some(client) => client,
                 None => return,
             };
 
+            let position = symbol.range.start.into();
             let buffer_view_handle = editor.buffer_view_handle_from_path(client_handle, path);
             client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
             let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
@@ -1719,12 +1716,9 @@ impl Client {
                         let path = match Uri::parse(&self.root, location.uri.as_str(&self.json))? {
                             Uri::Path(path) => path,
                         };
-
-                        NavigationHistory::save_client_snapshot(
-                            clients,
-                            client_handle,
-                            &mut editor.buffer_views,
-                        );
+                        if let Some(client) = clients.get_mut(client_handle) {
+                            NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
+                        }
 
                         let buffer_view_handle =
                             editor.buffer_view_handle_from_path(client_handle, path);
@@ -2271,8 +2265,8 @@ impl Client {
                     helper::send_pending_did_change(self, editor, platform);
                     helper::send_did_close(self, editor, platform, handle);
                 }
+                &EditorEvent::BufferViewLostFocus { .. } => (),
                 &EditorEvent::FixCursors { .. } => (),
-                &EditorEvent::ClientChangeBufferView { .. } => (),
             }
         }
     }
