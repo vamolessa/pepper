@@ -1,4 +1,4 @@
-use std::{env, fmt, fs, io, panic, path::Path, sync::mpsc, time::Duration};
+use std::{env, fs, io, panic, path::Path, sync::mpsc, time::Duration};
 
 use crate::{
     client::{ClientHandle, ClientManager},
@@ -124,7 +124,6 @@ impl ServerApplication {
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
         let mut clients = ClientManager::default();
-        let mut is_first_client = true;
         let mut client_event_receiver = ClientEventReceiver::default();
 
         'event_loop: loop {
@@ -137,12 +136,10 @@ impl ServerApplication {
                         clients.on_client_joined(handle);
                         let mut buf = platform.buf_pool.acquire();
                         let write = buf.write();
-                        write.push(is_first_client as _);
                         write.push(handle.into_index() as _);
                         let buf = buf.share();
                         platform.buf_pool.release(buf.clone());
                         platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
-                        is_first_client = false;
                     }
                     ApplicationEvent::ConnectionClose { handle } => {
                         clients.on_client_left(handle);
@@ -235,7 +232,7 @@ impl ServerApplication {
 pub struct ClientApplication<'stdout> {
     handle: ClientHandle,
     is_pipped: bool,
-    stdin_read_buf: Vec<u8>,
+    stdin_read_buf: Vec<u8>, // TODO: do something with it
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
     stdout: io::StdoutLock<'stdout>,
@@ -260,28 +257,11 @@ impl<'stdout> ClientApplication<'stdout> {
         }
     }
 
-    pub fn init<'a>(&'a mut self, args: Args, is_first_client: bool) -> &'a [u8] {
+    pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
         self.server_write_buf.clear();
 
         if let Some(handle) = args.as_client {
             self.handle = handle;
-        }
-
-        let mut commands = String::new();
-        if is_first_client {
-            for config in &args.configs {
-                use fmt::Write;
-                if config.suppress_file_not_found {
-                    writeln!(commands, "source '{}'", &config.path).unwrap();
-                } else {
-                    writeln!(commands, "try-source '{}'", &config.path).unwrap();
-                }
-            }
-        }
-        for path in &args.files {
-            commands.push_str("open '");
-            commands.push_str(path);
-            commands.push('\'');
         }
 
         self.reinit_screen();
@@ -291,7 +271,12 @@ impl<'stdout> ClientApplication<'stdout> {
             }
         }
 
-        if !commands.is_empty() {
+        let mut commands = String::new();
+        for path in &args.files {
+            commands.clear();
+            commands.push_str("open '");
+            commands.push_str(path);
+            commands.push('\'');
             ClientEvent::Command(self.handle, &commands).serialize(&mut self.server_write_buf);
         }
 
@@ -344,17 +329,6 @@ impl<'stdout> ClientApplication<'stdout> {
 
         if !stdin_bytes.is_empty() {
             self.stdin_read_buf.extend_from_slice(stdin_bytes);
-            for command in self.stdin_read_buf.split(|&b| b == b'\0') {
-                match std::str::from_utf8(command) {
-                    Ok(command) => ClientEvent::Command(self.handle, command)
-                        .serialize(&mut self.server_write_buf),
-                    Err(_) => ClientEvent::Command(
-                        self.handle,
-                        "print -error 'error parsing utf8 from stdin'",
-                    )
-                    .serialize(&mut self.server_write_buf),
-                }
-            }
         }
 
         let mut suspend = false;
@@ -411,3 +385,4 @@ pub fn set_panic_hook() {
         }
     }));
 }
+

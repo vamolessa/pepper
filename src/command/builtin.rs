@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{
     buffer::{parse_path_and_position, BufferHandle},
     buffer_position::BufferPosition,
-    client::ClientManager,
+    client::{ClientManager, CustomViewRenderContext},
     command::{BuiltinCommand, CommandContext, CommandError, CommandOperation, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
@@ -83,11 +83,9 @@ pub static COMMANDS: &[BuiltinCommand] = &[
 
             let (path, position) = parse_path_and_position(path);
 
-            NavigationHistory::save_client_snapshot(
-                ctx.clients,
-                client_handle,
-                &ctx.editor.buffer_views,
-            );
+            if let Some(client) = ctx.clients.get_mut(client_handle) {
+                NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+            }
 
             let path = ctx.editor.string_pool.acquire_with(path);
             let handle = ctx
@@ -223,14 +221,6 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 .buffers
                 .defer_remove(buffer_handle, &mut ctx.editor.events);
 
-            let clients = &mut *ctx.clients;
-            if let Some(client) = ctx.client_handle.and_then(|h| clients.get_mut(h)) {
-                client.set_buffer_view_handle(
-                    client.previous_buffer_view_handle(),
-                    &mut ctx.editor.events,
-                );
-            }
-
             ctx.editor
                 .status_bar
                 .write(MessageKind::Info)
@@ -258,6 +248,20 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 .status_bar
                 .write(MessageKind::Info)
                 .fmt(format_args!("{} buffers closed", count));
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "status",
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_empty()?;
+
+            let clients = &mut *ctx.clients;
+            if let Some(client) = ctx.client_handle.and_then(|h| clients.get_mut(h)) {
+                // TODO
+            }
+
             Ok(None)
         },
     },
@@ -574,6 +578,10 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         },
     },
 ];
+
+fn render_status_view(ctx: &mut CustomViewRenderContext) {
+    // TODO
+}
 
 fn map(ctx: &mut CommandContext, mode: ModeKind) -> Result<(), CommandError> {
     let from = ctx.args.next()?;

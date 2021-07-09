@@ -50,15 +50,15 @@ pub enum EditorEvent {
         handle: BufferHandle,
         new_path: bool,
     },
+    BufferLostFocus {
+        handle: BufferHandle,
+    },
     BufferClose {
         handle: BufferHandle,
     },
     FixCursors {
         handle: BufferViewHandle,
         cursors: EditorEventCursors,
-    },
-    ClientChangeBufferView {
-        handle: ClientHandle,
     },
 }
 

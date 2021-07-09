@@ -122,11 +122,9 @@ pub mod buffer {
                 }
             };
 
-            NavigationHistory::save_client_snapshot(
-                ctx.clients,
-                ctx.client_handle,
-                &ctx.editor.buffer_views,
-            );
+            if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+            }
 
             let path = ctx.editor.string_pool.acquire_with(path);
             let buffer_view_handle = ctx
@@ -185,11 +183,12 @@ pub mod lsp_definition {
                             None => BufferPosition::zero(),
                         };
 
-                        NavigationHistory::save_client_snapshot(
-                            ctx.clients,
-                            ctx.client_handle,
-                            &ctx.editor.buffer_views,
-                        );
+                        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                            NavigationHistory::save_client_snapshot(
+                                client,
+                                &ctx.editor.buffer_views,
+                            );
+                        }
 
                         let path = ctx.editor.string_pool.acquire_with(path);
                         let buffer_view_handle = ctx

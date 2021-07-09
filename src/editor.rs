@@ -427,10 +427,26 @@ impl Editor {
                             }
                         }
                     }
+                    &EditorEvent::BufferLostFocus { handle } => {
+                        let should_close = self
+                            .buffers
+                            .get(handle)
+                            .map(|b| b.capabilities.auto_close && !b.needs_save())
+                            .unwrap_or(false);
+                        let any_view = !clients
+                            .iter()
+                            .filter_map(Client::buffer_view_handle)
+                            .filter_map(|h| self.buffer_views.get(h))
+                            .any(|v| v.buffer_handle == handle);
+
+                        if should_close && !any_view {
+                            self.buffers.defer_remove(handle, &mut self.events);
+                        }
+                    }
                     &EditorEvent::BufferClose { handle } => {
                         self.buffers.remove(handle, &mut self.word_database);
                         for client in clients.iter_mut() {
-                            client.on_buffer_close(&self.buffer_views, handle, &mut self.events);
+                            client.on_buffer_close(self, handle);
                         }
                         self.buffer_views.remove_buffer_views(handle);
                     }
@@ -440,28 +456,6 @@ impl Editor {
                             view_cursors.clear();
                             for &cursor in cursors.as_cursors(&self.events) {
                                 view_cursors.add(cursor);
-                            }
-                        }
-                    }
-                    &EditorEvent::ClientChangeBufferView { handle } => {
-                        if let Some(buffer_handle) = clients
-                            .get(handle)
-                            .and_then(|c| c.previous_buffer_view_handle())
-                            .and_then(|h| self.buffer_views.get(h))
-                            .map(|v| v.buffer_handle)
-                        {
-                            if self
-                                .buffers
-                                .get(buffer_handle)
-                                .map(|b| b.capabilities.auto_close && !b.needs_save())
-                                .unwrap_or(false)
-                                && !clients
-                                    .iter()
-                                    .filter_map(Client::buffer_view_handle)
-                                    .filter_map(|h| self.buffer_views.get(h))
-                                    .any(|v| v.buffer_handle == buffer_handle)
-                            {
-                                self.buffers.defer_remove(buffer_handle, &mut self.events);
                             }
                         }
                     }

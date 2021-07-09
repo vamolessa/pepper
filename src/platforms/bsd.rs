@@ -386,20 +386,19 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
 fn run_client(args: Args, mut connection: UnixStream) {
     use io::{Read, Write};
 
-    let mut buf = [0; 2];
+    let mut buf = [0; 1];
     match connection.read_exact(&mut buf) {
         Ok(()) => (),
         _ => return,
     }
-    let is_first_client = buf[0] != 0;
-    let client_index = buf[1];
+    let client_index = buf[0];
 
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let is_pipped = is_pipped();
 
     let stdout = io::stdout();
     let mut application = ClientApplication::new(client_handle, stdout.lock(), is_pipped);
-    let bytes = application.init(args, is_first_client);
+    let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
         return;
     }

@@ -3,10 +3,10 @@ use std::{fmt, str::FromStr};
 use crate::{
     buffer::{BufferHandle, CharDisplayDistances},
     buffer_position::BufferPositionIndex,
-    buffer_view::{BufferViewCollection, BufferViewHandle},
+    buffer_view::BufferViewHandle,
     editor::Editor,
     events::{EditorEvent, EditorEventQueue},
-    navigation_history::NavigationHistory,
+    navigation_history::{NavigationDirection, NavigationHistory},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
@@ -60,6 +60,24 @@ impl FromStr for ClientHandle {
     }
 }
 
+pub struct CustomViewRenderContext<'a> {
+    pub render_buf: &'a mut Vec<u8>,
+    pub editor: &'a Editor,
+    pub size: (u16, u16),
+    pub scroll: u32,
+}
+pub type CustomViewRenderFn = fn(&mut CustomViewRenderContext);
+
+pub enum ViewTarget {
+    BufferView(BufferViewHandle),
+    Custom(CustomViewRenderFn),
+}
+impl Default for ViewTarget {
+    fn default() -> Self {
+        Self::Custom(|_| ())
+    }
+}
+
 #[derive(Default)]
 pub struct Client {
     active: bool,
@@ -86,7 +104,6 @@ impl Client {
         self.navigation_history.clear();
 
         self.buffer_view_handle = None;
-        self.previous_buffer_view_handle = None;
     }
 
     pub fn handle(&self) -> ClientHandle {
@@ -97,38 +114,27 @@ impl Client {
         self.buffer_view_handle
     }
 
-    pub fn previous_buffer_view_handle(&self) -> Option<BufferViewHandle> {
-        self.previous_buffer_view_handle
+    pub fn go_to_previous_buffer(&mut self, editor: &mut Editor) {
+        NavigationHistory::move_in_history(self, editor, NavigationDirection::Backward);
     }
 
-    pub fn on_buffer_close(
-        &mut self,
-        buffer_views: &BufferViewCollection,
-        buffer_handle: BufferHandle,
-        events: &mut EditorEventQueue,
-    ) {
+    pub fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
         self.navigation_history
             .remove_snapshots_with_buffer_handle(buffer_handle);
         // TODO: navigate back here?
 
-        if self
-            .previous_buffer_view_handle
-            .and_then(|h| buffer_views.get(h))
-            .map(|v| v.buffer_handle == buffer_handle)
-            .unwrap_or(false)
-        {
-            self.previous_buffer_view_handle = None;
-        }
+        self.go_to_previous_buffer(editor);
 
         if self
             .buffer_view_handle
-            .and_then(|h| buffer_views.get(h))
+            .and_then(|h| editor.buffer_views.get(h))
             .map(|v| v.buffer_handle == buffer_handle)
             .unwrap_or(false)
         {
             self.buffer_view_handle = None;
-            events.enqueue(EditorEvent::ClientChangeBufferView {
-                handle: self.handle,
+            editor.events.enqueue(EditorEvent::ClientChangeBufferView {
+                client_handle: self.handle,
+                previous_buffer_handle: buffer_handle,
             });
         }
     }
@@ -281,7 +287,7 @@ impl ClientManager {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Client> {
+    pub fn iter(&self) -> impl Clone + Iterator<Item = &Client> {
         self.clients.iter().filter(|c| c.active)
     }
 
@@ -289,3 +295,4 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
+

@@ -141,12 +141,7 @@ impl State {
                         Key::Char('o') => picker::buffer::enter_mode(ctx),
                         Key::Char('b') => {
                             let client = ctx.clients.get_mut(ctx.client_handle)?;
-                            if let Some(buffer_view_handle) = client.previous_buffer_view_handle() {
-                                client.set_buffer_view_handle(
-                                    Some(buffer_view_handle),
-                                    &mut ctx.editor.events,
-                                );
-                            }
+                            client.go_to_previous_buffer(ctx.editor);
                         }
                         Key::Char('B') => {
                             let previous_client_handle = ctx.clients.previous_focused_client()?;
@@ -264,21 +259,23 @@ impl State {
             }
             Key::Ctrl('n') => {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                NavigationHistory::move_in_history(
-                    ctx.editor,
-                    ctx.clients,
-                    ctx.client_handle,
-                    NavigationDirection::Forward,
-                );
+                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                    NavigationHistory::move_in_history(
+                        client,
+                        ctx.editor,
+                        NavigationDirection::Forward,
+                    );
+                }
             }
             Key::Ctrl('p') => {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                NavigationHistory::move_in_history(
-                    ctx.editor,
-                    ctx.clients,
-                    ctx.client_handle,
-                    NavigationDirection::Backward,
-                );
+                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                    NavigationHistory::move_in_history(
+                        client,
+                        ctx.editor,
+                        NavigationDirection::Backward,
+                    );
+                }
             }
             Key::Char('a') => {
                 fn balanced_brackets(
@@ -440,11 +437,7 @@ impl State {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char('g') => {
                         if state.count > 0 {
-                            NavigationHistory::save_client_snapshot(
-                                ctx.clients,
-                                ctx.client_handle,
-                                &mut ctx.editor.buffer_views,
-                            );
+                            save_client_snapshot(ctx);
                             let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                             let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
                             let buffer = buffer.content();
@@ -473,11 +466,7 @@ impl State {
                         ctx.editor.config.tab_size,
                     ),
                     Key::Char('j') => {
-                        NavigationHistory::save_client_snapshot(
-                            ctx.clients,
-                            ctx.client_handle,
-                            &ctx.editor.buffer_views,
-                        );
+                        save_client_snapshot(ctx);
                         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                         buffer_view.move_cursors(
                             &ctx.editor.buffers,
@@ -487,11 +476,7 @@ impl State {
                         );
                     }
                     Key::Char('k') => {
-                        NavigationHistory::save_client_snapshot(
-                            ctx.clients,
-                            ctx.client_handle,
-                            &ctx.editor.buffer_views,
-                        );
+                        save_client_snapshot(ctx);
                         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                         buffer_view.move_cursors(
                             &ctx.editor.buffers,
@@ -624,11 +609,7 @@ impl State {
                             }
 
                             if !jumped {
-                                NavigationHistory::save_client_snapshot(
-                                    ctx.clients,
-                                    ctx.client_handle,
-                                    &ctx.editor.buffer_views,
-                                );
+                                save_client_snapshot(ctx);
                             }
 
                             let handle = ctx
@@ -1374,6 +1355,12 @@ fn paste_text(
     None
 }
 
+fn save_client_snapshot(ctx: &mut ModeContext) {
+    if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+        NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+    }
+}
+
 fn find_char(ctx: &mut ModeContext, forward: bool) -> Option<()> {
     let state = &ctx.editor.mode.normal_state;
     let skip;
@@ -1435,11 +1422,7 @@ fn move_to_search_match<F>(ctx: &mut ModeContext, index_selector: F) -> Option<(
 where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
-    NavigationHistory::save_client_snapshot(
-        ctx.clients,
-        ctx.client_handle,
-        &mut ctx.editor.buffer_views,
-    );
+    save_client_snapshot(ctx);
 
     let client = ctx.clients.get_mut(ctx.client_handle)?;
     let handle = client.buffer_view_handle()?;
@@ -1549,11 +1532,7 @@ fn search_word_or_move_to_it(
             Err(i) => i,
         };
     } else {
-        NavigationHistory::save_client_snapshot(
-            ctx.clients,
-            ctx.client_handle,
-            &mut ctx.editor.buffer_views,
-        );
+        save_client_snapshot(ctx);
 
         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
         let mut range_index = current_range_index;
@@ -1687,11 +1666,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
         }
     };
 
-    NavigationHistory::save_client_snapshot(
-        ctx.clients,
-        ctx.client_handle,
-        &mut ctx.editor.buffer_views,
-    );
+    save_client_snapshot(ctx);
 
     let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle)?;
     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
@@ -1714,3 +1689,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     None
 }
+

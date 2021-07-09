@@ -74,12 +74,13 @@ pub mod search {
                         if let Some(buffer) = ctx.editor.buffers.get(buffer_view.buffer_handle) {
                             let search_ranges = buffer.search_ranges();
                             if search_ranges.is_empty() {
-                                NavigationHistory::move_in_history(
-                                    ctx.editor,
-                                    ctx.clients,
-                                    ctx.client_handle,
-                                    NavigationDirection::Backward,
-                                );
+                                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                                    NavigationHistory::move_in_history(
+                                        client,
+                                        ctx.editor,
+                                        NavigationDirection::Backward,
+                                    );
+                                }
                             } else {
                                 let position = buffer_view.cursors.main_cursor().position;
                                 ctx.editor.mode.normal_state.search_index = match search_ranges
@@ -98,12 +99,13 @@ pub mod search {
                     Mode::change_to(ctx, ModeKind::default());
                 }
                 ReadLinePoll::Canceled => {
-                    NavigationHistory::move_in_history(
-                        ctx.editor,
-                        ctx.clients,
-                        ctx.client_handle,
-                        NavigationDirection::Backward,
-                    );
+                    if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                        NavigationHistory::move_in_history(
+                            client,
+                            ctx.editor,
+                            NavigationDirection::Backward,
+                        );
+                    }
                     Mode::change_to(ctx, ModeKind::default());
                 }
             }
@@ -551,23 +553,22 @@ pub mod goto {
                 }
                 ReadLinePoll::Submitted => Mode::change_to(ctx, ModeKind::default()),
                 ReadLinePoll::Canceled => {
-                    NavigationHistory::move_in_history(
-                        ctx.editor,
-                        ctx.clients,
-                        ctx.client_handle,
-                        NavigationDirection::Backward,
-                    );
+                    if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                        NavigationHistory::move_in_history(
+                            client,
+                            ctx.editor,
+                            NavigationDirection::Backward,
+                        );
+                    }
                     Mode::change_to(ctx, ModeKind::default());
                 }
             }
             None
         }
 
-        NavigationHistory::save_client_snapshot(
-            ctx.clients,
-            ctx.client_handle,
-            &mut ctx.editor.buffer_views,
-        );
+        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+        }
         ctx.editor.read_line.set_prompt("goto-line:");
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::ReadLine);
@@ -651,18 +652,18 @@ pub mod process {
         if pipe {
             for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
                 let range = cursor.to_range();
-    
+
                 let mut text = ctx.editor.string_pool.acquire();
                 content.append_range_text_to_string(range, &mut text);
-    
+
                 let mut buf = ctx.platform.buf_pool.acquire();
                 let writer = buf.write();
                 writer.extend_from_slice(text.as_bytes());
                 let buf = buf.share();
                 ctx.platform.buf_pool.release(buf.clone());
-    
+
                 stdins[i] = Some(buf);
-    
+
                 ctx.editor.string_pool.release(text);
             }
         }
