@@ -6,7 +6,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     editor::Editor,
     events::{EditorEvent, EditorEventQueue},
-    navigation_history::{NavigationDirection, NavigationHistory},
+    navigation_history::{NavigationMovement, NavigationHistory},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
@@ -113,19 +113,14 @@ impl Client {
         self.buffer_view_handle
     }
 
-    pub fn previous_buffer_view_handle(&self) -> Option<BufferViewHandle> {
-        //TODO: implement
-        None
-    }
-
-    pub fn go_to_previous_buffer(&mut self, editor: &mut Editor) {
-        NavigationHistory::move_in_history(self, editor, NavigationDirection::Backward);
+    pub fn view_previous_buffer(&mut self, editor: &mut Editor) {
+        NavigationHistory::move_in_history(self, editor, NavigationMovement::PreviousBuffer);
     }
 
     pub fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
         self.navigation_history
             .remove_snapshots_with_buffer_handle(buffer_handle);
-        self.go_to_previous_buffer(editor);
+        self.view_previous_buffer(editor);
     }
 
     pub fn set_buffer_view_handle(

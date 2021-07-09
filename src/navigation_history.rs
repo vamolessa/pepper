@@ -8,11 +8,10 @@ use crate::{
     editor::Editor,
 };
 
-// TODO: rename to NavigationMovement
-// TODO: add BufferBackward, BufferForward,
-pub enum NavigationDirection {
+pub enum NavigationMovement {
     Forward,
     Backward,
+    PreviousBuffer,
 }
 
 #[derive(Clone)]
@@ -88,11 +87,7 @@ impl NavigationHistory {
         });
     }
 
-    pub fn move_in_history(
-        client: &mut Client,
-        editor: &mut Editor,
-        direction: NavigationDirection,
-    ) {
+    pub fn move_in_history(client: &mut Client, editor: &mut Editor, movement: NavigationMovement) {
         let current_buffer_view_handle = client.buffer_view_handle();
 
         let client_handle = client.handle();
@@ -102,8 +97,8 @@ impl NavigationHistory {
             NavigationState::Insert => history.snapshots.len(),
         };
 
-        let snapshot = match direction {
-            NavigationDirection::Forward => {
+        let snapshot = match movement {
+            NavigationMovement::Forward => {
                 if history_index + 1 >= history.snapshots.len() {
                     return;
                 }
@@ -112,7 +107,7 @@ impl NavigationHistory {
                 let snapshot = history.snapshots[history_index].clone();
                 snapshot
             }
-            NavigationDirection::Backward => {
+            NavigationMovement::Backward => {
                 if history_index == 0 {
                     return;
                 }
@@ -127,6 +122,34 @@ impl NavigationHistory {
 
                 history_index -= 1;
                 history.snapshots[history_index].clone()
+            }
+            NavigationMovement::PreviousBuffer => {
+                let mut index = history_index;
+                if index < history.snapshots.len() {
+                    let current_buffer_handle = history.snapshots[index].buffer_handle;
+                    match history.snapshots[index + 1..]
+                        .iter()
+                        .position(|s| s.buffer_handle != current_buffer_handle)
+                    {
+                        Some(i) => index = i,
+                        None => return,
+                    }
+                } else {
+                    let current_buffer_handle = match history.snapshots.last() {
+                        Some(snapshot) => snapshot.buffer_handle,
+                        None => return,
+                    };
+                    match history
+                        .snapshots
+                        .iter()
+                        .rposition(|s| s.buffer_handle != current_buffer_handle)
+                    {
+                        Some(i) => index = i,
+                        None => return,
+                    }
+                }
+
+                history.snapshots[index].clone()
             }
         };
 

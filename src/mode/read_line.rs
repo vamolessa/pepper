@@ -50,7 +50,7 @@ pub mod search {
     use super::*;
 
     use crate::{
-        navigation_history::{NavigationDirection, NavigationHistory},
+        navigation_history::{NavigationMovement, NavigationHistory},
         register::SEARCH_REGISTER,
     };
 
@@ -78,7 +78,7 @@ pub mod search {
                                     NavigationHistory::move_in_history(
                                         client,
                                         ctx.editor,
-                                        NavigationDirection::Backward,
+                                        NavigationMovement::Backward,
                                     );
                                 }
                             } else {
@@ -103,7 +103,7 @@ pub mod search {
                         NavigationHistory::move_in_history(
                             client,
                             ctx.editor,
-                            NavigationDirection::Backward,
+                            NavigationMovement::Backward,
                         );
                     }
                     Mode::change_to(ctx, ModeKind::default());
@@ -512,7 +512,7 @@ pub mod goto {
     use crate::{
         buffer_position::BufferPosition,
         cursor::Cursor,
-        navigation_history::{NavigationDirection, NavigationHistory},
+        navigation_history::{NavigationMovement, NavigationHistory},
         word_database::WordKind,
     };
 
@@ -555,7 +555,7 @@ pub mod goto {
                         NavigationHistory::move_in_history(
                             client,
                             ctx.editor,
-                            NavigationDirection::Backward,
+                            NavigationMovement::Backward,
                         );
                     }
                     Mode::change_to(ctx, ModeKind::default());

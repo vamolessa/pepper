@@ -11,7 +11,7 @@ use crate::{
     help::HELP_PREFIX,
     lsp,
     mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeOperation, ModeState},
-    navigation_history::{NavigationDirection, NavigationHistory},
+    navigation_history::{NavigationHistory, NavigationMovement},
     platform::Key,
     register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
@@ -141,14 +141,22 @@ impl State {
                         Key::Char('o') => picker::buffer::enter_mode(ctx),
                         Key::Char('b') => {
                             let client = ctx.clients.get_mut(ctx.client_handle)?;
-                            client.go_to_previous_buffer(ctx.editor);
+                            client.view_previous_buffer(ctx.editor);
                         }
                         Key::Char('B') => {
                             let previous_client_handle = ctx.clients.previous_focused_client()?;
                             let previous_client = ctx.clients.get_mut(previous_client_handle)?;
                             let buffer_view_handle = previous_client.buffer_view_handle();
-                            let previous_buffer_view_handle =
-                                previous_client.previous_buffer_view_handle();
+
+                            previous_client.view_previous_buffer(ctx.editor);
+                            let mut previous_buffer_view_handle =
+                                previous_client.buffer_view_handle();
+                            previous_client.view_previous_buffer(ctx.editor);
+
+                            if previous_buffer_view_handle == buffer_view_handle {
+                                previous_buffer_view_handle = None;
+                            }
+
                             previous_client.set_buffer_view_handle(
                                 previous_buffer_view_handle,
                                 &mut ctx.editor.events,
@@ -263,7 +271,7 @@ impl State {
                     NavigationHistory::move_in_history(
                         client,
                         ctx.editor,
-                        NavigationDirection::Forward,
+                        NavigationMovement::Forward,
                     );
                 }
             }
@@ -273,7 +281,7 @@ impl State {
                     NavigationHistory::move_in_history(
                         client,
                         ctx.editor,
-                        NavigationDirection::Backward,
+                        NavigationMovement::Backward,
                     );
                 }
             }
