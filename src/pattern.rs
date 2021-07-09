@@ -136,54 +136,51 @@ impl Pattern {
         }
     }
 
-    // TODO: change prefixes to
-    // "f/" for 'fixed' searcher smart case
-    // "F/" for 'fixed' searcher case sensitive
-    // "p/" for 'pattern' searcher smart case
-    // "P/" for 'pattern' searcher case sensitive
     pub fn compile_searcher<'a>(&mut self, pattern: &'a str) -> Result<(), PatternError> {
-        let (ignore_case, pattern) = match pattern.strip_prefix('_') {
-            Some(pattern) => (false, pattern),
-            None => {
-                let ignore_case = pattern.chars().all(char::is_lowercase);
-                (ignore_case, pattern)
-            }
+        let (is_literal, ignore_case, pattern) = match pattern.as_bytes() {
+            &[b'l', b'/', ..] => (true, true, &pattern[2..]),
+            &[b'L', b'/', ..] => (true, false, &pattern[2..]),
+            &[b'p', b'/', ..] => (false, true, &pattern[2..]),
+            &[b'P', b'/', ..] => (false, false, &pattern[2..]),
+            _ => (true, pattern.chars().all(char::is_lowercase), pattern),
         };
-        match pattern.strip_prefix('%') {
-            Some(pattern) => self.compile(pattern)?,
-            None => {
-                self.ops.clear();
-                self.ops.push(Op::Error);
 
-                let mut pattern = pattern;
-                let mut buf = [0; OP_STRING_LEN];
-                let mut len;
-                loop {
-                    len = match pattern
-                        .char_indices()
-                        .map(|(i, c)| i + c.len_utf8())
-                        .take_while(|&len| len < buf.len())
-                        .last()
-                    {
-                        Some(len) => len,
-                        None => break,
-                    };
-                    buf[..len].copy_from_slice(pattern[..len].as_bytes());
-                    pattern = &pattern[len..];
-                    self.ops.push(Op::String(
-                        Jump((self.ops.len() + 1) as _),
-                        Jump(0),
-                        len as _,
-                        buf,
-                    ));
-                }
-                self.ops.push(Op::Ok);
-                self.start_jump = Jump(1);
+        if is_literal {
+            self.compile(pattern)?;
+        } else {
+            self.ops.clear();
+            self.ops.push(Op::Error);
+
+            let mut pattern = pattern;
+            let mut buf = [0; OP_STRING_LEN];
+            let mut len;
+            loop {
+                len = match pattern
+                    .char_indices()
+                    .map(|(i, c)| i + c.len_utf8())
+                    .take_while(|&len| len < buf.len())
+                    .last()
+                {
+                    Some(len) => len,
+                    None => break,
+                };
+                buf[..len].copy_from_slice(pattern[..len].as_bytes());
+                pattern = &pattern[len..];
+                self.ops.push(Op::String(
+                    Jump((self.ops.len() + 1) as _),
+                    Jump(0),
+                    len as _,
+                    buf,
+                ));
             }
+            self.ops.push(Op::Ok);
+            self.start_jump = Jump(1);
         }
+
         if ignore_case {
             self.ignore_case();
         }
+
         Ok(())
     }
 
@@ -1510,3 +1507,4 @@ mod tests {
         ));
     }
 }
+

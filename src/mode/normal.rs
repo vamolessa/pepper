@@ -1533,7 +1533,7 @@ fn search_word_or_move_to_it(
 
         let register = ctx.editor.registers.get_mut(SEARCH_REGISTER);
         register.clear();
-        register.push('_');
+        register.push_str("L/");
         register.push_str(text);
 
         let _ = ctx.editor.aux_pattern.compile_searcher(register);
