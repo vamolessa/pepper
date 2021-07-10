@@ -76,11 +76,45 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
 pub fn draw_empty_view(ctx: &CustomViewRenderContext, buf: &mut Vec<u8>) {
     move_cursor_to(buf, 0, 0);
     buf.extend_from_slice(RESET_STYLE_CODE);
-
     set_background_color(buf, ctx.editor.theme.background);
     set_foreground_color(buf, ctx.editor.theme.token_whitespace);
 
-    for _ in 0..ctx.view_size.1 {
+    let message_lines = &[
+        concat!(env!("CARGO_PKG_NAME"), " editor"),
+        concat!("version ", env!("CARGO_PKG_VERSION")),
+        "",
+        concat!("`:open <file-name>` to edit a file"),
+    ];
+
+    let width = ctx.view_size.0 as usize - 1;
+    let height = ctx.view_size.1 as usize;
+    let picker_height = ctx
+        .editor
+        .picker
+        .len()
+        .min(ctx.editor.config.picker_max_height as _);
+
+    let margin_top = ((height + picker_height).saturating_sub(message_lines.len())) / 2;
+    let margin_bottom = height - margin_top - message_lines.len();
+
+    for _ in 0..margin_top {
+        buf.push(ctx.editor.config.visual_empty);
+        clear_until_new_line(buf);
+        move_cursor_to_next_line(buf);
+    }
+
+    for line in message_lines {
+        buf.push(ctx.editor.config.visual_empty);
+
+        let margin_left = (width.saturating_sub(line.len())) / 2;
+        buf.extend(std::iter::repeat(b' ').take(margin_left));
+        buf.extend_from_slice(line.as_bytes());
+
+        clear_until_new_line(buf);
+        move_cursor_to_next_line(buf);
+    }
+
+    for _ in 0..margin_bottom {
         buf.push(ctx.editor.config.visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);
@@ -96,7 +130,6 @@ pub fn render(
     render_buf: &mut Vec<u8>,
 ) {
     let view = View::new(editor, buffer_view_handle, size, scroll);
-
     draw_buffer(editor, &view, has_focus, render_buf);
     if has_focus {
         draw_picker(editor, &view, render_buf);
