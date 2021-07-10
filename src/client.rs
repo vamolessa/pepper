@@ -8,7 +8,7 @@ use crate::{
     events::{EditorEvent, EditorEventQueue},
     navigation_history::{NavigationHistory, NavigationMovement},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
-    ui::{draw_empty_view, RenderContext},
+    ui::{render_emtpy_view, RenderContext},
 };
 
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
@@ -68,7 +68,7 @@ pub enum ClientView {
 }
 impl Default for ClientView {
     fn default() -> Self {
-        Self::Custom(draw_empty_view)
+        Self::Custom(render_emtpy_view)
     }
 }
 impl PartialEq for ClientView {

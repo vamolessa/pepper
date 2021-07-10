@@ -10,11 +10,11 @@ use crate::{
     editor::Editor,
     editor_utils::MessageKind,
     help, lsp,
-    ui::RenderContext,
     mode::ModeKind,
     navigation_history::NavigationHistory,
     platform::Platform,
     theme::{Color, THEME_COLOR_NAMES},
+    ui,
 };
 
 pub static COMMANDS: &[BuiltinCommand] = &[
@@ -266,7 +266,10 @@ pub static COMMANDS: &[BuiltinCommand] = &[
 
             let clients = &mut *ctx.clients;
             if let Some(client) = ctx.client_handle.and_then(|h| clients.get_mut(h)) {
-                // TODO
+                client.set_view(
+                    ClientView::Custom(render_status_view),
+                    &mut ctx.editor.events,
+                );
             }
 
             Ok(None)
@@ -591,8 +594,16 @@ pub static COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
-fn render_status_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
-    // TODO
+fn render_status_view(ctx: &ui::RenderContext, buf: &mut Vec<u8>) {
+    ui::move_cursor_to(buf, 0, 0);
+    buf.extend_from_slice(ui::RESET_STYLE_CODE);
+    ui::set_background_color(buf, ctx.editor.theme.background);
+    ui::set_foreground_color(buf, ctx.editor.theme.token_text);
+
+    for _ in 0..ctx.draw_height {
+        ui::clear_until_new_line(buf);
+        ui::move_cursor_to_next_line(buf);
+    }
 }
 
 fn map(ctx: &mut CommandContext, mode: ModeKind) -> Result<(), CommandError> {

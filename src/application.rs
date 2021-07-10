@@ -214,7 +214,7 @@ impl ServerApplication {
                     scroll: c.scroll,
                     draw_height: c.height,
                 };
-                ui::render(&ctx, c.buffer_view_handle(), has_focus, write);
+                ui::render(&ctx, c.view(), has_focus, write);
                 ServerEvent::serialize_display_header(write);
 
                 let handle = c.handle();

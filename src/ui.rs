@@ -4,7 +4,7 @@ use crate::{
     buffer::Buffer,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
-    client::ClientManager,
+    client::{ClientManager, ClientView},
     cursor::Cursor,
     editor::Editor,
     editor_utils::MessageKind,
@@ -83,7 +83,7 @@ pub struct RenderContext<'a> {
     pub draw_height: u16,
 }
 
-pub fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
+pub fn render_emtpy_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     move_cursor_to(buf, 0, 0);
     buf.extend_from_slice(RESET_STYLE_CODE);
     set_background_color(buf, ctx.editor.theme.background);
@@ -130,25 +130,29 @@ pub fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
 
 pub fn render(
     ctx: &RenderContext,
-    buffer_view_handle: Option<BufferViewHandle>,
+    client_view: ClientView,
     has_focus: bool,
     render_buf: &mut Vec<u8>,
 ) {
+    let buffer_view_handle = match client_view {
+        ClientView::Buffer(handle) => Some(handle),
+        _ => None,
+    };
     let view = View::new(ctx, buffer_view_handle);
-    draw_buffer(ctx, &view, has_focus, render_buf);
-    if has_focus {
-        draw_picker(ctx.editor, &view, render_buf);
+    match client_view {
+        ClientView::Buffer(_) => draw_buffer(ctx, &view, has_focus, render_buf),
+        ClientView::Custom(renderer) => renderer(ctx, render_buf),
     }
-    draw_statusbar(ctx.editor, &view, has_focus, render_buf);
+    if has_focus {
+        draw_picker(ctx, &view, render_buf);
+    }
+    draw_statusbar(ctx, &view, has_focus, render_buf);
 }
 
 struct View<'a> {
     buffer: Option<&'a Buffer>,
     main_cursor_position: BufferPosition,
     cursors: &'a [Cursor],
-
-    size: (u16, u16),
-    scroll: (u32, u32),
 }
 
 impl<'a> View<'a> {
@@ -174,8 +178,6 @@ impl<'a> View<'a> {
             buffer,
             main_cursor_position,
             cursors,
-            size: (ctx.viewport_size.0, ctx.draw_height),
-            scroll: ctx.scroll,
         }
     }
 }
@@ -183,25 +185,21 @@ impl<'a> View<'a> {
 fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<u8>) {
     let buffer = match view.buffer {
         Some(buffer) => buffer,
-        None => {
-            draw_empty_view(ctx, buf);
-            return;
-        }
+        None => return,
     };
 
-    let editor = ctx.editor;
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let cursor_color = if has_focus {
-        match editor.mode.kind() {
-            ModeKind::Insert => editor.theme.insert_cursor,
-            _ => match editor.mode.normal_state.movement_kind {
-                CursorMovementKind::PositionAndAnchor => editor.theme.normal_cursor,
-                CursorMovementKind::PositionOnly => editor.theme.select_cursor,
+        match ctx.editor.mode.kind() {
+            ModeKind::Insert => ctx.editor.theme.insert_cursor,
+            _ => match ctx.editor.mode.normal_state.movement_kind {
+                CursorMovementKind::PositionAndAnchor => ctx.editor.theme.normal_cursor,
+                CursorMovementKind::PositionOnly => ctx.editor.theme.select_cursor,
             },
         }
     } else {
-        editor.theme.inactive_cursor
+        ctx.editor.theme.inactive_cursor
     };
 
     let cursors = &view.cursors[..];
@@ -214,7 +212,7 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
     let search_ranges_end_index = search_ranges.len().saturating_sub(1);
 
     let mut diagnostics: &[_] = &[];
-    for client in editor.lsp.clients() {
+    for client in ctx.editor.lsp.clients() {
         diagnostics = client.diagnostics().buffer_diagnostics(buffer.handle());
         if !diagnostics.is_empty() {
             break;
@@ -223,7 +221,7 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
     let diagnostics = diagnostics;
     let diagnostics_end_index = diagnostics.len().saturating_sub(1);
 
-    let display_position_offset = BufferPosition::line_col(view.scroll.1 as _, view.scroll.0 as _);
+    let display_position_offset = BufferPosition::line_col(ctx.scroll.1 as _, ctx.scroll.0 as _);
 
     let mut current_cursor_index = cursors.len();
     let mut current_cursor_position = BufferPosition::default();
@@ -259,15 +257,15 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
     }
 
     move_cursor_to(buf, 0, 0);
-    set_background_color(buf, editor.theme.background);
+    set_background_color(buf, ctx.editor.theme.background);
     set_not_underlined(buf);
 
     let mut lines_drawn_count = 0;
     for (line_index, line) in buffer_content
         .lines()
         .enumerate()
-        .skip(view.scroll.1 as _)
-        .take(view.size.1 as _)
+        .skip(ctx.scroll.1 as _)
+        .take(ctx.draw_height as _)
     {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum DrawState {
@@ -287,16 +285,16 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
         let mut line_tokens = highlighted_buffer.line_tokens(line_index).iter();
 
         let background_color = if line_index == active_line_index as _ {
-            editor.theme.active_line_background
+            ctx.editor.theme.active_line_background
         } else {
-            editor.theme.background
+            ctx.editor.theme.background
         };
 
         set_background_color(buf, background_color);
-        set_foreground_color(buf, editor.theme.token_text);
+        set_foreground_color(buf, ctx.editor.theme.token_text);
 
         for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
-            if char_index < view.scroll.0 as _ {
+            if char_index < ctx.scroll.0 as _ {
                 continue;
             }
 
@@ -318,14 +316,14 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
             };
 
             let text_color = match token_kind {
-                TokenKind::Keyword => editor.theme.token_keyword,
-                TokenKind::Type => editor.theme.token_type,
-                TokenKind::Symbol => editor.theme.token_symbol,
-                TokenKind::Literal => editor.theme.token_literal,
-                TokenKind::String => editor.theme.token_string,
-                TokenKind::Comment => editor.theme.token_comment,
-                TokenKind::Text => editor.theme.token_text,
-                TokenKind::Whitespace => editor.theme.token_whitespace,
+                TokenKind::Keyword => ctx.editor.theme.token_keyword,
+                TokenKind::Type => ctx.editor.theme.token_type,
+                TokenKind::Symbol => ctx.editor.theme.token_symbol,
+                TokenKind::Literal => ctx.editor.theme.token_literal,
+                TokenKind::String => ctx.editor.theme.token_string,
+                TokenKind::Comment => ctx.editor.theme.token_comment,
+                TokenKind::Text => ctx.editor.theme.token_text,
+                TokenKind::Whitespace => ctx.editor.theme.token_whitespace,
             };
 
             while current_cursor_index < cursors_end_index
@@ -381,7 +379,7 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
             } else if inside_search_range {
                 if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
-                    set_background_color(buf, editor.theme.highlight);
+                    set_background_color(buf, ctx.editor.theme.highlight);
                     set_foreground_color(buf, background_color);
                 }
             } else if draw_state != DrawState::Token(token_kind) {
@@ -398,15 +396,15 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
                 }
                 ' ' => {
                     x += 1;
-                    buf.push(editor.config.visual_space);
+                    buf.push(ctx.editor.config.visual_space);
                 }
                 '\t' => {
-                    let tab_size = editor.config.tab_size.get() as usize;
+                    let tab_size = ctx.editor.config.tab_size.get() as usize;
                     x += tab_size;
 
-                    buf.push(editor.config.visual_tab_first);
+                    buf.push(ctx.editor.config.visual_tab_first);
                     for _ in 0..tab_size - 1 {
-                        buf.push(editor.config.visual_tab_repeat);
+                        buf.push(ctx.editor.config.visual_tab_repeat);
                     }
                 }
                 _ => {
@@ -415,7 +413,7 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
                 }
             }
 
-            if x > view.size.0 as _ {
+            if x > ctx.viewport_size.0 as _ {
                 x = previous_x;
                 buf.truncate(buf_len);
                 break;
@@ -424,7 +422,7 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
 
         set_background_color(buf, background_color);
 
-        if x < view.size.0 as _ {
+        if x < ctx.viewport_size.0 as _ {
             clear_until_new_line(buf);
         }
 
@@ -432,36 +430,38 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
     }
 
     set_not_underlined(buf);
-    set_background_color(buf, editor.theme.background);
-    set_foreground_color(buf, editor.theme.token_whitespace);
+    set_background_color(buf, ctx.editor.theme.background);
+    set_foreground_color(buf, ctx.editor.theme.token_whitespace);
 
-    for _ in lines_drawn_count..view.size.1 {
-        buf.push(editor.config.visual_empty);
+    for _ in lines_drawn_count..ctx.draw_height {
+        buf.push(ctx.editor.config.visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);
     }
 }
 
-fn draw_picker(editor: &Editor, view: &View, buf: &mut Vec<u8>) {
-    let cursor = editor.picker.cursor().unwrap_or(usize::MAX - 1);
-    let scroll = editor.picker.scroll();
+fn draw_picker(ctx: &RenderContext, view: &View, buf: &mut Vec<u8>) {
+    let cursor = ctx.editor.picker.cursor().unwrap_or(usize::MAX - 1);
+    let scroll = ctx.editor.picker.scroll();
 
-    let width = view.size.0 as _;
-    let height = editor
+    let width = ctx.viewport_size.0 as _;
+    let height = ctx
+        .editor
         .picker
         .len()
-        .min(editor.config.picker_max_height as _);
+        .min(ctx.editor.config.picker_max_height as _);
 
-    let background_normal_color = editor.theme.statusbar_inactive_background;
-    let background_selected_color = editor.theme.statusbar_active_background;
-    let foreground_color = editor.theme.token_text;
+    let background_normal_color = ctx.editor.theme.statusbar_inactive_background;
+    let background_selected_color = ctx.editor.theme.statusbar_active_background;
+    let foreground_color = ctx.editor.theme.token_text;
 
     set_background_color(buf, background_normal_color);
     set_foreground_color(buf, foreground_color);
 
-    for (i, entry) in editor
+    for (i, entry) in ctx
+        .editor
         .picker
-        .entries(&editor.word_database)
+        .entries(&ctx.editor.word_database)
         .enumerate()
         .skip(scroll)
         .take(height)
@@ -510,13 +510,13 @@ fn draw_picker(editor: &Editor, view: &View, buf: &mut Vec<u8>) {
     }
 }
 
-fn draw_statusbar(editor: &Editor, view: &View, has_focus: bool, buf: &mut Vec<u8>) {
+fn draw_statusbar(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<u8>) {
     use io::Write;
 
-    let background_active_color = editor.theme.statusbar_active_background;
-    let background_innactive_color = editor.theme.statusbar_inactive_background;
-    let foreground_color = editor.theme.token_text;
-    let cursor_color = editor.theme.normal_cursor;
+    let background_active_color = ctx.editor.theme.statusbar_active_background;
+    let background_innactive_color = ctx.editor.theme.statusbar_inactive_background;
+    let foreground_color = ctx.editor.theme.token_text;
+    let cursor_color = ctx.editor.theme.normal_cursor;
 
     if has_focus {
         set_background_color(buf, background_active_color);
@@ -526,12 +526,12 @@ fn draw_statusbar(editor: &Editor, view: &View, has_focus: bool, buf: &mut Vec<u
     set_foreground_color(buf, foreground_color);
 
     let x = if has_focus {
-        let (message_target, message) = editor.status_bar.message();
+        let (message_target, message) = ctx.editor.status_bar.message();
         let message = message.trim_end();
 
         let message_is_empty = message.trim_start().is_empty();
-        match editor.mode.kind() {
-            ModeKind::Normal if message_is_empty => match editor.recording_macro {
+        match ctx.editor.mode.kind() {
+            ModeKind::Normal if message_is_empty => match ctx.editor.recording_macro {
                 Some(key) => {
                     let text = b"recording macro ";
                     let key = key.as_u8();
@@ -543,7 +543,7 @@ fn draw_statusbar(editor: &Editor, view: &View, has_focus: bool, buf: &mut Vec<u
                     Some(&[]) | None => Some(0),
                     Some(search_ranges) => {
                         let previous_len = buf.len();
-                        let search_index = editor.mode.normal_state.search_index + 1;
+                        let search_index = ctx.editor.mode.normal_state.search_index + 1;
                         let _ = write!(buf, " [{}/{}]", search_index, search_ranges.len());
                         Some(buf.len() - previous_len)
                     }
@@ -555,7 +555,7 @@ fn draw_statusbar(editor: &Editor, view: &View, has_focus: bool, buf: &mut Vec<u
                 Some(text.len())
             }
             ModeKind::Command | ModeKind::Picker | ModeKind::ReadLine => {
-                let read_line = &editor.read_line;
+                let read_line = &ctx.editor.read_line;
 
                 set_background_color(buf, background_innactive_color);
                 set_foreground_color(buf, foreground_color);
@@ -610,7 +610,7 @@ fn draw_statusbar(editor: &Editor, view: &View, has_focus: bool, buf: &mut Vec<u
                     for (i, line) in message.lines().enumerate() {
                         let len = print_line(buf, line);
                         if i < line_count - 1 {
-                            if len < view.size.0 as _ {
+                            if len < ctx.viewport_size.0 as _ {
                                 clear_until_new_line(buf);
                             }
                             move_cursor_to_next_line(buf);
@@ -654,17 +654,17 @@ fn draw_statusbar(editor: &Editor, view: &View, has_focus: bool, buf: &mut Vec<u
             }
         }
 
-        let available_width = view.size.0 as usize - x;
+        let available_width = ctx.viewport_size.0 as usize - x;
         let half_available_width = available_width / 2;
 
         let status_start_index = buf.len();
 
         if has_focus {
-            let param_count = editor.mode.normal_state.count;
-            if param_count > 0 && matches!(editor.mode.kind(), ModeKind::Normal) {
+            let param_count = ctx.editor.mode.normal_state.count;
+            if param_count > 0 && matches!(ctx.editor.mode.kind(), ModeKind::Normal) {
                 let _ = write!(buf, "{}", param_count);
             }
-            for key in editor.buffered_keys.as_slice() {
+            for key in ctx.editor.buffered_keys.as_slice() {
                 let _ = write!(buf, "{}", key);
             }
             buf.push(b' ');
