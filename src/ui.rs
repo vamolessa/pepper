@@ -1,14 +1,15 @@
 use std::{io, iter};
 
 use crate::{
-    buffer::{Buffer, BufferContent},
+    buffer::Buffer,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
+    client::CustomViewRenderContext,
     cursor::Cursor,
     editor::Editor,
     editor_utils::MessageKind,
     mode::ModeKind,
-    syntax::{HighlightedBuffer, Token, TokenKind},
+    syntax::{Token, TokenKind},
     theme::Color,
 };
 
@@ -72,6 +73,20 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1b[24m");
 }
 
+pub fn draw_empty_view(ctx: &CustomViewRenderContext, buf: &mut Vec<u8>) {
+    move_cursor_to(buf, 0, 0);
+    buf.extend_from_slice(RESET_STYLE_CODE);
+
+    set_background_color(buf, ctx.editor.theme.background);
+    set_foreground_color(buf, ctx.editor.theme.token_whitespace);
+
+    for _ in 0..ctx.view_size.1 {
+        buf.push(ctx.editor.config.visual_empty);
+        clear_until_new_line(buf);
+        move_cursor_to_next_line(buf);
+    }
+}
+
 pub fn render(
     editor: &Editor,
     buffer_view_handle: Option<BufferViewHandle>,
@@ -82,11 +97,11 @@ pub fn render(
 ) {
     let view = View::new(editor, buffer_view_handle, size, scroll);
 
-    draw_buffer(render_buf, editor, &view, has_focus);
+    draw_buffer(editor, &view, has_focus, render_buf);
     if has_focus {
-        draw_picker(render_buf, editor, &view);
+        draw_picker(editor, &view, render_buf);
     }
-    draw_statusbar(render_buf, editor, &view, has_focus);
+    draw_statusbar(editor, &view, has_focus, render_buf);
 }
 
 struct View<'a> {
@@ -132,7 +147,22 @@ impl<'a> View<'a> {
     }
 }
 
-fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool) {
+fn draw_buffer(editor: &Editor, view: &View, has_focus: bool, buf: &mut Vec<u8>) {
+    let buffer = match view.buffer {
+        Some(buffer) => buffer,
+        None => {
+            draw_empty_view(
+                &CustomViewRenderContext {
+                    editor,
+                    view_size: view.size,
+                    scroll: view.scroll.0,
+                },
+                buf,
+            );
+            return;
+        }
+    };
+
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let cursor_color = if has_focus {
@@ -147,44 +177,23 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         editor.theme.inactive_cursor
     };
 
-    move_cursor_to(buf, 0, 0);
-    set_background_color(buf, editor.theme.background);
-    set_not_underlined(buf);
-
     let cursors = &view.cursors[..];
     let cursors_end_index = cursors.len().saturating_sub(1);
     let active_line_index = view.main_cursor_position.line_index;
 
-    let buffer_content;
-    let highlighted_buffer;
-    let search_ranges;
-    match view.buffer {
-        Some(buffer) => {
-            buffer_content = buffer.content();
-            highlighted_buffer = buffer.highlighted();
-            search_ranges = buffer.search_ranges();
-        }
-        None => {
-            buffer_content = BufferContent::empty();
-            highlighted_buffer = HighlightedBuffer::empty();
-            search_ranges = &[];
-        }
-    }
+    let buffer_content = buffer.content();
+    let highlighted_buffer = buffer.highlighted();
+    let search_ranges = buffer.search_ranges();
     let search_ranges_end_index = search_ranges.len().saturating_sub(1);
 
-    let diagnostics = match view.buffer {
-        Some(buffer) => {
-            let mut diagnostics: &[_] = &[];
-            for client in editor.lsp.clients() {
-                diagnostics = client.diagnostics().buffer_diagnostics(buffer.handle());
-                if !diagnostics.is_empty() {
-                    break;
-                }
-            }
-            diagnostics
+    let mut diagnostics: &[_] = &[];
+    for client in editor.lsp.clients() {
+        diagnostics = client.diagnostics().buffer_diagnostics(buffer.handle());
+        if !diagnostics.is_empty() {
+            break;
         }
-        None => &[],
-    };
+    }
+    let diagnostics = diagnostics;
     let diagnostics_end_index = diagnostics.len().saturating_sub(1);
 
     let display_position_offset = BufferPosition::line_col(view.scroll.1 as _, view.scroll.0 as _);
@@ -221,6 +230,10 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
             break;
         }
     }
+
+    move_cursor_to(buf, 0, 0);
+    set_background_color(buf, editor.theme.background);
+    set_not_underlined(buf);
 
     let mut lines_drawn_count = 0;
     for (line_index, line) in buffer_content
@@ -402,7 +415,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     }
 }
 
-fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
+fn draw_picker(editor: &Editor, view: &View, buf: &mut Vec<u8>) {
     let cursor = editor.picker.cursor().unwrap_or(usize::MAX - 1);
     let scroll = editor.picker.scroll();
 
@@ -470,7 +483,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
     }
 }
 
-fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool) {
+fn draw_statusbar(editor: &Editor, view: &View, has_focus: bool, buf: &mut Vec<u8>) {
     use io::Write;
 
     let background_active_color = editor.theme.statusbar_active_background;
@@ -687,3 +700,4 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
 
     clear_until_new_line(buf);
 }
+

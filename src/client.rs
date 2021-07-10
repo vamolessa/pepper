@@ -8,6 +8,7 @@ use crate::{
     events::{EditorEvent, EditorEventQueue},
     navigation_history::{NavigationHistory, NavigationMovement},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
+    ui::draw_empty_view,
 };
 
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
@@ -62,10 +63,10 @@ impl FromStr for ClientHandle {
 
 pub struct CustomViewRenderContext<'a> {
     pub editor: &'a Editor,
-    pub size: (u16, u16),
+    pub view_size: (u16, u16),
     pub scroll: u32,
 }
-pub type CustomViewRenderFn = fn(&mut Vec<u8>, &CustomViewRenderContext);
+pub type CustomViewRenderFn = fn(&CustomViewRenderContext, &mut Vec<u8>);
 
 #[derive(Clone, Copy)]
 pub enum ClientView {
@@ -74,7 +75,7 @@ pub enum ClientView {
 }
 impl Default for ClientView {
     fn default() -> Self {
-        Self::Custom(|_, _| ()) // TODO: change to welcome screen?
+        Self::Custom(draw_empty_view)
     }
 }
 impl PartialEq for ClientView {
@@ -287,3 +288,4 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
+

@@ -275,15 +275,6 @@ pub struct HighlightedBuffer {
 }
 
 impl HighlightedBuffer {
-    pub fn empty() -> &'static Self {
-        static EMPTY: HighlightedBuffer = HighlightedBuffer {
-            highlighted_len: 0,
-            lines: Vec::new(),
-            dirty_line_indexes: Vec::new(),
-        };
-        &EMPTY
-    }
-
     pub fn new() -> Self {
         Self {
             highlighted_len: 1,

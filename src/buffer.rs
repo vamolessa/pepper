@@ -313,14 +313,6 @@ pub struct BufferContent {
 }
 
 impl BufferContent {
-    pub fn empty() -> &'static Self {
-        static EMPTY: BufferContent = BufferContent {
-            lines: Vec::new(),
-            line_pool: BufferLinePool::new(),
-        };
-        &EMPTY
-    }
-
     pub fn new() -> Self {
         Self {
             lines: vec![BufferLine::new()],
