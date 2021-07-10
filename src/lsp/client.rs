@@ -561,7 +561,6 @@ enum RequestState {
     },
 }
 impl RequestState {
-    #[inline]
     pub fn is_idle(&self) -> bool {
         matches!(self, RequestState::Idle)
     }

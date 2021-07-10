@@ -44,7 +44,6 @@ pub struct Token {
     pub to: BufferPositionIndex,
 }
 impl Token {
-    #[inline]
     pub fn contains(&self, column_byte_index: BufferPositionIndex) -> bool {
         self.from <= column_byte_index && column_byte_index < self.to
     }

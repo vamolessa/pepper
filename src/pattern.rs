@@ -47,7 +47,6 @@ pub struct MatchIndices<'pattern, 'text> {
 impl<'pattern, 'text> Iterator for MatchIndices<'pattern, 'text> {
     type Item = (usize, &'text str);
     fn next(&mut self) -> Option<Self::Item> {
-        #[inline]
         fn next_char(iter: &mut MatchIndices) -> Option<()> {
             let mut chars = iter.text.chars();
             let c = chars.next()?;
@@ -90,13 +89,11 @@ pub struct PatternState {
 
 struct OpsSlice<'a>(&'a [Op]);
 impl<'a> OpsSlice<'a> {
-    #[inline]
     #[cfg(debug_assertions)]
     pub fn at(&self, jump: Jump) -> &Op {
         &self.0[jump.0 as usize]
     }
 
-    #[inline]
     #[cfg(not(debug_assertions))]
     pub fn at(&self, jump: Jump) -> &Op {
         unsafe { self.0.get_unchecked(jump.0 as usize) }
@@ -247,12 +244,10 @@ impl Pattern {
         let ops = OpsSlice(&self.ops);
         let mut op_jump = state.op_jump;
 
-        #[inline]
         fn index(text: &str, chars: &Chars) -> usize {
             chars.as_str().as_ptr() as usize - text.as_ptr() as usize
         }
 
-        #[inline]
         fn check_and_jump<F>(chars: &mut Chars, okj: Jump, erj: Jump, predicate: F) -> Jump
         where
             F: Fn(char) -> bool,
@@ -864,7 +859,6 @@ impl<'a> PatternCompiler<'a> {
             jump.0 -= 1;
         }
 
-        #[inline]
         fn fix_jump(jump: &mut Jump, index: usize, removed_jump: Jump) {
             if jump.0 as usize > index {
                 jump.0 -= 1;
@@ -930,7 +924,6 @@ impl<'a> PatternCompiler<'a> {
         self.ops[index] = Op::String(okj, erj, len as _, bytes);
         self.ops.drain(from..to);
 
-        #[inline]
         fn fix_jump(jump: &mut Jump, index: usize, fix: u16) {
             if jump.0 as usize > index {
                 jump.0 -= fix;
@@ -1011,7 +1004,6 @@ impl<'a> PatternCompiler<'a> {
         self.ops[index] = Op::String(okj, erj, len as _, bytes);
         self.ops.drain(index + 1..op_index);
 
-        #[inline]
         fn fix_jump(jump: &mut Jump, index: usize, fix: u16) {
             if jump.0 as usize > index {
                 jump.0 -= fix;

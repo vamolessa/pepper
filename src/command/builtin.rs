@@ -267,7 +267,9 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let clients = &mut *ctx.clients;
             if let Some(client) = ctx.client_handle.and_then(|h| clients.get_mut(h)) {
                 client.set_view(
-                    ClientView::Custom(render_status_view),
+                    // TODO
+                    //ClientView::Custom(render_status_view),
+                    ClientView::None,
                     &mut ctx.editor.events,
                 );
             }
@@ -594,6 +596,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
+// TODO
 fn render_status_view(ctx: &ui::RenderContext, buf: &mut Vec<u8>) {
     ui::move_cursor_to(buf, 0, 0);
     buf.extend_from_slice(ui::RESET_STYLE_CODE);

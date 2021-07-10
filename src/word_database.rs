@@ -32,7 +32,6 @@ pub struct WordRef<'a> {
 #[derive(Clone)]
 pub struct WordIter<'a>(pub &'a str);
 impl<'a> WordIter<'a> {
-    #[inline]
     pub fn of_kind(self, kind: WordKind) -> impl DoubleEndedIterator<Item = &'a str> {
         self.filter_map(move |w| if kind == w.kind { Some(w.text) } else { None })
     }

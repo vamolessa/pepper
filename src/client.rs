@@ -8,7 +8,7 @@ use crate::{
     events::{EditorEvent, EditorEventQueue},
     navigation_history::{NavigationHistory, NavigationMovement},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
-    ui::{render_emtpy_view, RenderContext},
+    custom_view::CustomViewHandle,
 };
 
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
@@ -61,22 +61,15 @@ impl FromStr for ClientHandle {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ClientView {
+    None,
     Buffer(BufferViewHandle),
-    Custom(fn(&RenderContext, &mut Vec<u8>)),
+    Custom(CustomViewHandle),
 }
 impl Default for ClientView {
     fn default() -> Self {
-        Self::Custom(render_emtpy_view)
-    }
-}
-impl PartialEq for ClientView {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Buffer(a), Self::Buffer(b)) => a == b,
-            _ => false,
-        }
+        Self::None
     }
 }
 

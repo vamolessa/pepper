@@ -175,7 +175,6 @@ pub mod search {
     }
 }
 
-#[inline]
 fn on_submitted(ctx: &mut ModeContext, poll: ReadLinePoll, proc: fn(&mut ModeContext)) {
     match poll {
         ReadLinePoll::Pending => (),
@@ -223,7 +222,6 @@ pub mod filter_cursors {
             range: BufferRange,
             pattern: &Pattern,
         ) -> bool {
-            #[inline]
             fn contains(selection: &str, pattern: &Pattern, anchor: Option<char>) -> bool {
                 pattern.match_indices(selection, anchor).next().is_some()
             }

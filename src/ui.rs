@@ -25,51 +25,42 @@ pub static END_TITLE_CODE: &[u8] = b"\x07";
 
 static TOO_LONG_PREFIX: &[u8] = b"...";
 
-#[inline]
 pub fn clear_line(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1b[2K");
 }
 
-#[inline]
 pub fn clear_until_new_line(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1b[0K");
 }
 
-#[inline]
 pub fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
     use io::Write;
     let _ = write!(buf, "\x1b[{};{}H", x, y);
 }
 
-#[inline]
 pub fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1b[1E");
 }
 
-#[inline]
 pub fn move_cursor_up(buf: &mut Vec<u8>, count: usize) {
     use io::Write;
     let _ = write!(buf, "\x1b[{}A", count);
 }
 
-#[inline]
 pub fn set_background_color(buf: &mut Vec<u8>, color: Color) {
     use io::Write;
     let _ = write!(buf, "\x1b[48;2;{};{};{}m", color.0, color.1, color.2);
 }
 
-#[inline]
 pub fn set_foreground_color(buf: &mut Vec<u8>, color: Color) {
     use io::Write;
     let _ = write!(buf, "\x1b[38;2;{};{};{}m", color.0, color.1, color.2);
 }
 
-#[inline]
 pub fn set_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1b[4m");
 }
 
-#[inline]
 pub fn set_not_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1b[24m");
 }
@@ -83,7 +74,7 @@ pub struct RenderContext<'a> {
     pub draw_height: u16,
 }
 
-pub fn render_emtpy_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
+fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     move_cursor_to(buf, 0, 0);
     buf.extend_from_slice(RESET_STYLE_CODE);
     set_background_color(buf, ctx.editor.theme.background);
@@ -135,8 +126,11 @@ pub fn render(ctx: &RenderContext, client_view: ClientView, has_focus: bool, buf
     };
     let view = View::new(ctx, buffer_view_handle);
     match client_view {
+        ClientView::None => draw_empty_view(ctx, buf),
         ClientView::Buffer(_) => draw_buffer(ctx, &view, has_focus, buf),
-        ClientView::Custom(renderer) => renderer(ctx, buf),
+        ClientView::Custom(handle) => {
+            todo!();
+        },
     }
     if has_focus {
         draw_picker(ctx, buf);
@@ -469,7 +463,6 @@ fn draw_picker(ctx: &RenderContext, buf: &mut Vec<u8>) {
 
         let mut x = 0;
 
-        #[inline]
         fn print_char(buf: &mut Vec<u8>, x: &mut usize, c: char) {
             let mut char_buf = [0; std::mem::size_of::<char>()];
 

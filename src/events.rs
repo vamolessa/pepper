@@ -191,7 +191,6 @@ impl<'a> Iterator for KeyParser<'a> {
 }
 
 fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
-    #[inline]
     fn next(chars: &mut impl Iterator<Item = char>) -> Result<char, KeyParseError> {
         match chars.next() {
             Some(c) => Ok(c),
@@ -199,7 +198,6 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
         }
     }
 
-    #[inline]
     fn consume(chars: &mut impl Iterator<Item = char>, c: char) -> Result<(), KeyParseError> {
         let next = next(chars)?;
         if c == next {
@@ -209,7 +207,6 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
         }
     }
 
-    #[inline]
     fn consume_str(chars: &mut impl Iterator<Item = char>, s: &str) -> Result<(), KeyParseError> {
         for c in s.chars() {
             consume(chars, c)?
