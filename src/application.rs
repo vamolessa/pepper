@@ -206,14 +206,15 @@ impl ServerApplication {
 
                 let mut buf = platform.buf_pool.acquire();
                 let write = buf.write_with_len(ServerEvent::display_header_len());
-                ui::render(
-                    &editor,
-                    c.buffer_view_handle(),
-                    (c.viewport_size.0, c.height),
-                    c.scroll as _,
-                    has_focus,
-                    write,
-                );
+                let ctx = ui::RenderContext {
+                    editor: &editor,
+                    clients: &clients,
+                    platform,
+                    viewport_size: c.viewport_size,
+                    scroll: c.scroll,
+                    draw_height: c.height,
+                };
+                ui::render(&ctx, c.buffer_view_handle(), has_focus, write);
                 ServerEvent::serialize_display_header(write);
 
                 let handle = c.handle();
@@ -385,3 +386,4 @@ pub fn set_panic_hook() {
         }
     }));
 }
+

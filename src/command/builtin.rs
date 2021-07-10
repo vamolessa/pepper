@@ -3,13 +3,14 @@ use std::path::Path;
 use crate::{
     buffer::{parse_path_and_position, BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
-    client::{ClientManager, ClientView, CustomViewRenderContext},
+    client::{ClientManager, ClientView},
     command::{BuiltinCommand, CommandContext, CommandError, CommandOperation, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
     editor::Editor,
     editor_utils::MessageKind,
     help, lsp,
+    ui::RenderContext,
     mode::ModeKind,
     navigation_history::NavigationHistory,
     platform::Platform,
@@ -590,7 +591,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
-fn render_status_view(ctx: &mut CustomViewRenderContext) {
+fn render_status_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     // TODO
 }
 

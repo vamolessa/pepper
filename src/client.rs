@@ -8,7 +8,7 @@ use crate::{
     events::{EditorEvent, EditorEventQueue},
     navigation_history::{NavigationHistory, NavigationMovement},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
-    ui::draw_empty_view,
+    ui::{draw_empty_view, RenderContext},
 };
 
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
@@ -61,17 +61,10 @@ impl FromStr for ClientHandle {
     }
 }
 
-pub struct CustomViewRenderContext<'a> {
-    pub editor: &'a Editor,
-    pub view_size: (u16, u16),
-    pub scroll: u32,
-}
-pub type CustomViewRenderFn = fn(&CustomViewRenderContext, &mut Vec<u8>);
-
 #[derive(Clone, Copy)]
 pub enum ClientView {
     Buffer(BufferViewHandle),
-    Custom(CustomViewRenderFn),
+    Custom(fn(&RenderContext, &mut Vec<u8>)),
 }
 impl Default for ClientView {
     fn default() -> Self {

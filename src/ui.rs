@@ -4,11 +4,12 @@ use crate::{
     buffer::Buffer,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
-    client::CustomViewRenderContext,
+    client::ClientManager,
     cursor::Cursor,
     editor::Editor,
     editor_utils::MessageKind,
     mode::ModeKind,
+    platform::Platform,
     syntax::{Token, TokenKind},
     theme::Color,
 };
@@ -73,7 +74,16 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1b[24m");
 }
 
-pub fn draw_empty_view(ctx: &CustomViewRenderContext, buf: &mut Vec<u8>) {
+pub struct RenderContext<'a> {
+    pub editor: &'a Editor,
+    pub platform: &'a Platform,
+    pub clients: &'a ClientManager,
+    pub viewport_size: (u16, u16),
+    pub scroll: (u32, u32),
+    pub draw_height: u16,
+}
+
+pub fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     move_cursor_to(buf, 0, 0);
     buf.extend_from_slice(RESET_STYLE_CODE);
     set_background_color(buf, ctx.editor.theme.background);
@@ -83,19 +93,16 @@ pub fn draw_empty_view(ctx: &CustomViewRenderContext, buf: &mut Vec<u8>) {
         concat!(env!("CARGO_PKG_NAME"), " editor"),
         concat!("version ", env!("CARGO_PKG_VERSION")),
         "",
-        concat!("`:open <file-name>` to edit a file"),
+        "type `:open <file-name><enter>` to edit a file",
+        "or `:help<enter>` for help",
     ];
 
-    let width = ctx.view_size.0 as usize - 1;
-    let height = ctx.view_size.1 as usize;
-    let picker_height = ctx
-        .editor
-        .picker
-        .len()
-        .min(ctx.editor.config.picker_max_height as _);
+    let width = ctx.viewport_size.0 as usize - 1;
+    let height = ctx.viewport_size.1 as usize - 1;
+    let draw_height = ctx.draw_height as usize;
 
-    let margin_top = ((height + picker_height).saturating_sub(message_lines.len())) / 2;
-    let margin_bottom = height - margin_top - message_lines.len();
+    let margin_top = (height.saturating_sub(message_lines.len())) / 2;
+    let margin_bottom = draw_height - margin_top - message_lines.len();
 
     for _ in 0..margin_top {
         buf.push(ctx.editor.config.visual_empty);
@@ -122,19 +129,17 @@ pub fn draw_empty_view(ctx: &CustomViewRenderContext, buf: &mut Vec<u8>) {
 }
 
 pub fn render(
-    editor: &Editor,
+    ctx: &RenderContext,
     buffer_view_handle: Option<BufferViewHandle>,
-    size: (u16, u16),
-    scroll: (u32, u32),
     has_focus: bool,
     render_buf: &mut Vec<u8>,
 ) {
-    let view = View::new(editor, buffer_view_handle, size, scroll);
-    draw_buffer(editor, &view, has_focus, render_buf);
+    let view = View::new(ctx, buffer_view_handle);
+    draw_buffer(ctx, &view, has_focus, render_buf);
     if has_focus {
-        draw_picker(editor, &view, render_buf);
+        draw_picker(ctx.editor, &view, render_buf);
     }
-    draw_statusbar(editor, &view, has_focus, render_buf);
+    draw_statusbar(ctx.editor, &view, has_focus, render_buf);
 }
 
 struct View<'a> {
@@ -147,15 +152,10 @@ struct View<'a> {
 }
 
 impl<'a> View<'a> {
-    pub fn new(
-        editor: &'a Editor,
-        buffer_view_handle: Option<BufferViewHandle>,
-        size: (u16, u16),
-        scroll: (u32, u32),
-    ) -> View<'a> {
-        let buffer_view = buffer_view_handle.and_then(|h| editor.buffer_views.get(h));
+    pub fn new(ctx: &RenderContext<'a>, buffer_view_handle: Option<BufferViewHandle>) -> View<'a> {
+        let buffer_view = buffer_view_handle.and_then(|h| ctx.editor.buffer_views.get(h));
         let buffer_handle = buffer_view.map(|v| v.buffer_handle);
-        let buffer = buffer_handle.and_then(|h| editor.buffers.get(h));
+        let buffer = buffer_handle.and_then(|h| ctx.editor.buffers.get(h));
 
         let main_cursor_position;
         let cursors;
@@ -174,28 +174,22 @@ impl<'a> View<'a> {
             buffer,
             main_cursor_position,
             cursors,
-            size,
-            scroll,
+            size: (ctx.viewport_size.0, ctx.draw_height),
+            scroll: ctx.scroll,
         }
     }
 }
 
-fn draw_buffer(editor: &Editor, view: &View, has_focus: bool, buf: &mut Vec<u8>) {
+fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<u8>) {
     let buffer = match view.buffer {
         Some(buffer) => buffer,
         None => {
-            draw_empty_view(
-                &CustomViewRenderContext {
-                    editor,
-                    view_size: view.size,
-                    scroll: view.scroll.0,
-                },
-                buf,
-            );
+            draw_empty_view(ctx, buf);
             return;
         }
     };
 
+    let editor = ctx.editor;
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let cursor_color = if has_focus {
