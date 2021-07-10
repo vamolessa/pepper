@@ -128,25 +128,20 @@ pub fn render_emtpy_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     }
 }
 
-pub fn render(
-    ctx: &RenderContext,
-    client_view: ClientView,
-    has_focus: bool,
-    render_buf: &mut Vec<u8>,
-) {
+pub fn render(ctx: &RenderContext, client_view: ClientView, has_focus: bool, buf: &mut Vec<u8>) {
     let buffer_view_handle = match client_view {
         ClientView::Buffer(handle) => Some(handle),
         _ => None,
     };
     let view = View::new(ctx, buffer_view_handle);
     match client_view {
-        ClientView::Buffer(_) => draw_buffer(ctx, &view, has_focus, render_buf),
-        ClientView::Custom(renderer) => renderer(ctx, render_buf),
+        ClientView::Buffer(_) => draw_buffer(ctx, &view, has_focus, buf),
+        ClientView::Custom(renderer) => renderer(ctx, buf),
     }
     if has_focus {
-        draw_picker(ctx, &view, render_buf);
+        draw_picker(ctx, buf);
     }
-    draw_statusbar(ctx, &view, has_focus, render_buf);
+    draw_statusbar(ctx, &view, has_focus, buf);
 }
 
 struct View<'a> {
@@ -169,7 +164,7 @@ impl<'a> View<'a> {
                 cursors = &view.cursors[..];
             }
             None => {
-                main_cursor_position = BufferPosition::default();
+                main_cursor_position = BufferPosition::zero();
                 cursors = &[];
             }
         };
@@ -224,8 +219,8 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
     let display_position_offset = BufferPosition::line_col(ctx.scroll.1 as _, ctx.scroll.0 as _);
 
     let mut current_cursor_index = cursors.len();
-    let mut current_cursor_position = BufferPosition::default();
-    let mut current_cursor_range = BufferRange::default();
+    let mut current_cursor_position = BufferPosition::zero();
+    let mut current_cursor_range = BufferRange::zero();
     for (i, cursor) in cursors.iter().enumerate() {
         let range = cursor.to_range();
         if display_position_offset <= range.to {
@@ -237,7 +232,7 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
     }
 
     let mut current_search_range_index = search_ranges.len();
-    let mut current_search_range = BufferRange::default();
+    let mut current_search_range = BufferRange::zero();
     for (i, &range) in search_ranges.iter().enumerate() {
         if display_position_offset < range.to {
             current_search_range_index = i;
@@ -247,7 +242,7 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
     }
 
     let mut current_diagnostic_index = diagnostics.len();
-    let mut current_diagnostic_range = BufferRange::default();
+    let mut current_diagnostic_range = BufferRange::zero();
     for (i, diagnostic) in diagnostics.iter().enumerate() {
         if display_position_offset < diagnostic.range.to {
             current_diagnostic_index = i;
@@ -440,7 +435,7 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
     }
 }
 
-fn draw_picker(ctx: &RenderContext, view: &View, buf: &mut Vec<u8>) {
+fn draw_picker(ctx: &RenderContext, buf: &mut Vec<u8>) {
     let cursor = ctx.editor.picker.cursor().unwrap_or(usize::MAX - 1);
     let scroll = ctx.editor.picker.scroll();
 

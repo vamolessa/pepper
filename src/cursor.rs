@@ -8,7 +8,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
 };
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cursor {
     pub anchor: BufferPosition,
     pub position: BufferPosition,
@@ -229,7 +229,7 @@ impl<'a> IndexMut<RangeFrom<usize>> for CursorCollectionMutGuard<'a> {
 impl<'a> Drop for CursorCollectionMutGuard<'a> {
     fn drop(&mut self) {
         if self.inner.len == 0 {
-            self.inner.cursors[0] = Cursor::default();
+            self.inner.cursors[0] = Cursor::zero();
             self.inner.len = 1;
             self.inner.main_cursor_index = 0;
         }

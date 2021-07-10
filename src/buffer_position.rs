@@ -6,7 +6,7 @@ use std::{
 
 pub type BufferPositionIndex = u32;
 
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct BufferPosition {
     pub line_index: BufferPositionIndex,
     pub column_byte_index: BufferPositionIndex,
@@ -143,7 +143,7 @@ impl FromStr for BufferPosition {
     }
 }
 
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct BufferRange {
     pub from: BufferPosition,
     pub to: BufferPosition,
