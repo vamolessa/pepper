@@ -157,22 +157,6 @@ impl State {
                     (index + len - 1) % len
                 });
             }
-            Key::Ctrl('n') => {
-                state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                NavigationHistory::move_in_history(
-                    ctx.clients.get_mut(ctx.client_handle),
-                    ctx.editor,
-                    NavigationMovement::Forward,
-                );
-            }
-            Key::Ctrl('p') => {
-                state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                NavigationHistory::move_in_history(
-                    ctx.clients.get_mut(ctx.client_handle),
-                    ctx.editor,
-                    NavigationMovement::Backward,
-                );
-            }
             Key::Char('a') => {
                 fn balanced_brackets(
                     buffer: &BufferContent,
@@ -1273,6 +1257,24 @@ impl ModeState for State {
                     }
                 }
             }
+            Key::Ctrl('n') => {
+                state.movement_kind = CursorMovementKind::PositionAndAnchor;
+                NavigationHistory::move_in_history(
+                    ctx.clients.get_mut(ctx.client_handle),
+                    ctx.editor,
+                    NavigationMovement::Forward,
+                );
+                handled_keys = true;
+            }
+            Key::Ctrl('p') => {
+                state.movement_kind = CursorMovementKind::PositionAndAnchor;
+                NavigationHistory::move_in_history(
+                    ctx.clients.get_mut(ctx.client_handle),
+                    ctx.editor,
+                    NavigationMovement::Backward,
+                );
+                handled_keys = true;
+            }
             Key::Char(c) => {
                 if let Some(n) = c.to_digit(10) {
                     state.count = state.count.saturating_mul(10).saturating_add(n);
@@ -1286,12 +1288,15 @@ impl ModeState for State {
             ctx.editor.mode.normal_state.count = 0;
             Some(EditorControlFlow::Continue)
         } else {
-            let client = ctx.clients.get(ctx.client_handle);
-            let buffer_view_handle = client.buffer_view_handle()?;
-            keys.index = previous_index;
-            let op = Self::on_client_keys_with_buffer_view(ctx, keys, buffer_view_handle);
-            show_hovered_diagnostic(ctx);
-            op
+            match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+                Some(buffer_view_handle) => {
+                    keys.index = previous_index;
+                    let op = Self::on_client_keys_with_buffer_view(ctx, keys, buffer_view_handle);
+                    show_hovered_diagnostic(ctx);
+                    op
+                }
+                None => Some(EditorControlFlow::Continue),
+            }
         }
     }
 }
