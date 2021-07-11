@@ -103,6 +103,7 @@ impl Client {
         if let Some(handle) = self.buffer_view_handle {
             let buffer_view = editor.buffer_views.get(handle);
             if buffer_view.buffer_handle == buffer_handle {
+                self.buffer_view_handle = None;
                 NavigationHistory::move_in_history(
                     self,
                     editor,
