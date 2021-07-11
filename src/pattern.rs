@@ -143,8 +143,6 @@ impl Pattern {
         };
 
         if is_literal {
-            self.compile(pattern)?;
-        } else {
             self.ops.clear();
             self.ops.push(Op::Error);
 
@@ -172,6 +170,8 @@ impl Pattern {
             }
             self.ops.push(Op::Ok);
             self.start_jump = Jump(1);
+        } else {
+            self.compile(pattern)?;
         }
 
         if ignore_case {
