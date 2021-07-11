@@ -3,7 +3,6 @@ use std::path::Path;
 use crate::{
     buffer::{parse_path_and_position, BufferCapabilities},
     buffer_position::BufferPosition,
-    client::ClientView,
     cursor::Cursor,
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
@@ -136,10 +135,7 @@ pub mod buffer {
             ctx.editor.string_pool.release(path);
 
             if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                client.set_view(
-                    ClientView::Buffer(buffer_view_handle),
-                    &mut ctx.editor.events,
-                );
+                client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
             }
 
             Mode::change_to(ctx, ModeKind::default());
@@ -215,8 +211,8 @@ pub mod lsp_definition {
                         }
 
                         if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                            client.set_view(
-                                ClientView::Buffer(buffer_view_handle),
+                            client.set_buffer_view_handle(
+                                Some(buffer_view_handle),
                                 &mut ctx.editor.events,
                             );
                         }

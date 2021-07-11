@@ -4,12 +4,10 @@ use crate::{
     buffer::{BufferHandle, CharDisplayDistances},
     buffer_position::BufferPositionIndex,
     buffer_view::BufferViewHandle,
-    editor::{Editor, KeysIterator},
+    editor::Editor,
     events::{EditorEvent, EditorEventQueue},
-    mode::ModeContext,
     navigation_history::{NavigationHistory, NavigationMovement},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
-    ui::RenderContext,
 };
 
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
@@ -62,30 +60,19 @@ impl FromStr for ClientHandle {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ClientView {
-    None,
-    Buffer(BufferViewHandle),
-    Custom(CustomViewHandle),
-}
-impl Default for ClientView {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
 #[derive(Default)]
 pub struct Client {
     active: bool,
     handle: ClientHandle,
 
+    // TODO: do not send gui events to suspended client
     pub suspended: bool,
     pub viewport_size: (u16, u16),
     pub scroll: (BufferPositionIndex, BufferPositionIndex),
     pub height: u16,
     pub navigation_history: NavigationHistory,
 
-    view: ClientView,
+    buffer_view_handle: Option<BufferViewHandle>,
 }
 
 impl Client {
@@ -98,22 +85,15 @@ impl Client {
         self.height = 0;
         self.navigation_history.clear();
 
-        self.view = ClientView::default();
+        self.buffer_view_handle = None;
     }
 
     pub fn handle(&self) -> ClientHandle {
         self.handle
     }
 
-    pub fn view(&self) -> ClientView {
-        self.view
-    }
-
     pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {
-        match self.view {
-            ClientView::Buffer(handle) => Some(handle),
-            _ => None,
-        }
+        self.buffer_view_handle
     }
 
     pub fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
@@ -130,10 +110,16 @@ impl Client {
         }
     }
 
-    pub fn set_view(&mut self, view: ClientView, events: &mut EditorEventQueue) {
-        if self.view != view {
-            events.enqueue(EditorEvent::ClientViewLostFocus { view: self.view });
-            self.view = view;
+    pub fn set_buffer_view_handle(
+        &mut self,
+        handle: Option<BufferViewHandle>,
+        events: &mut EditorEventQueue,
+    ) {
+        if self.buffer_view_handle != handle {
+            if let Some(handle) = self.buffer_view_handle {
+                events.enqueue(EditorEvent::BufferViewLostFocus { handle });
+            }
+            self.buffer_view_handle = handle;
         }
     }
 
@@ -208,7 +194,6 @@ pub struct ClientManager {
     focused_client: Option<ClientHandle>,
     previous_focused_client: Option<ClientHandle>,
     clients: Vec<Client>,
-    pub custom_views: CustomViewCollection,
 }
 
 impl ClientManager {
@@ -277,79 +262,6 @@ impl ClientManager {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Client> {
         self.clients.iter_mut().filter(|c| c.active)
-    }
-}
-
-pub trait CustomView {
-    fn update(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator);
-    fn render(&self, ctx: &RenderContext, buf: &mut Vec<u8>);
-}
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub struct CustomViewHandle(u32);
-
-enum CustomViewEntry {
-    Vacant,
-    Reserved,
-    Occupied(Box<dyn CustomView>),
-}
-impl CustomViewEntry {
-    pub fn reserve_and_take(&mut self) -> Option<Box<dyn CustomView>> {
-        let mut entry = Self::Reserved;
-        std::mem::swap(self, &mut entry);
-        match entry {
-            Self::Vacant => {
-                *self = Self::Vacant;
-                None
-            }
-            Self::Reserved => None,
-            Self::Occupied(view) => Some(view),
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct CustomViewCollection {
-    entries: Vec<CustomViewEntry>,
-}
-impl CustomViewCollection {
-    pub fn add(&mut self, view: Box<dyn CustomView>) -> CustomViewHandle {
-        fn find_vacant_entry(this: &mut CustomViewCollection) -> CustomViewHandle {
-            for (i, slot) in this.entries.iter_mut().enumerate() {
-                if let CustomViewEntry::Vacant = slot {
-                    *slot = CustomViewEntry::Reserved;
-                    return CustomViewHandle(i as _);
-                }
-            }
-            let handle = CustomViewHandle(this.entries.len() as _);
-            this.entries.push(CustomViewEntry::Reserved);
-            handle
-        }
-
-        let handle = find_vacant_entry(self);
-        self.entries[handle.0 as usize] = CustomViewEntry::Occupied(view);
-        handle
-    }
-
-    pub fn remove(&mut self, handle: CustomViewHandle) {
-        self.entries[handle.0 as usize] = CustomViewEntry::Vacant;
-    }
-
-    pub fn update(ctx: &mut ModeContext, handle: CustomViewHandle, keys: &mut KeysIterator) {
-        if let Some(mut view) =
-            ctx.clients.custom_views.entries[handle.0 as usize].reserve_and_take()
-        {
-            view.update(ctx, keys);
-            ctx.clients.custom_views.entries[handle.0 as usize] = CustomViewEntry::Occupied(view);
-        }
-    }
-
-    pub fn render(ctx: &RenderContext, handle: CustomViewHandle, buf: &mut Vec<u8>) {
-        if let CustomViewEntry::Occupied(view) =
-            &ctx.clients.custom_views.entries[handle.0 as usize]
-        {
-            view.render(ctx, buf);
-        }
     }
 }
 

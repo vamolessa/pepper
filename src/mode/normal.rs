@@ -6,7 +6,6 @@ use crate::{
     },
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::{ClientView, CustomViewCollection},
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, MessageKind},
@@ -555,7 +554,7 @@ impl State {
                             ctx.editor.mode.normal_state.movement_kind =
                                 CursorMovementKind::PositionAndAnchor;
                             if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                                client.set_view(ClientView::Buffer(handle), &mut ctx.editor.events);
+                                client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
                             }
                         }
                         ctx.editor.string_pool.release(path_buf);
@@ -1277,28 +1276,33 @@ impl ModeState for State {
                             handled_keys = true;
                             let previous_client_handle = ctx.clients.previous_focused_client()?;
                             let previous_client = ctx.clients.get_mut(previous_client_handle)?;
-                            let view = previous_client.view();
+                            let buffer_view_handle = previous_client.buffer_view_handle();
 
                             NavigationHistory::move_in_history(
                                 previous_client,
                                 ctx.editor,
                                 NavigationMovement::PreviousBuffer,
                             );
-                            let mut previous_view = previous_client.view();
+                            let mut previous_buffer_view_handle =
+                                previous_client.buffer_view_handle();
                             NavigationHistory::move_in_history(
                                 previous_client,
                                 ctx.editor,
                                 NavigationMovement::PreviousBuffer,
                             );
 
-                            if previous_view == view {
-                                previous_view = ClientView::default();
+                            if previous_buffer_view_handle == buffer_view_handle {
+                                previous_buffer_view_handle = None;
                             }
 
-                            previous_client.set_view(previous_view, &mut ctx.editor.events);
+                            previous_client.set_buffer_view_handle(
+                                previous_buffer_view_handle,
+                                &mut ctx.editor.events,
+                            );
 
                             let client = ctx.clients.get_mut(ctx.client_handle)?;
-                            client.set_view(view, &mut ctx.editor.events);
+                            client
+                                .set_buffer_view_handle(buffer_view_handle, &mut ctx.editor.events);
                         }
                         _ => (),
                     }
@@ -1318,24 +1322,11 @@ impl ModeState for State {
             None
         } else {
             let client = ctx.clients.get(ctx.client_handle)?;
-            match client.view() {
-                ClientView::None => None,
-                ClientView::Buffer(handle) => {
-                    keys.index = previous_index;
-                    let op = Self::on_client_keys_with_buffer_view(ctx, keys, handle);
-                    show_hovered_diagnostic(ctx);
-                    op
-                }
-                ClientView::Custom(handle) => {
-                    let saved_index = keys.index;
-                    keys.index = previous_index;
-                    CustomViewCollection::update(ctx, handle, keys);
-                    if keys.index == previous_index {
-                        keys.index = saved_index;
-                    }
-                    None
-                }
-            }
+            let buffer_view_handle = client.buffer_view_handle()?;
+            keys.index = previous_index;
+            let op = Self::on_client_keys_with_buffer_view(ctx, keys, buffer_view_handle);
+            show_hovered_diagnostic(ctx);
+            op
         }
     }
 }
@@ -1736,10 +1727,8 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
     drop(buffer_view);
 
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
-    ctx.clients.get_mut(ctx.client_handle)?.set_view(
-        ClientView::Buffer(buffer_view_handle),
-        &mut ctx.editor.events,
-    );
+    let client = ctx.clients.get_mut(ctx.client_handle)?;
+    client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 
     None
 }

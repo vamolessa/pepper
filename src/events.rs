@@ -4,7 +4,7 @@ use crate::{
     buffer::BufferHandle,
     buffer_position::BufferRange,
     buffer_view::BufferViewHandle,
-    client::{ClientHandle, ClientView},
+    client::ClientHandle,
     cursor::Cursor,
     platform::Key,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
@@ -57,8 +57,8 @@ pub enum EditorEvent {
         handle: BufferViewHandle,
         cursors: EditorEventCursors,
     },
-    ClientViewLostFocus {
-        view: ClientView,
+    BufferViewLostFocus {
+        handle: BufferViewHandle,
     },
 }
 
@@ -789,3 +789,4 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
+

@@ -89,7 +89,7 @@ pub struct CommandContext<'state, 'command> {
     pub editor: &'state mut Editor,
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
-    pub client_handle: Option<ClientHandle>,
+    pub client_handle: Option<ClientHandle>, // TODO: remove Option
 
     pub args: CommandArgs<'command>,
     pub bang: bool,

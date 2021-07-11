@@ -213,7 +213,7 @@ impl ServerApplication {
                     draw_height: c.height,
                     has_focus: focused_client_handle == Some(c.handle()),
                 };
-                ui::render(&ctx, c.view(), write);
+                ui::render(&ctx, c.buffer_view_handle(), write);
                 ServerEvent::serialize_display_header(write);
 
                 let handle = c.handle();

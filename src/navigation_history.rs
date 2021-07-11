@@ -3,7 +3,7 @@ use std::ops::Range;
 use crate::{
     buffer::BufferHandle,
     buffer_view::{BufferView, BufferViewCollection},
-    client::{Client, ClientView},
+    client::Client,
     cursor::Cursor,
     editor::Editor,
 };
@@ -99,97 +99,82 @@ impl NavigationHistory {
             NavigationState::Insert => client.navigation_history.snapshots.len(),
         };
 
-        let snapshot = match client.view() {
-            ClientView::Buffer(_) => match movement {
-                NavigationMovement::Forward => {
-                    if snapshot_index + 1 >= client.navigation_history.snapshots.len() {
-                        return;
-                    }
-
-                    snapshot_index += 1;
-                    let snapshot = client.navigation_history.snapshots[snapshot_index].clone();
-                    snapshot_index += 1;
-                    snapshot
-                }
-                NavigationMovement::Backward => {
-                    if snapshot_index == 0 {
-                        return;
-                    }
-
-                    if snapshot_index == client.navigation_history.snapshots.len() {
-                        if let Some(buffer_view) =
-                            current_buffer_view_handle.and_then(|h| editor.buffer_views.get(h))
-                        {
-                            client.navigation_history.add_snapshot(buffer_view)
-                        }
-                    }
-
-                    snapshot_index -= 1;
-                    client.navigation_history.snapshots[snapshot_index].clone()
-                }
-                NavigationMovement::PreviousBuffer => {
-                    let buffer_view =
-                        current_buffer_view_handle.and_then(|h| editor.buffer_views.get(h));
-
-                    if snapshot_index < client.navigation_history.snapshots.len() {
-                        let buffer_handle = match buffer_view {
-                            Some(buffer_view) => buffer_view.buffer_handle,
-                            None => {
-                                client.navigation_history.snapshots[snapshot_index].buffer_handle
-                            }
-                        };
-
-                        if let Some(i) = client.navigation_history.snapshots[snapshot_index..]
-                            .iter()
-                            .position(|s| s.buffer_handle != buffer_handle)
-                        {
-                            snapshot_index += i;
-                        } else if let Some(i) = client.navigation_history.snapshots
-                            [..snapshot_index]
-                            .iter()
-                            .rposition(|s| s.buffer_handle != buffer_handle)
-                        {
-                            snapshot_index = i;
-                        } else {
-                            return;
-                        }
-                    } else {
-                        match buffer_view {
-                            Some(buffer_view) => match client
-                                .navigation_history
-                                .snapshots
-                                .iter()
-                                .rposition(|s| s.buffer_handle != buffer_view.buffer_handle)
-                            {
-                                Some(i) => {
-                                    client.navigation_history.add_snapshot(buffer_view);
-                                    snapshot_index = i
-                                }
-                                None => return,
-                            },
-                            None => {
-                                snapshot_index = client.navigation_history.snapshots.len();
-                                if snapshot_index == 0 {
-                                    client.set_view(ClientView::None, &mut editor.events);
-                                    return;
-                                }
-                                snapshot_index -= 1;
-                            }
-                        }
-                    }
-
-                    client.navigation_history.snapshots[snapshot_index].clone()
-                }
-            },
-            _ => {
-                if snapshot_index < client.navigation_history.snapshots.len() {
-                    let snapshot = client.navigation_history.snapshots[snapshot_index].clone();
-                    snapshot_index += 1;
-                    snapshot
-                } else {
-                    client.set_view(ClientView::None, &mut editor.events);
+        let snapshot = match movement {
+            NavigationMovement::Forward => {
+                if snapshot_index + 1 >= client.navigation_history.snapshots.len() {
                     return;
                 }
+
+                snapshot_index += 1;
+                let snapshot = client.navigation_history.snapshots[snapshot_index].clone();
+                snapshot_index += 1;
+                snapshot
+            }
+            NavigationMovement::Backward => {
+                if snapshot_index == 0 {
+                    return;
+                }
+
+                if snapshot_index == client.navigation_history.snapshots.len() {
+                    if let Some(buffer_view) =
+                        current_buffer_view_handle.and_then(|h| editor.buffer_views.get(h))
+                    {
+                        client.navigation_history.add_snapshot(buffer_view)
+                    }
+                }
+
+                snapshot_index -= 1;
+                client.navigation_history.snapshots[snapshot_index].clone()
+            }
+            NavigationMovement::PreviousBuffer => {
+                let buffer_view =
+                    current_buffer_view_handle.and_then(|h| editor.buffer_views.get(h));
+
+                if snapshot_index < client.navigation_history.snapshots.len() {
+                    let buffer_handle = match buffer_view {
+                        Some(buffer_view) => buffer_view.buffer_handle,
+                        None => client.navigation_history.snapshots[snapshot_index].buffer_handle,
+                    };
+
+                    if let Some(i) = client.navigation_history.snapshots[snapshot_index..]
+                        .iter()
+                        .position(|s| s.buffer_handle != buffer_handle)
+                    {
+                        snapshot_index += i;
+                    } else if let Some(i) = client.navigation_history.snapshots[..snapshot_index]
+                        .iter()
+                        .rposition(|s| s.buffer_handle != buffer_handle)
+                    {
+                        snapshot_index = i;
+                    } else {
+                        return;
+                    }
+                } else {
+                    match buffer_view {
+                        Some(buffer_view) => match client
+                            .navigation_history
+                            .snapshots
+                            .iter()
+                            .rposition(|s| s.buffer_handle != buffer_view.buffer_handle)
+                        {
+                            Some(i) => {
+                                client.navigation_history.add_snapshot(buffer_view);
+                                snapshot_index = i
+                            }
+                            None => return,
+                        },
+                        None => {
+                            snapshot_index = client.navigation_history.snapshots.len();
+                            if snapshot_index == 0 {
+                                client.set_buffer_view_handle(None, &mut editor.events);
+                                return;
+                            }
+                            snapshot_index -= 1;
+                        }
+                    }
+                }
+
+                client.navigation_history.snapshots[snapshot_index].clone()
             }
         };
 
@@ -214,7 +199,7 @@ impl NavigationHistory {
             }
         }
 
-        client.set_view(ClientView::Buffer(view_handle), &mut editor.events);
+        client.set_buffer_view_handle(Some(view_handle), &mut editor.events);
     }
 
     pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {

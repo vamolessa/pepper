@@ -3,8 +3,8 @@ use std::{io, iter};
 use crate::{
     buffer::Buffer,
     buffer_position::{BufferPosition, BufferRange},
-    buffer_view::CursorMovementKind,
-    client::{ClientManager, ClientView, CustomViewCollection},
+    buffer_view::{BufferViewHandle, CursorMovementKind},
+    client::ClientManager,
     cursor::Cursor,
     editor::Editor,
     editor_utils::MessageKind,
@@ -120,15 +120,18 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     }
 }
 
-pub fn render(ctx: &RenderContext, client_view: ClientView, buf: &mut Vec<u8>) {
+pub fn render(
+    ctx: &RenderContext,
+    buffer_view_handle: Option<BufferViewHandle>,
+    buf: &mut Vec<u8>,
+) {
     let mut view_name = "";
     let mut needs_save = false;
     let mut main_cursor_position = BufferPosition::zero();
     let mut search_ranges = &[][..];
 
-    match client_view {
-        ClientView::None => draw_empty_view(ctx, buf),
-        ClientView::Buffer(handle) => {
+    match buffer_view_handle {
+        Some(handle) => {
             match ctx
                 .editor
                 .buffer_views
@@ -153,7 +156,7 @@ pub fn render(ctx: &RenderContext, client_view: ClientView, buf: &mut Vec<u8>) {
                 _ => draw_empty_view(ctx, buf),
             }
         }
-        ClientView::Custom(handle) => CustomViewCollection::render(ctx, handle, buf),
+        None => draw_empty_view(ctx, buf),
     }
 
     draw_picker(ctx, buf);
