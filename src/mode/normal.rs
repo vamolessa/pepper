@@ -52,7 +52,7 @@ impl State {
                     let _ = write!(auto_macro_register, "{}", state.count);
                 }
 
-                for key in &editor.buffered_keys.as_slice()[from_index..keys.index()] {
+                for key in &editor.buffered_keys.as_slice()[from_index..keys.index] {
                     let _ = write!(auto_macro_register, "{}", key);
                 }
             }
@@ -71,7 +71,7 @@ impl State {
             let _ = write!(auto_macro_register, "{}", state.count);
         }
 
-        for key in &editor.buffered_keys.as_slice()[from_index..keys.index()] {
+        for key in &editor.buffered_keys.as_slice()[from_index..keys.index] {
             let _ = write!(auto_macro_register, "{}", key);
         }
     }
@@ -82,7 +82,7 @@ impl State {
         handle: BufferViewHandle,
     ) -> Option<ModeOperation> {
         let state = &mut ctx.editor.mode.normal_state;
-        let keys_from_index = keys.index();
+        let keys_from_index = keys.index;
         match keys.next(&ctx.editor.buffered_keys) {
             Key::Char('h') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
                 &ctx.editor.buffers,
@@ -1192,7 +1192,7 @@ impl ModeState for State {
         state.is_recording_auto_macro = false;
 
         let mut handled_keys = false;
-        let previous_index = keys.index();
+        let previous_index = keys.index;
 
         match keys.next(&ctx.editor.buffered_keys) {
             Key::None => handled_keys = true,
@@ -1321,14 +1321,18 @@ impl ModeState for State {
             match client.view() {
                 ClientView::None => None,
                 ClientView::Buffer(handle) => {
-                    keys.put_back(keys.index() - previous_index);
+                    keys.index = previous_index;
                     let op = Self::on_client_keys_with_buffer_view(ctx, keys, handle);
                     show_hovered_diagnostic(ctx);
                     op
                 }
                 ClientView::Custom(handle) => {
-                    keys.put_back(keys.index() - previous_index);
+                    let saved_index = keys.index;
+                    keys.index = previous_index;
                     CustomViewCollection::update(ctx, handle, keys);
+                    if keys.index == previous_index {
+                        keys.index = saved_index;
+                    }
                     None
                 }
             }

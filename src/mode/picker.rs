@@ -49,7 +49,7 @@ impl ModeState for State {
             keys,
         );
         if let ReadLinePoll::Pending = poll {
-            keys.put_back(1);
+            keys.index = keys.index.saturating_sub(1);
             match keys.next(&ctx.editor.buffered_keys) {
                 Key::Ctrl('n') | Key::Ctrl('j') | Key::Down => ctx.editor.picker.move_cursor(1),
                 Key::Ctrl('p') | Key::Ctrl('k') | Key::Up => ctx.editor.picker.move_cursor(-1),

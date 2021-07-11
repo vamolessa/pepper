@@ -2253,7 +2253,7 @@ impl Client {
                 &EditorEvent::Idle => {
                     helper::send_pending_did_change(self, editor, platform);
                 }
-                &EditorEvent::BufferLoad { handle } => {
+                &EditorEvent::BufferOpen { handle } => {
                     let handle = handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(editor, handle, &self.root);
@@ -2283,8 +2283,8 @@ impl Client {
                     helper::send_pending_did_change(self, editor, platform);
                     helper::send_did_close(self, editor, platform, handle);
                 }
-                &EditorEvent::ClientViewLostFocus { .. } => (),
                 &EditorEvent::FixCursors { .. } => (),
+                &EditorEvent::ClientViewLostFocus { .. } => (),
             }
         }
     }
@@ -2853,7 +2853,7 @@ impl ClientManager {
     pub fn on_editor_events(editor: &mut Editor, platform: &mut Platform) {
         let mut events = EditorEventIter::new();
         while let Some(event) = events.next(&editor.events) {
-            if let &EditorEvent::BufferLoad { handle } = event {
+            if let &EditorEvent::BufferOpen { handle } = event {
                 let buffer_path = match editor.buffers.get(handle).and_then(|b| b.path.to_str()) {
                     Some(path) => path,
                     None => continue,

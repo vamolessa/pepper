@@ -1115,7 +1115,7 @@ impl Buffer {
         self.content.clear();
         self.highlighted.clear();
 
-        events.enqueue(EditorEvent::BufferLoad {
+        events.enqueue(EditorEvent::BufferOpen {
             handle: self.handle,
         });
 

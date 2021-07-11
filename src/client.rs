@@ -119,7 +119,21 @@ impl Client {
     pub fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
         self.navigation_history
             .remove_snapshots_with_buffer_handle(buffer_handle);
-        NavigationHistory::move_in_history(self, editor, NavigationMovement::PreviousBuffer);
+
+        if self
+            .buffer_view_handle()
+            .and_then(|h| editor.buffer_views.get(h))
+            .map(|v| v.buffer_handle == buffer_handle)
+            .unwrap_or(false)
+        {
+            NavigationHistory::move_in_history(self, editor, NavigationMovement::PreviousBuffer);
+        }
+    }
+
+    pub fn try_close_custom_view(&mut self, editor: &mut Editor) {
+        if let ClientView::Custom(_) = self.view {
+            NavigationHistory::move_in_history(self, editor, NavigationMovement::Current);
+        }
     }
 
     pub fn set_view(&mut self, view: ClientView, events: &mut EditorEventQueue) {

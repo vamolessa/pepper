@@ -3,15 +3,15 @@ use std::path::Path;
 use crate::{
     buffer::{parse_path_and_position, BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
-    client::{ClientManager, ClientView},
+    client::{ClientManager, ClientView, CustomView},
     command::{BuiltinCommand, CommandContext, CommandError, CommandOperation, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
-    editor::Editor,
+    editor::{Editor, KeysIterator},
     editor_utils::MessageKind,
     help, lsp,
-    mode::ModeKind,
-    navigation_history::NavigationHistory,
+    mode::{ModeContext, ModeKind},
+    navigation_history::{NavigationHistory, NavigationMovement},
     platform::Platform,
     theme::{Color, THEME_COLOR_NAMES},
     ui,
@@ -222,6 +222,18 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
+            let clients = &mut *ctx.clients;
+            if let Some(client) = ctx.client_handle.and_then(|h| clients.get_mut(h)) {
+                if let ClientView::Custom(_) = client.view() {
+                    NavigationHistory::move_in_history(
+                        client,
+                        ctx.editor,
+                        NavigationMovement::Current,
+                    );
+                    return Ok(None);
+                }
+            }
+
             let buffer_handle = ctx.current_buffer_handle()?;
             ctx.assert_can_discard_buffer(buffer_handle)?;
             ctx.editor
@@ -243,6 +255,17 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_empty()?;
 
             ctx.assert_can_discard_all_buffers()?;
+
+            for client in ctx.clients.iter_mut() {
+                if let ClientView::Custom(_) = client.view() {
+                    NavigationHistory::move_in_history(
+                        client,
+                        ctx.editor,
+                        NavigationMovement::Current,
+                    );
+                }
+            }
+
             let mut count = 0;
             for buffer in ctx.editor.buffers.iter() {
                 ctx.editor
@@ -265,13 +288,10 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_empty()?;
 
             let clients = &mut *ctx.clients;
-            if let Some(client) = ctx.client_handle.and_then(|h| clients.get_mut(h)) {
-                client.set_view(
-                    // TODO
-                    //ClientView::Custom(render_status_view),
-                    ClientView::None,
-                    &mut ctx.editor.events,
-                );
+            let handle = clients.custom_views.add(Box::new(StatusCustomView));
+            match ctx.client_handle.and_then(|h| clients.get_mut(h)) {
+                Some(client) => client.set_view(ClientView::Custom(handle), &mut ctx.editor.events),
+                None => clients.custom_views.remove(handle),
             }
 
             Ok(None)
@@ -596,16 +616,24 @@ pub static COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
-// TODO
-fn render_status_view(ctx: &ui::RenderContext, buf: &mut Vec<u8>) {
-    ui::move_cursor_to(buf, 0, 0);
-    buf.extend_from_slice(ui::RESET_STYLE_CODE);
-    ui::set_background_color(buf, ctx.editor.theme.background);
-    ui::set_foreground_color(buf, ctx.editor.theme.token_text);
+struct StatusCustomView;
+impl CustomView for StatusCustomView {
+    fn update(&mut self, _: &mut ModeContext, _: &mut KeysIterator) {}
 
-    for _ in 0..ctx.draw_height {
+    fn render(&self, ctx: &ui::RenderContext, buf: &mut Vec<u8>) {
+        ui::move_cursor_to(buf, 0, 0);
+        buf.extend_from_slice(ui::RESET_STYLE_CODE);
+        ui::set_background_color(buf, ctx.editor.theme.background);
+        ui::set_foreground_color(buf, ctx.editor.theme.token_text);
+
+        buf.extend_from_slice(b"status");
         ui::clear_until_new_line(buf);
         ui::move_cursor_to_next_line(buf);
+
+        for _ in 1..ctx.draw_height {
+            ui::clear_until_new_line(buf);
+            ui::move_cursor_to_next_line(buf);
+        }
     }
 }
 

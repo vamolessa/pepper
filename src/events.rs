@@ -34,7 +34,7 @@ impl EditorEventCursors {
 
 pub enum EditorEvent {
     Idle,
-    BufferLoad {
+    BufferOpen {
         handle: BufferHandle,
     },
     BufferInsertText {

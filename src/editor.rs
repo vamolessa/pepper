@@ -39,17 +39,9 @@ impl EditorControlFlow {
 }
 
 pub struct KeysIterator {
-    index: usize,
+    pub index: usize,
 }
 impl KeysIterator {
-    fn from(index: usize) -> Self {
-        Self { index }
-    }
-
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
     pub fn next(&mut self, keys: &BufferedKeys) -> Key {
         if self.index < keys.0.len() {
             let next = keys.0[self.index];
@@ -58,10 +50,6 @@ impl KeysIterator {
         } else {
             Key::None
         }
-    }
-
-    pub fn put_back(&mut self, count: usize) {
-        self.index = self.index.saturating_sub(count);
     }
 }
 
@@ -83,18 +71,18 @@ impl BufferedKeys {
     }
 
     pub fn parse<'a>(&mut self, keys: &'a str) -> Result<KeysIterator, BufferedKeysParseError<'a>> {
-        let start_index = self.as_slice().len();
+        let index = self.as_slice().len();
         for key in KeyParser::new(keys) {
             match key {
                 Ok(key) => self.0.push(key),
                 Err(error) => {
-                    self.0.truncate(start_index);
+                    self.0.truncate(index);
                     return Err(BufferedKeysParseError { keys, error });
                 }
             }
         }
 
-        Ok(KeysIterator::from(start_index))
+        Ok(KeysIterator { index })
     }
 }
 
@@ -323,7 +311,7 @@ impl Editor {
                     }
                 }
                 self.buffered_keys.0.push(key);
-                self.execute_keys(platform, clients, client_handle, KeysIterator::from(0))
+                self.execute_keys(platform, clients, client_handle, KeysIterator { index: 0 })
             }
             ClientEvent::Resize(client_handle, width, height) => {
                 if let Some(client) = clients.get_mut(client_handle) {
@@ -408,7 +396,7 @@ impl Editor {
             while let Some(event) = events.next(&self.events) {
                 match event {
                     &EditorEvent::Idle => (),
-                    &EditorEvent::BufferLoad { handle } => {
+                    &EditorEvent::BufferOpen { handle } => {
                         if let Some(buffer) = self.buffers.get_mut(handle) {
                             buffer.refresh_syntax(&self.syntaxes);
                             self.buffer_views.on_buffer_load(buffer);
@@ -424,6 +412,22 @@ impl Editor {
                         if new_path {
                             if let Some(buffer) = self.buffers.get_mut(handle) {
                                 buffer.refresh_syntax(&self.syntaxes);
+                            }
+                        }
+                    }
+                    &EditorEvent::BufferClose { handle } => {
+                        self.buffers.remove(handle, &mut self.word_database);
+                        for client in clients.iter_mut() {
+                            client.on_buffer_close(self, handle);
+                        }
+                        self.buffer_views.remove_buffer_views(handle);
+                    }
+                    &EditorEvent::FixCursors { handle, cursors } => {
+                        if let Some(buffer_view) = self.buffer_views.get_mut(handle) {
+                            let mut view_cursors = buffer_view.cursors.mut_guard();
+                            view_cursors.clear();
+                            for &cursor in cursors.as_cursors(&self.events) {
+                                view_cursors.add(cursor);
                             }
                         }
                     }
@@ -450,22 +454,6 @@ impl Editor {
                         }
                         ClientView::Custom(handle) => clients.custom_views.remove(handle),
                     },
-                    &EditorEvent::BufferClose { handle } => {
-                        self.buffers.remove(handle, &mut self.word_database);
-                        for client in clients.iter_mut() {
-                            client.on_buffer_close(self, handle);
-                        }
-                        self.buffer_views.remove_buffer_views(handle);
-                    }
-                    &EditorEvent::FixCursors { handle, cursors } => {
-                        if let Some(buffer_view) = self.buffer_views.get_mut(handle) {
-                            let mut view_cursors = buffer_view.cursors.mut_guard();
-                            view_cursors.clear();
-                            for &cursor in cursors.as_cursors(&self.events) {
-                                view_cursors.add(cursor);
-                            }
-                        }
-                    }
                 }
             }
         }
