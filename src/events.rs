@@ -4,7 +4,7 @@ use crate::{
     buffer::BufferHandle,
     buffer_position::BufferRange,
     buffer_view::BufferViewHandle,
-    client::ClientHandle,
+    client::{ClientHandle, ClientView},
     cursor::Cursor,
     platform::Key,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
@@ -53,12 +53,12 @@ pub enum EditorEvent {
     BufferClose {
         handle: BufferHandle,
     },
-    BufferViewLostFocus {
-        handle: BufferViewHandle,
-    },
     FixCursors {
         handle: BufferViewHandle,
         cursors: EditorEventCursors,
+    },
+    ClientViewLostFocus {
+        view: ClientView,
     },
 }
 
@@ -624,7 +624,7 @@ impl ClientEventReceiver {
     pub fn receive_events(&mut self, client_handle: ClientHandle, bytes: &[u8]) -> ClientEventIter {
         let buf_index = client_handle.into_index();
         if buf_index >= self.bufs.len() {
-            self.bufs.resize_with(buf_index + 1, Default::default);
+            self.bufs.resize_with(buf_index + 1, Vec::new);
         }
         let buf = &mut self.bufs[buf_index];
         buf.extend_from_slice(bytes);

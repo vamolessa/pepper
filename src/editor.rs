@@ -6,8 +6,7 @@ use std::{
 use crate::{
     buffer::{BufferCapabilities, BufferCollection},
     buffer_view::{BufferViewCollection, BufferViewHandle},
-    client::Client,
-    client::{ClientHandle, ClientManager},
+    client::{Client, ClientHandle, ClientManager, ClientView},
     command::{CommandManager, CommandOperation},
     config::Config,
     editor_utils::{ReadLine, StatusBar, StringPool},
@@ -136,7 +135,7 @@ impl Editor {
 
             mode: Mode::default(),
 
-            buffers: Default::default(),
+            buffers: BufferCollection::default(),
             buffer_views: BufferViewCollection::default(),
             word_database: WordDatabase::new(),
 
@@ -428,25 +427,29 @@ impl Editor {
                             }
                         }
                     }
-                    &EditorEvent::BufferViewLostFocus { handle } => {
-                        if let Some(buffer_view) = self.buffer_views.get(handle) {
-                            let buffer_handle = buffer_view.buffer_handle;
-                            let should_close = self
-                                .buffers
-                                .get(buffer_handle)
-                                .map(|b| b.capabilities.auto_close && !b.needs_save())
-                                .unwrap_or(false);
-                            let any_view = !clients
-                                .iter()
-                                .filter_map(Client::buffer_view_handle)
-                                .filter_map(|h| self.buffer_views.get(h))
-                                .any(|v| v.buffer_handle == buffer_handle);
+                    &EditorEvent::ClientViewLostFocus { view } => match view {
+                        ClientView::None => (),
+                        ClientView::Buffer(handle) => {
+                            if let Some(buffer_view) = self.buffer_views.get(handle) {
+                                let buffer_handle = buffer_view.buffer_handle;
+                                let should_close = self
+                                    .buffers
+                                    .get(buffer_handle)
+                                    .map(|b| b.capabilities.auto_close && !b.needs_save())
+                                    .unwrap_or(false);
+                                let any_view = !clients
+                                    .iter()
+                                    .filter_map(Client::buffer_view_handle)
+                                    .filter_map(|h| self.buffer_views.get(h))
+                                    .any(|v| v.buffer_handle == buffer_handle);
 
-                            if should_close && !any_view {
-                                self.buffers.defer_remove(buffer_handle, &mut self.events);
+                                if should_close && !any_view {
+                                    self.buffers.defer_remove(buffer_handle, &mut self.events);
+                                }
                             }
                         }
-                    }
+                        ClientView::Custom(handle) => clients.custom_views.remove(handle),
+                    },
                     &EditorEvent::BufferClose { handle } => {
                         self.buffers.remove(handle, &mut self.word_database);
                         for client in clients.iter_mut() {

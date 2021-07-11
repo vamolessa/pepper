@@ -2283,7 +2283,7 @@ impl Client {
                     helper::send_pending_did_change(self, editor, platform);
                     helper::send_did_close(self, editor, platform, handle);
                 }
-                &EditorEvent::BufferViewLostFocus { .. } => (),
+                &EditorEvent::ClientViewLostFocus { .. } => (),
                 &EditorEvent::FixCursors { .. } => (),
             }
         }

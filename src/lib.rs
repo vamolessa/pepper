@@ -6,7 +6,6 @@ pub mod client;
 pub mod command;
 pub mod config;
 pub mod cursor;
-pub mod custom_view;
 pub mod editor;
 pub mod editor_utils;
 pub mod events;
