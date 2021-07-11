@@ -60,8 +60,8 @@ impl KeysIterator {
         }
     }
 
-    pub fn put_back(&mut self) {
-        self.index = self.index.saturating_sub(1);
+    pub fn put_back(&mut self, count: usize) {
+        self.index = self.index.saturating_sub(count);
     }
 }
 

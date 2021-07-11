@@ -60,7 +60,7 @@ impl ModeState for State {
             keys,
         ) {
             ReadLinePoll::Pending => {
-                keys.put_back();
+                keys.put_back(1);
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::Ctrl('n' | 'j') => match state.read_state {
                         ReadCommandState::NavigatingHistory(ref mut i) => {

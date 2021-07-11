@@ -76,137 +76,6 @@ impl State {
         }
     }
 
-    fn on_client_keys_view_independent(
-        ctx: &mut ModeContext,
-        keys: &mut KeysIterator,
-    ) -> Option<ModeOperation> {
-        let state = &mut ctx.editor.mode.normal_state;
-        state.is_recording_auto_macro = false;
-        match keys.next(&ctx.editor.buffered_keys) {
-            Key::None => (),
-            Key::Ctrl('z') => return Some(ModeOperation::Suspend),
-            Key::Char('q') => match ctx.editor.recording_macro.take() {
-                Some(_) => (),
-                None => match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return Some(ModeOperation::Pending),
-                    Key::Char(c) => {
-                        if let Some(key) = RegisterKey::from_char(c) {
-                            ctx.editor.registers.get_mut(key).clear();
-                            ctx.editor.recording_macro = Some(key);
-                        }
-                    }
-                    _ => {
-                        keys.put_back();
-                        keys.put_back();
-                    }
-                },
-            },
-            Key::Char('Q') => {
-                ctx.editor.recording_macro = None;
-                match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return Some(ModeOperation::Pending),
-                    Key::Char(c) => {
-                        if let Some(key) = RegisterKey::from_char(c.to_ascii_lowercase()) {
-                            for _ in 0..state.count.max(1) {
-                                let keys = ctx.editor.registers.get(key);
-                                match ctx.editor.buffered_keys.parse(keys) {
-                                    Ok(keys) => {
-                                        match ctx.editor.execute_keys(
-                                            ctx.platform,
-                                            ctx.clients,
-                                            ctx.client_handle,
-                                            keys,
-                                        ) {
-                                            EditorControlFlow::Continue => (),
-                                            EditorControlFlow::Suspend => {
-                                                return Some(ModeOperation::Suspend);
-                                            }
-                                            EditorControlFlow::Quit => {
-                                                return Some(ModeOperation::Quit);
-                                            }
-                                            EditorControlFlow::QuitAll => {
-                                                return Some(ModeOperation::QuitAll);
-                                            }
-                                        };
-                                    }
-                                    Err(error) => ctx
-                                        .editor
-                                        .status_bar
-                                        .write(MessageKind::Error)
-                                        .fmt(format_args!("{}", error)),
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        keys.put_back();
-                        keys.put_back();
-                    }
-                }
-            }
-            Key::Char(':') => Mode::change_to(ctx, ModeKind::Command),
-            Key::Char('g' | 'G') => match state.count {
-                0 => match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return Some(ModeOperation::Pending),
-                    Key::Char('o') => picker::buffer::enter_mode(ctx),
-                    Key::Char('b') => {
-                        let client = ctx.clients.get_mut(ctx.client_handle)?;
-                        NavigationHistory::move_in_history(
-                            client,
-                            ctx.editor,
-                            NavigationMovement::PreviousBuffer,
-                        );
-                    }
-                    Key::Char('B') => {
-                        let previous_client_handle = ctx.clients.previous_focused_client()?;
-                        let previous_client = ctx.clients.get_mut(previous_client_handle)?;
-                        let view = previous_client.view();
-
-                        NavigationHistory::move_in_history(
-                            previous_client,
-                            ctx.editor,
-                            NavigationMovement::PreviousBuffer,
-                        );
-                        let mut previous_view = previous_client.view();
-                        NavigationHistory::move_in_history(
-                            previous_client,
-                            ctx.editor,
-                            NavigationMovement::PreviousBuffer,
-                        );
-
-                        if previous_view == view {
-                            previous_view = ClientView::default();
-                        }
-
-                        previous_client.set_view(previous_view, &mut ctx.editor.events);
-
-                        let client = ctx.clients.get_mut(ctx.client_handle)?;
-                        client.set_view(view, &mut ctx.editor.events);
-                    }
-                    _ => {
-                        keys.put_back();
-                        keys.put_back();
-                    }
-                },
-                _ => keys.put_back(),
-            },
-            Key::Char(c) => match c.to_digit(10) {
-                Some(n) => {
-                    state.count = state.count.saturating_mul(10).saturating_add(n);
-                    return None;
-                }
-                None => keys.put_back(),
-            },
-            _ => {
-                keys.put_back();
-                return None;
-            }
-        }
-
-        ctx.editor.mode.normal_state.count = 0;
-        None
-    }
-
     fn on_client_keys_with_buffer_view(
         ctx: &mut ModeContext,
         keys: &mut KeysIterator,
@@ -1319,20 +1188,146 @@ impl ModeState for State {
             None
         }
 
+        let state = &mut ctx.editor.mode.normal_state;
+        state.is_recording_auto_macro = false;
+
+        let mut handled_keys = false;
         let previous_index = keys.index();
-        let op = Self::on_client_keys_view_independent(ctx, keys);
-        if keys.index() != previous_index {
-            op
+
+        match keys.next(&ctx.editor.buffered_keys) {
+            Key::None => handled_keys = true,
+            Key::Ctrl('z') => return Some(ModeOperation::Suspend),
+            Key::Char('q') => match ctx.editor.recording_macro.take() {
+                Some(_) => handled_keys = true,
+                None => match keys.next(&ctx.editor.buffered_keys) {
+                    Key::None => return Some(ModeOperation::Pending),
+                    Key::Char(c) => {
+                        if let Some(key) = RegisterKey::from_char(c) {
+                            handled_keys = true;
+                            ctx.editor.registers.get_mut(key).clear();
+                            ctx.editor.recording_macro = Some(key);
+                        }
+                    }
+                    _ => (),
+                },
+            },
+            Key::Char('Q') => {
+                handled_keys = true;
+                ctx.editor.recording_macro = None;
+                match keys.next(&ctx.editor.buffered_keys) {
+                    Key::None => return Some(ModeOperation::Pending),
+                    Key::Char(c) => {
+                        if let Some(key) = RegisterKey::from_char(c.to_ascii_lowercase()) {
+                            for _ in 0..state.count.max(1) {
+                                let keys = ctx.editor.registers.get(key);
+                                match ctx.editor.buffered_keys.parse(keys) {
+                                    Ok(keys) => {
+                                        match ctx.editor.execute_keys(
+                                            ctx.platform,
+                                            ctx.clients,
+                                            ctx.client_handle,
+                                            keys,
+                                        ) {
+                                            EditorControlFlow::Continue => (),
+                                            EditorControlFlow::Suspend => {
+                                                return Some(ModeOperation::Suspend);
+                                            }
+                                            EditorControlFlow::Quit => {
+                                                return Some(ModeOperation::Quit);
+                                            }
+                                            EditorControlFlow::QuitAll => {
+                                                return Some(ModeOperation::QuitAll);
+                                            }
+                                        };
+                                    }
+                                    Err(error) => ctx
+                                        .editor
+                                        .status_bar
+                                        .write(MessageKind::Error)
+                                        .fmt(format_args!("{}", error)),
+                                }
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            Key::Char(':') => {
+                handled_keys = true;
+                Mode::change_to(ctx, ModeKind::Command);
+            }
+            Key::Char('g' | 'G') => {
+                if state.count == 0 {
+                    match keys.next(&ctx.editor.buffered_keys) {
+                        Key::None => return Some(ModeOperation::Pending),
+                        Key::Char('o') => {
+                            handled_keys = true;
+                            picker::buffer::enter_mode(ctx);
+                        }
+                        Key::Char('b') => {
+                            handled_keys = true;
+                            let client = ctx.clients.get_mut(ctx.client_handle)?;
+                            NavigationHistory::move_in_history(
+                                client,
+                                ctx.editor,
+                                NavigationMovement::PreviousBuffer,
+                            );
+                        }
+                        Key::Char('B') => {
+                            handled_keys = true;
+                            let previous_client_handle = ctx.clients.previous_focused_client()?;
+                            let previous_client = ctx.clients.get_mut(previous_client_handle)?;
+                            let view = previous_client.view();
+
+                            NavigationHistory::move_in_history(
+                                previous_client,
+                                ctx.editor,
+                                NavigationMovement::PreviousBuffer,
+                            );
+                            let mut previous_view = previous_client.view();
+                            NavigationHistory::move_in_history(
+                                previous_client,
+                                ctx.editor,
+                                NavigationMovement::PreviousBuffer,
+                            );
+
+                            if previous_view == view {
+                                previous_view = ClientView::default();
+                            }
+
+                            previous_client.set_view(previous_view, &mut ctx.editor.events);
+
+                            let client = ctx.clients.get_mut(ctx.client_handle)?;
+                            client.set_view(view, &mut ctx.editor.events);
+                        }
+                        _ => (),
+                    }
+                }
+            }
+            Key::Char(c) => {
+                if let Some(n) = c.to_digit(10) {
+                    state.count = state.count.saturating_mul(10).saturating_add(n);
+                    return None;
+                }
+            }
+            _ => (),
+        }
+
+        if handled_keys {
+            ctx.editor.mode.normal_state.count = 0;
+            None
         } else {
             let client = ctx.clients.get(ctx.client_handle)?;
             match client.view() {
                 ClientView::None => None,
                 ClientView::Buffer(handle) => {
+                    keys.put_back(keys.index() - previous_index);
                     let op = Self::on_client_keys_with_buffer_view(ctx, keys, handle);
                     show_hovered_diagnostic(ctx);
                     op
                 }
                 ClientView::Custom(handle) => {
+                    keys.put_back(keys.index() - previous_index);
                     CustomViewCollection::update(ctx, handle, keys);
                     None
                 }
