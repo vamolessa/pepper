@@ -150,6 +150,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     if let ReadCommandState::NavigatingHistory(_) = state.read_state {
         state.read_state = ReadCommandState::TypingCommand;
     }
+    ctx.editor.picker.clear_cursor();
 
     let mut arg_count = 0;
     for token in tokens {

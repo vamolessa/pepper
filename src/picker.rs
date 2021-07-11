@@ -37,6 +37,10 @@ impl Picker {
         self.filtered_entries.len()
     }
 
+    pub fn clear_cursor(&mut self) {
+        self.cursor = None;
+    }
+
     pub fn move_cursor(&mut self, offset: isize) {
         if self.filtered_entries.is_empty() {
             return;

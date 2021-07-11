@@ -6,6 +6,7 @@
 **/*.rs.bk
 
 pepper-crash.txt
+rust-analyzer-log.txt
 
 .vagrant
 VagrantFile
