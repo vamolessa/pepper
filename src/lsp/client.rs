@@ -2618,19 +2618,19 @@ struct ClientRecipe {
 enum ClientEntry {
     Vacant,
     Reserved,
-    Occupied(Client),
+    Occupied(Box<Client>),
 }
 impl ClientEntry {
-    pub fn reserve_and_take(&mut self) -> Option<Client> {
-        let mut entry = ClientEntry::Reserved;
+    pub fn reserve_and_take(&mut self) -> Option<Box<Client>> {
+        let mut entry = Self::Reserved;
         std::mem::swap(self, &mut entry);
         match entry {
-            ClientEntry::Vacant => {
-                *self = ClientEntry::Vacant;
+            Self::Vacant => {
+                *self = Self::Vacant;
                 None
             }
-            ClientEntry::Occupied(client) => Some(client),
-            ClientEntry::Reserved => None,
+            Self::Reserved => None,
+            Self::Occupied(client) => Some(client),
         }
     }
 }
@@ -2693,7 +2693,7 @@ impl ClientManager {
         root: PathBuf,
         log_file_path: Option<String>,
     ) -> ClientHandle {
-        fn find_free_slot(this: &mut ClientManager) -> ClientHandle {
+        fn find_vacant_entry(this: &mut ClientManager) -> ClientHandle {
             for (i, slot) in this.entries.iter_mut().enumerate() {
                 if let ClientEntry::Vacant = slot {
                     *slot = ClientEntry::Reserved;
@@ -2705,7 +2705,7 @@ impl ClientManager {
             handle
         }
 
-        let handle = find_free_slot(self);
+        let handle = find_vacant_entry(self);
 
         command
             .stdin(Stdio::piped())
@@ -2718,7 +2718,7 @@ impl ClientManager {
         });
 
         let client = Client::new(handle, root, log_file_path);
-        self.entries[handle.0 as usize] = ClientEntry::Occupied(client);
+        self.entries[handle.0 as usize] = ClientEntry::Occupied(Box::new(client));
         handle
     }
 
@@ -2765,7 +2765,7 @@ impl ClientManager {
 
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
         self.entries.iter().flat_map(|e| match e {
-            ClientEntry::Occupied(client) => Some(client),
+            ClientEntry::Occupied(client) => Some(client.as_ref()),
             _ => None,
         })
     }
