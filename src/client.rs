@@ -65,8 +65,6 @@ pub struct Client {
     active: bool,
     handle: ClientHandle,
 
-    // TODO: do not send gui events to suspended client
-    pub suspended: bool,
     pub viewport_size: (u16, u16),
     pub scroll: (BufferPositionIndex, BufferPositionIndex),
     pub height: u16,
@@ -79,7 +77,6 @@ impl Client {
     fn dispose(&mut self) {
         self.active = false;
 
-        self.suspended = false;
         self.viewport_size = (0, 0);
         self.scroll = (0, 0);
         self.height = 0;
