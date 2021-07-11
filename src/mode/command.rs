@@ -100,7 +100,7 @@ impl ModeState for State {
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,
-                    Some(ctx.client_handle),
+                    ctx.client_handle,
                     &mut command,
                 )
                 .map(From::from);

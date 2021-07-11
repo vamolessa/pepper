@@ -379,13 +379,11 @@ impl TextEdit {
         edits: JsonArray,
         json: &Json,
     ) {
-        let buffer = match editor.buffers.get_mut(buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
+        let buffer = editor.buffers.get_mut(buffer_handle);
 
         buffer.commit_edits();
         temp_edits.clear();
+
         for edit in edits.elements(json) {
             let edit = match TextEdit::from_json(edit, json) {
                 Ok(edit) => edit,
@@ -635,9 +633,10 @@ impl WorkspaceEdit {
                     TextEdit::apply_edits(editor, buffer_handle, temp_edits, edit.edits, json);
 
                     if is_temp {
-                        if let Some(buffer) = editor.buffers.get_mut(buffer_handle) {
-                            let _ = buffer.save_to_file(None, &mut editor.events);
-                        }
+                        let _ = editor
+                            .buffers
+                            .get_mut(buffer_handle)
+                            .save_to_file(None, &mut editor.events);
 
                         editor
                             .buffers
@@ -1089,3 +1088,4 @@ impl PendingRequestColection {
         None
     }
 }
+

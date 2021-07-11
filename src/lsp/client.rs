@@ -466,11 +466,7 @@ impl DiagnosticCollection {
     }
 
     pub fn on_load_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle.is_none() {
                 if is_editor_path_equals_to_lsp_path(
@@ -487,11 +483,7 @@ impl DiagnosticCollection {
     }
 
     pub fn on_save_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
                 diagnostics.buffer_handle = None;
@@ -675,13 +667,9 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(buffer_position);
 
@@ -707,13 +695,9 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(buffer_position);
 
@@ -740,13 +724,9 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(buffer_position);
 
@@ -776,13 +756,9 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(buffer_position);
 
@@ -819,13 +795,9 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(buffer_position);
 
@@ -872,13 +844,9 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(buffer_position);
         let new_name = self.json.create_string(editor.read_line.input());
@@ -907,13 +875,9 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
 
         let mut diagnostics = JsonArray::default();
@@ -979,18 +943,10 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor
-            .buffer_views
-            .get(buffer_view_handle)
-            .map(|v| v.buffer_handle)
-            .and_then(|h| editor.buffers.get(h))
-        {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_handle = editor.buffer_views.get(buffer_view_handle).buffer_handle;
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
 
         let mut params = JsonObject::default();
@@ -1051,17 +1007,17 @@ impl Client {
         }
 
         if let Ok(position) = find_symbol_position(symbols, &self.json, index) {
-            if let Some(client) = clients.get_mut(client_handle) {
-                NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
-            }
-
-            let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
-                Some(buffer_view) => buffer_view,
-                None => return,
-            };
+            NavigationHistory::save_client_snapshot(
+                clients.get_mut(client_handle),
+                &editor.buffer_views,
+            );
 
             let position = position.into();
-            let mut cursors = buffer_view.cursors.mut_guard();
+            let mut cursors = editor
+                .buffer_views
+                .get_mut(buffer_view_handle)
+                .cursors
+                .mut_guard();
             cursors.clear();
             cursors.add(Cursor {
                 anchor: position,
@@ -1117,13 +1073,9 @@ impl Client {
                 Ok(Uri::Path(path)) => path,
                 Err(_) => return,
             };
-            if let Some(client) = clients.get_mut(client_handle) {
-                NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
-            }
-            let client = match clients.get_mut(client_handle) {
-                Some(client) => client,
-                None => return,
-            };
+
+            let client = clients.get_mut(client_handle);
+            NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
 
             let position = symbol.range.start.into();
             let buffer_view_handle = editor.buffer_view_handle_from_path(
@@ -1132,11 +1084,12 @@ impl Client {
                 BufferCapabilities::text(),
             );
             client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
-            let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
-                Some(buffer_view) => buffer_view,
-                None => return,
-            };
-            let mut cursors = buffer_view.cursors.mut_guard();
+
+            let mut cursors = editor
+                .buffer_views
+                .get_mut(buffer_view_handle)
+                .cursors
+                .mut_guard();
             cursors.clear();
             cursors.add(Cursor {
                 anchor: position,
@@ -1156,13 +1109,9 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let mut options = JsonObject::default();
         options.set(
@@ -1198,13 +1147,9 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => &buffer.path,
-            None => return,
-        };
-
         helper::send_pending_did_change(self, editor, platform);
 
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(buffer_position);
 
@@ -1394,33 +1339,28 @@ impl Client {
 
                 let success = if let Some(true) = params.external {
                     false
+                } else if let Some(client_handle) = clients.focused_client() {
+                    let client = clients.get_mut(client_handle);
+                    let buffer_view_handle = editor.buffer_view_handle_from_path(
+                        client_handle,
+                        path,
+                        BufferCapabilities::text(),
+                    );
+                    if let Some(range) = params.selection {
+                        let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
+                        let mut cursors = buffer_view.cursors.mut_guard();
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: range.start.into(),
+                            position: range.end.into(),
+                        });
+                    }
+                    if let Some(true) = params.take_focus {
+                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                    }
+                    true
                 } else {
-                    let mut closure = || {
-                        let client_handle = clients.focused_client()?;
-                        let client = clients.get_mut(client_handle)?;
-                        let buffer_view_handle = editor.buffer_view_handle_from_path(
-                            client_handle,
-                            path,
-                            BufferCapabilities::text(),
-                        );
-                        if let Some(range) = params.selection {
-                            let buffer_view = editor.buffer_views.get_mut(buffer_view_handle)?;
-                            let mut cursors = buffer_view.cursors.mut_guard();
-                            cursors.clear();
-                            cursors.add(Cursor {
-                                anchor: range.start.into(),
-                                position: range.end.into(),
-                            });
-                        }
-                        if let Some(true) = params.take_focus {
-                            client.set_buffer_view_handle(
-                                Some(buffer_view_handle),
-                                &mut editor.events,
-                            );
-                        }
-                        Some(())
-                    };
-                    closure().is_some()
+                    false
                 };
 
                 let mut result = JsonObject::default();
@@ -1725,31 +1665,27 @@ impl Client {
                         let path = match Uri::parse(&self.root, location.uri.as_str(&self.json))? {
                             Uri::Path(path) => path,
                         };
-                        if let Some(client) = clients.get_mut(client_handle) {
-                            NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
-                        }
+                        let client = clients.get_mut(client_handle);
+                        NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
 
                         let buffer_view_handle = editor.buffer_view_handle_from_path(
                             client_handle,
                             path,
                             BufferCapabilities::text(),
                         );
-                        if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
-                            let position = location.range.start.into();
-                            let mut cursors = buffer_view.cursors.mut_guard();
-                            cursors.clear();
-                            cursors.add(Cursor {
-                                anchor: position,
-                                position,
-                            });
-                        }
+                        let position = location.range.start.into();
+                        let mut cursors = editor
+                            .buffer_views
+                            .get_mut(buffer_view_handle)
+                            .cursors
+                            .mut_guard();
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: position,
+                            position,
+                        });
 
-                        if let Some(client) = clients.get_mut(client_handle) {
-                            client.set_buffer_view_handle(
-                                Some(buffer_view_handle),
-                                &mut editor.events,
-                            );
-                        }
+                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                     }
                     DefinitionLocation::Many(locations) => {
                         editor.picker.clear();
@@ -1803,11 +1739,6 @@ impl Client {
                     _ => return Ok(()),
                 };
 
-                let client = match clients.get_mut(client_handle) {
-                    Some(client) => client,
-                    None => return Ok(()),
-                };
-
                 let mut buffer_name = editor.string_pool.acquire();
                 for location in locations.clone().elements(&self.json) {
                     let location = DocumentLocation::from_json(location, &self.json)?;
@@ -1817,7 +1748,7 @@ impl Client {
                     if let Some(buffer) = editor
                         .buffers
                         .find_with_path(&editor.current_directory, path)
-                        .and_then(|h| editor.buffers.get(h))
+                        .map(|h| editor.buffers.get(h))
                     {
                         buffer
                             .content()
@@ -1831,7 +1762,7 @@ impl Client {
                 buffer_name.push_str(".refs");
 
                 let buffer_view_handle = editor.buffer_view_handle_from_path(
-                    client.handle(),
+                    client_handle,
                     Path::new(&buffer_name),
                     BufferCapabilities::text(),
                 );
@@ -1839,112 +1770,112 @@ impl Client {
 
                 let mut count = 0;
                 let mut context_buffer = BufferContent::new();
-                let buffers = &mut editor.buffers;
-                if let Some(buffer) = editor
-                    .buffer_views
-                    .get(buffer_view_handle)
-                    .and_then(|v| buffers.get_mut(v.buffer_handle))
-                {
+
+                let buffer_view = editor.buffer_views.get(buffer_view_handle);
+                let buffer = editor.buffers.get_mut(buffer_view.buffer_handle);
+
+                buffer.capabilities = BufferCapabilities::log();
+                buffer.capabilities.auto_close = auto_close_buffer;
+
+                let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
+                buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
+
+                let mut text = editor.string_pool.acquire();
+                let mut last_path = "";
+                for location in locations.elements(&self.json) {
+                    let location = match DocumentLocation::from_json(location, &self.json) {
+                        Ok(location) => location,
+                        Err(_) => continue,
+                    };
+                    let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
+                        Ok(Uri::Path(path)) => path,
+                        Err(_) => continue,
+                    };
+                    let path = match path.to_str() {
+                        Some(path) => path,
+                        None => continue,
+                    };
+
                     use fmt::Write;
+                    let position: BufferPosition = location.range.start.into();
+                    let _ = writeln!(
+                        text,
+                        "{}:{},{}",
+                        path,
+                        position.line_index + 1,
+                        position.column_byte_index + 1,
+                    );
 
-                    buffer.capabilities = BufferCapabilities::log();
-                    buffer.capabilities.auto_close = auto_close_buffer;
-
-                    let range =
-                        BufferRange::between(BufferPosition::zero(), buffer.content().end());
-                    buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
-
-                    let mut text = editor.string_pool.acquire();
-                    let mut last_path = "";
-                    for location in locations.elements(&self.json) {
-                        let location = match DocumentLocation::from_json(location, &self.json) {
-                            Ok(location) => location,
-                            Err(_) => continue,
-                        };
-                        let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
-                            Ok(Uri::Path(path)) => path,
-                            Err(_) => continue,
-                        };
-                        let path = match path.to_str() {
-                            Some(path) => path,
-                            None => continue,
-                        };
-
-                        let position: BufferPosition = location.range.start.into();
-                        let _ = writeln!(
-                            text,
-                            "{}:{},{}",
-                            path,
-                            position.line_index + 1,
-                            position.column_byte_index + 1,
-                        );
-
-                        if context_len > 0 {
-                            if last_path != path {
-                                context_buffer.clear();
-                                if let Ok(file) = File::open(path) {
-                                    let mut reader = io::BufReader::new(file);
-                                    let _ = context_buffer.read(&mut reader);
-                                }
+                    if context_len > 0 {
+                        if last_path != path {
+                            context_buffer.clear();
+                            if let Ok(file) = File::open(path) {
+                                let mut reader = io::BufReader::new(file);
+                                let _ = context_buffer.read(&mut reader);
                             }
-
-                            let surrounding_len = context_len - 1;
-                            let start = (location.range.start.line as usize)
-                                .saturating_sub(surrounding_len);
-                            let end = location.range.end.line as usize + surrounding_len;
-                            let len = end - start + 1;
-
-                            for line in context_buffer
-                                .lines()
-                                .skip(start)
-                                .take(len)
-                                .skip_while(|l| l.as_str().is_empty())
-                            {
-                                text.push_str(line.as_str());
-                                text.push('\n');
-                            }
-                            text.push('\n');
                         }
 
-                        let position = buffer.content().end();
-                        buffer.insert_text(
-                            &mut editor.word_database,
-                            position,
-                            &text,
-                            &mut editor.events,
-                        );
-                        text.clear();
+                        let surrounding_len = context_len - 1;
+                        let start =
+                            (location.range.start.line as usize).saturating_sub(surrounding_len);
+                        let end = location.range.end.line as usize + surrounding_len;
+                        let len = end - start + 1;
 
-                        last_path = path;
-                        count += 1;
+                        for line in context_buffer
+                            .lines()
+                            .skip(start)
+                            .take(len)
+                            .skip_while(|l| l.as_str().is_empty())
+                        {
+                            text.push_str(line.as_str());
+                            text.push('\n');
+                        }
+                        text.push('\n');
                     }
 
-                    if count == 1 {
-                        let _ = writeln!(text, "1 reference found\n");
-                    } else {
-                        let _ = writeln!(text, "{} references found\n", count);
-                    }
-
+                    let position = buffer.content().end();
                     buffer.insert_text(
                         &mut editor.word_database,
-                        BufferPosition::zero(),
+                        position,
                         &text,
                         &mut editor.events,
                     );
-                    editor.string_pool.release(text);
+                    text.clear();
+
+                    last_path = path;
+                    count += 1;
                 }
 
-                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                if count == 1 {
+                    text.push_str("1 reference found\n");
+                } else {
+                    use fmt::Write;
+                    let _ = writeln!(text, "{} references found\n", count);
+                }
+
+                buffer.insert_text(
+                    &mut editor.word_database,
+                    BufferPosition::zero(),
+                    &text,
+                    &mut editor.events,
+                );
+                editor.string_pool.release(text);
+
+                clients
+                    .get_mut(client_handle)
+                    .set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                 editor.trigger_event_handlers(platform, clients);
 
-                if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(Cursor {
-                        anchor: BufferPosition::zero(),
-                        position: BufferPosition::zero(),
-                    });
-                }
+                let mut cursors = editor
+                    .buffer_views
+                    .get_mut(buffer_view_handle)
+                    .cursors
+                    .mut_guard();
+                cursors.clear();
+                cursors.add(Cursor {
+                    anchor: BufferPosition::zero(),
+                    position: BufferPosition::zero(),
+                });
                 Ok(())
             }
             "textDocument/prepareRename" => {
@@ -1984,10 +1915,7 @@ impl Client {
                     }
                 }
 
-                let buffer = match editor.buffers.get(buffer_handle) {
-                    Some(buffer) => buffer,
-                    None => return Ok(()),
-                };
+                let buffer = editor.buffers.get(buffer_handle);
 
                 let mut range = range.into();
                 if let Some(true) = default_behaviour {
@@ -2186,22 +2114,15 @@ impl Client {
                     return Ok(());
                 }
 
-                let buffer_views = &editor.buffer_views;
-                let buffer_view = match clients
-                    .get(client_handle)
-                    .and_then(|c| c.buffer_view_handle())
-                    .and_then(|h| buffer_views.get(h))
-                {
-                    Some(buffer_view) => buffer_view,
+                let buffer_view_handle = match clients.get(client_handle).buffer_view_handle() {
+                    Some(handle) => handle,
                     None => return Ok(()),
                 };
+                let buffer_view = editor.buffer_views.get(buffer_view_handle);
                 if buffer_view.buffer_handle != buffer_handle {
                     return Ok(());
                 }
-                let buffer = match editor.buffers.get(buffer_handle) {
-                    Some(buffer) => buffer.content(),
-                    None => return Ok(()),
-                };
+                let buffer = editor.buffers.get(buffer_handle).content();
 
                 let completions = match result {
                     JsonValue::Array(completions) => completions,
@@ -2419,10 +2340,7 @@ mod helper {
             return;
         }
 
-        let buffer = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
+        let buffer = editor.buffers.get(buffer_handle);
         if !buffer.capabilities.can_save {
             return;
         }
@@ -2452,13 +2370,7 @@ mod helper {
             if versioned_buffer.pending_edits.is_empty() {
                 continue;
             }
-            let buffer = match editor.buffers.get(buffer_handle) {
-                Some(buffer) => buffer,
-                None => {
-                    versioned_buffer.dispose();
-                    continue;
-                }
-            };
+            let buffer = editor.buffers.get(buffer_handle);
             if !buffer.capabilities.can_save {
                 versioned_buffer.flush();
                 continue;
@@ -2529,10 +2441,7 @@ mod helper {
             return;
         }
 
-        let buffer = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
+        let buffer = editor.buffers.get(buffer_handle);
         if !buffer.capabilities.can_save {
             return;
         }
@@ -2563,10 +2472,7 @@ mod helper {
             return;
         }
 
-        let buffer = match editor.buffers.get(buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
+        let buffer = editor.buffers.get(buffer_handle);
         if !buffer.capabilities.can_save {
             return;
         }
@@ -2848,7 +2754,7 @@ impl ClientManager {
         let mut events = EditorEventIter::new();
         while let Some(event) = events.next(&editor.events) {
             if let &EditorEvent::BufferOpen { handle } = event {
-                let buffer_path = match editor.buffers.get(handle).and_then(|b| b.path.to_str()) {
+                let buffer_path = match editor.buffers.get(handle).path.to_str() {
                     Some(path) => path,
                     None => continue,
                 };

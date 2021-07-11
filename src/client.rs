@@ -100,13 +100,15 @@ impl Client {
         self.navigation_history
             .remove_snapshots_with_buffer_handle(buffer_handle);
 
-        if self
-            .buffer_view_handle()
-            .and_then(|h| editor.buffer_views.get(h))
-            .map(|v| v.buffer_handle == buffer_handle)
-            .unwrap_or(false)
-        {
-            NavigationHistory::move_in_history(self, editor, NavigationMovement::PreviousBuffer);
+        if let Some(handle) = self.buffer_view_handle {
+            let buffer_view = editor.buffer_views.get(handle);
+            if buffer_view.buffer_handle == buffer_handle {
+                NavigationHistory::move_in_history(
+                    self,
+                    editor,
+                    NavigationMovement::PreviousBuffer,
+                );
+            }
         }
     }
 
@@ -137,8 +139,8 @@ impl Client {
                 return None;
             }
 
-            let buffer_view = editor.buffer_views.get(this.buffer_view_handle()?)?;
-            let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
+            let buffer_view = editor.buffer_views.get(this.buffer_view_handle()?);
+            let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
 
             let position = buffer_view.cursors.main_cursor().position;
 
@@ -206,10 +208,9 @@ impl ClientManager {
     }
 
     pub fn focus_client(&mut self, handle: ClientHandle) -> bool {
-        if let Some(client) = self.get(handle) {
-            if !client.has_ui() {
-                return false;
-            }
+        let client = self.get(handle);
+        if !client.has_ui() {
+            return false;
         }
 
         let changed = Some(handle) != self.focused_client;

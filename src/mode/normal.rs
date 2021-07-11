@@ -369,7 +369,7 @@ impl State {
                             ctx.clients.get_mut(ctx.client_handle),
                             &ctx.editor.buffer_views,
                         );
-                        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                        let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                         buffer_view.move_cursors(
                             &ctx.editor.buffers,
                             CursorMovement::LastLine,
@@ -988,7 +988,7 @@ impl State {
                     }
                 }
                 Key::Char('n') => {
-                    let mut cursors = &mut ctx.editor.buffer_views.get_mut(handle).cursors;
+                    let cursors = &mut ctx.editor.buffer_views.get_mut(handle).cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -1295,7 +1295,7 @@ impl ModeState for State {
             ctx.editor.mode.normal_state.count = 0;
             None
         } else {
-            let client = ctx.clients.get(ctx.client_handle)?;
+            let client = ctx.clients.get(ctx.client_handle);
             let buffer_view_handle = client.buffer_view_handle()?;
             keys.index = previous_index;
             let op = Self::on_client_keys_with_buffer_view(ctx, keys, buffer_view_handle);
@@ -1305,28 +1305,19 @@ impl ModeState for State {
     }
 }
 
-fn copy_text(
-    ctx: &mut ModeContext,
-    buffer_view_handle: BufferViewHandle,
-    text: &mut String,
-) -> Option<()> {
+fn copy_text(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle, text: &mut String) {
     let state = &mut ctx.editor.mode.normal_state;
-    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle)?;
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     buffer_view.append_selection_text(&ctx.editor.buffers, text, &mut state.last_copy_ranges);
     if !text.is_empty() {
         state.last_copy_hash = hash_bytes(text.as_bytes());
     }
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
-    None
 }
 
-fn paste_text(
-    ctx: &mut ModeContext,
-    buffer_view_handle: BufferViewHandle,
-    text: &str,
-) -> Option<()> {
+fn paste_text(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle, text: &str) {
     let state = &mut ctx.editor.mode.normal_state;
-    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle)?;
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     buffer_view.delete_text_in_cursor_ranges(
         &mut ctx.editor.buffers,
         &mut ctx.editor.word_database,
@@ -1338,21 +1329,20 @@ fn paste_text(
 
     ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
-    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle)?;
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     let hash = ctx.editor.mode.normal_state.last_copy_hash;
     let ranges = &ctx.editor.mode.normal_state.last_copy_ranges[..];
     let cursors = &buffer_view.cursors[..];
     if hash == hash_bytes(text.as_bytes()) && ranges.len() == cursors.len() {
-        if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle) {
-            for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
-                let text = &text[range.0 as usize..range.1 as usize];
-                buffer.insert_text(
-                    &mut ctx.editor.word_database,
-                    cursor.position,
-                    text,
-                    &mut ctx.editor.events,
-                );
-            }
+        let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
+        for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
+            let text = &text[range.0 as usize..range.1 as usize];
+            buffer.insert_text(
+                &mut ctx.editor.word_database,
+                cursor.position,
+                text,
+                &mut ctx.editor.events,
+            );
         }
     } else {
         buffer_view.insert_text_at_cursor_positions(
@@ -1363,21 +1353,20 @@ fn paste_text(
         );
     }
 
-    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle)?;
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     ctx.editor
         .buffers
-        .get_mut(buffer_view.buffer_handle)?
+        .get_mut(buffer_view.buffer_handle)
         .commit_edits();
-    None
 }
 
-fn find_char(ctx: &mut ModeContext, forward: bool) -> Option<()> {
+fn find_char(ctx: &mut ModeContext, forward: bool) {
     let state = &ctx.editor.mode.normal_state;
     let skip;
     let ch;
     let next_ch;
     match state.last_char_jump {
-        CharJump::None => return None,
+        CharJump::None => return,
         CharJump::Inclusive(c) => {
             ch = c;
             next_ch = forward;
@@ -1390,9 +1379,12 @@ fn find_char(ctx: &mut ModeContext, forward: bool) -> Option<()> {
         }
     };
 
-    let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
-    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+    let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+        Some(handle) => handle,
+        None => return,
+    };
+    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
 
     let count = state.count.max(1) as _;
     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
@@ -1424,22 +1416,23 @@ fn find_char(ctx: &mut ModeContext, forward: bool) -> Option<()> {
             }
         }
     }
-
-    None
 }
 
-fn move_to_search_match<F>(ctx: &mut ModeContext, index_selector: F) -> Option<()>
+fn move_to_search_match<F>(ctx: &mut ModeContext, index_selector: F)
 where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
-    if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-        NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
-    }
+    NavigationHistory::save_client_snapshot(
+        ctx.clients.get_mut(ctx.client_handle),
+        &ctx.editor.buffer_views,
+    );
 
-    let client = ctx.clients.get_mut(ctx.client_handle)?;
-    let handle = client.buffer_view_handle()?;
-    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-    let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
+    let handle = match ctx.clients.get_mut(ctx.client_handle).buffer_view_handle() {
+        Some(handle) => handle,
+        None => return,
+    };
+    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+    let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
     let mut search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
@@ -1455,7 +1448,7 @@ where
                         .status_bar
                         .write(MessageKind::Error)
                         .fmt(format_args!("{}", error));
-                    return None;
+                    return;
                 }
             }
         }
@@ -1465,7 +1458,7 @@ where
                 .status_bar
                 .write(MessageKind::Error)
                 .str("no search result");
-            return None;
+            return;
         }
     }
 
@@ -1483,18 +1476,20 @@ where
     if let CursorMovementKind::PositionAndAnchor = ctx.editor.mode.normal_state.movement_kind {
         main_cursor.anchor = main_cursor.position;
     }
-
-    None
 }
 
 fn search_word_or_move_to_it(
     ctx: &mut ModeContext,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
-) -> Option<()> {
+) {
+    let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+        Some(handle) => handle,
+        None => return,
+    };
+    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+    let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
+
     let state = &mut ctx.editor.mode.normal_state;
-    let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
-    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-    let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
 
     let main_cursor = &buffer_view.cursors.main_cursor();
     let main_position = main_cursor.position;
@@ -1544,14 +1539,13 @@ fn search_word_or_move_to_it(
             Err(i) => i,
         };
     } else {
-        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
-        }
+        NavigationHistory::save_client_snapshot(
+            ctx.clients.get_mut(ctx.client_handle),
+            &ctx.editor.buffer_views,
+        );
 
-        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
         let mut range_index = current_range_index;
-
-        let mut cursors = buffer_view.cursors.mut_guard();
+        let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
         for _ in 0..state.count.max(1) {
             let i = index_selector(search_ranges.len(), range_index);
             let range = search_ranges[i];
@@ -1565,10 +1559,9 @@ fn search_word_or_move_to_it(
     }
 
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
-    None
 }
 
-fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
+fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     enum DirectedIter<I> {
         Forward(I),
         Backward(I),
@@ -1595,8 +1588,11 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
         }
     }
 
-    let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
-    let buffer_view = ctx.editor.buffer_views.get(handle)?;
+    let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+        Some(handle) => handle,
+        None => return,
+    };
+    let buffer_view = ctx.editor.buffer_views.get(handle);
     let main_position = buffer_view.cursors.main_cursor().position;
 
     let mut diagnostics = DirectedIter::new(
@@ -1663,7 +1659,10 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     drop(diagnostics);
 
-    let (path, buffer_handle, position) = next_diagnostic?;
+    let (path, buffer_handle, position) = match next_diagnostic {
+        Some(diagnostic) => diagnostic,
+        None => return,
+    };
     let buffer_view_handle = match buffer_handle {
         Some(buffer_handle) => ctx
             .editor
@@ -1682,12 +1681,11 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
         }
     };
 
-    if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-        NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
-    }
+    let client = ctx.clients.get_mut(ctx.client_handle);
+    NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
 
-    let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle)?;
-    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+    let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
     let position = buffer.content().saturate_position(position);
 
     let mut cursors = buffer_view.cursors.mut_guard();
@@ -1701,9 +1699,6 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
     drop(buffer_view);
 
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
-    let client = ctx.clients.get_mut(ctx.client_handle)?;
     client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
-
-    None
 }
 

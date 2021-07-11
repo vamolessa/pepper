@@ -51,11 +51,7 @@ impl ModeState for State {
     }
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
-        let handle = match ctx
-            .clients
-            .get(ctx.client_handle)
-            .and_then(|c| c.buffer_view_handle())
-        {
+        let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => {
                 Mode::change_to(ctx, ModeKind::default());
@@ -71,16 +67,16 @@ impl ModeState for State {
 
         match key {
             Key::Esc | Key::Ctrl('c') => {
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle);
                 ctx.editor
                     .buffers
-                    .get_mut(buffer_view.buffer_handle)?
+                    .get_mut(buffer_view.buffer_handle)
                     .commit_edits();
                 Mode::change_to(ctx, ModeKind::default());
                 return None;
             }
             Key::Left => {
-                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsBackward(1),
                     CursorMovementKind::PositionAndAnchor,
@@ -90,7 +86,7 @@ impl ModeState for State {
                 return None;
             }
             Key::Down => {
-                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesForward(1),
                     CursorMovementKind::PositionAndAnchor,
@@ -100,7 +96,7 @@ impl ModeState for State {
                 return None;
             }
             Key::Up => {
-                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesBackward(1),
                     CursorMovementKind::PositionAndAnchor,
@@ -110,7 +106,7 @@ impl ModeState for State {
                 return None;
             }
             Key::Right => {
-                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsForward(1),
                     CursorMovementKind::PositionAndAnchor,
@@ -130,7 +126,7 @@ impl ModeState for State {
 
                 ctx.editor
                     .buffer_views
-                    .get(handle)?
+                    .get(handle)
                     .insert_text_at_cursor_positions(
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
@@ -139,9 +135,9 @@ impl ModeState for State {
                     );
             }
             Key::Enter | Key::Ctrl('m') => {
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle);
                 let cursor_count = buffer_view.cursors[..].len();
-                let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
+                let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
                 let mut buf = ctx.editor.string_pool.acquire();
                 for i in (0..cursor_count).rev() {
@@ -171,7 +167,7 @@ impl ModeState for State {
             Key::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];
                 let s = c.encode_utf8(&mut buf);
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle);
                 buffer_view.insert_text_at_cursor_positions(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -180,7 +176,7 @@ impl ModeState for State {
                 );
             }
             Key::Backspace | Key::Ctrl('h') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsBackward(1),
@@ -194,7 +190,7 @@ impl ModeState for State {
                 );
             }
             Key::Delete => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsForward(1),
@@ -208,7 +204,7 @@ impl ModeState for State {
                 );
             }
             Key::Ctrl('w') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::WordsBackward(1),
@@ -245,14 +241,8 @@ fn cancel_completion(editor: &mut Editor) {
 
 fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle) {
     let state = &mut ctx.editor.mode.insert_state;
-    let buffer_view = match ctx.editor.buffer_views.get(buffer_view_handle) {
-        Some(buffer_view) => buffer_view,
-        None => return cancel_completion(ctx.editor),
-    };
-    let buffer = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
-        Some(buffer) => buffer,
-        None => return cancel_completion(ctx.editor),
-    };
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
     let content = buffer.content();
 
     let main_cursor_position = buffer_view.cursors.main_cursor().position;
@@ -358,20 +348,14 @@ fn apply_completion(
     buffer_view_handle: BufferViewHandle,
     cursor_movement: isize,
 ) {
-    let buffer_view = match ctx.editor.buffer_views.get(buffer_view_handle) {
-        Some(view) => view,
-        None => return,
-    };
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
 
     ctx.editor.picker.move_cursor(cursor_movement);
     let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
         Some((_, entry)) => entry,
         None => {
             let buffer_handle = buffer_view.buffer_handle;
-            let buffer = match ctx.editor.buffers.get(buffer_handle) {
-                Some(buffer) => buffer,
-                None => return,
-            };
+            let buffer = ctx.editor.buffers.get(buffer_handle);
             let state = &mut ctx.editor.mode.insert_state;
             let lsp_client_handle = match state.get_lsp_client_handle(&ctx.editor.lsp, &buffer.path)
             {
@@ -411,3 +395,4 @@ fn apply_completion(
     );
     ctx.editor.string_pool.release(completion);
 }
+

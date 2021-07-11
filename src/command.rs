@@ -3,7 +3,7 @@ use std::{collections::VecDeque, fmt, io};
 use crate::{
     buffer::{Buffer, BufferHandle},
     buffer_view::BufferViewHandle,
-    client::{Client, ClientHandle, ClientManager},
+    client::{ClientHandle, ClientManager},
     config::ParseConfigError,
     editor::Editor,
     editor_utils::MessageKind,
@@ -96,11 +96,7 @@ pub struct CommandContext<'state, 'command> {
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
     pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError> {
-        match self
-            .client_handle
-            .and_then(|h| self.clients.get(h))
-            .and_then(Client::buffer_view_handle)
-        {
+        match self.clients.get(self.client_handle).buffer_view_handle() {
             Some(handle) => Ok(handle),
             None => Err(CommandError::NoBufferOpened),
         }
@@ -108,15 +104,12 @@ impl<'state, 'command> CommandContext<'state, 'command> {
 
     pub fn current_buffer_handle(&self) -> Result<BufferHandle, CommandError> {
         let buffer_view_handle = self.current_buffer_view_handle()?;
-        match self
+        let buffer_handle = self
             .editor
             .buffer_views
             .get(buffer_view_handle)
-            .map(|v| v.buffer_handle)
-        {
-            Some(handle) => Ok(handle),
-            None => Err(CommandError::NoBufferOpened),
-        }
+            .buffer_handle;
+        Ok(buffer_handle)
     }
 
     pub fn assert_can_discard_all_buffers(&self) -> Result<(), CommandError> {
@@ -128,12 +121,7 @@ impl<'state, 'command> CommandContext<'state, 'command> {
     }
 
     pub fn assert_can_discard_buffer(&self, handle: BufferHandle) -> Result<(), CommandError> {
-        let buffer = self
-            .editor
-            .buffers
-            .get(handle)
-            .ok_or(CommandError::NoBufferOpened)?;
-        if self.bang || !buffer.needs_save() {
+        if self.bang || !self.editor.buffers.get(handle).needs_save() {
             Ok(())
         } else {
             Err(CommandError::UnsavedChanges)
@@ -312,7 +300,7 @@ impl CommandManager {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        client_handle: Option<ClientHandle>,
+        client_handle: ClientHandle,
         command: &mut String,
     ) -> Option<CommandOperation> {
         match Self::try_eval(editor, platform, clients, client_handle, command) {
@@ -331,7 +319,7 @@ impl CommandManager {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        client_handle: Option<ClientHandle>,
+        client_handle: ClientHandle,
         command: &mut String,
     ) -> Result<Option<CommandOperation>, CommandError> {
         if let Some(alias) = CommandTokenizer(command).next() {
@@ -350,7 +338,7 @@ impl CommandManager {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        client_handle: Option<ClientHandle>,
+        client_handle: ClientHandle,
         command: &str,
     ) -> Result<Option<CommandOperation>, CommandError> {
         let mut tokenizer = CommandTokenizer(command);
@@ -409,3 +397,4 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
+

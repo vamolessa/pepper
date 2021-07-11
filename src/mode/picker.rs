@@ -122,9 +122,8 @@ pub mod buffer {
                 }
             };
 
-            if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
-            }
+            let client = ctx.clients.get_mut(ctx.client_handle);
+            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
 
             let path = ctx.editor.string_pool.acquire_with(path);
             let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
@@ -134,9 +133,7 @@ pub mod buffer {
             );
             ctx.editor.string_pool.release(path);
 
-            if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
-            }
+            client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 
             Mode::change_to(ctx, ModeKind::default());
             None
@@ -185,12 +182,8 @@ pub mod lsp_definition {
                             None => BufferPosition::zero(),
                         };
 
-                        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                            NavigationHistory::save_client_snapshot(
-                                client,
-                                &ctx.editor.buffer_views,
-                            );
-                        }
+                        let client = ctx.clients.get_mut(ctx.client_handle);
+                        NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
 
                         let path = ctx.editor.string_pool.acquire_with(path);
                         let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
@@ -199,23 +192,22 @@ pub mod lsp_definition {
                             BufferCapabilities::text(),
                         );
                         ctx.editor.string_pool.release(path);
-                        if let Some(buffer_view) =
-                            ctx.editor.buffer_views.get_mut(buffer_view_handle)
-                        {
-                            let mut cursors = buffer_view.cursors.mut_guard();
-                            cursors.clear();
-                            cursors.add(Cursor {
-                                anchor: position,
-                                position,
-                            });
-                        }
+                        let mut cursors = ctx
+                            .editor
+                            .buffer_views
+                            .get_mut(buffer_view_handle)
+                            .cursors
+                            .mut_guard();
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: position,
+                            position,
+                        });
 
-                        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                            client.set_buffer_view_handle(
-                                Some(buffer_view_handle),
-                                &mut ctx.editor.events,
-                            );
-                        }
+                        client.set_buffer_view_handle(
+                            Some(buffer_view_handle),
+                            &mut ctx.editor.events,
+                        );
                     }
                     Mode::change_to(ctx, ModeKind::default());
                     None

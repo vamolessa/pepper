@@ -66,10 +66,7 @@ impl BufferView {
             Err(n)
         }
 
-        let buffer = match buffers.get(self.buffer_handle) {
-            Some(buffer) => buffer.content(),
-            None => return,
-        };
+        let buffer = buffers.get(self.buffer_handle).content();
 
         let mut cursors = self.cursors.mut_guard();
         match movement {
@@ -339,11 +336,7 @@ impl BufferView {
     ) {
         ranges.clear();
 
-        let buffer = match buffers.get(self.buffer_handle) {
-            Some(buffer) => buffer.content(),
-            None => return,
-        };
-
+        let buffer = buffers.get(self.buffer_handle).content();
         let mut iter = self.cursors[..].iter();
         if let Some(cursor) = iter.next() {
             let mut last_range = cursor.to_range();
@@ -370,10 +363,9 @@ impl BufferView {
         text: &str,
         events: &mut EditorEventQueue,
     ) {
-        if let Some(buffer) = buffers.get_mut(self.buffer_handle) {
-            for cursor in self.cursors[..].iter().rev() {
-                buffer.insert_text(word_database, cursor.position, text, events);
-            }
+        let buffer = buffers.get_mut(self.buffer_handle);
+        for cursor in self.cursors[..].iter().rev() {
+            buffer.insert_text(word_database, cursor.position, text, events);
         }
     }
 
@@ -383,10 +375,9 @@ impl BufferView {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) {
-        if let Some(buffer) = buffers.get_mut(self.buffer_handle) {
-            for cursor in self.cursors[..].iter().rev() {
-                buffer.delete_range(word_database, cursor.to_range(), events);
-            }
+        let buffer = buffers.get_mut(self.buffer_handle);
+        for cursor in self.cursors[..].iter().rev() {
+            buffer.delete_range(word_database, cursor.to_range(), events);
         }
     }
 
@@ -396,11 +387,8 @@ impl BufferView {
         positions: &mut Vec<BufferPosition>,
     ) {
         positions.clear();
-        let buffer = match buffers.get_mut(self.buffer_handle) {
-            Some(buffer) => buffer.content(),
-            None => return,
-        };
 
+        let buffer = buffers.get_mut(self.buffer_handle).content();
         for cursor in self.cursors[..].iter() {
             let position = buffer.position_before(cursor.position);
             let word = buffer.word_at(position);
@@ -419,11 +407,7 @@ impl BufferView {
         positions: &[BufferPosition],
         events: &mut EditorEventQueue,
     ) {
-        let buffer = match buffers.get_mut(self.buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
-
+        let buffer = buffers.get_mut(self.buffer_handle);
         for (cursor, &position) in self.cursors[..].iter().zip(positions.iter()).rev() {
             let range = BufferRange::between(position, cursor.position);
             buffer.delete_range(word_database, range, events);
@@ -437,11 +421,9 @@ impl BufferView {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) {
-        let edits = match buffers.get_mut(self.buffer_handle) {
-            Some(buffer) => buffer.undo(word_database, events),
-            None => return,
-        };
-
+        let edits = buffers
+            .get_mut(self.buffer_handle)
+            .undo(word_database, events);
         let mut cursors = self.cursors.mut_guard();
         let mut last_edit_kind = None;
         for edit in edits {
@@ -469,11 +451,9 @@ impl BufferView {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) {
-        let edits = match buffers.get_mut(self.buffer_handle) {
-            Some(buffer) => buffer.redo(word_database, events),
-            None => return,
-        };
-
+        let edits = buffers
+            .get_mut(self.buffer_handle)
+            .redo(word_database, events);
         let mut cursors = self.cursors.mut_guard();
         let mut last_edit_kind = None;
         for edit in edits {
@@ -741,3 +721,4 @@ mod tests {
         assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }
+

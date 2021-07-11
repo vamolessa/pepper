@@ -621,22 +621,12 @@ pub mod process {
     }
 
     fn spawn_process(ctx: &mut ModeContext, pipe: bool) {
-        let buffer_view_handle = match ctx
-            .clients
-            .get(ctx.client_handle)
-            .and_then(|c| c.buffer_view_handle())
-        {
+        let buffer_view_handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => return,
         };
-        let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
-            Some(buffer_view) => buffer_view,
-            None => return,
-        };
-        let content = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
-            Some(buffer) => buffer.content(),
-            None => return,
-        };
+        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+        let content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
         const DEFAULT_SHARED_BUF: Option<SharedBuf> = None;
         let mut stdins = [DEFAULT_SHARED_BUF; CursorCollection::capacity()];
@@ -669,21 +659,20 @@ pub mod process {
         ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
         let command = ctx.editor.read_line.input();
-        if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(buffer_view_handle) {
-            for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-                let command = match parse_process_command(&command) {
-                    Some(command) => command,
-                    None => continue,
-                };
+        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+        for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
+            let command = match parse_process_command(&command) {
+                Some(command) => command,
+                None => continue,
+            };
 
-                ctx.editor.buffers.spawn_insert_process(
-                    ctx.platform,
-                    command,
-                    buffer_view.buffer_handle,
-                    cursor.position,
-                    stdins[i].take(),
-                );
-            }
+            ctx.editor.buffers.spawn_insert_process(
+                ctx.platform,
+                command,
+                buffer_view.buffer_handle,
+                cursor.position,
+                stdins[i].take(),
+            );
         }
     }
 }

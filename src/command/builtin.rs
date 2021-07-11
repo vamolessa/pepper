@@ -29,27 +29,23 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 None => (help::main_help_path(), BufferPosition::zero()),
             };
 
-            if let Some(client_handle) = ctx.client_handle {
-                let handle = ctx.editor.buffer_view_handle_from_path(
-                    client_handle,
-                    path,
-                    BufferCapabilities::log(),
-                );
-                if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(Cursor {
-                        anchor: position,
-                        position,
-                    });
-                }
+            let handle = ctx.editor.buffer_view_handle_from_path(
+                ctx.client_handle,
+                path,
+                BufferCapabilities::log(),
+            );
 
-                if let Some(client) = ctx.clients.get_mut(client_handle) {
-                    client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
-                    client.scroll.0 = 0;
-                    client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
-                }
-            }
+            let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+            cursors.clear();
+            cursors.add(Cursor {
+                anchor: position,
+                position,
+            });
+
+            let client = ctx.clients.get_mut(ctx.client_handle);
+            client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
+            client.scroll.0 = 0;
+            client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
             Ok(None)
         },
     },
@@ -80,39 +76,33 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let path = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
-            let client_handle = match ctx.client_handle {
-                Some(handle) => handle,
-                None => return Ok(None),
-            };
-
             let (path, position) = parse_path_and_position(path);
 
-            if let Some(client) = ctx.clients.get_mut(client_handle) {
-                NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
-            }
+            NavigationHistory::save_client_snapshot(
+                ctx.clients.get_mut(ctx.client_handle),
+                &ctx.editor.buffer_views,
+            );
 
             let path = ctx.editor.string_pool.acquire_with(path);
             let handle = ctx.editor.buffer_view_handle_from_path(
-                client_handle,
+                ctx.client_handle,
                 Path::new(&path),
                 BufferCapabilities::text(),
             );
             ctx.editor.string_pool.release(path);
 
-            if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
-                if let Some(position) = position {
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(Cursor {
-                        anchor: position,
-                        position,
-                    });
-                }
+            if let Some(position) = position {
+                let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                cursors.clear();
+                cursors.add(Cursor {
+                    anchor: position,
+                    position,
+                });
             }
 
-            if let Some(client) = ctx.clients.get_mut(client_handle) {
-                client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
-            }
+            ctx.clients
+                .get_mut(ctx.client_handle)
+                .set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
 
             Ok(None)
         },
@@ -125,11 +115,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_empty()?;
 
             let buffer_handle = ctx.current_buffer_handle()?;
-            let buffer = ctx
-                .editor
-                .buffers
-                .get_mut(buffer_handle)
-                .ok_or(CommandError::NoBufferOpened)?;
+            let buffer = ctx.editor.buffers.get_mut(buffer_handle);
 
             buffer
                 .save_to_file(path, &mut ctx.editor.events)
@@ -173,11 +159,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
 
             let buffer_handle = ctx.current_buffer_handle()?;
             ctx.assert_can_discard_buffer(buffer_handle)?;
-            let buffer = ctx
-                .editor
-                .buffers
-                .get_mut(buffer_handle)
-                .ok_or(CommandError::NoBufferOpened)?;
+            let buffer = ctx.editor.buffers.get_mut(buffer_handle);
 
             buffer
                 .discard_and_reload_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
@@ -263,12 +245,10 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
-            let clients = &mut *ctx.clients;
-            if let Some(client) = ctx.client_handle.and_then(|h| clients.get_mut(h)) {
-                NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
-                // TODO
-                client.set_buffer_view_handle(None, &mut ctx.editor.events);
-            }
+            let client = ctx.clients.get_mut(ctx.client_handle);
+            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+            // TODO
+            client.set_buffer_view_handle(None, &mut ctx.editor.events);
 
             Ok(None)
         },
@@ -374,11 +354,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| {
             ctx.args.assert_empty()?;
-            let client_handle = match ctx.client_handle {
-                Some(handle) => handle,
-                None => return Ok(None),
-            };
             let buffer_handle = ctx.current_buffer_handle()?;
+            let client_handle = ctx.client_handle;
             access_lsp(
                 ctx,
                 buffer_handle,
@@ -389,12 +366,9 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                             Path::new(path),
                             BufferCapabilities::log(),
                         );
-                        if let Some(client) = clients.get_mut(client_handle) {
-                            client.set_buffer_view_handle(
-                                Some(buffer_view_handle),
-                                &mut editor.events,
-                            );
-                        }
+                        clients
+                            .get_mut(client_handle)
+                            .set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                         Ok(())
                     }
                     None => Err(CommandError::LspServerNotLogging),
@@ -442,11 +416,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| {
             ctx.args.assert_empty()?;
-            let client_handle = match ctx.client_handle {
-                Some(handle) => handle,
-                None => return Ok(None),
-            };
             let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
+            let client_handle = ctx.client_handle;
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.definition(
                     editor,
@@ -466,11 +437,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let context_len = 2;
             ctx.args.assert_empty()?;
 
-            let client_handle = match ctx.client_handle {
-                Some(handle) => handle,
-                None => return Ok(None),
-            };
             let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
+            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.references(
@@ -492,11 +460,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
-            let client_handle = match ctx.client_handle {
-                Some(handle) => handle,
-                None => return Ok(None),
-            };
             let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
+            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, clients, client| {
                 client.rename(
@@ -517,11 +482,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
-            let client_handle = match ctx.client_handle {
-                Some(handle) => handle,
-                None => return Ok(None),
-            };
             let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
+            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.code_action(
@@ -541,17 +503,9 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
-            let client_handle = match ctx.client_handle {
-                Some(handle) => handle,
-                None => return Ok(None),
-            };
             let view_handle = ctx.current_buffer_view_handle()?;
-            let buffer_view = ctx
-                .editor
-                .buffer_views
-                .get(view_handle)
-                .ok_or(CommandError::NoBufferOpened)?;
-            let buffer_handle = buffer_view.buffer_handle;
+            let buffer_handle = ctx.editor.buffer_views.get(view_handle).buffer_handle;
+            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.document_symbols(editor, platform, client_handle, view_handle)
@@ -566,11 +520,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let query = ctx.args.try_next().unwrap_or("");
             ctx.args.assert_empty()?;
 
-            let client_handle = match ctx.client_handle {
-                Some(handle) => handle,
-                None => return Ok(None),
-            };
             let buffer_handle = ctx.current_buffer_handle()?;
+            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.workspace_symbols(editor, platform, client_handle, query)
@@ -607,11 +558,7 @@ fn current_buffer_and_main_cursor<'state, 'command>(
     ctx: &CommandContext<'state, 'command>,
 ) -> Result<(BufferHandle, Cursor), CommandError> {
     let view_handle = ctx.current_buffer_view_handle()?;
-    let buffer_view = ctx
-        .editor
-        .buffer_views
-        .get(view_handle)
-        .ok_or(CommandError::NoBufferOpened)?;
+    let buffer_view = ctx.editor.buffer_views.get(view_handle);
 
     let buffer_handle = buffer_view.buffer_handle;
     let cursor = buffer_view.cursors.main_cursor().clone();
@@ -622,7 +569,7 @@ fn find_lsp_client_for_buffer(
     editor: &Editor,
     buffer_handle: BufferHandle,
 ) -> Option<lsp::ClientHandle> {
-    let buffer_path = editor.buffers.get(buffer_handle)?.path.to_str()?;
+    let buffer_path = editor.buffers.get(buffer_handle).path.to_str()?;
     let client = editor.lsp.clients().find(|c| c.handles_path(buffer_path))?;
     Some(client.handle())
 }

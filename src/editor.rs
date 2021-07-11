@@ -248,14 +248,9 @@ impl Editor {
                 0
             };
 
-            let buffer_views = &self.buffer_views;
-            let buffers = &mut self.buffers;
-            if let Some(buffer) = c
-                .buffer_view_handle()
-                .and_then(|h| buffer_views.get(h))
-                .map(|v| v.buffer_handle)
-                .and_then(|h| buffers.get_mut(h))
-            {
+            if let Some(handle) = c.buffer_view_handle() {
+                let buffer_view = self.buffer_views.get(handle);
+                let buffer = self.buffers.get_mut(buffer_view.buffer_handle);
                 if let HighlightResult::Pending = buffer.update_highlighting(&self.syntaxes) {
                     needs_redraw = true;
                 }
@@ -276,13 +271,7 @@ impl Editor {
         match event {
             ClientEvent::Command(client_handle, command) => {
                 let mut command = self.string_pool.acquire_with(command);
-                let op = CommandManager::eval(
-                    self,
-                    platform,
-                    clients,
-                    Some(client_handle),
-                    &mut command,
-                );
+                let op = CommandManager::eval(self, platform, clients, client_handle, &mut command);
                 self.string_pool.release(command);
 
                 match op {
@@ -314,9 +303,8 @@ impl Editor {
                 self.execute_keys(platform, clients, client_handle, KeysIterator { index: 0 })
             }
             ClientEvent::Resize(client_handle, width, height) => {
-                if let Some(client) = clients.get_mut(client_handle) {
-                    client.viewport_size = (width, height);
-                }
+                let client = clients.get_mut(client_handle);
+                client.viewport_size = (width, height);
                 EditorControlFlow::Continue
             }
         }
@@ -397,10 +385,9 @@ impl Editor {
                 match event {
                     &EditorEvent::Idle => (),
                     &EditorEvent::BufferOpen { handle } => {
-                        if let Some(buffer) = self.buffers.get_mut(handle) {
-                            buffer.refresh_syntax(&self.syntaxes);
-                            self.buffer_views.on_buffer_load(buffer);
-                        }
+                        let buffer = self.buffers.get_mut(handle);
+                        buffer.refresh_syntax(&self.syntaxes);
+                        self.buffer_views.on_buffer_load(buffer);
                     }
                     &EditorEvent::BufferInsertText { handle, range, .. } => {
                         self.buffer_views.on_buffer_insert_text(handle, range);
@@ -410,9 +397,7 @@ impl Editor {
                     }
                     &EditorEvent::BufferSave { handle, new_path } => {
                         if new_path {
-                            if let Some(buffer) = self.buffers.get_mut(handle) {
-                                buffer.refresh_syntax(&self.syntaxes);
-                            }
+                            self.buffers.get_mut(handle).refresh_syntax(&self.syntaxes);
                         }
                     }
                     &EditorEvent::BufferClose { handle } => {
@@ -423,31 +408,26 @@ impl Editor {
                         self.buffer_views.remove_buffer_views(handle);
                     }
                     &EditorEvent::FixCursors { handle, cursors } => {
-                        if let Some(buffer_view) = self.buffer_views.get_mut(handle) {
-                            let mut view_cursors = buffer_view.cursors.mut_guard();
-                            view_cursors.clear();
-                            for &cursor in cursors.as_cursors(&self.events) {
-                                view_cursors.add(cursor);
-                            }
+                        let mut view_cursors =
+                            self.buffer_views.get_mut(handle).cursors.mut_guard();
+                        view_cursors.clear();
+                        for &cursor in cursors.as_cursors(&self.events) {
+                            view_cursors.add(cursor);
                         }
                     }
                     &EditorEvent::BufferViewLostFocus { handle } => {
-                        if let Some(buffer_view) = self.buffer_views.get(handle) {
-                            let buffer_handle = buffer_view.buffer_handle;
-                            let should_close = self
-                                .buffers
-                                .get(buffer_handle)
-                                .map(|b| b.capabilities.auto_close && !b.needs_save())
-                                .unwrap_or(false);
-                            let any_view = !clients
-                                .iter()
-                                .filter_map(Client::buffer_view_handle)
-                                .filter_map(|h| self.buffer_views.get(h))
-                                .any(|v| v.buffer_handle == buffer_handle);
+                        let buffer_view = self.buffer_views.get(handle);
+                        let buffer_handle = buffer_view.buffer_handle;
+                        let buffer = self.buffers.get(buffer_handle);
+                        let should_close = buffer.capabilities.auto_close && !buffer.needs_save();
+                        let any_view = !clients
+                            .iter()
+                            .filter_map(Client::buffer_view_handle)
+                            .map(|h| self.buffer_views.get(h))
+                            .any(|v| v.buffer_handle == buffer_handle);
 
-                            if should_close && !any_view {
-                                self.buffers.defer_remove(buffer_handle, &mut self.events);
-                            }
+                        if should_close && !any_view {
+                            self.buffers.defer_remove(buffer_handle, &mut self.events);
                         }
                     }
                 }
