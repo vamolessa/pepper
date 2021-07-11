@@ -1,11 +1,9 @@
 use std::{io, iter};
 
 use crate::{
-    buffer::Buffer,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     client::ClientManager,
-    cursor::Cursor,
     editor::Editor,
     editor_utils::MessageKind,
     mode::ModeKind,
@@ -125,50 +123,29 @@ pub fn render(
     buffer_view_handle: Option<BufferViewHandle>,
     buf: &mut Vec<u8>,
 ) {
-    let mut view_name = "";
-    let mut needs_save = false;
-    let mut main_cursor_position = BufferPosition::zero();
-    let mut search_ranges = &[][..];
-
-    match buffer_view_handle {
-        Some(handle) => {
-            let buffer_view = ctx.editor.buffer_views.get(handle);
-            let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
-            view_name = buffer.path.to_str().unwrap_or("");
-            needs_save = buffer.needs_save();
-            main_cursor_position = buffer_view.cursors.main_cursor().position;
-            search_ranges = buffer.search_ranges();
-
-            let cursors = &buffer_view.cursors[..];
-            draw_buffer(
-                ctx,
-                buffer,
-                cursors,
-                main_cursor_position.line_index as _,
-                buf,
-            );
-        }
-        None => draw_empty_view(ctx, buf),
-    }
-
+    draw_buffer_view(ctx, buffer_view_handle, buf);
     draw_picker(ctx, buf);
-    draw_statusbar(
-        ctx,
-        view_name,
-        needs_save,
-        main_cursor_position,
-        search_ranges,
-        buf,
-    );
+    draw_statusbar(ctx, buffer_view_handle, buf);
 }
 
-fn draw_buffer(
+fn draw_buffer_view(
     ctx: &RenderContext,
-    buffer: &Buffer,
-    cursors: &[Cursor],
-    active_line_index: usize,
+    buffer_view_handle: Option<BufferViewHandle>,
     buf: &mut Vec<u8>,
 ) {
+    let buffer_view_handle = match buffer_view_handle {
+        Some(handle) => handle,
+        None => {
+            draw_empty_view(ctx, buf);
+            return;
+        }
+    };
+
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+    let cursors = &buffer_view.cursors[..];
+    let active_line_index = buffer_view.cursors.main_cursor().position.line_index as usize;
+
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let cursor_color = if ctx.has_focus {
@@ -494,12 +471,32 @@ fn draw_picker(ctx: &RenderContext, buf: &mut Vec<u8>) {
 
 fn draw_statusbar(
     ctx: &RenderContext,
-    view_name: &str,
-    needs_save: bool,
-    main_cursor_position: BufferPosition,
-    search_ranges: &[BufferRange],
+    buffer_view_handle: Option<BufferViewHandle>,
     buf: &mut Vec<u8>,
 ) {
+    let view_name;
+    let needs_save;
+    let main_cursor_position;
+    let search_ranges;
+
+    match buffer_view_handle {
+        Some(handle) => {
+            let buffer_view = ctx.editor.buffer_views.get(handle);
+            let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+
+            view_name = buffer.path.to_str().unwrap_or("");
+            needs_save = buffer.needs_save();
+            main_cursor_position = buffer_view.cursors.main_cursor().position;
+            search_ranges = buffer.search_ranges();
+        }
+        None => {
+            view_name = "";
+            needs_save = false;
+            main_cursor_position = BufferPosition::zero();
+            search_ranges = &[];
+        }
+    }
+
     use io::Write;
 
     let background_active_color = ctx.editor.theme.statusbar_active_background;
