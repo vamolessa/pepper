@@ -1,7 +1,6 @@
 use crate::{
     client::{ClientHandle, ClientManager},
-    command::CommandOperation,
-    editor::{Editor, KeysIterator},
+    editor::{Editor, EditorControlFlow, KeysIterator},
     platform::Platform,
 };
 
@@ -10,22 +9,6 @@ mod insert;
 mod normal;
 pub mod picker;
 pub mod read_line;
-
-pub enum ModeOperation {
-    Pending,
-    Suspend,
-    Quit,
-    QuitAll,
-}
-impl From<CommandOperation> for ModeOperation {
-    fn from(op: CommandOperation) -> Self {
-        match op {
-            CommandOperation::Suspend => ModeOperation::Suspend,
-            CommandOperation::Quit => ModeOperation::Quit,
-            CommandOperation::QuitAll => ModeOperation::QuitAll,
-        }
-    }
-}
 
 pub struct ModeContext<'a> {
     pub editor: &'a mut Editor,
@@ -37,7 +20,7 @@ pub struct ModeContext<'a> {
 pub trait ModeState {
     fn on_enter(ctx: &mut ModeContext);
     fn on_exit(ctx: &mut ModeContext);
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation>;
+    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -95,7 +78,10 @@ impl Mode {
         }
     }
 
-    pub fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
+    pub fn on_client_keys(
+        ctx: &mut ModeContext,
+        keys: &mut KeysIterator,
+    ) -> Option<EditorControlFlow> {
         match ctx.editor.mode.kind {
             ModeKind::Normal => normal::State::on_client_keys(ctx, keys),
             ModeKind::Insert => insert::State::on_client_keys(ctx, keys),
@@ -105,3 +91,4 @@ impl Mode {
         }
     }
 }
+

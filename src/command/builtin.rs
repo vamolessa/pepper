@@ -4,10 +4,10 @@ use crate::{
     buffer::{parse_path_and_position, BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
     client::ClientManager,
-    command::{BuiltinCommand, CommandContext, CommandError, CommandOperation, CompletionSource},
+    command::{BuiltinCommand, CommandContext, CommandError, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
-    editor::Editor,
+    editor::{Editor, EditorControlFlow},
     editor_utils::MessageKind,
     help, lsp,
     mode::ModeKind,
@@ -46,7 +46,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
             client.scroll.0 = 0;
             client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -57,7 +57,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             if ctx.clients.iter().count() == 1 {
                 ctx.assert_can_discard_all_buffers()?;
             }
-            Ok(Some(CommandOperation::Quit))
+            Ok(EditorControlFlow::Quit)
         },
     },
     BuiltinCommand {
@@ -66,7 +66,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
             ctx.assert_can_discard_all_buffers()?;
-            Ok(Some(CommandOperation::QuitAll))
+            Ok(EditorControlFlow::QuitAll)
         },
     },
     BuiltinCommand {
@@ -104,7 +104,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 .get_mut(ctx.client_handle)
                 .set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
 
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -125,7 +125,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 .status_bar
                 .write(MessageKind::Info)
                 .fmt(format_args!("buffer saved to {:?}", &buffer.path));
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -148,7 +148,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 .status_bar
                 .write(MessageKind::Info)
                 .fmt(format_args!("{} buffers saved", count));
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -169,7 +169,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 .status_bar
                 .write(MessageKind::Info)
                 .str("buffer reopened");
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -194,7 +194,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 .status_bar
                 .write(MessageKind::Info)
                 .fmt(format_args!("{} buffers reopened", count));
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -214,7 +214,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 .write(MessageKind::Info)
                 .str("buffer closed");
 
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -236,7 +236,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 .status_bar
                 .write(MessageKind::Info)
                 .fmt(format_args!("{} buffers closed", count));
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -250,7 +250,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             // TODO
             client.set_buffer_view_handle(None, &mut ctx.editor.events);
 
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -263,7 +263,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
 
             match value {
                 Some(value) => match ctx.editor.config.parse_config(key, value) {
-                    Ok(()) => Ok(None),
+                    Ok(()) => Ok(EditorControlFlow::Continue),
                     Err(error) => Err(CommandError::ConfigError(error)),
                 },
                 None => match ctx.editor.config.display_config(key) {
@@ -272,7 +272,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                             .status_bar
                             .write(MessageKind::Info)
                             .fmt(format_args!("{}", display));
-                        Ok(None)
+                        Ok(EditorControlFlow::Continue)
                     }
                     None => Err(CommandError::ConfigError(ParseConfigError::NoSuchConfig)),
                 },
@@ -306,7 +306,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     .fmt(format_args!("0x{:0<6x}", color.into_u32())),
             }
 
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -314,7 +314,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| {
             map(ctx, ModeKind::Normal)?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -322,7 +322,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| {
             map(ctx, ModeKind::Insert)?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -330,7 +330,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| {
             map(ctx, ModeKind::Command)?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -338,7 +338,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| {
             map(ctx, ModeKind::Command)?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -346,7 +346,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| {
             map(ctx, ModeKind::Picker)?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -374,7 +374,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     None => Err(CommandError::LspServerNotLogging),
                 },
             )??;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -387,7 +387,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 Some(client) => ctx.editor.lsp.stop(ctx.platform, client),
                 None => ctx.editor.lsp.stop_all(ctx.platform),
             }
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -396,7 +396,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
             ctx.editor.lsp.stop_all(ctx.platform);
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -408,7 +408,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.hover(editor, platform, buffer_handle, cursor.position)
             })?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -427,7 +427,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     client_handle,
                 )
             })?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -451,7 +451,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     client_handle,
                 )
             })?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -473,7 +473,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     cursor.position,
                 )
             })?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -494,7 +494,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     cursor.to_range(),
                 )
             })?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -510,7 +510,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.document_symbols(editor, platform, client_handle, view_handle)
             })?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -526,7 +526,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.workspace_symbols(editor, platform, client_handle, query)
             })?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
     BuiltinCommand {
@@ -538,7 +538,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.formatting(editor, platform, buffer_handle)
             })?;
-            Ok(None)
+            Ok(EditorControlFlow::Continue)
         },
     },
 ];

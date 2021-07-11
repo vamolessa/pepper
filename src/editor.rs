@@ -7,7 +7,7 @@ use crate::{
     buffer::{BufferCapabilities, BufferCollection},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{Client, ClientHandle, ClientManager},
-    command::{CommandManager, CommandOperation},
+    command::CommandManager,
     config::Config,
     editor_utils::{ReadLine, StatusBar, StringPool},
     events::{
@@ -15,7 +15,7 @@ use crate::{
     },
     keymap::{KeyMapCollection, MatchResult},
     lsp,
-    mode::{Mode, ModeContext, ModeKind, ModeOperation},
+    mode::{Mode, ModeContext, ModeKind},
     pattern::Pattern,
     picker::Picker,
     platform::{Key, Platform, ProcessHandle, ProcessTag},
@@ -198,21 +198,12 @@ impl Editor {
                 client_handle,
             };
             match Mode::on_client_keys(&mut ctx, &mut keys) {
-                None => (),
-                Some(ModeOperation::Pending) => return EditorControlFlow::Continue,
-                Some(ModeOperation::Suspend) => {
+                None => return EditorControlFlow::Continue,
+                Some(EditorControlFlow::Continue) => (),
+                Some(flow) => {
                     Mode::change_to(&mut ctx, ModeKind::default());
                     self.buffered_keys.0.truncate(start_index);
-                    return EditorControlFlow::Suspend;
-                }
-                Some(ModeOperation::Quit) => {
-                    Mode::change_to(&mut ctx, ModeKind::default());
-                    self.buffered_keys.0.truncate(start_index);
-                    return EditorControlFlow::Quit;
-                }
-                Some(ModeOperation::QuitAll) => {
-                    self.buffered_keys.0.truncate(start_index);
-                    return EditorControlFlow::QuitAll;
+                    return flow;
                 }
             }
 
@@ -271,15 +262,10 @@ impl Editor {
         match event {
             ClientEvent::Command(client_handle, command) => {
                 let mut command = self.string_pool.acquire_with(command);
-                let op = CommandManager::eval(self, platform, clients, client_handle, &mut command);
+                let flow =
+                    CommandManager::eval(self, platform, clients, client_handle, &mut command);
                 self.string_pool.release(command);
-
-                match op {
-                    None => EditorControlFlow::Continue,
-                    Some(CommandOperation::Suspend) => EditorControlFlow::Suspend,
-                    Some(CommandOperation::Quit) => EditorControlFlow::Quit,
-                    Some(CommandOperation::QuitAll) => EditorControlFlow::QuitAll,
-                }
+                flow
             }
             ClientEvent::Key(client_handle, key) => {
                 if key != Key::None {

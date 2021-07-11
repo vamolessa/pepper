@@ -2,23 +2,24 @@ use crate::{
     buffer_position::BufferPositionIndex,
     buffer_view::CursorMovementKind,
     cursor::CursorCollection,
-    editor::KeysIterator,
+    editor::{EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll},
     lsp,
-    mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    mode::{Mode, ModeContext, ModeKind, ModeState},
     pattern::Pattern,
     platform::SharedBuf,
 };
 
 pub struct State {
-    on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
+    on_client_keys:
+        fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
     lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _| None,
+            on_client_keys: |_, _, _| Some(EditorControlFlow::Continue),
             lsp_client_handle: None,
         }
     }
@@ -33,7 +34,7 @@ impl ModeState for State {
         ctx.editor.read_line.input_mut().clear();
     }
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
+    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
         let poll = ctx.editor.read_line.poll(
             ctx.platform,
             &mut ctx.editor.string_pool,
@@ -58,7 +59,7 @@ pub mod search {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
                 ReadLinePoll::Pending => {
                     update_search(ctx);
@@ -103,7 +104,7 @@ pub mod search {
                 }
             }
 
-            None
+            Some(EditorControlFlow::Continue)
         }
 
         NavigationHistory::save_client_snapshot(
@@ -194,7 +195,7 @@ pub mod filter_cursors {
             on_submitted(ctx, poll, |ctx| {
                 on_event_impl(ctx, true);
             });
-            None
+            Some(EditorControlFlow::Continue)
         };
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
@@ -205,7 +206,7 @@ pub mod filter_cursors {
             on_submitted(ctx, poll, |ctx| {
                 on_event_impl(ctx, false);
             });
-            None
+            Some(EditorControlFlow::Continue)
         };
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
@@ -335,7 +336,7 @@ pub mod split_cursors {
             on_submitted(ctx, poll, |ctx| {
                 on_event_impl(ctx, add_matches);
             });
-            None
+            Some(EditorControlFlow::Continue)
         };
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
@@ -392,7 +393,7 @@ pub mod split_cursors {
             on_submitted(ctx, poll, |ctx| {
                 on_event_impl(ctx, add_matches);
             });
-            None
+            Some(EditorControlFlow::Continue)
         };
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
@@ -516,12 +517,12 @@ pub mod goto {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
                 ReadLinePoll::Pending => {
                     let line_number: usize = match ctx.editor.read_line.input().parse() {
                         Ok(number) => number,
-                        Err(_) => return None,
+                        Err(_) => return Some(EditorControlFlow::Continue),
                     };
                     let line_index = line_number.saturating_sub(1);
 
@@ -554,7 +555,7 @@ pub mod goto {
                     Mode::change_to(ctx, ModeKind::default());
                 }
             }
-            None
+            Some(EditorControlFlow::Continue)
         }
 
         NavigationHistory::save_client_snapshot(
@@ -575,17 +576,17 @@ pub mod process {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
-                ReadLinePoll::Pending => None,
+                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => {
                     spawn_process(ctx, true);
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
             }
         }
@@ -600,17 +601,17 @@ pub mod process {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
-                ReadLinePoll::Pending => None,
+                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => {
                     spawn_process(ctx, false);
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
             }
         }
@@ -685,9 +686,9 @@ pub mod lsp_rename {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
-                ReadLinePoll::Pending => None,
+                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => {
                     if let Some(handle) = ctx.editor.mode.read_line_state.lsp_client_handle {
                         let platform = &mut *ctx.platform;
@@ -696,7 +697,7 @@ pub mod lsp_rename {
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     if let Some(handle) = ctx.editor.mode.read_line_state.lsp_client_handle {
@@ -705,7 +706,7 @@ pub mod lsp_rename {
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
             }
         }

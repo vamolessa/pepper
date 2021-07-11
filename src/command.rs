@@ -5,7 +5,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::{ClientHandle, ClientManager},
     config::ParseConfigError,
-    editor::Editor,
+    editor::{Editor, EditorControlFlow},
     editor_utils::MessageKind,
     keymap::ParseKeyMapError,
     platform::Platform,
@@ -48,13 +48,7 @@ impl fmt::Display for CommandError {
     }
 }
 
-type CommandFn = fn(&mut CommandContext) -> Result<Option<CommandOperation>, CommandError>;
-
-pub enum CommandOperation {
-    Suspend,
-    Quit,
-    QuitAll,
-}
+type CommandFn = fn(&mut CommandContext) -> Result<EditorControlFlow, CommandError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionSource {
@@ -302,15 +296,15 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: ClientHandle,
         command: &mut String,
-    ) -> Option<CommandOperation> {
+    ) -> EditorControlFlow {
         match Self::try_eval(editor, platform, clients, client_handle, command) {
-            Ok(op) => op,
+            Ok(flow) => flow,
             Err(error) => {
                 editor
                     .status_bar
                     .write(MessageKind::Error)
                     .fmt(format_args!("{}", error));
-                None
+                EditorControlFlow::Continue
             }
         }
     }
@@ -321,7 +315,7 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: ClientHandle,
         command: &mut String,
-    ) -> Result<Option<CommandOperation>, CommandError> {
+    ) -> Result<EditorControlFlow, CommandError> {
         if let Some(alias) = CommandTokenizer(command).next() {
             let alias = alias.trim_end_matches('!');
             if let Some(aliased) = editor.commands.aliases.find(alias) {
@@ -340,7 +334,7 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: ClientHandle,
         command: &str,
-    ) -> Result<Option<CommandOperation>, CommandError> {
+    ) -> Result<EditorControlFlow, CommandError> {
         let mut tokenizer = CommandTokenizer(command);
         let command = match tokenizer.next() {
             Some(command) => command,
@@ -370,12 +364,6 @@ impl CommandManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn operation_size() {
-        assert_eq!(1, std::mem::size_of::<CommandOperation>());
-        assert_eq!(1, std::mem::size_of::<Option<CommandOperation>>());
-    }
 
     #[test]
     fn command_tokens() {

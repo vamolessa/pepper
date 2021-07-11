@@ -4,10 +4,10 @@ use crate::{
     buffer::{parse_path_and_position, BufferCapabilities},
     buffer_position::BufferPosition,
     cursor::Cursor,
-    editor::KeysIterator,
+    editor::{KeysIterator, EditorControlFlow},
     editor_utils::{MessageKind, ReadLinePoll},
     lsp,
-    mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    mode::{Mode, ModeContext, ModeKind, ModeState},
     navigation_history::NavigationHistory,
     picker::EntrySource,
     platform::Key,
@@ -16,14 +16,14 @@ use crate::{
 
 pub struct State {
     on_client_keys:
-        fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
+        fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
     lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _| None,
+            on_client_keys: |_, _, _| Some(EditorControlFlow::Continue),
             lsp_client_handle: None,
         }
     }
@@ -39,7 +39,7 @@ impl ModeState for State {
         ctx.editor.picker.clear();
     }
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
+    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
         let this = &mut ctx.editor.mode.picker_state;
         let poll = ctx.editor.read_line.poll(
             ctx.platform,
@@ -104,13 +104,13 @@ pub mod buffer {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
-                ReadLinePoll::Pending => return None,
+                ReadLinePoll::Pending => return Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
                     Mode::change_to(ctx, ModeKind::default());
-                    return None;
+                    return Some(EditorControlFlow::Continue);
                 }
             }
 
@@ -118,7 +118,7 @@ pub mod buffer {
                 Some((_, entry)) => entry,
                 _ => {
                     Mode::change_to(ctx, ModeKind::default());
-                    return None;
+                    return Some(EditorControlFlow::Continue);
                 }
             };
 
@@ -136,7 +136,7 @@ pub mod buffer {
             client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 
             Mode::change_to(ctx, ModeKind::default());
-            None
+            Some(EditorControlFlow::Continue)
         }
 
         ctx.editor.read_line.set_prompt("buffer:");
@@ -169,9 +169,9 @@ pub mod lsp_definition {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
-                ReadLinePoll::Pending => None,
+                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => {
                     if let Some((_, entry)) =
                         ctx.editor.picker.current_entry(&ctx.editor.word_database)
@@ -210,11 +210,11 @@ pub mod lsp_definition {
                         );
                     }
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
             }
         }
@@ -240,9 +240,9 @@ pub mod lsp_code_action {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
-                ReadLinePoll::Pending => None,
+                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
                         let index = match ctx.editor.picker.current_entry(&ctx.editor.word_database)
@@ -255,7 +255,7 @@ pub mod lsp_code_action {
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
@@ -264,7 +264,7 @@ pub mod lsp_code_action {
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
             }
         }
@@ -294,9 +294,9 @@ pub mod lsp_document_symbol {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
-                ReadLinePoll::Pending => None,
+                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
                         let index = match ctx.editor.picker.current_entry(&ctx.editor.word_database)
@@ -311,7 +311,7 @@ pub mod lsp_document_symbol {
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
@@ -320,7 +320,7 @@ pub mod lsp_document_symbol {
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
             }
         }
@@ -350,9 +350,9 @@ pub mod lsp_workspace_symbol {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<ModeOperation> {
+        ) -> Option<EditorControlFlow> {
             match poll {
-                ReadLinePoll::Pending => None,
+                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
                         let index = match ctx.editor.picker.current_entry(&ctx.editor.word_database)
@@ -367,7 +367,7 @@ pub mod lsp_workspace_symbol {
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
@@ -376,7 +376,7 @@ pub mod lsp_workspace_symbol {
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
-                    None
+                    Some(EditorControlFlow::Continue)
                 }
             }
         }

@@ -2,9 +2,9 @@ use std::fs;
 
 use crate::{
     command::{CommandManager, CommandTokenizer, CompletionSource},
-    editor::KeysIterator,
+    editor::{EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, ReadLinePoll},
-    mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    mode::{Mode, ModeContext, ModeKind, ModeState},
     picker::Picker,
     platform::Key,
     word_database::WordIndicesIter,
@@ -51,7 +51,7 @@ impl ModeState for State {
         ctx.editor.picker.clear();
     }
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
+    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
         let state = &mut ctx.editor.mode.command_state;
         match ctx.editor.read_line.poll(
             ctx.platform,
@@ -96,25 +96,24 @@ impl ModeState for State {
                 ctx.editor.commands.add_to_history(input);
 
                 let mut command = ctx.editor.string_pool.acquire_with(input);
-                let operation = CommandManager::eval(
+                let flow = CommandManager::eval(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,
                     ctx.client_handle,
                     &mut command,
-                )
-                .map(From::from);
+                );
                 ctx.editor.string_pool.release(command);
 
                 if ctx.editor.mode.kind() == ModeKind::Command {
                     Mode::change_to(ctx, ModeKind::default());
                 }
 
-                return operation;
+                return Some(flow);
             }
         }
 
-        None
+        Some(EditorControlFlow::Continue)
     }
 }
 
@@ -248,3 +247,4 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
+
