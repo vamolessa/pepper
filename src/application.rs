@@ -202,8 +202,6 @@ impl ServerApplication {
                     continue;
                 }
 
-                let has_focus = focused_client_handle == Some(c.handle());
-
                 let mut buf = platform.buf_pool.acquire();
                 let write = buf.write_with_len(ServerEvent::display_header_len());
                 let ctx = ui::RenderContext {
@@ -213,8 +211,9 @@ impl ServerApplication {
                     viewport_size: c.viewport_size,
                     scroll: c.scroll,
                     draw_height: c.height,
+                    has_focus: focused_client_handle == Some(c.handle()),
                 };
-                ui::render(&ctx, c.view(), has_focus, write);
+                ui::render(&ctx, c.view(), write);
                 ServerEvent::serialize_display_header(write);
 
                 let handle = c.handle();

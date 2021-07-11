@@ -3,7 +3,7 @@ use std::{io, iter};
 use crate::{
     buffer::Buffer,
     buffer_position::{BufferPosition, BufferRange},
-    buffer_view::{BufferViewHandle, CursorMovementKind},
+    buffer_view::CursorMovementKind,
     client::{ClientManager, ClientView},
     cursor::Cursor,
     editor::Editor,
@@ -72,6 +72,7 @@ pub struct RenderContext<'a> {
     pub viewport_size: (u16, u16),
     pub scroll: (u32, u32),
     pub draw_height: u16,
+    pub has_focus: bool,
 }
 
 fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
@@ -119,67 +120,68 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     }
 }
 
-pub fn render(ctx: &RenderContext, client_view: ClientView, has_focus: bool, buf: &mut Vec<u8>) {
-    let buffer_view_handle = match client_view {
-        ClientView::Buffer(handle) => Some(handle),
-        _ => None,
-    };
-    let view = View::new(ctx, buffer_view_handle);
+pub fn render(ctx: &RenderContext, client_view: ClientView, buf: &mut Vec<u8>) {
+    let mut view_name = "";
+    let mut needs_save = false;
+    let mut main_cursor_position = BufferPosition::zero();
+    let mut search_ranges = &[][..];
+
     match client_view {
-        ClientView::None => draw_empty_view(ctx, buf),
-        ClientView::Buffer(_) => draw_buffer(ctx, &view, has_focus, buf),
-        ClientView::Custom(handle) => {
-            todo!();
-        },
-    }
-    if has_focus {
-        draw_picker(ctx, buf);
-    }
-    draw_statusbar(ctx, &view, has_focus, buf);
-}
-
-struct View<'a> {
-    buffer: Option<&'a Buffer>,
-    main_cursor_position: BufferPosition,
-    cursors: &'a [Cursor],
-}
-
-impl<'a> View<'a> {
-    pub fn new(ctx: &RenderContext<'a>, buffer_view_handle: Option<BufferViewHandle>) -> View<'a> {
-        let buffer_view = buffer_view_handle.and_then(|h| ctx.editor.buffer_views.get(h));
-        let buffer_handle = buffer_view.map(|v| v.buffer_handle);
-        let buffer = buffer_handle.and_then(|h| ctx.editor.buffers.get(h));
-
-        let main_cursor_position;
-        let cursors;
-        match buffer_view {
-            Some(view) => {
-                main_cursor_position = view.cursors.main_cursor().position;
-                cursors = &view.cursors[..];
-            }
-            None => {
-                main_cursor_position = BufferPosition::zero();
-                cursors = &[];
-            }
-        };
-
-        View {
-            buffer,
-            main_cursor_position,
-            cursors,
+        ClientView::None => {
+            draw_empty_view(ctx, buf);
         }
-    }
-}
+        ClientView::Buffer(handle) => {
+            match ctx
+                .editor
+                .buffer_views
+                .get(handle)
+                .and_then(|v| ctx.editor.buffers.get(v.buffer_handle).zip(Some(v)))
+            {
+                Some((buffer, view)) => {
+                    view_name = buffer.path.to_str().unwrap_or("");
+                    needs_save = buffer.needs_save();
+                    main_cursor_position = view.cursors.main_cursor().position;
+                    search_ranges = buffer.search_ranges();
 
-fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<u8>) {
-    let buffer = match view.buffer {
-        Some(buffer) => buffer,
-        None => return,
+                    let cursors = &view.cursors[..];
+                    draw_buffer(
+                        ctx,
+                        buffer,
+                        cursors,
+                        main_cursor_position.line_index as _,
+                        buf,
+                    );
+                }
+                _ => draw_empty_view(ctx, buf),
+            }
+        }
+        ClientView::Custom(handle) => {
+            // TODO
+            draw_empty_view(ctx, buf);
+        }
     };
 
+    draw_picker(ctx, buf);
+    draw_statusbar(
+        ctx,
+        view_name,
+        needs_save,
+        main_cursor_position,
+        search_ranges,
+        buf,
+    );
+}
+
+fn draw_buffer(
+    ctx: &RenderContext,
+    buffer: &Buffer,
+    cursors: &[Cursor],
+    active_line_index: usize,
+    buf: &mut Vec<u8>,
+) {
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
-    let cursor_color = if has_focus {
+    let cursor_color = if ctx.has_focus {
         match ctx.editor.mode.kind() {
             ModeKind::Insert => ctx.editor.theme.insert_cursor,
             _ => match ctx.editor.mode.normal_state.movement_kind {
@@ -191,9 +193,7 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
         ctx.editor.theme.inactive_cursor
     };
 
-    let cursors = &view.cursors[..];
     let cursors_end_index = cursors.len().saturating_sub(1);
-    let active_line_index = view.main_cursor_position.line_index;
 
     let buffer_content = buffer.content();
     let highlighted_buffer = buffer.highlighted();
@@ -430,6 +430,10 @@ fn draw_buffer(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<
 }
 
 fn draw_picker(ctx: &RenderContext, buf: &mut Vec<u8>) {
+    if !ctx.has_focus {
+        return;
+    }
+
     let cursor = ctx.editor.picker.cursor().unwrap_or(usize::MAX - 1);
     let scroll = ctx.editor.picker.scroll();
 
@@ -498,7 +502,14 @@ fn draw_picker(ctx: &RenderContext, buf: &mut Vec<u8>) {
     }
 }
 
-fn draw_statusbar(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut Vec<u8>) {
+fn draw_statusbar(
+    ctx: &RenderContext,
+    view_name: &str,
+    needs_save: bool,
+    main_cursor_position: BufferPosition,
+    search_ranges: &[BufferRange],
+    buf: &mut Vec<u8>,
+) {
     use io::Write;
 
     let background_active_color = ctx.editor.theme.statusbar_active_background;
@@ -506,14 +517,14 @@ fn draw_statusbar(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut V
     let foreground_color = ctx.editor.theme.token_text;
     let cursor_color = ctx.editor.theme.normal_cursor;
 
-    if has_focus {
+    if ctx.has_focus {
         set_background_color(buf, background_active_color);
     } else {
         set_background_color(buf, background_innactive_color);
     }
     set_foreground_color(buf, foreground_color);
 
-    let x = if has_focus {
+    let x = if ctx.has_focus {
         let (message_target, message) = ctx.editor.status_bar.message();
         let message = message.trim_end();
 
@@ -527,9 +538,9 @@ fn draw_statusbar(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut V
                     buf.push(key);
                     Some(text.len() + 1)
                 }
-                None => match view.buffer.map(Buffer::search_ranges) {
-                    Some(&[]) | None => Some(0),
-                    Some(search_ranges) => {
+                None => match search_ranges {
+                    &[] => Some(0),
+                    _ => {
                         let previous_len = buf.len();
                         let search_index = ctx.editor.mode.normal_state.search_index + 1;
                         let _ = write!(buf, " [{}/{}]", search_index, search_ranges.len());
@@ -621,19 +632,6 @@ fn draw_statusbar(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut V
         Some(0)
     };
 
-    let buffer_needs_save;
-    let buffer_path;
-    match view.buffer {
-        Some(buffer) => {
-            buffer_needs_save = buffer.needs_save();
-            buffer_path = buffer.path.to_str().unwrap_or("<no path>");
-        }
-        None => {
-            buffer_needs_save = false;
-            buffer_path = "<no buffer>";
-        }
-    };
-
     if let Some(x) = x {
         fn take_chars(s: &str, char_count: usize) -> (usize, &str) {
             match s.char_indices().rev().enumerate().take(char_count).last() {
@@ -647,7 +645,7 @@ fn draw_statusbar(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut V
 
         let status_start_index = buf.len();
 
-        if has_focus {
+        if ctx.has_focus {
             let param_count = ctx.editor.mode.normal_state.count;
             if param_count > 0 && matches!(ctx.editor.mode.kind(), ModeKind::Normal) {
                 let _ = write!(buf, "{}", param_count);
@@ -658,19 +656,19 @@ fn draw_statusbar(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut V
             buf.push(b' ');
         }
 
-        if buffer_needs_save {
+        if needs_save {
             buf.push(b'*');
         }
 
-        let (char_count, buffer_path) = take_chars(buffer_path, half_available_width);
+        let (char_count, view_name) = take_chars(view_name, half_available_width);
         if char_count == half_available_width {
             buf.extend_from_slice(TOO_LONG_PREFIX);
         }
-        buf.extend_from_slice(buffer_path.as_bytes());
+        buf.extend_from_slice(view_name.as_bytes());
 
-        if view.buffer.is_some() {
-            let line_number = view.main_cursor_position.line_index + 1;
-            let column_number = view.main_cursor_position.column_byte_index + 1;
+        if !view_name.is_empty() {
+            let line_number = main_cursor_position.line_index + 1;
+            let column_number = main_cursor_position.column_byte_index + 1;
             let _ = write!(buf, ":{},{}", line_number, column_number);
         }
         buf.push(b' ');
@@ -707,10 +705,10 @@ fn draw_statusbar(ctx: &RenderContext, view: &View, has_focus: bool, buf: &mut V
     }
 
     buf.extend_from_slice(BEGIN_TITLE_CODE);
-    if buffer_needs_save {
+    if needs_save {
         buf.push(b'*');
     }
-    buf.extend_from_slice(buffer_path.as_bytes());
+    buf.extend_from_slice(view_name.as_bytes());
     buf.extend_from_slice(END_TITLE_CODE);
 
     clear_until_new_line(buf);
