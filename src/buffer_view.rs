@@ -635,7 +635,7 @@ mod tests {
     #[test]
     fn buffer_view_cursor_movement() {
         fn set_cursor(ctx: &mut TestContext, position: BufferPosition) {
-            let buffer_view = ctx.buffer_views.get_mut(ctx.buffer_view_handle).unwrap();
+            let buffer_view = ctx.buffer_views.get_mut(ctx.buffer_view_handle);
             let mut cursors = buffer_view.cursors.mut_guard();
             cursors.clear();
             cursors.add(Cursor {
@@ -647,7 +647,6 @@ mod tests {
         fn main_cursor_position(ctx: &TestContext) -> BufferPosition {
             ctx.buffer_views
                 .get(ctx.buffer_view_handle)
-                .unwrap()
                 .cursors
                 .main_cursor()
                 .position
@@ -665,7 +664,6 @@ mod tests {
             );
             ctx.buffer_views
                 .get_mut(ctx.buffer_view_handle)
-                .unwrap()
                 .move_cursors(
                     &ctx.buffers,
                     movement,

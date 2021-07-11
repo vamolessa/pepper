@@ -762,7 +762,7 @@ mod tests {
 
         let mut buf = Vec::new();
         let array = array.into();
-        json.write(&mut buf, &array);
+        json.write(&mut buf, &array).unwrap();
         let json = String::from_utf8(buf).unwrap();
         assert_eq!(
             "[true,8,0.5,\"text\",{\"first\":null,\"second\":\"txt\"},[],{}]",
