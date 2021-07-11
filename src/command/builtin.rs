@@ -228,7 +228,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     NavigationHistory::move_in_history(
                         client,
                         ctx.editor,
-                        NavigationMovement::Current,
+                        NavigationMovement::Backward,
                     );
                     return Ok(None);
                 }
@@ -261,7 +261,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     NavigationHistory::move_in_history(
                         client,
                         ctx.editor,
-                        NavigationMovement::Current,
+                        NavigationMovement::Backward,
                     );
                 }
             }
@@ -290,7 +290,10 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let clients = &mut *ctx.clients;
             let handle = clients.custom_views.add(Box::new(StatusCustomView));
             match ctx.client_handle.and_then(|h| clients.get_mut(h)) {
-                Some(client) => client.set_view(ClientView::Custom(handle), &mut ctx.editor.events),
+                Some(client) => {
+                    NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+                    client.set_view(ClientView::Custom(handle), &mut ctx.editor.events);
+                }
                 None => clients.custom_views.remove(handle),
             }
 

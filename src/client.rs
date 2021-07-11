@@ -130,12 +130,6 @@ impl Client {
         }
     }
 
-    pub fn try_close_custom_view(&mut self, editor: &mut Editor) {
-        if let ClientView::Custom(_) = self.view {
-            NavigationHistory::move_in_history(self, editor, NavigationMovement::Current);
-        }
-    }
-
     pub fn set_view(&mut self, view: ClientView, events: &mut EditorEventQueue) {
         if self.view != view {
             events.enqueue(EditorEvent::ClientViewLostFocus { view: self.view });
