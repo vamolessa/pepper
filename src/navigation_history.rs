@@ -44,15 +44,10 @@ impl NavigationHistory {
     }
 
     pub fn save_client_snapshot(client: &mut Client, buffer_views: &BufferViewCollection) {
-        let buffer_view = match client
-            .buffer_view_handle()
-            .and_then(|h| buffer_views.get(h))
-        {
-            Some(view) => view,
-            None => return,
-        };
-
-        client.navigation_history.add_snapshot(buffer_view);
+        if let Some(handle) = client.buffer_view_handle() {
+            let buffer_view = buffer_views.get(handle);
+            client.navigation_history.add_snapshot(buffer_view);
+        }
     }
 
     fn add_snapshot(&mut self, buffer_view: &BufferView) {
@@ -116,9 +111,8 @@ impl NavigationHistory {
                 }
 
                 if snapshot_index == client.navigation_history.snapshots.len() {
-                    if let Some(buffer_view) =
-                        current_buffer_view_handle.and_then(|h| editor.buffer_views.get(h))
-                    {
+                    if let Some(handle) = current_buffer_view_handle {
+                        let buffer_view = editor.buffer_views.get(handle);
                         client.navigation_history.add_snapshot(buffer_view)
                     }
                 }
@@ -127,12 +121,9 @@ impl NavigationHistory {
                 client.navigation_history.snapshots[snapshot_index].clone()
             }
             NavigationMovement::PreviousBuffer => {
-                let buffer_view =
-                    current_buffer_view_handle.and_then(|h| editor.buffer_views.get(h));
-
                 if snapshot_index < client.navigation_history.snapshots.len() {
-                    let buffer_handle = match buffer_view {
-                        Some(buffer_view) => buffer_view.buffer_handle,
+                    let buffer_handle = match current_buffer_view_handle {
+                        Some(handle) => editor.buffer_views.get(handle).buffer_handle,
                         None => client.navigation_history.snapshots[snapshot_index].buffer_handle,
                     };
 
@@ -150,19 +141,22 @@ impl NavigationHistory {
                         return;
                     }
                 } else {
-                    match buffer_view {
-                        Some(buffer_view) => match client
-                            .navigation_history
-                            .snapshots
-                            .iter()
-                            .rposition(|s| s.buffer_handle != buffer_view.buffer_handle)
-                        {
-                            Some(i) => {
-                                client.navigation_history.add_snapshot(buffer_view);
-                                snapshot_index = i
+                    match current_buffer_view_handle {
+                        Some(handle) => {
+                            let buffer_view = editor.buffer_views.get(handle);
+                            match client
+                                .navigation_history
+                                .snapshots
+                                .iter()
+                                .rposition(|s| s.buffer_handle != buffer_view.buffer_handle)
+                            {
+                                Some(i) => {
+                                    client.navigation_history.add_snapshot(buffer_view);
+                                    snapshot_index = i
+                                }
+                                None => return,
                             }
-                            None => return,
-                        },
+                        }
                         None => {
                             snapshot_index = client.navigation_history.snapshots.len();
                             if snapshot_index == 0 {
@@ -183,20 +177,15 @@ impl NavigationHistory {
         let view_handle = editor
             .buffer_views
             .buffer_view_handle_from_buffer_handle(client.handle(), snapshot.buffer_handle);
-        let mut cursors = match editor.buffer_views.get_mut(view_handle) {
-            Some(view) => view.cursors.mut_guard(),
-            None => return,
-        };
+        let mut cursors = editor.buffer_views.get_mut(view_handle).cursors.mut_guard();
         cursors.clear();
         for cursor in client.navigation_history.cursors[snapshot.cursor_range()].iter() {
             cursors.add(*cursor);
         }
-        if let Some(buffer) = editor.buffers.get(snapshot.buffer_handle) {
-            let buffer = buffer.content();
-            for cursor in &mut cursors[..] {
-                cursor.anchor = buffer.saturate_position(cursor.anchor);
-                cursor.position = buffer.saturate_position(cursor.position);
-            }
+        let buffer = editor.buffers.get(snapshot.buffer_handle).content();
+        for cursor in &mut cursors[..] {
+            cursor.anchor = buffer.saturate_position(cursor.anchor);
+            cursor.position = buffer.saturate_position(cursor.position);
         }
 
         client.set_buffer_view_handle(Some(view_handle), &mut editor.events);

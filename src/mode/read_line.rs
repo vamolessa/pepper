@@ -1,7 +1,6 @@
 use crate::{
     buffer_position::BufferPositionIndex,
     buffer_view::CursorMovementKind,
-    client::Client,
     cursor::CursorCollection,
     editor::KeysIterator,
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll},
@@ -68,28 +67,24 @@ pub mod search {
                     if let Some(buffer_view) = ctx
                         .clients
                         .get(ctx.client_handle)
-                        .and_then(Client::buffer_view_handle)
-                        .and_then(|h| ctx.editor.buffer_views.get(h))
+                        .buffer_view_handle()
+                        .map(|h| ctx.editor.buffer_views.get(h))
                     {
-                        if let Some(buffer) = ctx.editor.buffers.get(buffer_view.buffer_handle) {
-                            let search_ranges = buffer.search_ranges();
-                            if search_ranges.is_empty() {
-                                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                                    NavigationHistory::move_in_history(
-                                        client,
-                                        ctx.editor,
-                                        NavigationMovement::Backward,
-                                    );
-                                }
-                            } else {
-                                let position = buffer_view.cursors.main_cursor().position;
-                                ctx.editor.mode.normal_state.search_index = match search_ranges
-                                    .binary_search_by_key(&position, |r| r.from)
-                                {
+                        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+                        let search_ranges = buffer.search_ranges();
+                        if search_ranges.is_empty() {
+                            NavigationHistory::move_in_history(
+                                ctx.clients.get_mut(ctx.client_handle),
+                                ctx.editor,
+                                NavigationMovement::Backward,
+                            );
+                        } else {
+                            let position = buffer_view.cursors.main_cursor().position;
+                            ctx.editor.mode.normal_state.search_index =
+                                match search_ranges.binary_search_by_key(&position, |r| r.from) {
                                     Ok(i) => i,
                                     Err(i) => i,
                                 };
-                            }
                         }
                     }
 
@@ -99,13 +94,11 @@ pub mod search {
                     Mode::change_to(ctx, ModeKind::default());
                 }
                 ReadLinePoll::Canceled => {
-                    if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                        NavigationHistory::move_in_history(
-                            client,
-                            ctx.editor,
-                            NavigationMovement::Backward,
-                        );
-                    }
+                    NavigationHistory::move_in_history(
+                        ctx.clients.get_mut(ctx.client_handle),
+                        ctx.editor,
+                        NavigationMovement::Backward,
+                    );
                     Mode::change_to(ctx, ModeKind::default());
                 }
             }
@@ -113,9 +106,10 @@ pub mod search {
             None
         }
 
-        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
-        }
+        NavigationHistory::save_client_snapshot(
+            ctx.clients.get_mut(ctx.client_handle),
+            &ctx.editor.buffer_views,
+        );
         ctx.editor.read_line.set_prompt("search:");
         update_search(ctx);
 
@@ -123,16 +117,18 @@ pub mod search {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 
-    fn update_search(ctx: &mut ModeContext) -> Option<()> {
+    fn update_search(ctx: &mut ModeContext) {
         ctx.editor.aux_pattern.clear();
         for buffer in ctx.editor.buffers.iter_mut() {
             buffer.set_search(&ctx.editor.aux_pattern);
         }
 
-        let client = ctx.clients.get_mut(ctx.client_handle)?;
-        let handle = client.buffer_view_handle()?;
-        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-        let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
+        let handle = match ctx.clients.get_mut(ctx.client_handle).buffer_view_handle() {
+            Some(handle) => handle,
+            None => return,
+        };
+        let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+        let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
         let _ = ctx
             .editor
@@ -142,7 +138,7 @@ pub mod search {
         let search_ranges = buffer.search_ranges();
 
         if search_ranges.is_empty() {
-            return None;
+            return;
         }
 
         let mut cursors = buffer_view.cursors.mut_guard();
@@ -170,8 +166,6 @@ pub mod search {
         if let CursorMovementKind::PositionAndAnchor = ctx.editor.mode.normal_state.movement_kind {
             main_cursor.anchor = main_cursor.position;
         }
-
-        None
     }
 }
 
@@ -216,7 +210,7 @@ pub mod filter_cursors {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 
-    fn on_event_impl(ctx: &mut ModeContext, keep_if_contains_pattern: bool) -> Option<()> {
+    fn on_event_impl(ctx: &mut ModeContext, keep_if_contains_pattern: bool) {
         fn range_contains_pattern(
             buffer: &BufferContent,
             range: BufferRange,
@@ -263,15 +257,18 @@ pub mod filter_cursors {
                 .status_bar
                 .write(MessageKind::Error)
                 .fmt(format_args!("{}", error));
-            return None;
+            return;
         }
 
-        let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
-        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+        let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+            Some(handle) => handle,
+            None => return,
+        };
+        let buffer_view = ctx.editor.buffer_views.get_mut(handle);
         let buffer = ctx
             .editor
             .buffers
-            .get_mut(buffer_view.buffer_handle)?
+            .get_mut(buffer_view.buffer_handle)
             .content();
 
         let mut cursors = buffer_view.cursors.mut_guard();
@@ -300,8 +297,6 @@ pub mod filter_cursors {
                 position: main_cursor_position,
             });
         }
-
-        None
     }
 }
 
@@ -405,7 +400,7 @@ pub mod split_cursors {
     fn on_event_impl(
         ctx: &mut ModeContext,
         add_matches: fn(&mut [Cursor], usize, &str, &Pattern, BufferPosition) -> usize,
-    ) -> Option<()> {
+    ) {
         let pattern = ctx.editor.read_line.input();
         let pattern = if pattern.is_empty() {
             ctx.editor.registers.get(SEARCH_REGISTER)
@@ -418,15 +413,18 @@ pub mod split_cursors {
                 .status_bar
                 .write(MessageKind::Error)
                 .fmt(format_args!("{}", error));
-            return None;
+            return;
         }
 
-        let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
-        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+        let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+            Some(handle) => handle,
+            None => return,
+        };
+        let buffer_view = ctx.editor.buffer_views.get_mut(handle);
         let buffer = ctx
             .editor
             .buffers
-            .get_mut(buffer_view.buffer_handle)?
+            .get_mut(buffer_view.buffer_handle)
             .content();
 
         let mut cursors = buffer_view.cursors.mut_guard();
@@ -500,7 +498,6 @@ pub mod split_cursors {
                 position: main_cursor_position,
             });
         }
-        None
     }
 }
 
@@ -528,9 +525,9 @@ pub mod goto {
                     };
                     let line_index = line_number.saturating_sub(1);
 
-                    let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+                    let handle = ctx.clients.get(ctx.client_handle).buffer_view_handle()?;
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                     let buffer = buffer.content();
 
                     let mut position = BufferPosition::line_col(line_index as _, 0);
@@ -549,22 +546,21 @@ pub mod goto {
                 }
                 ReadLinePoll::Submitted => Mode::change_to(ctx, ModeKind::default()),
                 ReadLinePoll::Canceled => {
-                    if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                        NavigationHistory::move_in_history(
-                            client,
-                            ctx.editor,
-                            NavigationMovement::Backward,
-                        );
-                    }
+                    NavigationHistory::move_in_history(
+                        ctx.clients.get_mut(ctx.client_handle),
+                        ctx.editor,
+                        NavigationMovement::Backward,
+                    );
                     Mode::change_to(ctx, ModeKind::default());
                 }
             }
             None
         }
 
-        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
-        }
+        NavigationHistory::save_client_snapshot(
+            ctx.clients.get_mut(ctx.client_handle),
+            &ctx.editor.buffer_views,
+        );
         ctx.editor.read_line.set_prompt("goto-line:");
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::ReadLine);
@@ -733,3 +729,4 @@ pub mod lsp_rename {
         ctx.editor.read_line.input_mut().push_str(placeholder);
     }
 }
+

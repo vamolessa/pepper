@@ -545,22 +545,12 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn get(&self, handle: BufferViewHandle) -> Option<&BufferView> {
-        let view = &self.buffer_views[handle.0 as usize];
-        if view.alive {
-            Some(view)
-        } else {
-            None
-        }
+    pub fn get(&self, handle: BufferViewHandle) -> &BufferView {
+        &self.buffer_views[handle.0 as usize]
     }
 
-    pub fn get_mut(&mut self, handle: BufferViewHandle) -> Option<&mut BufferView> {
-        let view = &mut self.buffer_views[handle.0 as usize];
-        if view.alive {
-            Some(view)
-        } else {
-            None
-        }
+    pub fn get_mut(&mut self, handle: BufferViewHandle) -> &mut BufferView {
+        &mut self.buffer_views[handle.0 as usize]
     }
 
     pub fn on_buffer_load(&mut self, buffer: &Buffer) {

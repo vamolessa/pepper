@@ -238,22 +238,12 @@ impl ClientManager {
         }
     }
 
-    pub fn get(&self, handle: ClientHandle) -> Option<&Client> {
-        let client = &self.clients[handle.into_index()];
-        if client.active {
-            Some(client)
-        } else {
-            None
-        }
+    pub fn get(&self, handle: ClientHandle) -> &Client {
+        &self.clients[handle.into_index()]
     }
 
-    pub fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
-        let client = &mut self.clients[handle.into_index()];
-        if client.active {
-            Some(client)
-        } else {
-            None
-        }
+    pub fn get_mut(&mut self, handle: ClientHandle) -> &mut Client {
+        &mut self.clients[handle.into_index()]
     }
 
     pub fn iter(&self) -> impl Clone + Iterator<Item = &Client> {

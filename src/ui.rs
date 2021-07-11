@@ -132,29 +132,21 @@ pub fn render(
 
     match buffer_view_handle {
         Some(handle) => {
-            match ctx
-                .editor
-                .buffer_views
-                .get(handle)
-                .and_then(|v| ctx.editor.buffers.get(v.buffer_handle).zip(Some(v)))
-            {
-                Some((buffer, view)) => {
-                    view_name = buffer.path.to_str().unwrap_or("");
-                    needs_save = buffer.needs_save();
-                    main_cursor_position = view.cursors.main_cursor().position;
-                    search_ranges = buffer.search_ranges();
+            let buffer_view = ctx.editor.buffer_views.get(handle);
+            let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+            view_name = buffer.path.to_str().unwrap_or("");
+            needs_save = buffer.needs_save();
+            main_cursor_position = buffer_view.cursors.main_cursor().position;
+            search_ranges = buffer.search_ranges();
 
-                    let cursors = &view.cursors[..];
-                    draw_buffer(
-                        ctx,
-                        buffer,
-                        cursors,
-                        main_cursor_position.line_index as _,
-                        buf,
-                    );
-                }
-                _ => draw_empty_view(ctx, buf),
-            }
+            let cursors = &buffer_view.cursors[..];
+            draw_buffer(
+                ctx,
+                buffer,
+                cursors,
+                main_cursor_position.line_index as _,
+                buf,
+            );
         }
         None => draw_empty_view(ctx, buf),
     }

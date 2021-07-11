@@ -83,37 +83,37 @@ impl State {
         let state = &mut ctx.editor.mode.normal_state;
         let keys_from_index = keys.index;
         match keys.next(&ctx.editor.buffered_keys) {
-            Key::Char('h') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+            Key::Char('h') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::ColumnsBackward(state.count.max(1) as _),
                 state.movement_kind,
                 ctx.editor.config.tab_size,
             ),
-            Key::Char('j') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+            Key::Char('j') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::LinesForward(state.count.max(1) as _),
                 state.movement_kind,
                 ctx.editor.config.tab_size,
             ),
-            Key::Char('k') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+            Key::Char('k') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::LinesBackward(state.count.max(1) as _),
                 state.movement_kind,
                 ctx.editor.config.tab_size,
             ),
-            Key::Char('l') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+            Key::Char('l') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::ColumnsForward(state.count.max(1) as _),
                 state.movement_kind,
                 ctx.editor.config.tab_size,
             ),
-            Key::Char('w') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+            Key::Char('w') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::WordsForward(state.count.max(1) as _),
                 state.movement_kind,
                 ctx.editor.config.tab_size,
             ),
-            Key::Char('b') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+            Key::Char('b') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::WordsBackward(state.count.max(1) as _),
                 state.movement_kind,
@@ -159,23 +159,19 @@ impl State {
             }
             Key::Ctrl('n') => {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                    NavigationHistory::move_in_history(
-                        client,
-                        ctx.editor,
-                        NavigationMovement::Forward,
-                    );
-                }
+                NavigationHistory::move_in_history(
+                    ctx.clients.get_mut(ctx.client_handle),
+                    ctx.editor,
+                    NavigationMovement::Forward,
+                );
             }
             Key::Ctrl('p') => {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                    NavigationHistory::move_in_history(
-                        client,
-                        ctx.editor,
-                        NavigationMovement::Backward,
-                    );
-                }
+                NavigationHistory::move_in_history(
+                    ctx.clients.get_mut(ctx.client_handle),
+                    ctx.editor,
+                    NavigationMovement::Backward,
+                );
             }
             Key::Char('a') => {
                 fn balanced_brackets(
@@ -203,8 +199,8 @@ impl State {
                     }
                 }
 
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 match keys.next(&ctx.editor.buffered_keys) {
@@ -284,8 +280,8 @@ impl State {
                     }
                 }
 
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 match keys.next(&ctx.editor.buffered_keys) {
@@ -332,19 +328,17 @@ impl State {
                 state.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('g') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char('g') => {
                         if state.count > 0 {
-                            if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                                NavigationHistory::save_client_snapshot(
-                                    client,
-                                    &ctx.editor.buffer_views,
-                                );
-                            }
-                            let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                            let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+                            NavigationHistory::save_client_snapshot(
+                                ctx.clients.get_mut(ctx.client_handle),
+                                &ctx.editor.buffer_views,
+                            );
+                            let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                            let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                             let buffer = buffer.content();
                             let line_index = state.count - 1;
                             let mut position = BufferPosition::line_col(line_index as _, 0);
@@ -371,12 +365,10 @@ impl State {
                         ctx.editor.config.tab_size,
                     ),
                     Key::Char('j') => {
-                        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                            NavigationHistory::save_client_snapshot(
-                                client,
-                                &ctx.editor.buffer_views,
-                            );
-                        }
+                        NavigationHistory::save_client_snapshot(
+                            ctx.clients.get_mut(ctx.client_handle),
+                            &ctx.editor.buffer_views,
+                        );
                         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                         buffer_view.move_cursors(
                             &ctx.editor.buffers,
@@ -386,13 +378,11 @@ impl State {
                         );
                     }
                     Key::Char('k') => {
-                        if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                            NavigationHistory::save_client_snapshot(
-                                client,
-                                &ctx.editor.buffer_views,
-                            );
-                        }
-                        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                        NavigationHistory::save_client_snapshot(
+                            ctx.clients.get_mut(ctx.client_handle),
+                            &ctx.editor.buffer_views,
+                        );
+                        let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                         buffer_view.move_cursors(
                             &ctx.editor.buffers,
                             CursorMovement::FirstLine,
@@ -413,7 +403,7 @@ impl State {
                         ctx.editor.config.tab_size,
                     ),
                     Key::Char('m') => {
-                        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             let mut position = cursor.position;
 
@@ -482,8 +472,7 @@ impl State {
                                 continue;
                             }
 
-                            let buffer = ctx.editor.buffers.get(buffer_handle)?;
-
+                            let buffer = ctx.editor.buffers.get(buffer_handle);
                             let line = buffer.content().line_at(line_index as _).as_str();
 
                             let from = range.from.column_byte_index;
@@ -524,12 +513,10 @@ impl State {
                             }
 
                             if !jumped {
-                                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                                    NavigationHistory::save_client_snapshot(
-                                        client,
-                                        &ctx.editor.buffer_views,
-                                    );
-                                }
+                                NavigationHistory::save_client_snapshot(
+                                    ctx.clients.get_mut(ctx.client_handle),
+                                    &ctx.editor.buffer_views,
+                                );
                             }
 
                             let handle = ctx.editor.buffer_view_handle_from_path(
@@ -537,14 +524,13 @@ impl State {
                                 path,
                                 BufferCapabilities::text(),
                             );
-                            if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
-                                let mut cursors = buffer_view.cursors.mut_guard();
-                                cursors.clear();
-                                cursors.add(Cursor {
-                                    anchor: position,
-                                    position,
-                                });
-                            }
+                            let mut cursors =
+                                ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                            cursors.clear();
+                            cursors.add(Cursor {
+                                anchor: position,
+                                position,
+                            });
 
                             if jumped {
                                 continue;
@@ -553,9 +539,9 @@ impl State {
 
                             ctx.editor.mode.normal_state.movement_kind =
                                 CursorMovementKind::PositionAndAnchor;
-                            if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                                client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
-                            }
+                            ctx.clients
+                                .get_mut(ctx.client_handle)
+                                .set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
                         }
                         ctx.editor.string_pool.release(path_buf);
                     }
@@ -612,7 +598,7 @@ impl State {
                 state.movement_kind = match state.movement_kind {
                     CursorMovementKind::PositionAndAnchor => CursorMovementKind::PositionOnly,
                     CursorMovementKind::PositionOnly => {
-                        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                        let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             cursor.anchor = cursor.position;
                         }
@@ -621,8 +607,8 @@ impl State {
                 };
             }
             Key::Char('V') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
                 let count = state.count.max(1);
                 let last_line_index = buffer.line_count().saturating_sub(1);
@@ -659,9 +645,9 @@ impl State {
                 state.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('z') => {
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle);
                 let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
-                let client = ctx.clients.get_mut(ctx.client_handle)?;
+                let client = ctx.clients.get_mut(ctx.client_handle);
                 let height = client.height;
 
                 match keys.next(&ctx.editor.buffered_keys) {
@@ -682,8 +668,8 @@ impl State {
                 }
             }
             Key::Ctrl('j') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 for cursor in &mut cursors[..] {
@@ -714,8 +700,8 @@ impl State {
                 }
             }
             Key::Ctrl('k') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 for cursor in &mut cursors[..] {
@@ -746,13 +732,8 @@ impl State {
                 }
             }
             Key::Ctrl('d') => {
-                let half_height = ctx
-                    .clients
-                    .get(ctx.client_handle)
-                    .map(|c| c.height)
-                    .unwrap_or(0)
-                    / 2;
-                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                let half_height = ctx.clients.get(ctx.client_handle).height / 2;
+                ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesForward(
                         half_height as usize * state.count.max(1) as usize,
@@ -762,13 +743,8 @@ impl State {
                 );
             }
             Key::Ctrl('u') => {
-                let half_height = ctx
-                    .clients
-                    .get(ctx.client_handle)
-                    .map(|c| c.height)
-                    .unwrap_or(0)
-                    / 2;
-                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                let half_height = ctx.clients.get(ctx.client_handle).height / 2;
+                ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesBackward(
                         half_height as usize * state.count.max(1) as usize,
@@ -778,7 +754,7 @@ impl State {
                 );
             }
             Key::Char('d') => {
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle);
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -787,14 +763,14 @@ impl State {
 
                 ctx.editor
                     .buffers
-                    .get_mut(buffer_view.buffer_handle)?
+                    .get_mut(buffer_view.buffer_handle)
                     .commit_edits();
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 Self::on_edit_keys(ctx.editor, keys, keys_from_index);
                 return None;
             }
             Key::Char('i') => {
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle);
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -806,13 +782,13 @@ impl State {
                 return None;
             }
             Key::Char('<') => {
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle);
                 let cursor_count = buffer_view.cursors[..].len();
-                let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
+                let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
                 let count = state.count.max(1);
 
                 for i in 0..cursor_count {
-                    let range = ctx.editor.buffer_views.get(handle)?.cursors[i].to_range();
+                    let range = ctx.editor.buffer_views.get(handle).cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
                         let line = buffer.content().line_at(line_index as _).as_str();
                         let mut indentation_column_index = 0;
@@ -851,7 +827,7 @@ impl State {
                 return None;
             }
             Key::Char('>') => {
-                let cursor_count = ctx.editor.buffer_views.get(handle)?.cursors[..].len();
+                let cursor_count = ctx.editor.buffer_views.get(handle).cursors[..].len();
 
                 let extender = if ctx.editor.config.indent_with_tabs {
                     let count = state.count.max(1) as _;
@@ -862,13 +838,13 @@ impl State {
                     std::iter::repeat(' ').take(count)
                 };
 
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle);
+                let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
                 let mut buf = ctx.editor.string_pool.acquire();
                 buf.extend(extender);
                 for i in 0..cursor_count {
-                    let range = ctx.editor.buffer_views.get(handle)?.cursors[i].to_range();
+                    let range = ctx.editor.buffer_views.get(handle).cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
                         buffer.insert_text(
                             &mut ctx.editor.word_database,
@@ -887,13 +863,13 @@ impl State {
             Key::Char('c' | 'C') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char('c') => {
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                         std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                     }
                 }
                 Key::Char('C') => {
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                         if cursor.position < cursor.anchor {
                             std::mem::swap(&mut cursor.anchor, &mut cursor.position);
@@ -901,8 +877,8 @@ impl State {
                     }
                 }
                 Key::Char('l') => {
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
                     let mut cursors = buffer_view.cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -956,9 +932,8 @@ impl State {
                     }
                 }
                 Key::Char('d') => {
-                    let cursors = &mut ctx.editor.buffer_views.get_mut(handle)?.cursors;
+                    let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
                     let main_cursor = *cursors.main_cursor();
-                    let mut cursors = cursors.mut_guard();
                     cursors.clear();
                     cursors.add(main_cursor);
                     state.movement_kind = CursorMovementKind::PositionAndAnchor;
@@ -968,15 +943,15 @@ impl State {
                 }
                 Key::Char('V') => {
                     for cursor in
-                        &mut ctx.editor.buffer_views.get_mut(handle)?.cursors.mut_guard()[..]
+                        &mut ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard()[..]
                     {
                         cursor.anchor = cursor.position;
                     }
                     state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 }
                 Key::Char('j') => {
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                     let mut cursors = buffer_view.cursors.mut_guard();
 
                     if let Some(cursor) = cursors[..].last() {
@@ -994,8 +969,8 @@ impl State {
                     }
                 }
                 Key::Char('k') => {
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                     let mut cursors = buffer_view.cursors.mut_guard();
 
                     if let Some(cursor) = cursors[..].first() {
@@ -1013,7 +988,7 @@ impl State {
                     }
                 }
                 Key::Char('n') => {
-                    let cursors = &mut ctx.editor.buffer_views.get_mut(handle)?.cursors;
+                    let mut cursors = &mut ctx.editor.buffer_views.get_mut(handle).cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -1026,7 +1001,7 @@ impl State {
                     }
                 }
                 Key::Char('p') => {
-                    let cursors = &mut ctx.editor.buffer_views.get_mut(handle)?.cursors;
+                    let cursors = &mut ctx.editor.buffer_views.get_mut(handle).cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -1100,7 +1075,7 @@ impl State {
             Key::Char('|') => read_line::process::enter_replace_mode(ctx),
             Key::Char('!') => read_line::process::enter_insert_mode(ctx),
             Key::Char('u') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.undo(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -1110,7 +1085,7 @@ impl State {
                 return None;
             }
             Key::Char('U') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.redo(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -1154,11 +1129,11 @@ impl ModeState for State {
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
         fn show_hovered_diagnostic(ctx: &mut ModeContext) -> Option<()> {
-            let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
+            let handle = ctx.clients.get(ctx.client_handle).buffer_view_handle()?;
             if !ctx.editor.status_bar.message().1.is_empty() {
                 return None;
             }
-            let buffer_view = ctx.editor.buffer_views.get(handle)?;
+            let buffer_view = ctx.editor.buffer_views.get(handle);
             let main_position = buffer_view.cursors.main_cursor().position;
 
             for client in ctx.editor.lsp.clients() {
@@ -1265,9 +1240,8 @@ impl ModeState for State {
                         }
                         Key::Char('b') => {
                             handled_keys = true;
-                            let client = ctx.clients.get_mut(ctx.client_handle)?;
                             NavigationHistory::move_in_history(
-                                client,
+                                ctx.clients.get_mut(ctx.client_handle),
                                 ctx.editor,
                                 NavigationMovement::PreviousBuffer,
                             );
@@ -1275,7 +1249,7 @@ impl ModeState for State {
                         Key::Char('B') => {
                             handled_keys = true;
                             let previous_client_handle = ctx.clients.previous_focused_client()?;
-                            let previous_client = ctx.clients.get_mut(previous_client_handle)?;
+                            let previous_client = ctx.clients.get_mut(previous_client_handle);
                             let buffer_view_handle = previous_client.buffer_view_handle();
 
                             NavigationHistory::move_in_history(
@@ -1300,7 +1274,7 @@ impl ModeState for State {
                                 &mut ctx.editor.events,
                             );
 
-                            let client = ctx.clients.get_mut(ctx.client_handle)?;
+                            let client = ctx.clients.get_mut(ctx.client_handle);
                             client
                                 .set_buffer_view_handle(buffer_view_handle, &mut ctx.editor.events);
                         }

@@ -1183,22 +1183,12 @@ impl BufferCollection {
         buffer
     }
 
-    pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
-        let buffer = &self.buffers[handle.0 as usize];
-        if buffer.alive {
-            Some(buffer)
-        } else {
-            None
-        }
+    pub fn get(&self, handle: BufferHandle) -> &Buffer {
+        &self.buffers[handle.0 as usize]
     }
 
-    pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
-        let buffer = &mut self.buffers[handle.0 as usize];
-        if buffer.alive {
-            Some(buffer)
-        } else {
-            None
-        }
+    pub fn get_mut(&mut self, handle: BufferHandle) -> &mut Buffer {
+        &mut self.buffers[handle.0 as usize]
     }
 
     pub fn find_with_path(&self, buffers_root: &Path, path: &Path) -> Option<BufferHandle> {
