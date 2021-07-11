@@ -532,10 +532,39 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum TargetClient {
+    Sender,
+    Focused,
+}
+impl<'de> Serialize<'de> for TargetClient {
+    fn serialize<S>(&self, serializer: &mut S)
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Sender => 0u8.serialize(serializer),
+            Self::Focused => 1u8.serialize(serializer),
+        }
+    }
+
+    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
+    where
+        D: Deserializer<'de>,
+    {
+        let discriminant = u8::deserialize(deserializer)?;
+        match discriminant {
+            0 => Ok(Self::Sender),
+            1 => Ok(Self::Focused),
+            _ => Err(DeserializeError::InvalidData),
+        }
+    }
+}
+
 pub enum ClientEvent<'a> {
-    Command(ClientHandle, &'a str),
-    Key(ClientHandle, Key),
-    Resize(ClientHandle, u16, u16),
+    Key(TargetClient, Key),
+    Resize(u16, u16),
+    Command(TargetClient, &'a str),
 }
 impl<'de> Serialize<'de> for ClientEvent<'de> {
     fn serialize<S>(&self, serializer: &mut S)
@@ -543,21 +572,20 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         S: Serializer,
     {
         match self {
-            Self::Command(client_handle, command) => {
+            Self::Key(target, key) => {
                 0u8.serialize(serializer);
-                client_handle.serialize(serializer);
-                command.serialize(serializer);
-            }
-            Self::Key(client_handle, key) => {
-                1u8.serialize(serializer);
-                client_handle.serialize(serializer);
+                target.serialize(serializer);
                 serialize_key(*key, serializer);
             }
-            Self::Resize(client_handle, width, height) => {
-                2u8.serialize(serializer);
-                client_handle.serialize(serializer);
+            Self::Resize(width, height) => {
+                1u8.serialize(serializer);
                 width.serialize(serializer);
                 height.serialize(serializer);
+            }
+            Self::Command(target, command) => {
+                2u8.serialize(serializer);
+                target.serialize(serializer);
+                command.serialize(serializer);
             }
         }
     }
@@ -569,20 +597,19 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         let discriminant = u8::deserialize(deserializer)?;
         match discriminant {
             0 => {
-                let handle = Serialize::deserialize(deserializer)?;
-                let command = Serialize::deserialize(deserializer)?;
-                Ok(Self::Command(handle, command))
+                let target = Serialize::deserialize(deserializer)?;
+                let key = deserialize_key(deserializer)?;
+                Ok(Self::Key(target, key))
             }
             1 => {
-                let handle = Serialize::deserialize(deserializer)?;
-                let key = deserialize_key(deserializer)?;
-                Ok(Self::Key(handle, key))
-            }
-            2 => {
-                let handle = Serialize::deserialize(deserializer)?;
                 let width = Serialize::deserialize(deserializer)?;
                 let height = Serialize::deserialize(deserializer)?;
-                Ok(Self::Resize(handle, width, height))
+                Ok(Self::Resize(width, height))
+            }
+            2 => {
+                let target = Serialize::deserialize(deserializer)?;
+                let command = Serialize::deserialize(deserializer)?;
+                Ok(Self::Command(target, command))
             }
             _ => Err(DeserializeError::InvalidData),
         }
@@ -762,7 +789,7 @@ mod tests {
         }
 
         let client_handle = ClientHandle::from_index(0).unwrap();
-        let event = ClientEvent::Key(client_handle, Key::Char(CHAR));
+        let event = ClientEvent::Key(TargetClient::Sender, Key::Char(CHAR));
         let mut bytes = Vec::new();
         for _ in 0..EVENT_COUNT {
             event.serialize(&mut bytes);

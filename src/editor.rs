@@ -12,6 +12,7 @@ use crate::{
     editor_utils::{ReadLine, StatusBar, StringPool},
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
+        TargetClient,
     },
     keymap::{KeyMapCollection, MatchResult},
     lsp,
@@ -257,20 +258,26 @@ impl Editor {
         &mut self,
         platform: &mut Platform,
         clients: &mut ClientManager,
+        client_handle: ClientHandle,
         event: ClientEvent,
     ) -> EditorControlFlow {
-        match event {
-            ClientEvent::Command(client_handle, command) => {
-                let mut command = self.string_pool.acquire_with(command);
-                let flow =
-                    CommandManager::eval(self, platform, clients, client_handle, &mut command);
-                self.string_pool.release(command);
-                flow
+        fn get_client_handle(
+            clients: &ClientManager,
+            handle: ClientHandle,
+            target: TargetClient,
+        ) -> ClientHandle {
+            match target {
+                TargetClient::Sender => handle,
+                TargetClient::Focused => match clients.focused_client() {
+                    Some(handle) => handle,
+                    None => handle,
+                },
             }
-            ClientEvent::Key(client_handle, key) => {
-                if key != Key::None {
-                    self.status_bar.clear();
-                }
+        }
+
+        match event {
+            ClientEvent::Key(target, key) => {
+                let client_handle = get_client_handle(clients, client_handle, target);
                 if clients.focus_client(client_handle) {
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
@@ -285,13 +292,25 @@ impl Editor {
                         Mode::change_to(&mut ctx, ModeKind::default());
                     }
                 }
+
+                if key != Key::None {
+                    self.status_bar.clear();
+                }
                 self.buffered_keys.0.push(key);
                 self.execute_keys(platform, clients, client_handle, KeysIterator { index: 0 })
             }
-            ClientEvent::Resize(client_handle, width, height) => {
+            ClientEvent::Resize(width, height) => {
                 let client = clients.get_mut(client_handle);
                 client.viewport_size = (width, height);
                 EditorControlFlow::Continue
+            }
+            ClientEvent::Command(target, command) => {
+                let client_handle = get_client_handle(clients, client_handle, target);
+                let mut command = self.string_pool.acquire_with(command);
+                let flow =
+                    CommandManager::eval(self, platform, clients, client_handle, &mut command);
+                self.string_pool.release(command);
+                flow
             }
         }
     }

@@ -4,7 +4,7 @@ use crate::{
     client::{ClientHandle, ClientManager},
     editor::{Editor, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
-    events::{ClientEvent, ClientEventReceiver, ServerEvent},
+    events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     ini::Ini,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     serialization::{DeserializeError, Serialize},
@@ -132,15 +132,7 @@ impl ServerApplication {
                 match event {
                     ApplicationEvent::Idle => editor.on_idle(&mut clients, platform),
                     ApplicationEvent::Redraw => (),
-                    ApplicationEvent::ConnectionOpen { handle } => {
-                        clients.on_client_joined(handle);
-                        let mut buf = platform.buf_pool.acquire();
-                        let write = buf.write();
-                        write.push(handle.into_index() as _);
-                        let buf = buf.share();
-                        platform.buf_pool.release(buf.clone());
-                        platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
-                    }
+                    ApplicationEvent::ConnectionOpen { handle } => clients.on_client_joined(handle),
                     ApplicationEvent::ConnectionClose { handle } => {
                         clients.on_client_left(handle);
                         if clients.iter().next().is_none() {
@@ -151,7 +143,7 @@ impl ServerApplication {
                         let mut events =
                             client_event_receiver.receive_events(handle, buf.as_bytes());
                         while let Some(event) = events.next(&client_event_receiver) {
-                            match editor.on_client_event(platform, &mut clients, event) {
+                            match editor.on_client_event(platform, &mut clients, handle, event) {
                                 EditorControlFlow::Continue => (),
                                 EditorControlFlow::Suspend => {
                                     let mut buf = platform.buf_pool.acquire();
@@ -230,8 +222,8 @@ impl ServerApplication {
 }
 
 pub struct ClientApplication<'stdout> {
-    handle: ClientHandle,
     is_pipped: bool,
+    target_client: TargetClient,
     stdin_read_buf: Vec<u8>, // TODO: do something with it
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
@@ -246,10 +238,10 @@ impl<'stdout> ClientApplication<'stdout> {
         48 * 1024
     }
 
-    pub fn new(handle: ClientHandle, stdout: io::StdoutLock<'stdout>, is_pipped: bool) -> Self {
+    pub fn new(stdout: io::StdoutLock<'stdout>, is_pipped: bool) -> Self {
         Self {
-            handle,
             is_pipped,
+            target_client: TargetClient::Sender,
             stdin_read_buf: Vec::new(),
             server_read_buf: Vec::new(),
             server_write_buf: Vec::new(),
@@ -258,17 +250,19 @@ impl<'stdout> ClientApplication<'stdout> {
     }
 
     pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
-        self.server_write_buf.clear();
-
-        if let Some(handle) = args.as_client {
-            self.handle = handle;
+        if args.as_focused_client {
+            self.target_client = TargetClient::Focused;
         }
 
+        if args.quit {
+            self.is_pipped = true;
+        }
+
+        self.server_write_buf.clear();
+
         self.reinit_screen();
-        if !self.is_pipped {
-            if args.as_client.is_none() {
-                ClientEvent::Key(self.handle, Key::None).serialize(&mut self.server_write_buf);
-            }
+        if !self.is_pipped && !args.as_focused_client {
+            ClientEvent::Key(self.target_client, Key::None).serialize(&mut self.server_write_buf);
         }
 
         let mut commands = String::new();
@@ -277,7 +271,13 @@ impl<'stdout> ClientApplication<'stdout> {
             commands.push_str("open '");
             commands.push_str(path);
             commands.push('\'');
-            ClientEvent::Command(self.handle, &commands).serialize(&mut self.server_write_buf);
+            ClientEvent::Command(self.target_client, &commands)
+                .serialize(&mut self.server_write_buf);
+        }
+
+        if args.quit {
+            ClientEvent::Command(TargetClient::Sender, "quit")
+                .serialize(&mut self.server_write_buf);
         }
 
         self.server_write_buf.as_slice()
@@ -319,12 +319,11 @@ impl<'stdout> ClientApplication<'stdout> {
         self.server_write_buf.clear();
 
         if let Some((width, height)) = resize {
-            ClientEvent::Resize(self.handle, width as _, height as _)
-                .serialize(&mut self.server_write_buf);
+            ClientEvent::Resize(width as _, height as _).serialize(&mut self.server_write_buf);
         }
 
         for key in keys {
-            ClientEvent::Key(self.handle, *key).serialize(&mut self.server_write_buf);
+            ClientEvent::Key(self.target_client, *key).serialize(&mut self.server_write_buf);
         }
 
         if !stdin_bytes.is_empty() {

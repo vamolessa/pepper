@@ -38,7 +38,8 @@ pub struct Args {
     pub version: bool,
     pub session: Option<String>,
     pub print_session: bool,
-    pub as_client: Option<client::ClientHandle>,
+    pub as_focused_client: bool,
+    pub quit: bool,
     pub server: bool,
     pub configs: Vec<ArgsConfig>,
     pub no_default_config: bool,
@@ -57,7 +58,7 @@ fn print_help() {
     println!();
     println!("usage: pepper [<options...>] [<files...>]");
     println!();
-    println!("  files: file paths to open as a buffer");
+    println!("  files: file paths to open as a buffer (clients only)");
     println!("         you can append ':<line>[,<column>]' to open it at that position");
     println!();
     println!("options:");
@@ -66,9 +67,10 @@ fn print_help() {
     println!("  -v, --version            prints version and quits");
     println!("  -s, --session            overrides the session name to connect to");
     println!("  --print-session          prints the computed session name and quits");
-    println!("  --as-client <client-id>  sends events as if it was client with id <client-id>");
-    println!("  --server                 only run as server (ignores files and configs arguments)");
-    println!("  -c, --config             sources config file at path (repeatable)");
+    println!("  --as-focused-client      sends events as if it was the currently focused client");
+    println!("  --quit                   sends a `quit` event on start");
+    println!("  --server                 only run as server");
+    println!("  -c, --config             sources config file at path (repeatable) (server only)");
     println!("  --try-config             like `--config` but suppresses the 'file not found' error (repeatable)");
     println!(
         "  --no-default-config      does not source the default config included in the editor"
@@ -117,19 +119,8 @@ impl Args {
                     None => error(format_args!("expected session after {}", arg)),
                 },
                 "--print-session" => parsed.print_session = true,
-                "--as-client" => match args.next() {
-                    Some(arg) => {
-                        let arg = arg_to_str(&arg);
-                        let client_handle: client::ClientHandle = match arg.parse() {
-                            Ok(handle) => handle,
-                            Err(_) => {
-                                error(format_args!("could not parse '{}' into a client id", arg))
-                            }
-                        };
-                        parsed.as_client = Some(client_handle);
-                    }
-                    None => error(format_args!("expected client id after {}", arg)),
-                },
+                "--as-focused-client" => parsed.as_focused_client = true,
+                "--quit" => parsed.quit = true,
                 "--server" => parsed.server = true,
                 "-c" | "--config" => match args.next() {
                     Some(arg) => {

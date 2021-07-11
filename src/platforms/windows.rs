@@ -288,25 +288,6 @@ fn is_pipped(handle: &Handle) -> bool {
     unsafe { GetFileType(handle.0) != FILE_TYPE_CHAR }
 }
 
-fn read(handle: &Handle, buf: &mut [u8]) -> Result<usize, usize> {
-    let mut read_len = 0;
-    let result = unsafe {
-        ReadFile(
-            handle.0,
-            buf.as_mut_ptr() as _,
-            buf.len() as _,
-            &mut read_len,
-            std::ptr::null_mut(),
-        )
-    };
-    let read_len = read_len as _;
-    if result == FALSE {
-        Err(read_len)
-    } else {
-        Ok(read_len)
-    }
-}
-
 fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
     while !buf.is_empty() {
         let mut write_len = 0;
@@ -1133,10 +1114,6 @@ impl ConnectionToServer {
         write_all_bytes(self.reader.handle(), buf)
     }
 
-    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, usize> {
-        read(self.reader.handle(), buf)
-    }
-
     pub fn read_async(&mut self) -> Result<&[u8], ()> {
         match self.reader.read_async(&mut self.buf[..]) {
             ReadResult::Waiting => Ok(&[]),
@@ -1149,18 +1126,9 @@ impl ConnectionToServer {
 fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Option<Handle>) {
     let mut connection = ConnectionToServer::connect(pipe_path);
 
-    let mut buf = [0; 1];
-    match connection.read(&mut buf) {
-        Ok(1) => (),
-        _ => return,
-    }
-    let client_index = buf[0];
-
-    let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let is_pipped = is_pipped(&input_handle);
-
     let stdout = io::stdout();
-    let mut application = ClientApplication::new(client_handle, stdout.lock(), is_pipped);
+    let mut application = ClientApplication::new(stdout.lock(), is_pipped);
     let bytes = application.init(args);
     if !connection.write(bytes) {
         return;
