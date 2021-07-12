@@ -1148,7 +1148,6 @@ impl ModeState for State {
         }
 
         let state = &mut ctx.editor.mode.normal_state;
-        state.is_recording_auto_macro = false;
 
         let mut handled_keys = false;
         let previous_index = keys.index;
@@ -1285,7 +1284,9 @@ impl ModeState for State {
         }
 
         if handled_keys {
-            ctx.editor.mode.normal_state.count = 0;
+            let state = &mut ctx.editor.mode.normal_state;
+            state.is_recording_auto_macro = false;
+            state.count = 0;
             Some(EditorControlFlow::Continue)
         } else {
             match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
