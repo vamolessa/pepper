@@ -1177,6 +1177,7 @@ impl Client {
             use io::Write;
             writer(buf, &mut self.json);
             let _ = buf.write_all(b"\n----\n\n");
+            let _ = buf.flush();
         }
     }
 

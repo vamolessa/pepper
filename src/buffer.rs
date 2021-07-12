@@ -1101,10 +1101,6 @@ impl Buffer {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> io::Result<()> {
-        if !self.capabilities.can_save {
-            return Ok(());
-        }
-
         self.history.clear();
         self.search_ranges.clear();
         self.needs_save = false;

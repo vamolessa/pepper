@@ -366,9 +366,9 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                             Path::new(path),
                             BufferCapabilities::log(),
                         );
-                        clients
-                            .get_mut(client_handle)
-                            .set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                        let client = clients.get_mut(client_handle);
+                        NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
+                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                         Ok(())
                     }
                     None => Err(CommandError::LspServerNotLogging),
@@ -592,3 +592,4 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
+
