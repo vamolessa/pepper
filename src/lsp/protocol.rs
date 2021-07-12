@@ -65,7 +65,7 @@ impl<'a> fmt::Display for Uri<'a> {
                         None => return Err(fmt::Error),
                     },
                 }
-                if let None = components.peek() {
+                if components.peek().is_none() {
                     break;
                 }
                 f.write_str("/")?;
@@ -674,7 +674,15 @@ impl WorkspaceEdit {
                     };
 
                     if op.overwrite || !new_path.exists() || !op.ignore_if_exists {
-                        if fs::rename(old_path, new_path).is_err() && !op.ignore_if_exists {}
+                        if fs::rename(old_path, new_path).is_err() && !op.ignore_if_exists {
+                            editor
+                                .status_bar
+                                .write(MessageKind::Error)
+                                .fmt(format_args!(
+                                    "could not rename file {:?} to {:?}",
+                                    old_path, new_path
+                                ));
+                        }
                     }
                 }
                 WorkspaceEditChange::DeleteFile(op) => {
@@ -898,26 +906,24 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
                 ServerEvent::Request(ServerRequest { id, method, params })
             }
             JsonValue::Null => ServerEvent::Notification(ServerNotification { method, params }),
-            _ => return ServerEvent::ParseError,
+            _ => ServerEvent::ParseError,
         }
     } else if let Some(error) = error {
-        let id = match id {
-            JsonValue::Integer(n) if n > 0 => n as _,
-            _ => return ServerEvent::ParseError,
-        };
-        ServerEvent::Response(ServerResponse {
-            id: RequestId(id),
-            result: Err(error),
-        })
+        match id {
+            JsonValue::Integer(id) if id > 0 => ServerEvent::Response(ServerResponse {
+                id: RequestId(id as _),
+                result: Err(error),
+            }),
+            _ => ServerEvent::ParseError,
+        }
     } else {
-        let id = match id {
-            JsonValue::Integer(n) if n > 0 => n as _,
-            _ => return ServerEvent::ParseError,
-        };
-        ServerEvent::Response(ServerResponse {
-            id: RequestId(id),
-            result: Ok(result),
-        })
+        match id {
+            JsonValue::Integer(id) if id > 0 => ServerEvent::Response(ServerResponse {
+                id: RequestId(id as _),
+                result: Ok(result),
+            }),
+            _ => ServerEvent::ParseError,
+        }
     }
 }
 

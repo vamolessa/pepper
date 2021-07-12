@@ -101,7 +101,7 @@ impl Syntax {
         self.glob.compile(pattern)
     }
 
-    pub fn set_rule<'a>(&mut self, kind: TokenKind, pattern: &'a str) -> Result<(), PatternError> {
+    pub fn set_rule(&mut self, kind: TokenKind, pattern: &str) -> Result<(), PatternError> {
         self.rules[kind as usize].compile(pattern)
     }
 
@@ -224,9 +224,9 @@ pub struct SyntaxCollection {
 
 impl SyntaxCollection {
     pub fn new() -> Self {
-        let mut syntaxes = Vec::new();
-        syntaxes.push(Syntax::new());
-        Self { syntaxes }
+        Self {
+            syntaxes: vec![Syntax::new()],
+        }
     }
 
     pub fn find_handle_by_path(&self, path: &str) -> Option<SyntaxHandle> {
@@ -697,3 +697,4 @@ mod tests {
         }
     }
 }
+

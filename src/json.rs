@@ -67,14 +67,14 @@ impl JsonValue {
         }
     }
 
-    pub fn elements<'a>(self, json: &'a Json) -> JsonElementIter<'a> {
+    pub fn elements(self, json: &Json) -> JsonElementIter {
         match self {
             JsonValue::Array(array) => array.elements(json),
             _ => JsonElementIter { json, next: 0 },
         }
     }
 
-    pub fn members<'a>(self, json: &'a Json) -> JsonMemberIter<'a> {
+    pub fn members(self, json: &Json) -> JsonMemberIter {
         match self {
             JsonValue::Object(object) => object.members(json),
             _ => JsonMemberIter { json, next: 0 },
@@ -155,7 +155,7 @@ pub struct JsonArray {
     last: u32,
 }
 impl JsonArray {
-    pub fn elements<'a>(self, json: &'a Json) -> JsonElementIter<'a> {
+    pub fn elements(self, json: &Json) -> JsonElementIter {
         JsonElementIter {
             json,
             next: self.first as _,
@@ -195,7 +195,7 @@ impl<'json> FromJson<'json> for JsonKey {
     fn from_json(value: JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
         match value {
             JsonValue::Str(s) => Ok(JsonKey::Str(s)),
-            JsonValue::String(s) => Ok(JsonKey::String(s.clone())),
+            JsonValue::String(s) => Ok(JsonKey::String(s)),
             _ => Err(JsonConvertError),
         }
     }
@@ -226,7 +226,7 @@ impl JsonObject {
         JsonValue::Null
     }
 
-    pub fn members<'a>(self, json: &'a Json) -> JsonMemberIter<'a> {
+    pub fn members(self, json: &Json) -> JsonMemberIter {
         JsonMemberIter {
             json,
             next: self.first as _,
@@ -361,7 +361,7 @@ impl Json {
             R: io::BufRead,
         {
             let buf = reader.fill_buf()?;
-            if buf.len() > 0 && buf[0] == byte {
+            if !buf.is_empty() && buf[0] == byte {
                 reader.consume(1);
                 Ok(true)
             } else {
@@ -378,8 +378,7 @@ impl Json {
                 match buf
                     .iter()
                     .enumerate()
-                    .skip_while(|(_, c)| c.is_ascii_whitespace())
-                    .next()
+                    .find(|(_, c)| !c.is_ascii_whitespace())
                 {
                     Some((0, _)) | None => return Ok(()),
                     Some((i, _)) => reader.consume(i),
@@ -522,7 +521,7 @@ impl Json {
                         R: io::BufRead,
                     {
                         let buf = reader.fill_buf()?;
-                        if buf.len() > 0 {
+                        if !buf.is_empty() {
                             let byte = buf[0];
                             if byte.is_ascii_digit() {
                                 reader.consume(1);

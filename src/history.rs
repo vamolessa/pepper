@@ -299,7 +299,7 @@ impl History {
                         let fix_text_start = other_text_range.start;
                         let previous_other_text_end = other_text_range.end;
                         let other_text_len = previous_other_text_end - fix_text_start;
-                        if &edit.text[..other_text_len] == &self.texts[other_text_range.clone()] {
+                        if edit.text[..other_text_len] == self.texts[other_text_range.clone()] {
                             self.texts
                                 .replace_range(other_text_range, &edit.text[other_text_len..]);
                             other_edit.kind = EditKind::Delete;
@@ -331,7 +331,7 @@ impl History {
                         let previous_other_text_end = other_text_range.end;
                         let other_text_len = previous_other_text_end - fix_text_start;
                         let text_len_diff = edit_text_len - other_text_len;
-                        if &edit.text[text_len_diff..] == &self.texts[other_text_range.clone()] {
+                        if edit.text[text_len_diff..] == self.texts[other_text_range.clone()] {
                             self.texts
                                 .replace_range(other_text_range, &edit.text[..text_len_diff]);
                             other_edit.kind = EditKind::Delete;

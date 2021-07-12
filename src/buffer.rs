@@ -210,13 +210,13 @@ impl BufferLine {
         (left_chars, right_chars)
     }
 
-    pub fn words_from<'a>(
-        &'a self,
+    pub fn words_from(
+        &self,
         index: usize,
     ) -> (
-        WordRefWithIndex<'a>,
-        impl Iterator<Item = WordRefWithIndex<'a>>,
-        impl Iterator<Item = WordRefWithIndex<'a>>,
+        WordRefWithIndex,
+        impl Iterator<Item = WordRefWithIndex>,
+        impl Iterator<Item = WordRefWithIndex>,
     ) {
         let mid_word = self.word_at(index);
         let mid_start_index = mid_word.index;
@@ -387,7 +387,7 @@ impl BufferContent {
         W: io::Write,
     {
         for line in &self.lines {
-            write!(write, "{}\n", line.as_str())?;
+            writeln!(write, "{}", line.as_str())?;
         }
         Ok(())
     }
@@ -520,13 +520,13 @@ impl BufferContent {
         self.lines.push(self.line_pool.acquire());
     }
 
-    pub fn words_from<'a>(
-        &'a self,
+    pub fn words_from(
+        &self,
         position: BufferPosition,
     ) -> (
-        WordRefWithPosition<'a>,
-        impl Iterator<Item = WordRefWithPosition<'a>>,
-        impl Iterator<Item = WordRefWithPosition<'a>>,
+        WordRefWithPosition,
+        impl Iterator<Item = WordRefWithPosition>,
+        impl Iterator<Item = WordRefWithPosition>,
     ) {
         let position = self.saturate_position(position);
         let line_index = position.line_index as _;
@@ -785,9 +785,7 @@ impl Buffer {
             return;
         }
 
-        let syntax_handle = syntaxes
-            .find_handle_by_path(path)
-            .unwrap_or(SyntaxHandle::default());
+        let syntax_handle = syntaxes.find_handle_by_path(path).unwrap_or_default();
 
         if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
@@ -1192,7 +1190,7 @@ impl BufferCollection {
     }
 
     pub fn find_with_path(&self, buffers_root: &Path, path: &Path) -> Option<BufferHandle> {
-        if path.as_os_str().len() == 0 {
+        if path.as_os_str().is_empty() {
             return None;
         }
 
@@ -1864,3 +1862,4 @@ mod tests {
         );
     }
 }
+

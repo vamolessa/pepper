@@ -124,7 +124,7 @@ impl Client {
     }
 
     pub fn has_ui(&self) -> bool {
-        self.viewport_size.0 != 0 && self.viewport_size.0 != 0
+        self.viewport_size.0 != 0 && self.viewport_size.1 != 0
     }
 
     pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {

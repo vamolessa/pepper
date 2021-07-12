@@ -1526,6 +1526,7 @@ fn search_word_or_move_to_it(
         buffer.set_search(&ctx.editor.aux_pattern);
 
         drop(cursors);
+
         let main_position = buffer_view.cursors.main_cursor().position;
         state.search_index = match buffer
             .search_ranges()
@@ -1634,13 +1635,13 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         }
     }
 
-    if let None = next_diagnostic {
+    if next_diagnostic.is_none() {
         next_diagnostic = diagnostics
             .next()
             .map(|(p, h, d)| (p, h, select_diagnostic_position(d, forward)));
     }
 
-    if let None = next_diagnostic {
+    if next_diagnostic.is_none() {
         let mut iter = DirectedIter::new(
             ctx.editor
                 .lsp
@@ -1690,9 +1691,6 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         anchor: position,
         position,
     });
-
-    drop(cursors);
-    drop(buffer_view);
 
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);

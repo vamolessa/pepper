@@ -55,8 +55,8 @@ impl KeyMapCollection {
         }
 
         let map = KeyMap {
-            from: parse_keys(from).map_err(|e| ParseKeyMapError::From(e))?,
-            to: parse_keys(to).map_err(|e| ParseKeyMapError::To(e))?,
+            from: parse_keys(from).map_err(ParseKeyMapError::From)?,
+            to: parse_keys(to).map_err(ParseKeyMapError::To)?,
         };
 
         let maps = &mut self.maps[mode_kind as usize];

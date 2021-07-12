@@ -120,7 +120,7 @@ impl Pattern {
         self.start_jump = Jump(0);
     }
 
-    pub fn compile<'a>(&mut self, pattern: &'a str) -> Result<(), PatternError> {
+    pub fn compile(&mut self, pattern: &str) -> Result<(), PatternError> {
         match PatternCompiler::new(&mut self.ops, pattern).compile() {
             Ok(start_jump) => {
                 self.start_jump = start_jump;
@@ -133,12 +133,12 @@ impl Pattern {
         }
     }
 
-    pub fn compile_searcher<'a>(&mut self, pattern: &'a str) -> Result<(), PatternError> {
+    pub fn compile_searcher(&mut self, pattern: &str) -> Result<(), PatternError> {
         let (is_literal, ignore_case, pattern) = match pattern.as_bytes() {
-            &[b'l', b'/', ..] => (true, true, &pattern[2..]),
-            &[b'L', b'/', ..] => (true, false, &pattern[2..]),
-            &[b'p', b'/', ..] => (false, true, &pattern[2..]),
-            &[b'P', b'/', ..] => (false, false, &pattern[2..]),
+            [b'l', b'/', ..] => (true, true, &pattern[2..]),
+            [b'L', b'/', ..] => (true, false, &pattern[2..]),
+            [b'p', b'/', ..] => (false, true, &pattern[2..]),
+            [b'P', b'/', ..] => (false, false, &pattern[2..]),
             _ => (true, pattern.chars().all(char::is_lowercase), pattern),
         };
 
@@ -183,9 +183,9 @@ impl Pattern {
 
     pub fn ignore_case(&mut self) {
         for op in &mut self.ops {
-            match op {
-                &mut Op::Char(okj, erj, c) => *op = Op::CharCaseInsensitive(okj, erj, c),
-                &mut Op::String(okj, erj, len, bytes) => {
+            match *op {
+                Op::Char(okj, erj, c) => *op = Op::CharCaseInsensitive(okj, erj, c),
+                Op::String(okj, erj, len, bytes) => {
                     *op = Op::StringCaseInsensitive(okj, erj, len, bytes)
                 }
                 _ => (),
@@ -441,10 +441,10 @@ impl fmt::Debug for Op {
         }
 
         match self {
-            &Op::Ok => f.write_str("Ok"),
-            &Op::Error => f.write_str("Error"),
-            &Op::Reset(jump) => write!(f, "{:width$} {}", "Reset", jump.0, width = WIDTH - 4,),
-            &Op::Unwind(jump, len) => write!(
+            Op::Ok => f.write_str("Ok"),
+            Op::Error => f.write_str("Error"),
+            Op::Reset(jump) => write!(f, "{:width$} {}", "Reset", jump.0, width = WIDTH - 4,),
+            Op::Unwind(jump, len) => write!(
                 f,
                 "{:width$}[{}] {}",
                 "Unwind",
@@ -581,9 +581,9 @@ impl<'a> PatternCompiler<'a> {
         }
 
         let mut reset_jump = add_reset_jump(self)?;
-        if let Ok(_) = self.next() {
+        if self.next().is_ok() {
             self.parse_stmt(JumpFrom::Beginning(reset_jump))?;
-            while let Ok(_) = self.next() {
+            while self.next().is_ok() {
                 if self.current_char == '|' {
                     self.next()?;
                     self.ops.push(Op::Unwind(Jump(1), Length(0)));

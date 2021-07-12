@@ -249,7 +249,7 @@ impl<'stdout> ClientApplication<'stdout> {
         }
     }
 
-    pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
+    pub fn init(&mut self, args: Args) -> &[u8] {
         if args.as_focused_client {
             self.target_client = TargetClient::Focused;
         }

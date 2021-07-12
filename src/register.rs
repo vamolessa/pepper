@@ -19,15 +19,6 @@ impl RegisterKey {
         }
     }
 
-    pub fn from_str(key: &str) -> Option<Self> {
-        let key = key.as_bytes();
-        if key.len() == 1 {
-            Self::from_char(key[0] as _)
-        } else {
-            None
-        }
-    }
-
     pub fn as_u8(&self) -> u8 {
         self.0 + b'a'
     }

@@ -60,8 +60,6 @@ impl ModeState for State {
         };
 
         let key = keys.next(&ctx.editor.buffered_keys);
-        drop(keys);
-
         let register = ctx.editor.registers.get_mut(AUTO_MACRO_REGISTER);
         let _ = write!(register, "{}", key);
 

@@ -33,11 +33,6 @@ pub enum EditorControlFlow {
     Quit,
     QuitAll,
 }
-impl EditorControlFlow {
-    pub fn is_quit(self) -> bool {
-        matches!(self, EditorControlFlow::Quit | EditorControlFlow::QuitAll)
-    }
-}
 
 pub struct KeysIterator {
     pub index: usize,
@@ -208,9 +203,7 @@ impl Editor {
                 }
             }
 
-            if let (Some(from_index), Some(register_key)) =
-                (from_index, self.recording_macro.clone())
-            {
+            if let (Some(from_index), Some(register_key)) = (from_index, self.recording_macro) {
                 for key in &self.buffered_keys.0[from_index..keys.index] {
                     use fmt::Write;
                     let register = self.registers.get_mut(register_key);
@@ -379,7 +372,7 @@ impl Editor {
         loop {
             self.events.flip();
             let mut events = EditorEventIter::new();
-            if let None = events.next(&self.events) {
+            if events.next(&self.events).is_none() {
                 return;
             }
 
@@ -387,32 +380,32 @@ impl Editor {
 
             let mut events = EditorEventIter::new();
             while let Some(event) = events.next(&self.events) {
-                match event {
-                    &EditorEvent::Idle => (),
-                    &EditorEvent::BufferOpen { handle } => {
+                match *event {
+                    EditorEvent::Idle => (),
+                    EditorEvent::BufferOpen { handle } => {
                         let buffer = self.buffers.get_mut(handle);
                         buffer.refresh_syntax(&self.syntaxes);
                         self.buffer_views.on_buffer_load(buffer);
                     }
-                    &EditorEvent::BufferInsertText { handle, range, .. } => {
+                    EditorEvent::BufferInsertText { handle, range, .. } => {
                         self.buffer_views.on_buffer_insert_text(handle, range);
                     }
-                    &EditorEvent::BufferDeleteText { handle, range } => {
+                    EditorEvent::BufferDeleteText { handle, range } => {
                         self.buffer_views.on_buffer_delete_text(handle, range);
                     }
-                    &EditorEvent::BufferSave { handle, new_path } => {
+                    EditorEvent::BufferSave { handle, new_path } => {
                         if new_path {
                             self.buffers.get_mut(handle).refresh_syntax(&self.syntaxes);
                         }
                     }
-                    &EditorEvent::BufferClose { handle } => {
+                    EditorEvent::BufferClose { handle } => {
                         self.buffers.remove(handle, &mut self.word_database);
                         for client in clients.iter_mut() {
                             client.on_buffer_close(self, handle);
                         }
                         self.buffer_views.remove_buffer_views(handle);
                     }
-                    &EditorEvent::FixCursors { handle, cursors } => {
+                    EditorEvent::FixCursors { handle, cursors } => {
                         let mut view_cursors =
                             self.buffer_views.get_mut(handle).cursors.mut_guard();
                         view_cursors.clear();
@@ -420,7 +413,7 @@ impl Editor {
                             view_cursors.add(cursor);
                         }
                     }
-                    &EditorEvent::BufferViewLostFocus { handle } => {
+                    EditorEvent::BufferViewLostFocus { handle } => {
                         let buffer_view = self.buffer_views.get(handle);
                         let buffer_handle = buffer_view.buffer_handle;
                         let buffer = self.buffers.get(buffer_handle);

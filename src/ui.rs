@@ -526,7 +526,7 @@ fn draw_statusbar(
                     Some(text.len() + 1)
                 }
                 None => match search_ranges {
-                    &[] => Some(0),
+                    [] => Some(0),
                     _ => {
                         let previous_len = buf.len();
                         let search_index = ctx.editor.mode.normal_state.search_index + 1;

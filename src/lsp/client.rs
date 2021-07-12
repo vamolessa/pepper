@@ -64,7 +64,7 @@ impl<'json> FromJson<'json> for TriggerCharactersCapability {
             }),
             JsonValue::Object(options) => {
                 let mut trigger_characters = String::new();
-                for c in options.get("triggerCharacters".into(), json).elements(json) {
+                for c in options.get("triggerCharacters", json).elements(json) {
                     if let JsonValue::String(c) = c {
                         let c = c.as_str(json);
                         trigger_characters.push_str(c);
@@ -293,7 +293,7 @@ impl BufferDiagnosticCollection {
         } else {
             self.diagnostics.push(Diagnostic {
                 message: message.into(),
-                range: range.into(),
+                range,
                 data: Vec::new(),
             });
         }
@@ -378,9 +378,9 @@ impl VersionedBufferCollection {
         }
     }
 
-    pub fn iter_pending_mut<'a>(
-        &'a mut self,
-    ) -> impl 'a + Iterator<Item = (BufferHandle, &'a mut VersionedBuffer)> {
+    pub fn iter_pending_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (BufferHandle, &mut VersionedBuffer)> {
         self.buffers
             .iter_mut()
             .enumerate()
@@ -457,9 +457,9 @@ impl DiagnosticCollection {
         }
     }
 
-    pub fn iter<'a>(
-        &'a self,
-    ) -> impl DoubleEndedIterator<Item = (&'a Path, Option<BufferHandle>, &'a [Diagnostic])> {
+    pub fn iter(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (&Path, Option<BufferHandle>, &[Diagnostic])> {
         self.buffer_diagnostics
             .iter()
             .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
@@ -468,16 +468,16 @@ impl DiagnosticCollection {
     pub fn on_load_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
         let buffer_path = &editor.buffers.get(buffer_handle).path;
         for diagnostics in &mut self.buffer_diagnostics {
-            if diagnostics.buffer_handle.is_none() {
-                if is_editor_path_equals_to_lsp_path(
+            if diagnostics.buffer_handle.is_none()
+                && is_editor_path_equals_to_lsp_path(
                     &editor.current_directory,
                     buffer_path,
                     root,
                     &diagnostics.path,
-                ) {
-                    diagnostics.buffer_handle = Some(buffer_handle);
-                    return;
-                }
+                )
+            {
+                diagnostics.buffer_handle = Some(buffer_handle);
+                return;
             }
         }
     }
@@ -1333,9 +1333,7 @@ impl Client {
                 }
 
                 let params = ShowDocumentParams::from_json(request.params, &self.json)?;
-                let path = match Uri::parse(&self.root, params.uri.as_str(&self.json))? {
-                    Uri::Path(path) => path,
-                };
+                let Uri::Path(path) = Uri::parse(&self.root, params.uri.as_str(&self.json))?;
 
                 let success = if let Some(true) = params.external {
                     false
@@ -1440,9 +1438,7 @@ impl Client {
 
                 let params = Params::from_json(notification.params, &self.json)?;
                 let uri = params.uri.as_str(&self.json);
-                let path = match Uri::parse(&self.root, uri)? {
-                    Uri::Path(path) => path,
-                };
+                let Uri::Path(path) = Uri::parse(&self.root, uri)?;
 
                 let diagnostics = self
                     .diagnostics
@@ -1480,7 +1476,7 @@ impl Client {
             );
             match &response.result {
                 Ok(result) => {
-                    let _ = write!(buf, "result:\n");
+                    let _ = buf.write_all(b"result:\n");
                     let _ = json.write(buf, result);
                 }
                 Err(error) => {
@@ -1543,7 +1539,7 @@ impl Client {
                 Ok(())
             }
             "textDocument/hover" => {
-                let contents = result.get("contents".into(), &self.json);
+                let contents = result.get("contents", &self.json);
                 let info = helper::extract_markup_content(contents, &self.json);
                 editor.status_bar.write(MessageKind::Info).str(info);
                 Ok(())
@@ -1662,9 +1658,7 @@ impl Client {
                 self.request_state = RequestState::Idle;
                 match DefinitionLocation::parse(result, &self.json) {
                     DefinitionLocation::Single(location) => {
-                        let path = match Uri::parse(&self.root, location.uri.as_str(&self.json))? {
-                            Uri::Path(path) => path,
-                        };
+                        let Uri::Path(path) = Uri::parse(&self.root, location.uri.as_str(&self.json))?;
                         let client = clients.get_mut(client_handle);
                         NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
 
@@ -1742,9 +1736,8 @@ impl Client {
                 let mut buffer_name = editor.string_pool.acquire();
                 for location in locations.clone().elements(&self.json) {
                     let location = DocumentLocation::from_json(location, &self.json)?;
-                    let path = match Uri::parse(&self.root, location.uri.as_str(&self.json))? {
-                        Uri::Path(path) => path,
-                    };
+                    let Uri::Path(path) = Uri::parse(&self.root, location.uri.as_str(&self.json))?;
+
                     if let Some(buffer) = editor
                         .buffers
                         .find_with_path(&editor.current_directory, path)
@@ -2164,17 +2157,17 @@ impl Client {
 
         let mut events = EditorEventIter::new();
         while let Some(event) = events.next(&editor.events) {
-            match event {
-                &EditorEvent::Idle => {
+            match *event {
+                EditorEvent::Idle => {
                     helper::send_pending_did_change(self, editor, platform);
                 }
-                &EditorEvent::BufferOpen { handle } => {
+                EditorEvent::BufferOpen { handle } => {
                     let handle = handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(editor, handle, &self.root);
                     helper::send_did_open(self, editor, platform, handle);
                 }
-                &EditorEvent::BufferInsertText {
+                EditorEvent::BufferInsertText {
                     handle,
                     range,
                     text,
@@ -2184,22 +2177,22 @@ impl Client {
                     let range = BufferRange::between(range.from, range.from);
                     self.versioned_buffers.add_edit(handle, range, text);
                 }
-                &EditorEvent::BufferDeleteText { handle, range, .. } => {
+                EditorEvent::BufferDeleteText { handle, range, .. } => {
                     self.versioned_buffers.add_edit(handle, range, "");
                 }
-                &EditorEvent::BufferSave { handle, .. } => {
+                EditorEvent::BufferSave { handle, .. } => {
                     self.diagnostics.on_save_buffer(editor, handle, &self.root);
                     helper::send_pending_did_change(self, editor, platform);
                     helper::send_did_save(self, editor, platform, handle);
                 }
-                &EditorEvent::BufferClose { handle } => {
+                EditorEvent::BufferClose { handle } => {
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
                     helper::send_pending_did_change(self, editor, platform);
                     helper::send_did_close(self, editor, platform, handle);
                 }
-                &EditorEvent::FixCursors { .. } => (),
-                &EditorEvent::BufferViewLostFocus { .. } => (),
+                EditorEvent::FixCursors { .. } => (),
+                EditorEvent::BufferViewLostFocus { .. } => (),
             }
         }
     }
@@ -2319,10 +2312,10 @@ mod helper {
         id
     }
 
-    pub fn extract_markup_content<'json>(content: JsonValue, json: &'json Json) -> &'json str {
+    pub fn extract_markup_content(content: JsonValue, json: &Json) -> &str {
         match content {
             JsonValue::String(s) => s.as_str(json),
-            JsonValue::Object(o) => match o.get("value".into(), json) {
+            JsonValue::Object(o) => match o.get("value", json) {
                 JsonValue::String(s) => s.as_str(json),
                 _ => "",
             },
@@ -2361,7 +2354,7 @@ mod helper {
             &mut client.json,
         );
 
-        client.notify(platform, "textDocument/didOpen", params.into());
+        client.notify(platform, "textDocument/didOpen", params);
     }
 
     pub fn send_pending_did_change(client: &mut Client, editor: &Editor, platform: &mut Platform) {
@@ -2426,7 +2419,7 @@ mod helper {
             );
 
             versioned_buffer.flush();
-            client.notify(platform, "textDocument/didChange", params.into());
+            client.notify(platform, "textDocument/didChange", params);
         }
         std::mem::swap(&mut client.versioned_buffers, &mut versioned_buffers);
     }
@@ -2459,7 +2452,7 @@ mod helper {
             params.set("text".into(), text.into(), &mut client.json);
         }
 
-        client.notify(platform, "textDocument/didSave", params.into())
+        client.notify(platform, "textDocument/didSave", params)
     }
 
     pub fn send_did_close(
@@ -2485,7 +2478,7 @@ mod helper {
             &mut client.json,
         );
 
-        client.notify(platform, "textDocument/didClose", params.into());
+        client.notify(platform, "textDocument/didClose", params);
     }
 }
 
@@ -2753,7 +2746,7 @@ impl ClientManager {
     pub fn on_editor_events(editor: &mut Editor, platform: &mut Platform) {
         let mut events = EditorEventIter::new();
         while let Some(event) = events.next(&editor.events) {
-            if let &EditorEvent::BufferOpen { handle } = event {
+            if let EditorEvent::BufferOpen { handle } = *event {
                 let buffer_path = match editor.buffers.get(handle).path.to_str() {
                     Some(path) => path,
                     None => continue,

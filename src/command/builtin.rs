@@ -554,14 +554,14 @@ fn map(ctx: &mut CommandContext, mode: ModeKind) -> Result<(), CommandError> {
         .map_err(CommandError::KeyMapError)
 }
 
-fn current_buffer_and_main_cursor<'state, 'command>(
-    ctx: &CommandContext<'state, 'command>,
+fn current_buffer_and_main_cursor(
+    ctx: &CommandContext,
 ) -> Result<(BufferHandle, Cursor), CommandError> {
     let view_handle = ctx.current_buffer_view_handle()?;
     let buffer_view = ctx.editor.buffer_views.get(view_handle);
 
     let buffer_handle = buffer_view.buffer_handle;
-    let cursor = buffer_view.cursors.main_cursor().clone();
+    let cursor = *buffer_view.cursors.main_cursor();
     Ok((buffer_handle, cursor))
 }
 
@@ -574,7 +574,7 @@ fn find_lsp_client_for_buffer(
     Some(client.handle())
 }
 
-fn access_lsp<'command, A, R>(
+fn access_lsp<A, R>(
     ctx: &mut CommandContext,
     buffer_handle: BufferHandle,
     accessor: A,

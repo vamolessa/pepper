@@ -169,7 +169,7 @@ pub const fn hash_bytes(mut bytes: &[u8]) -> u64 {
         hash = hash.wrapping_mul(0x100000001b3);
         bytes = rest;
     }
-    return hash;
+    hash
 }
 
 pub fn parse_process_command(command: &str) -> Option<Command> {

@@ -179,8 +179,7 @@ impl BufferView {
                     if let Some(distance) = saved_display_distance {
                         let line = buffer.line_at(c.position.line_index as _).as_str();
                         c.position.column_byte_index = CharDisplayDistances::new(line, tab_size)
-                            .skip_while(|d| d.distance <= distance as _)
-                            .next()
+                            .find(|d| d.distance > distance as _)
                             .map(|d| d.char_index)
                             .unwrap_or(line.len())
                             as _;
@@ -197,8 +196,7 @@ impl BufferView {
                     if let Some(distance) = saved_display_distance {
                         let line = buffer.line_at(c.position.line_index as _).as_str();
                         c.position.column_byte_index = CharDisplayDistances::new(line, tab_size)
-                            .skip_while(|d| d.distance <= distance as _)
-                            .next()
+                            .find(|d| d.distance > distance as _)
                             .map(|d| d.char_index)
                             .unwrap_or(line.len())
                             as _;

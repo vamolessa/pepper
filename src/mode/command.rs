@@ -167,14 +167,11 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
 
     let mut completion_source = CompletionSource::Custom(&[]);
     if arg_count > 0 {
-        match ctx.editor.commands.find_command(command_name) {
-            Some(command) => {
-                let completion_index = arg_count - 1;
-                if completion_index < command.completions.len() {
-                    completion_source = command.completions[completion_index];
-                }
+        if let Some(command) = ctx.editor.commands.find_command(command_name) {
+            let completion_index = arg_count - 1;
+            if completion_index < command.completions.len() {
+                completion_source = command.completions[completion_index];
             }
-            _ => (),
         }
     } else {
         completion_source = CompletionSource::Commands;
@@ -208,41 +205,38 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         }
     }
 
-    match completion_source {
-        CompletionSource::Files => {
-            fn set_files_in_path_as_entries(picker: &mut Picker, path: &str) {
-                picker.clear();
-                let path = if path.is_empty() { "." } else { path };
-                let read_dir = match fs::read_dir(path) {
-                    Ok(iter) => iter,
+    if let CompletionSource::Files = completion_source {
+        fn set_files_in_path_as_entries(picker: &mut Picker, path: &str) {
+            picker.clear();
+            let path = if path.is_empty() { "." } else { path };
+            let read_dir = match fs::read_dir(path) {
+                Ok(iter) => iter,
+                Err(_) => return,
+            };
+            for entry in read_dir {
+                let entry = match entry {
+                    Ok(entry) => entry.file_name(),
                     Err(_) => return,
                 };
-                for entry in read_dir {
-                    let entry = match entry {
-                        Ok(entry) => entry.file_name(),
-                        Err(_) => return,
-                    };
-                    if let Some(entry) = entry.to_str() {
-                        picker.add_custom_entry(entry);
-                    }
+                if let Some(entry) = entry.to_str() {
+                    picker.add_custom_entry(entry);
                 }
             }
-
-            let (parent, file) = match pattern.rfind('/') {
-                Some(i) => pattern.split_at(i + 1),
-                None => ("", pattern),
-            };
-
-            let parent_hash = hash_bytes(parent.as_bytes());
-            if state.completion_path_hash != Some(parent_hash) {
-                set_files_in_path_as_entries(&mut ctx.editor.picker, parent);
-                state.completion_path_hash = Some(parent_hash);
-            }
-
-            state.completion_index = file.as_ptr() as usize - input.as_ptr() as usize;
-            pattern = file;
         }
-        _ => (),
+
+        let (parent, file) = match pattern.rfind('/') {
+            Some(i) => pattern.split_at(i + 1),
+            None => ("", pattern),
+        };
+
+        let parent_hash = hash_bytes(parent.as_bytes());
+        if state.completion_path_hash != Some(parent_hash) {
+            set_files_in_path_as_entries(&mut ctx.editor.picker, parent);
+            state.completion_path_hash = Some(parent_hash);
+        }
+
+        state.completion_index = file.as_ptr() as usize - input.as_ptr() as usize;
+        pattern = file;
     }
 
     state.completion_source = completion_source;
