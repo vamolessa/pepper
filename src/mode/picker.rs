@@ -4,7 +4,7 @@ use crate::{
     buffer::{parse_path_and_position, BufferCapabilities},
     buffer_position::BufferPosition,
     cursor::Cursor,
-    editor::{KeysIterator, EditorControlFlow},
+    editor::{EditorControlFlow, KeysIterator},
     editor_utils::{MessageKind, ReadLinePoll},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeState},
@@ -397,4 +397,3 @@ pub mod lsp_workspace_symbol {
         }
     }
 }
-

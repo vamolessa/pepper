@@ -719,4 +719,3 @@ pub mod lsp_rename {
         ctx.editor.read_line.input_mut().push_str(placeholder);
     }
 }
-

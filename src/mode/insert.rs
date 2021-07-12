@@ -3,7 +3,7 @@ use std::{fmt::Write, path::Path};
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    editor::{Editor, KeysIterator, EditorControlFlow},
+    editor::{Editor, EditorControlFlow, KeysIterator},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeState},
     platform::Key,
@@ -393,4 +393,3 @@ fn apply_completion(
     );
     ctx.editor.string_pool.release(completion);
 }
-

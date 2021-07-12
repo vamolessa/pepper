@@ -1695,4 +1695,3 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 }
-

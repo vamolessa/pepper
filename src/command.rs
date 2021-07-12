@@ -385,4 +385,3 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
-

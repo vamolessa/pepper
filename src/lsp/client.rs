@@ -1658,7 +1658,8 @@ impl Client {
                 self.request_state = RequestState::Idle;
                 match DefinitionLocation::parse(result, &self.json) {
                     DefinitionLocation::Single(location) => {
-                        let Uri::Path(path) = Uri::parse(&self.root, location.uri.as_str(&self.json))?;
+                        let Uri::Path(path) =
+                            Uri::parse(&self.root, location.uri.as_str(&self.json))?;
                         let client = clients.get_mut(client_handle);
                         NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
 
@@ -2799,4 +2800,3 @@ impl ClientManager {
         }
     }
 }
-
