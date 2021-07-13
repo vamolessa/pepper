@@ -130,55 +130,70 @@ impl NavigationHistory {
 
                 snapshot_index -= 1;
             }
-            NavigationMovement::PreviousBuffer => {
-                snapshot_index = match current_buffer_view_handle {
-                    Some(handle) => {
-                        let buffer_view = editor.buffer_views.get(handle);
-                        let buffer_handle = buffer_view.buffer_handle;
+            NavigationMovement::PreviousBuffer => match current_buffer_view_handle {
+                Some(handle) => {
+                    let buffer_view = editor.buffer_views.get(handle);
+                    let buffer_handle = buffer_view.buffer_handle;
 
-                        client.navigation_history.state = match client.navigation_history.snapshots
-                            [snapshot_index..]
-                            .iter()
-                            .enumerate()
-                            .skip_while(|(_, s)| s.buffer_handle == buffer_handle)
-                            .take_while(|(_, s)| s.buffer_handle != buffer_handle)
-                            .map(|(i, _)| i)
-                            .last()
-                        {
-                            Some(i) => NavigationState::IterIndex(snapshot_index + i + 1),
-                            None => NavigationState::Append,
-                        };
+                    match client.navigation_history.snapshots[snapshot_index..]
+                        .iter()
+                        .enumerate()
+                        .skip_while(|(_, s)| s.buffer_handle == buffer_handle)
+                        .take_while(|(_, s)| s.buffer_handle != buffer_handle)
+                        .map(|(i, _)| i)
+                        .last()
+                    {
+                        Some(i) => {
+                            let should_save_snapshot = client
+                                .navigation_history
+                                .snapshots
+                                .get(snapshot_index)
+                                .map(|s| {
+                                    !client
+                                        .navigation_history
+                                        .buffer_view_equals_to_snapshot(buffer_view, s)
+                                })
+                                .unwrap_or(true);
 
-                        let should_save_snapshot = client
-                            .navigation_history
-                            .snapshots
-                            .get(snapshot_index)
-                            .map(|s| {
-                                !client
+                            snapshot_index += i + 1;
+                            client.navigation_history.state =
+                                NavigationState::IterIndex(snapshot_index);
+
+                            if should_save_snapshot {
+                                Self::save_client_snapshot(client, &editor.buffer_views);
+                            }
+
+                            if snapshot_index >= client.navigation_history.snapshots.len() {
+                                match client
                                     .navigation_history
-                                    .buffer_view_equals_to_snapshot(buffer_view, s)
-                            })
-                            .unwrap_or(true);
-                        if should_save_snapshot {
-                            Self::save_client_snapshot(client, &editor.buffer_views)
+                                    .snapshots
+                                    .iter()
+                                    .rposition(|s| s.buffer_handle != buffer_handle)
+                                {
+                                    Some(i) => snapshot_index = i,
+                                    None => return,
+                                }
+                            }
                         }
-
-                        match client
-                            .navigation_history
-                            .snapshots
-                            .iter()
-                            .rposition(|s| s.buffer_handle != buffer_handle)
-                        {
-                            Some(i) => i,
-                            None => return,
+                        None => {
+                            Self::save_client_snapshot(client, &editor.buffer_views);
+                            match client
+                                .navigation_history
+                                .snapshots
+                                .iter()
+                                .rposition(|s| s.buffer_handle != buffer_handle)
+                            {
+                                Some(i) => snapshot_index = i,
+                                None => return,
+                            }
                         }
                     }
-                    None => match client.navigation_history.snapshots.len().checked_sub(1) {
-                        Some(i) => i,
-                        None => return,
-                    },
-                };
-            }
+                }
+                None => match client.navigation_history.snapshots.len().checked_sub(1) {
+                    Some(i) => snapshot_index = i,
+                    None => return,
+                },
+            },
         }
 
         let snapshot = client.navigation_history.snapshots[snapshot_index].clone();
