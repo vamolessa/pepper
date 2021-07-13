@@ -154,7 +154,7 @@ impl NavigationHistory {
                             .snapshots
                             .get(snapshot_index)
                             .map(|s| {
-                                client
+                                !client
                                     .navigation_history
                                     .buffer_view_equals_to_snapshot(buffer_view, s)
                             })
@@ -164,6 +164,7 @@ impl NavigationHistory {
                         }
 
                         dbg!(
+                            should_save_snapshot,
                             snapshot_index,
                             client
                                 .navigation_history
