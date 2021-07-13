@@ -163,17 +163,6 @@ impl NavigationHistory {
                             Self::save_client_snapshot(client, &editor.buffer_views)
                         }
 
-                        dbg!(
-                            should_save_snapshot,
-                            snapshot_index,
-                            client
-                                .navigation_history
-                                .snapshots
-                                .iter()
-                                .map(|s| s.buffer_handle)
-                                .collect::<Vec<_>>()
-                        );
-
                         match client
                             .navigation_history
                             .snapshots
