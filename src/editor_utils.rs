@@ -203,9 +203,10 @@ pub fn load_config(
                     .status_bar
                     .write(MessageKind::Error)
                     .fmt(format_args!(
-                        "{}:{}\n{}",
+                        "{}:{}\n{}\n{}",
                         config_name,
                         line_index + 1,
+                        line,
                         error
                     ));
                 break;

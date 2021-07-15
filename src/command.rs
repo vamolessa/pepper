@@ -149,10 +149,48 @@ impl<'a> Iterator for CommandTokenizer<'a> {
     type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
         fn next_literal_end(s: &str) -> usize {
-            match s.find(&[' ', '\t', '"', '\''][..]) {
+            match s.find(&[' ', '\t'][..]) {
                 Some(i) => i,
                 None => s.len(),
             }
+        }
+
+        fn parse_balanced_token(s: &str) -> Option<(&str, &str)> {
+            let mut chars = s.chars();
+            let mut depth = 0;
+            loop {
+                match chars.next()? {
+                    '=' => depth += 1,
+                    '[' => break,
+                    _ => return None,
+                }
+            }
+            let start = chars.as_str().as_ptr() as usize;
+            let mut end = start;
+            let mut ending = false;
+            let mut matched = 0;
+            loop {
+                match chars.next()? {
+                    ']' => {
+                        if ending && matched == depth {
+                            break;
+                        }
+
+                        ending = true;
+                        matched = 0;
+                        end = chars.as_str().as_ptr() as usize - 1;
+                    },
+                    '=' => matched += 1,
+                    _ => (),
+                }
+            }
+            let rest = chars.as_str();
+            let base = s.as_ptr() as usize;
+            let start = start - base;
+            let end = end - base;
+            let token = &s[start..end];
+
+            Some((token, rest))
         }
 
         self.0 = self.0.trim_start_matches(&[' ', '\t'][..]);
@@ -174,7 +212,14 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                     }
                 }
             }
-            _ => {
+            c => {
+                if c == '[' {
+                    if let Some((token, rest)) = parse_balanced_token(&self.0[1..]) {
+                        self.0 = rest;
+                        return Some(token);
+                    }
+                }
+
                 let end = next_literal_end(self.0);
                 let (token, rest) = self.0.split_at(end);
                 self.0 = rest;
@@ -398,10 +443,30 @@ mod tests {
         assert_eq!(Some("\"arg1"), tokens.next());
         assert_eq!(None, tokens.next());
 
+        let mut tokens = CommandTokenizer("cmd arg0'arg1 ");
+        assert_eq!(Some("cmd"), tokens.next());
+        assert_eq!(Some("arg0'arg1"), tokens.next());
+        assert_eq!(None, tokens.next());
+
+        let mut tokens = CommandTokenizer("cmd arg0\"arg1 ");
+        assert_eq!(Some("cmd"), tokens.next());
+        assert_eq!(Some("arg0\"arg1"), tokens.next());
+        assert_eq!(None, tokens.next());
+
         let mut tokens = CommandTokenizer("cmd 'arg\"0' \"arg'1\"");
         assert_eq!(Some("cmd"), tokens.next());
         assert_eq!(Some("arg\"0"), tokens.next());
         assert_eq!(Some("arg'1"), tokens.next());
+        assert_eq!(None, tokens.next());
+
+        let mut tokens = CommandTokenizer("cmd [[arg]]");
+        assert_eq!(Some("cmd"), tokens.next());
+        assert_eq!(Some("arg"), tokens.next());
+        assert_eq!(None, tokens.next());
+
+        let mut tokens = CommandTokenizer("cmd [==[arg]]=]]==]");
+        assert_eq!(Some("cmd"), tokens.next());
+        assert_eq!(Some("arg]]=]"), tokens.next());
         assert_eq!(None, tokens.next());
     }
 }

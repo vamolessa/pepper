@@ -407,6 +407,11 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| syntax_pattern(ctx, TokenKind::String),
     },
     BuiltinCommand {
+        name: "syntax-comments",
+        completions: &[],
+        func: |ctx| syntax_pattern(ctx, TokenKind::Comment),
+    },
+    BuiltinCommand {
         name: "syntax-texts",
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::Text),
