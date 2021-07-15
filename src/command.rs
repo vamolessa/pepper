@@ -2,14 +2,14 @@ use std::{collections::VecDeque, fmt, io};
 
 use crate::{
     buffer::{Buffer, BufferHandle},
-    pattern::PatternError,
-    glob::InvalidGlobError,
     buffer_view::BufferViewHandle,
     client::{ClientHandle, ClientManager},
     config::ParseConfigError,
     editor::{Editor, EditorControlFlow},
     editor_utils::MessageKind,
+    glob::InvalidGlobError,
     keymap::ParseKeyMapError,
+    pattern::PatternError,
     platform::Platform,
 };
 
@@ -53,7 +53,9 @@ impl fmt::Display for CommandError {
             Self::PatternError(error) => write!(f, "pattern error: {}", error),
             Self::InvalidGlob => write!(f, "{}", InvalidGlobError),
             Self::RecursiveSyntaxBegin => f.write_str("recursive syntax definition"),
-            Self::NoCurrentSyntax => f.write_str("no current syntax. did you forget a `syntax-begin`?"),
+            Self::NoCurrentSyntax => {
+                f.write_str("no current syntax. did you forget a `syntax-begin`?")
+            }
             Self::LspServerNotRunning => f.write_str("no lsp server running"),
             Self::LspServerNotLogging => f.write_str("lsp server is not logging"),
         }
@@ -179,7 +181,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                         ending = true;
                         matched = 0;
                         end = chars.as_str().as_ptr() as usize - 1;
-                    },
+                    }
                     '=' => matched += 1,
                     _ => (),
                 }
@@ -470,4 +472,3 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
-

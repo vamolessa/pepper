@@ -9,6 +9,7 @@ use crate::{
     cursor::Cursor,
     editor::{Editor, EditorControlFlow},
     editor_utils::MessageKind,
+    glob::InvalidGlobError,
     help, lsp,
     mode::ModeKind,
     navigation_history::NavigationHistory,
@@ -417,6 +418,21 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| syntax_pattern(ctx, TokenKind::Text),
     },
     BuiltinCommand {
+        name: "lsp",
+        completions: &[],
+        func: |ctx| {
+            let command = ctx.args.next()?;
+            let glob = ctx.args.next()?;
+            let log_path = ctx.args.try_next();
+            ctx.args.assert_empty()?;
+
+            match ctx.editor.lsp.add_recipe(glob, command, None, log_path) {
+                Ok(()) => Ok(EditorControlFlow::Continue),
+                Err(InvalidGlobError) => Err(CommandError::InvalidGlob),
+            }
+        },
+    },
+    BuiltinCommand {
         name: "lsp-open-log",
         completions: &[],
         func: |ctx| {
@@ -675,4 +691,3 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
-

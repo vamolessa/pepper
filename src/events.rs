@@ -797,4 +797,3 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
-

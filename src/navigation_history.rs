@@ -348,4 +348,3 @@ mod tests {
         assert_eq!(2, client.navigation_history.snapshots.len());
     }
 }
-

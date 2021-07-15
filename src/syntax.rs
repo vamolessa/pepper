@@ -507,7 +507,9 @@ mod tests {
     #[test]
     fn multiline_syntax() {
         let mut syntax = Syntax::new();
-        syntax.set_pattern(TokenKind::Comment, "/*{!(*/).$}").unwrap();
+        syntax
+            .set_pattern(TokenKind::Comment, "/*{!(*/).$}")
+            .unwrap();
 
         let mut tokens = Vec::new();
         let line0 = "before /* comment";
@@ -541,7 +543,9 @@ mod tests {
     #[test]
     fn editing_highlighted_buffer() {
         let mut syntax = Syntax::new();
-        syntax.set_pattern(TokenKind::Comment, "/*{!(*/).$}").unwrap();
+        syntax
+            .set_pattern(TokenKind::Comment, "/*{!(*/).$}")
+            .unwrap();
         syntax.set_pattern(TokenKind::String, "'{!'.$}").unwrap();
 
         let mut buffer = BufferContent::new();
@@ -574,7 +578,9 @@ mod tests {
     #[test]
     fn highlight_range_after_unfinished_line() {
         let mut syntax = Syntax::new();
-        syntax.set_pattern(TokenKind::Comment, "/*{!(*/).$}").unwrap();
+        syntax
+            .set_pattern(TokenKind::Comment, "/*{!(*/).$}")
+            .unwrap();
 
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
@@ -595,7 +601,9 @@ mod tests {
     #[test]
     fn highlight_lines_after_unfinished_to_finished() {
         let mut syntax = Syntax::new();
-        syntax.set_pattern(TokenKind::Comment, "/*{!(*/).$}").unwrap();
+        syntax
+            .set_pattern(TokenKind::Comment, "/*{!(*/).$}")
+            .unwrap();
 
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
@@ -636,7 +644,9 @@ mod tests {
     #[test]
     fn highlight_lines_after_became_unfinished() {
         let mut syntax = Syntax::new();
-        syntax.set_pattern(TokenKind::Comment, "/*{!(*/).$}").unwrap();
+        syntax
+            .set_pattern(TokenKind::Comment, "/*{!(*/).$}")
+            .unwrap();
 
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
@@ -663,7 +673,9 @@ mod tests {
     #[test]
     fn highlight_unfinished_lines_on_multiline_delete() {
         let mut syntax = Syntax::new();
-        syntax.set_pattern(TokenKind::Comment, "/*{!(*/).$}").unwrap();
+        syntax
+            .set_pattern(TokenKind::Comment, "/*{!(*/).$}")
+            .unwrap();
 
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
