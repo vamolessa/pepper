@@ -145,7 +145,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             return;
         }
     };
-    let command_name = last_token.trim_end_matches('!');
+    let mut command_name = last_token.trim_end_matches('!');
 
     if let ReadCommandState::NavigatingHistory(_) = state.read_state {
         state.read_state = ReadCommandState::TypingCommand;
@@ -153,6 +153,17 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     ctx.editor.picker.clear_cursor();
 
     let mut arg_count = 0;
+
+    if let Some(aliased) = ctx.editor.commands.aliases.find(command_name) {
+        let mut aliased_tokens = CommandTokenizer(aliased);
+        command_name = aliased_tokens.next().unwrap_or("");
+        for _ in aliased_tokens {
+            arg_count += 1;
+        }
+
+        last_token = &input[input.len()..];
+    }
+
     for token in tokens {
         arg_count += 1;
         last_token = token;
@@ -242,3 +253,4 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
+
