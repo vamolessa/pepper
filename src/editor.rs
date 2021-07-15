@@ -300,8 +300,13 @@ impl Editor {
             ClientEvent::Command(target, command) => {
                 let client_handle = get_client_handle(clients, client_handle, target);
                 let mut command = self.string_pool.acquire_with(command);
-                let flow =
-                    CommandManager::eval(self, platform, clients, client_handle, &mut command);
+                let flow = CommandManager::eval(
+                    self,
+                    platform,
+                    clients,
+                    Some(client_handle),
+                    &mut command,
+                );
                 self.string_pool.release(command);
                 flow
             }
@@ -433,3 +438,4 @@ impl Editor {
         }
     }
 }
+

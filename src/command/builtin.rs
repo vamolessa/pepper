@@ -13,6 +13,7 @@ use crate::{
     mode::ModeKind,
     navigation_history::NavigationHistory,
     platform::Platform,
+    syntax::{Syntax, TokenKind},
     theme::{Color, THEME_COLOR_NAMES},
 };
 
@@ -24,13 +25,14 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let keyword = ctx.args.try_next();
             ctx.args.assert_empty()?;
 
+            let client_handle = ctx.client_handle()?;
             let (path, position) = match keyword.and_then(|k| help::search(k)) {
                 Some((path, line_index)) => (path, BufferPosition::line_col(line_index as _, 0)),
                 None => (help::main_help_path(), BufferPosition::zero()),
             };
 
             let handle = ctx.editor.buffer_view_handle_from_path(
-                ctx.client_handle,
+                client_handle,
                 path,
                 BufferCapabilities::log(),
             );
@@ -42,7 +44,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 position,
             });
 
-            let client = ctx.clients.get_mut(ctx.client_handle);
+            let client = ctx.clients.get_mut(client_handle);
             client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
             client.scroll.0 = 0;
             client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
@@ -76,16 +78,17 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let path = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
+            let client_handle = ctx.client_handle()?;
             let (path, position) = parse_path_and_position(path);
 
             NavigationHistory::save_client_snapshot(
-                ctx.clients.get_mut(ctx.client_handle),
+                ctx.clients.get_mut(client_handle),
                 &ctx.editor.buffer_views,
             );
 
             let path = ctx.editor.string_pool.acquire_with(path);
             let handle = ctx.editor.buffer_view_handle_from_path(
-                ctx.client_handle,
+                client_handle,
                 Path::new(&path),
                 BufferCapabilities::text(),
             );
@@ -101,7 +104,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             }
 
             ctx.clients
-                .get_mut(ctx.client_handle)
+                .get_mut(client_handle)
                 .set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
 
             Ok(EditorControlFlow::Continue)
@@ -245,7 +248,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
-            let client = ctx.clients.get_mut(ctx.client_handle);
+            let client_handle = ctx.client_handle()?;
+            let client = ctx.clients.get_mut(client_handle);
             NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
             // TODO
             client.set_buffer_view_handle(None, &mut ctx.editor.events);
@@ -312,50 +316,108 @@ pub static COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "map-normal",
         completions: &[],
-        func: |ctx| {
-            map(ctx, ModeKind::Normal)?;
-            Ok(EditorControlFlow::Continue)
-        },
+        func: |ctx| map(ctx, ModeKind::Normal),
     },
     BuiltinCommand {
         name: "map-insert",
         completions: &[],
-        func: |ctx| {
-            map(ctx, ModeKind::Insert)?;
-            Ok(EditorControlFlow::Continue)
-        },
+        func: |ctx| map(ctx, ModeKind::Insert),
     },
     BuiltinCommand {
         name: "map-command",
         completions: &[],
-        func: |ctx| {
-            map(ctx, ModeKind::Command)?;
-            Ok(EditorControlFlow::Continue)
-        },
+        func: |ctx| map(ctx, ModeKind::Command),
     },
     BuiltinCommand {
         name: "map-readline",
         completions: &[],
-        func: |ctx| {
-            map(ctx, ModeKind::Command)?;
-            Ok(EditorControlFlow::Continue)
-        },
+        func: |ctx| map(ctx, ModeKind::Command),
     },
     BuiltinCommand {
         name: "map-picker",
         completions: &[],
+        func: |ctx| map(ctx, ModeKind::Picker),
+    },
+    BuiltinCommand {
+        name: "alias",
+        completions: &[CompletionSource::Custom(&[]), CompletionSource::Commands],
         func: |ctx| {
-            map(ctx, ModeKind::Picker)?;
+            let from = ctx.args.next()?;
+            let to = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+            ctx.editor.commands.aliases.add(from, to);
             Ok(EditorControlFlow::Continue)
         },
+    },
+    BuiltinCommand {
+        name: "syntax-begin",
+        completions: &[],
+        func: |ctx| {
+            let glob = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+            if ctx.editor.syntaxes.current_syntax.is_some() {
+                return Err(CommandError::RecursiveSyntaxBegin);
+            }
+            let mut syntax = Syntax::new();
+            let result = syntax.set_glob(glob);
+            ctx.editor.syntaxes.current_syntax = Some(syntax);
+            match result {
+                Ok(()) => Ok(EditorControlFlow::Continue),
+                Err(_) => Err(CommandError::InvalidGlob),
+            }
+        },
+    },
+    BuiltinCommand {
+        name: "syntax-end",
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_empty()?;
+            match ctx.editor.syntaxes.current_syntax.take() {
+                Some(syntax) => {
+                    ctx.editor.syntaxes.add(syntax);
+                    Ok(EditorControlFlow::Continue)
+                }
+                None => Err(CommandError::NoCurrentSyntax),
+            }
+        },
+    },
+    BuiltinCommand {
+        name: "syntax-keywords",
+        completions: &[],
+        func: |ctx| syntax_pattern(ctx, TokenKind::Keyword),
+    },
+    BuiltinCommand {
+        name: "syntax-types",
+        completions: &[],
+        func: |ctx| syntax_pattern(ctx, TokenKind::Type),
+    },
+    BuiltinCommand {
+        name: "syntax-symbols",
+        completions: &[],
+        func: |ctx| syntax_pattern(ctx, TokenKind::Symbol),
+    },
+    BuiltinCommand {
+        name: "syntax-literals",
+        completions: &[],
+        func: |ctx| syntax_pattern(ctx, TokenKind::Literal),
+    },
+    BuiltinCommand {
+        name: "syntax-strings",
+        completions: &[],
+        func: |ctx| syntax_pattern(ctx, TokenKind::String),
+    },
+    BuiltinCommand {
+        name: "syntax-texts",
+        completions: &[],
+        func: |ctx| syntax_pattern(ctx, TokenKind::Text),
     },
     BuiltinCommand {
         name: "lsp-open-log",
         completions: &[],
         func: |ctx| {
             ctx.args.assert_empty()?;
+            let client_handle = ctx.client_handle()?;
             let buffer_handle = ctx.current_buffer_handle()?;
-            let client_handle = ctx.client_handle;
             access_lsp(
                 ctx,
                 buffer_handle,
@@ -416,8 +478,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| {
             ctx.args.assert_empty()?;
+            let client_handle = ctx.client_handle()?;
             let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-            let client_handle = ctx.client_handle;
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.definition(
                     editor,
@@ -437,8 +499,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let context_len = 2;
             ctx.args.assert_empty()?;
 
+            let client_handle = ctx.client_handle()?;
             let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.references(
@@ -460,8 +522,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
+            let client_handle = ctx.client_handle()?;
             let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, clients, client| {
                 client.rename(
@@ -482,8 +544,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
+            let client_handle = ctx.client_handle()?;
             let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.code_action(
@@ -503,9 +565,9 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
+            let client_handle = ctx.client_handle()?;
             let view_handle = ctx.current_buffer_view_handle()?;
             let buffer_handle = ctx.editor.buffer_views.get(view_handle).buffer_handle;
-            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.document_symbols(editor, platform, client_handle, view_handle)
@@ -520,8 +582,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let query = ctx.args.try_next().unwrap_or("");
             ctx.args.assert_empty()?;
 
+            let client_handle = ctx.client_handle()?;
             let buffer_handle = ctx.current_buffer_handle()?;
-            let client_handle = ctx.client_handle;
 
             access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
                 client.workspace_symbols(editor, platform, client_handle, query)
@@ -543,15 +605,31 @@ pub static COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
-fn map(ctx: &mut CommandContext, mode: ModeKind) -> Result<(), CommandError> {
+fn map(ctx: &mut CommandContext, mode: ModeKind) -> Result<EditorControlFlow, CommandError> {
     let from = ctx.args.next()?;
     let to = ctx.args.next()?;
     ctx.args.assert_empty()?;
 
-    ctx.editor
-        .keymaps
-        .parse_and_map(mode, from, to)
-        .map_err(CommandError::KeyMapError)
+    match ctx.editor.keymaps.parse_and_map(mode, from, to) {
+        Ok(()) => Ok(EditorControlFlow::Continue),
+        Err(error) => Err(CommandError::KeyMapError(error)),
+    }
+}
+
+fn syntax_pattern(
+    ctx: &mut CommandContext,
+    token_kind: TokenKind,
+) -> Result<EditorControlFlow, CommandError> {
+    let pattern = ctx.args.next()?;
+    ctx.args.assert_empty()?;
+    let syntax = match &mut ctx.editor.syntaxes.current_syntax {
+        Some(syntax) => syntax,
+        None => return Err(CommandError::NoCurrentSyntax),
+    };
+    match syntax.set_pattern(token_kind, pattern) {
+        Ok(()) => Ok(EditorControlFlow::Continue),
+        Err(error) => Err(CommandError::PatternError(error)),
+    }
 }
 
 fn current_buffer_and_main_cursor(

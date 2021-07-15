@@ -5,7 +5,6 @@ use crate::{
     editor::{Editor, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
-    ini::Ini,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     serialization::{DeserializeError, Serialize},
     ui, Args,
@@ -77,15 +76,15 @@ impl ServerApplication {
     pub fn run(args: Args, mut platform: Platform) -> Option<ApplicationEventSender> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
+        let mut clients = ClientManager::default();
 
-        let mut ini = Ini::default();
         if !args.no_default_config {
-            let source = include_str!("../rc/default_config.ini");
+            let source = include_str!("../rc/default_config.pp");
             load_config(
                 &mut editor,
                 &mut platform,
-                &mut ini,
-                "default_config.ini",
+                &mut clients,
+                "default_config.pp",
                 source,
             );
         }
@@ -96,9 +95,16 @@ impl ServerApplication {
                 continue;
             }
             match fs::read_to_string(path) {
-                Ok(source) => {
-                    load_config(&mut editor, &mut platform, &mut ini, &config.path, &source)
-                }
+                Ok(source) => match load_config(
+                    &mut editor,
+                    &mut platform,
+                    &mut clients,
+                    &config.path,
+                    &source,
+                ) {
+                    EditorControlFlow::Continue => (),
+                    _ => return None,
+                },
                 Err(_) => editor
                     .status_bar
                     .write(MessageKind::Error)
@@ -109,7 +115,8 @@ impl ServerApplication {
         let (event_sender, event_receiver) = mpsc::channel();
         let application_event_sender = ApplicationEventSender(event_sender.clone());
         std::thread::spawn(move || {
-            let _ = Self::run_application(editor, &mut platform, event_sender, event_receiver);
+            let _ =
+                Self::run_application(editor, &mut platform, clients, event_sender, event_receiver);
             platform.enqueue_request(PlatformRequest::Quit);
             platform.flush_requests();
         });
@@ -120,10 +127,10 @@ impl ServerApplication {
     fn run_application(
         mut editor: Editor,
         platform: &mut Platform,
+        mut clients: ClientManager,
         event_sender: mpsc::Sender<ApplicationEvent>,
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
-        let mut clients = ClientManager::default();
         let mut client_event_receiver = ClientEventReceiver::default();
 
         'event_loop: loop {
@@ -384,3 +391,4 @@ pub fn set_panic_hook() {
         }
     }));
 }
+

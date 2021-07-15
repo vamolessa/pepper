@@ -220,17 +220,10 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
                 consume_str(chars, "ackspace>")?;
                 Ok(Key::Backspace)
             }
-            's' => match next(chars)? {
-                'p' => {
-                    consume_str(chars, "ace>")?;
-                    Ok(Key::Char(' '))
-                }
-                'e' => {
-                    consume_str(chars, "micolon>")?;
-                    Ok(Key::Char(';'))
-                }
-                c => Err(KeyParseError::InvalidCharacter(c)),
-            },
+            's' => {
+                consume_str(chars, "pace>")?;
+                Ok(Key::Char(' '))
+            }
             'e' => match next(chars)? {
                 'n' => match next(chars)? {
                     't' => {
@@ -243,10 +236,6 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
                     }
                     c => Err(KeyParseError::InvalidCharacter(c)),
                 },
-                'q' => {
-                    consume_str(chars, "uals>")?;
-                    Ok(Key::Char('='))
-                }
                 's' => {
                     consume_str(chars, "c>")?;
                     Ok(Key::Esc)
@@ -377,11 +366,8 @@ impl fmt::Display for Key {
             Key::Delete => f.write_str("<delete>"),
             Key::F(n) => write!(f, "<f{}>", n),
             Key::Char(' ') => f.write_str("<space>"),
-            Key::Char(';') => f.write_str("<semicolon>"),
-            Key::Char('\n') => f.write_str("<newline>"),
             Key::Char('<') => f.write_str("<less>"),
             Key::Char('>') => f.write_str("<greater>"),
-            Key::Char('=') => f.write_str("<equals>"),
             Key::Char(c) => write!(f, "{}", c),
             Key::Ctrl(c) => write!(f, "<c-{}>", c),
             Key::Alt(c) => write!(f, "<a-{}>", c),
@@ -705,13 +691,8 @@ mod tests {
         assert_eq!(Key::Char('0'), parse_key(&mut "0".chars()).unwrap());
         assert_eq!(Key::Char('9'), parse_key(&mut "9".chars()).unwrap());
         assert_eq!(Key::Char('_'), parse_key(&mut "_".chars()).unwrap());
-        assert_eq!(
-            Key::Char(';'),
-            parse_key(&mut "<semicolon>".chars()).unwrap()
-        );
         assert_eq!(Key::Char('<'), parse_key(&mut "<less>".chars()).unwrap());
         assert_eq!(Key::Char('>'), parse_key(&mut "<greater>".chars()).unwrap());
-        assert_eq!(Key::Char('='), parse_key(&mut "<equals>".chars()).unwrap());
         assert_eq!(Key::Char('\\'), parse_key(&mut "\\".chars()).unwrap());
     }
 
@@ -816,3 +797,4 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
+

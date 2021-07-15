@@ -100,7 +100,7 @@ impl ModeState for State {
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,
-                    ctx.client_handle,
+                    Some(ctx.client_handle),
                     &mut command,
                 );
                 ctx.editor.string_pool.release(command);

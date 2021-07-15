@@ -4,7 +4,7 @@ use std::{convert::TryInto, error::Error, fmt, num::TryFromIntError, str::Chars}
 pub struct InvalidGlobError;
 impl fmt::Display for InvalidGlobError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(stringify!(InvalidGlobError))
+        f.write_str("invalid glob")
     }
 }
 impl Error for InvalidGlobError {}

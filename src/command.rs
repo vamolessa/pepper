@@ -2,6 +2,8 @@ use std::{collections::VecDeque, fmt, io};
 
 use crate::{
     buffer::{Buffer, BufferHandle},
+    pattern::PatternError,
+    glob::InvalidGlobError,
     buffer_view::BufferViewHandle,
     client::{ClientHandle, ClientManager},
     config::ParseConfigError,
@@ -19,6 +21,7 @@ pub enum CommandError {
     NoSuchCommand,
     TooManyArguments,
     TooFewArguments,
+    NoTargetClient,
     NoBufferOpened,
     UnsavedChanges,
     IoError(io::Error),
@@ -26,6 +29,10 @@ pub enum CommandError {
     NoSuchColor,
     InvalidColorValue,
     KeyMapError(ParseKeyMapError),
+    PatternError(PatternError),
+    InvalidGlob,
+    RecursiveSyntaxBegin,
+    NoCurrentSyntax,
     LspServerNotRunning,
     LspServerNotLogging,
 }
@@ -35,6 +42,7 @@ impl fmt::Display for CommandError {
             Self::NoSuchCommand => f.write_str("no such command"),
             Self::TooManyArguments => f.write_str("too many arguments"),
             Self::TooFewArguments => f.write_str("too few arguments"),
+            Self::NoTargetClient => f.write_str("no target client"),
             Self::NoBufferOpened => f.write_str("no buffer opened"),
             Self::UnsavedChanges => f.write_str("unsaved changes"),
             Self::IoError(error) => write!(f, "{}", error),
@@ -42,6 +50,10 @@ impl fmt::Display for CommandError {
             Self::NoSuchColor => f.write_str("no such color"),
             Self::InvalidColorValue => f.write_str("invalid color value"),
             Self::KeyMapError(error) => write!(f, "{}", error),
+            Self::PatternError(error) => write!(f, "pattern error: {}", error),
+            Self::InvalidGlob => write!(f, "{}", InvalidGlobError),
+            Self::RecursiveSyntaxBegin => f.write_str("recursive syntax definition"),
+            Self::NoCurrentSyntax => f.write_str("no current syntax. did you forget a `syntax-begin`?"),
             Self::LspServerNotRunning => f.write_str("no lsp server running"),
             Self::LspServerNotLogging => f.write_str("lsp server is not logging"),
         }
@@ -83,14 +95,22 @@ pub struct CommandContext<'state, 'command> {
     pub editor: &'state mut Editor,
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
-    pub client_handle: ClientHandle,
+    pub client_handle: Option<ClientHandle>,
 
     pub args: CommandArgs<'command>,
     pub bang: bool,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
+    pub fn client_handle(&self) -> Result<ClientHandle, CommandError> {
+        match self.client_handle {
+            Some(handle) => Ok(handle),
+            None => Err(CommandError::NoTargetClient),
+        }
+    }
+
     pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError> {
-        match self.clients.get(self.client_handle).buffer_view_handle() {
+        let client_handle = self.client_handle()?;
+        match self.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => Ok(handle),
             None => Err(CommandError::NoBufferOpened),
         }
@@ -294,7 +314,7 @@ impl CommandManager {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        client_handle: ClientHandle,
+        client_handle: Option<ClientHandle>,
         command: &mut String,
     ) -> EditorControlFlow {
         match Self::try_eval(editor, platform, clients, client_handle, command) {
@@ -313,7 +333,7 @@ impl CommandManager {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        client_handle: ClientHandle,
+        client_handle: Option<ClientHandle>,
         command: &mut String,
     ) -> Result<EditorControlFlow, CommandError> {
         if let Some(alias) = CommandTokenizer(command).next() {
@@ -332,7 +352,7 @@ impl CommandManager {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        client_handle: ClientHandle,
+        client_handle: Option<ClientHandle>,
         command: &str,
     ) -> Result<EditorControlFlow, CommandError> {
         let mut tokenizer = CommandTokenizer(command);
@@ -385,3 +405,4 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
+

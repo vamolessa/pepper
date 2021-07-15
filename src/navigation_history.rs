@@ -85,7 +85,9 @@ impl NavigationHistory {
                     == client.navigation_history.snapshots.len() as _
                 {
                     Self::save_client_snapshot(client, &editor.buffer_views);
-                    client.navigation_history.current_snapshot_index -= 1;
+                    if client.navigation_history.current_snapshot_index > 1 {
+                        client.navigation_history.current_snapshot_index -= 1;
+                    }
                 }
 
                 client.navigation_history.current_snapshot_index -= 1;

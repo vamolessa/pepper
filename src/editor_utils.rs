@@ -1,15 +1,10 @@
-use std::{fmt, path::Path, process::Command};
+use std::{fmt, process::Command};
 
 use crate::{
-    command::CommandTokenizer,
-    editor::{BufferedKeys, Editor, KeysIterator},
-    glob::InvalidGlobError,
-    ini::{Ini, PropertyIterator},
-    keymap::KeyMapCollection,
-    mode::ModeKind,
+    client::ClientManager,
+    command::{CommandManager, CommandTokenizer},
+    editor::{BufferedKeys, Editor, EditorControlFlow, KeysIterator},
     platform::{Key, Platform},
-    syntax::Syntax,
-    theme::Color,
     word_database::{WordIter, WordKind},
 };
 
@@ -185,32 +180,42 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
 pub fn load_config(
     editor: &mut Editor,
     platform: &mut Platform,
-    ini: &mut Ini,
+    clients: &mut ClientManager,
     config_name: &str,
     config_content: &str,
-) {
-    fn parse_bindings(
-        keymaps: &mut KeyMapCollection,
-        mode: ModeKind,
-        bindings: PropertyIterator,
-        config_name: &str,
-        output: &mut EditorOutputWrite,
-    ) {
-        for (from, to, line_index) in bindings {
-            match keymaps.parse_and_map(mode, from, to) {
-                Ok(()) => (),
-                Err(error) => output.fmt(format_args!(
-                    "{} at {}:{}\n",
-                    error,
-                    config_name,
-                    line_index + 1,
-                )),
+) -> EditorControlFlow {
+    for (line_index, line) in config_content.lines().enumerate() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let mut command = editor.string_pool.acquire_with(line);
+        let result = CommandManager::try_eval(editor, platform, clients, None, &mut command);
+        editor.string_pool.release(command);
+
+        match result {
+            Ok(flow) => match flow {
+                EditorControlFlow::Continue => (),
+                _ => return flow,
+            },
+            Err(error) => {
+                editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!(
+                        "{}:{}\n{}",
+                        config_name,
+                        line_index + 1,
+                        error
+                    ));
+                break;
             }
         }
     }
 
-    let mut output = editor.status_bar.write(MessageKind::Error);
+    EditorControlFlow::Continue
 
+    /*
     let sections = match ini.parse(config_content) {
         Ok(sections) => sections,
         Err(error) => {
@@ -444,4 +449,6 @@ pub fn load_config(
             )),
         }
     }
+    */
 }
+
