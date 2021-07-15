@@ -1,7 +1,7 @@
 use crate::{
-    buffer_position::BufferPositionIndex,
+    buffer_position::{BufferPosition, BufferPositionIndex},
     buffer_view::CursorMovementKind,
-    cursor::CursorCollection,
+    cursor::{Cursor, CursorCollection},
     editor::{EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll},
     lsp,
@@ -13,6 +13,7 @@ use crate::{
 pub struct State {
     on_client_keys:
         fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
+    previous_position: BufferPosition,
     lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
@@ -20,6 +21,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _| Some(EditorControlFlow::Continue),
+            previous_position: BufferPosition::zero(),
             lsp_client_handle: None,
         }
     }
@@ -49,10 +51,7 @@ impl ModeState for State {
 pub mod search {
     use super::*;
 
-    use crate::{
-        navigation_history::{NavigationHistory, NavigationMovement},
-        register::SEARCH_REGISTER,
-    };
+    use crate::register::SEARCH_REGISTER;
 
     pub fn enter_mode(ctx: &mut ModeContext) {
         fn on_client_keys(
@@ -74,11 +73,7 @@ pub mod search {
                         let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                         let search_ranges = buffer.search_ranges();
                         if search_ranges.is_empty() {
-                            NavigationHistory::move_in_history(
-                                ctx.clients.get_mut(ctx.client_handle),
-                                ctx.editor,
-                                NavigationMovement::Backward,
-                            );
+                            restore_saved_position(ctx);
                         } else {
                             let position = buffer_view.cursors.main_cursor().position;
                             ctx.editor.mode.normal_state.search_index =
@@ -95,11 +90,7 @@ pub mod search {
                     Mode::change_to(ctx, ModeKind::default());
                 }
                 ReadLinePoll::Canceled => {
-                    NavigationHistory::move_in_history(
-                        ctx.clients.get_mut(ctx.client_handle),
-                        ctx.editor,
-                        NavigationMovement::Backward,
-                    );
+                    restore_saved_position(ctx);
                     Mode::change_to(ctx, ModeKind::default());
                 }
             }
@@ -107,10 +98,7 @@ pub mod search {
             Some(EditorControlFlow::Continue)
         }
 
-        NavigationHistory::save_client_snapshot(
-            ctx.clients.get_mut(ctx.client_handle),
-            &ctx.editor.buffer_views,
-        );
+        save_current_position(ctx);
         ctx.editor.read_line.set_prompt("search:");
         update_search(ctx);
 
@@ -119,11 +107,6 @@ pub mod search {
     }
 
     fn update_search(ctx: &mut ModeContext) {
-        ctx.editor.aux_pattern.clear();
-        for buffer in ctx.editor.buffers.iter_mut() {
-            buffer.set_search(&ctx.editor.aux_pattern);
-        }
-
         let handle = match ctx.clients.get_mut(ctx.client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => return,
@@ -505,12 +488,7 @@ pub mod split_cursors {
 pub mod goto {
     use super::*;
 
-    use crate::{
-        buffer_position::BufferPosition,
-        cursor::Cursor,
-        navigation_history::{NavigationHistory, NavigationMovement},
-        word_database::WordKind,
-    };
+    use crate::{buffer_position::BufferPosition, cursor::Cursor, word_database::WordKind};
 
     pub fn enter_mode(ctx: &mut ModeContext) {
         fn on_client_keys(
@@ -547,21 +525,14 @@ pub mod goto {
                 }
                 ReadLinePoll::Submitted => Mode::change_to(ctx, ModeKind::default()),
                 ReadLinePoll::Canceled => {
-                    NavigationHistory::move_in_history(
-                        ctx.clients.get_mut(ctx.client_handle),
-                        ctx.editor,
-                        NavigationMovement::Backward,
-                    );
+                    restore_saved_position(ctx);
                     Mode::change_to(ctx, ModeKind::default());
                 }
             }
             Some(EditorControlFlow::Continue)
         }
 
-        NavigationHistory::save_client_snapshot(
-            ctx.clients.get_mut(ctx.client_handle),
-            &ctx.editor.buffer_views,
-        );
+        save_current_position(ctx);
         ctx.editor.read_line.set_prompt("goto-line:");
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::ReadLine);
@@ -719,3 +690,28 @@ pub mod lsp_rename {
         ctx.editor.read_line.input_mut().push_str(placeholder);
     }
 }
+
+fn save_current_position(ctx: &mut ModeContext) {
+    let buffer_view_handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+        Some(handle) => handle,
+        None => return,
+    };
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+    ctx.editor.mode.read_line_state.previous_position = buffer_view.cursors.main_cursor().position;
+}
+
+fn restore_saved_position(ctx: &mut ModeContext) {
+    let buffer_view_handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+        Some(handle) => handle,
+        None => return,
+    };
+    let position = ctx.editor.mode.read_line_state.previous_position;
+    let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+    let mut cursors = buffer_view.cursors.mut_guard();
+    cursors.clear();
+    cursors.add(Cursor {
+        anchor: position,
+        position,
+    });
+}
+
