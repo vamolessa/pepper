@@ -12,7 +12,6 @@ pub mod events;
 pub mod glob;
 pub mod help;
 pub mod history;
-pub mod ini;
 pub mod json;
 pub mod keymap;
 pub mod lsp;
