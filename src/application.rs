@@ -234,7 +234,7 @@ pub struct ClientApplication<'stdout> {
     stdin_read_buf: Vec<u8>, // TODO: do something with it
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
-    stdout: io::StdoutLock<'stdout>,
+    stdout: io::StdoutLock<'stdout>, // TODO: leak it since it's lifetime is the whole program
 }
 impl<'stdout> ClientApplication<'stdout> {
     pub const fn stdin_buffer_len() -> usize {

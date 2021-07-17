@@ -368,6 +368,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             }
         },
     },
+    // TODO: remove this as it can be not needed
     BuiltinCommand {
         name: "syntax-end",
         completions: &[],
@@ -417,6 +418,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::Text),
     },
+    // TODO: make lsp-log-file and lsp-root that change the previous `lsp` definition
     BuiltinCommand {
         name: "lsp",
         completions: &[],

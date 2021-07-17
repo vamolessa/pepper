@@ -220,7 +220,7 @@ pub struct SyntaxHandle(usize);
 
 pub struct SyntaxCollection {
     syntaxes: Vec<Syntax>,
-    pub current_syntax: Option<Syntax>,
+    pub current_syntax: Option<Syntax>, // TODO: change to Option<SyntaxHandle>
 }
 
 impl SyntaxCollection {
