@@ -66,7 +66,8 @@ use pepper::{
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
 const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
-const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
+const _ASSERT_MAX_EVENT_COUNT_IS_MAX_WAIT_OBJECTS: [(); MAXIMUM_WAIT_OBJECTS as _] =
+    [(); MAX_EVENT_COUNT];
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 static PIPE_PREFIX: &str = r#"\\.\pipe\"#;
@@ -893,7 +894,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
         }
         for (i, process) in processes.iter().enumerate() {
             if let Some(process) = process {
-                if let Some(ref stdout) = process.stdout {
+                if let Some(stdout) = &process.stdout {
                     events.track(stdout.event(), EventSource::Process(i));
                 }
             }
@@ -1291,3 +1292,4 @@ fn parse_console_events(
         }
     }
 }
+
