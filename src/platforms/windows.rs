@@ -77,8 +77,8 @@ pub fn main() {
 
     let mut pipe_path = Vec::new();
     let mut hash_buf = [0u8; 16];
-    let session_name = match args.session {
-        Some(ref name) => name.as_str(),
+    let session_name = match &args.session {
+        Some(name) => name.as_str(),
         None => {
             use io::Write;
 
@@ -788,8 +788,8 @@ impl AsyncProcess {
 
     pub fn write(&mut self, buf: &[u8]) -> bool {
         use io::Write;
-        match self.child.stdin {
-            Some(ref mut stdin) => stdin.write_all(buf).is_ok(),
+        match &mut self.child.stdin {
+            Some(stdin) => stdin.write_all(buf).is_ok(),
             None => true,
         }
     }
@@ -906,8 +906,8 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                     match request {
                         PlatformRequest::Quit => return Ok(()),
                         PlatformRequest::WriteToClient { handle, buf } => {
-                            if let Some(ref mut connection) =
-                                client_connections[handle.into_index()]
+                            if let Some(connection) =
+                                &mut client_connections[handle.into_index()]
                             {
                                 if !connection.write(buf.as_bytes()) {
                                     client_connections[handle.into_index()] = None;
@@ -945,7 +945,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                             }
                         }
                         PlatformRequest::WriteToProcess { handle, buf } => {
-                            if let Some(ref mut process) = processes[handle.0] {
+                            if let Some(process) = &mut processes[handle.0] {
                                 if !process.write(buf.as_bytes()) {
                                     let tag = process.tag;
                                     process.kill();
@@ -955,12 +955,12 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                             }
                         }
                         PlatformRequest::CloseProcessInput { handle } => {
-                            if let Some(ref mut process) = processes[handle.0] {
+                            if let Some(process) = &mut processes[handle.0] {
                                 process.close_input();
                             }
                         }
                         PlatformRequest::KillProcess { handle } => {
-                            if let Some(ref mut process) = processes[handle.0] {
+                            if let Some(process) = &mut processes[handle.0] {
                                 let tag = process.tag;
                                 process.kill();
                                 processes[handle.0] = None;
@@ -983,7 +983,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                 }
             }
             Some(EventSource::Connection(i)) => {
-                if let Some(ref mut connection) = client_connections[i] {
+                if let Some(connection) = &mut client_connections[i] {
                     let handle = ClientHandle::from_index(i).unwrap();
                     match connection
                         .read_async(ServerApplication::connection_buffer_len(), &mut buf_pool)
@@ -1002,8 +1002,8 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                 timeout = Some(ServerApplication::idle_duration());
             }
             Some(EventSource::Process(i)) => {
-                if let Some(ref mut process) = processes[i] {
-                    if let Some(ref mut pipe) = process.stdout {
+                if let Some(process) = &mut processes[i] {
+                    if let Some(pipe) = &mut process.stdout {
                         let tag = process.tag;
                         match pipe.read_async(&mut buf_pool) {
                             Ok(None) => (),
@@ -1148,8 +1148,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         input_mode.set(ENABLE_WINDOW_INPUT);
         console_input_mode = Some(input_mode);
 
-        match output_handle {
-            Some(ref output_handle) => {
+        match &output_handle {
+            Some(output_handle) => {
                 let output_mode = ConsoleMode::new(output_handle);
                 output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
                 console_output_mode = Some(output_mode);
@@ -1172,9 +1172,9 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
     } else {
         Input::Console(input_handle)
     };
-    let input_wait_handle = match input {
-        Input::Stdin(ref reader) => reader.event().handle(),
-        Input::Console(ref handle) => handle.0,
+    let input_wait_handle = match &input {
+        Input::Stdin(reader) => reader.event().handle(),
+        Input::Console(handle) => handle.0,
     };
 
     let wait_handles = [connection.event().handle(), input_wait_handle];
