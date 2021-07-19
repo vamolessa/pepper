@@ -20,6 +20,7 @@ where
     }
 }
 
+// TODO: rename to PlatformEvent and move to platform.rs
 pub enum ApplicationEvent {
     Idle,
     Redraw,

@@ -60,6 +60,7 @@ pub enum ProcessTag {
     Lsp(lsp::ClientHandle),
 }
 
+// TODO: change to u8
 #[derive(Clone, Copy)]
 pub struct ProcessHandle(pub usize);
 
