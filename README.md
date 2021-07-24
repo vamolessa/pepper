@@ -31,9 +31,7 @@ Simply running `cargo install pepper` will get you up and running.
 
 ## from source
 ```
-git clone git@github.com:vamolessa/pepper.git
-cd pepper
-cargo install --path . --force
+cargo install --git https://github.com/vamolessa/pepper
 ```
 
 **NOTE**: installing from source still requires `cargo` (at least it's easier this way).
