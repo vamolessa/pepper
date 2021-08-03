@@ -17,7 +17,6 @@ use crate::{
 pub struct State {
     on_client_keys:
         fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
-    pub find_file_command: String,
     find_file_waiting_for_process: bool,
     find_file_buf: Vec<u8>,
     lsp_client_handle: Option<lsp::ClientHandle>,
@@ -72,7 +71,6 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _| Some(EditorControlFlow::Continue),
-            find_file_command: String::new(),
             find_file_waiting_for_process: false,
             find_file_buf: Vec::new(),
             lsp_client_handle: None,
@@ -218,7 +216,7 @@ pub mod find_file {
 
     use std::path::Path;
 
-    pub fn enter_mode(ctx: &mut ModeContext) {
+    pub fn enter_mode(ctx: &mut ModeContext, command: &str) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -261,7 +259,7 @@ pub mod find_file {
         ctx.editor.read_line.set_prompt("open:");
         ctx.editor.picker.clear();
 
-        let command = match parse_process_command(&ctx.editor.mode.picker_state.find_file_command) {
+        let command = match parse_process_command(command) {
             Some(mut command) => {
                 command.stdin(Stdio::null());
                 command.stdout(Stdio::piped());
@@ -273,10 +271,7 @@ pub mod find_file {
                 ctx.editor
                     .status_bar
                     .write(MessageKind::Error)
-                    .fmt(format_args!(
-                        "invalid find file command '{}'",
-                        &ctx.editor.mode.picker_state.find_file_command,
-                    ));
+                    .fmt(format_args!("invalid find file command '{}'", command));
                 return;
             }
         };

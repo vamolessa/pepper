@@ -419,25 +419,10 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| syntax_pattern(ctx, TokenKind::Text),
     },
     BuiltinCommand {
-        name: "find-file-command",
-        completions: &[],
-        func: |ctx| {
-            let command = ctx.args.next()?;
-            ctx.args.assert_empty()?;
-
-            ctx.editor.mode.picker_state.find_file_command.clear();
-            ctx.editor
-                .mode
-                .picker_state
-                .find_file_command
-                .push_str(command);
-            Ok(EditorControlFlow::Continue)
-        },
-    },
-    BuiltinCommand {
         name: "find-file",
         completions: &[],
         func: |ctx| {
+            let command = ctx.args.next()?;
             ctx.args.assert_empty()?;
             if let Some(client_handle) = ctx.client_handle {
                 let mut ctx = ModeContext {
@@ -446,7 +431,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     clients: ctx.clients,
                     client_handle,
                 };
-                picker::find_file::enter_mode(&mut ctx);
+                picker::find_file::enter_mode(&mut ctx, command);
             }
             Ok(EditorControlFlow::Continue)
         },
