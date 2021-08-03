@@ -1210,7 +1210,7 @@ impl ModeState for State {
                         Key::None => return None,
                         Key::Char('o') => {
                             handled_keys = true;
-                            picker::buffer::enter_mode(ctx);
+                            picker::opened_buffers::enter_mode(ctx);
                         }
                         Key::Char('b') => {
                             handled_keys = true;

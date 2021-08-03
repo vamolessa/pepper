@@ -326,6 +326,7 @@ impl Editor {
     ) {
         match tag {
             ProcessTag::Buffer(index) => self.buffers.on_process_spawned(platform, index, handle),
+            ProcessTag::FindFiles => (),
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
             }
@@ -346,6 +347,11 @@ impl Editor {
                 bytes,
                 &mut self.events,
             ),
+            ProcessTag::FindFiles => {
+                self.mode
+                    .picker_state
+                    .on_process_output(&mut self.picker, &self.read_line, bytes)
+            }
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_output(self, platform, clients, client_handle, bytes)
             }
@@ -365,6 +371,10 @@ impl Editor {
                 self.buffers
                     .on_process_exit(&mut self.word_database, index, &mut self.events)
             }
+            ProcessTag::FindFiles => self
+                .mode
+                .picker_state
+                .on_process_exit(&mut self.picker, &self.read_line),
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_exit(self, client_handle)
             }
@@ -438,3 +448,4 @@ impl Editor {
         }
     }
 }
+

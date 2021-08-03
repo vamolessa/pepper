@@ -11,7 +11,7 @@ use crate::{
     editor_utils::MessageKind,
     glob::InvalidGlobError,
     help, lsp,
-    mode::ModeKind,
+    mode::{picker, ModeContext, ModeKind},
     navigation_history::NavigationHistory,
     platform::Platform,
     syntax::{Syntax, TokenKind},
@@ -418,6 +418,39 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::Text),
     },
+    BuiltinCommand {
+        name: "find-file-command",
+        completions: &[],
+        func: |ctx| {
+            let command = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            ctx.editor.mode.picker_state.find_file_command.clear();
+            ctx.editor
+                .mode
+                .picker_state
+                .find_file_command
+                .push_str(command);
+            Ok(EditorControlFlow::Continue)
+        },
+    },
+    BuiltinCommand {
+        name: "find-file",
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_empty()?;
+            if let Some(client_handle) = ctx.client_handle {
+                let mut ctx = ModeContext {
+                    editor: ctx.editor,
+                    platform: ctx.platform,
+                    clients: ctx.clients,
+                    client_handle,
+                };
+                picker::find_file::enter_mode(&mut ctx);
+            }
+            Ok(EditorControlFlow::Continue)
+        },
+    },
     // TODO: make lsp-log-file and lsp-root that change the previous `lsp` definition
     BuiltinCommand {
         name: "lsp",
@@ -693,3 +726,4 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
+

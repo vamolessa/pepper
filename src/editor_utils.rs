@@ -62,7 +62,7 @@ impl ReadLine {
                 ReadLinePoll::Pending
             }
             Key::Backspace | Key::Ctrl('h') => {
-                if let Some((last_char_index, _)) = self.input.char_indices().rev().next() {
+                if let Some((last_char_index, _)) = self.input.char_indices().next_back() {
                     self.input.truncate(last_char_index);
                 }
                 ReadLinePoll::Pending

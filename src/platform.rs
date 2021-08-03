@@ -57,6 +57,7 @@ pub enum PlatformRequest {
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
     Buffer(usize),
+    FindFiles,
     Lsp(lsp::ClientHandle),
 }
 
@@ -119,6 +120,10 @@ impl Platform {
     }
 
     pub fn write_to_clipboard(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
         if let Some(mut command) = parse_process_command(&self.copy_command) {
             command.stdin(Stdio::piped());
             command.stdout(Stdio::null());
@@ -201,3 +206,4 @@ impl BufPool {
         self.pool.push(buf);
     }
 }
+
