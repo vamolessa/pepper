@@ -46,6 +46,7 @@ impl State {
         }
 
         picker.filter(WordIndicesIter::empty(), read_line.input());
+        picker.move_cursor(0);
     }
 
     pub fn on_process_exit(&mut self, picker: &mut Picker, read_line: &ReadLine) {
@@ -64,6 +65,7 @@ impl State {
         }
         self.find_file_buf.clear();
         picker.filter(WordIndicesIter::empty(), read_line.input());
+        picker.move_cursor(0);
     }
 }
 
