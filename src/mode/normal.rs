@@ -1305,9 +1305,15 @@ impl ModeState for State {
 fn copy_text(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle, text: &mut String) {
     let state = &mut ctx.editor.mode.normal_state;
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
-    buffer_view.append_selection_text(&ctx.editor.buffers, text, &mut state.last_copy_ranges);
+    let mut text_ranges = [(0, 0); CursorCollection::capacity()];
+    let text_ranges_len =
+        buffer_view.append_selection_text(&ctx.editor.buffers, text, &mut text_ranges);
     if !text.is_empty() {
         state.last_copy_hash = hash_bytes(text.as_bytes());
+        state.last_copy_ranges.clear();
+        state
+            .last_copy_ranges
+            .extend_from_slice(&text_ranges[..text_ranges_len]);
     }
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
@@ -1696,3 +1702,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 }
+

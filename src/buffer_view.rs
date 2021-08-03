@@ -330,9 +330,9 @@ impl BufferView {
         &self,
         buffers: &BufferCollection,
         text: &mut String,
-        ranges: &mut Vec<(u32, u32)>,
-    ) {
-        ranges.clear();
+        ranges: &mut [(BufferPositionIndex, BufferPositionIndex)],
+    ) -> usize {
+        let mut ranges_index = 0;
 
         let buffer = buffers.get(self.buffer_handle).content();
         let mut iter = self.cursors[..].iter();
@@ -340,7 +340,9 @@ impl BufferView {
             let mut last_range = cursor.to_range();
             let from = text.len() as _;
             buffer.append_range_text_to_string(last_range, text);
-            ranges.push((from, text.len() as _));
+            ranges[ranges_index] = (from, text.len() as _);
+            ranges_index += 1;
+
             for cursor in iter {
                 let range = cursor.to_range();
                 if range.from.line_index > last_range.to.line_index {
@@ -348,10 +350,14 @@ impl BufferView {
                 }
                 let from = text.len() as _;
                 buffer.append_range_text_to_string(range, text);
-                ranges.push((from, text.len() as _));
+                ranges[ranges_index] = (from, text.len() as _);
+                ranges_index += 1;
+
                 last_range = range;
             }
         }
+
+        ranges_index
     }
 
     pub fn insert_text_at_cursor_positions(
@@ -717,3 +723,4 @@ mod tests {
         assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }
+

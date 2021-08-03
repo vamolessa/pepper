@@ -120,10 +120,6 @@ impl Platform {
     }
 
     pub fn write_to_clipboard(&mut self, text: &str) {
-        if text.is_empty() {
-            return;
-        }
-
         if let Some(mut command) = parse_process_command(&self.copy_command) {
             command.stdin(Stdio::piped());
             command.stdout(Stdio::null());
