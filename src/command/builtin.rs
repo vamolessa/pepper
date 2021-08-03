@@ -711,4 +711,3 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
-

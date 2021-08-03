@@ -1,11 +1,11 @@
 use std::{env, fs, io, panic, path::Path, sync::mpsc, time::Duration};
 
 use crate::{
-    client::{ClientHandle, ClientManager},
+    client::ClientManager,
     editor::{Editor, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
-    platform::{Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
+    platform::{Key, Platform, PlatformEvent, PlatformRequest},
     serialization::{DeserializeError, Serialize},
     ui, Args,
 };
@@ -20,36 +20,9 @@ where
     }
 }
 
-// TODO: rename to PlatformEvent and move to platform.rs
-pub enum ApplicationEvent {
-    Idle,
-    Redraw,
-    ConnectionOpen {
-        handle: ClientHandle,
-    },
-    ConnectionClose {
-        handle: ClientHandle,
-    },
-    ConnectionOutput {
-        handle: ClientHandle,
-        buf: SharedBuf,
-    },
-    ProcessSpawned {
-        tag: ProcessTag,
-        handle: ProcessHandle,
-    },
-    ProcessOutput {
-        tag: ProcessTag,
-        buf: SharedBuf,
-    },
-    ProcessExit {
-        tag: ProcessTag,
-    },
-}
-
-pub struct ApplicationEventSender(mpsc::Sender<ApplicationEvent>);
+pub struct ApplicationEventSender(mpsc::Sender<PlatformEvent>);
 impl ApplicationEventSender {
-    pub fn send(&self, event: ApplicationEvent) -> Result<(), AnyError> {
+    pub fn send(&self, event: PlatformEvent) -> Result<(), AnyError> {
         match self.0.send(event) {
             Ok(()) => Ok(()),
             Err(_) => Err(AnyError),
@@ -129,8 +102,8 @@ impl ServerApplication {
         mut editor: Editor,
         platform: &mut Platform,
         mut clients: ClientManager,
-        event_sender: mpsc::Sender<ApplicationEvent>,
-        event_receiver: mpsc::Receiver<ApplicationEvent>,
+        event_sender: mpsc::Sender<PlatformEvent>,
+        event_receiver: mpsc::Receiver<PlatformEvent>,
     ) -> Result<(), AnyError> {
         let mut client_event_receiver = ClientEventReceiver::default();
 
@@ -138,16 +111,16 @@ impl ServerApplication {
             let mut event = event_receiver.recv()?;
             loop {
                 match event {
-                    ApplicationEvent::Idle => editor.on_idle(&mut clients, platform),
-                    ApplicationEvent::Redraw => (),
-                    ApplicationEvent::ConnectionOpen { handle } => clients.on_client_joined(handle),
-                    ApplicationEvent::ConnectionClose { handle } => {
+                    PlatformEvent::Idle => editor.on_idle(&mut clients, platform),
+                    PlatformEvent::Redraw => (),
+                    PlatformEvent::ConnectionOpen { handle } => clients.on_client_joined(handle),
+                    PlatformEvent::ConnectionClose { handle } => {
                         clients.on_client_left(handle);
                         if clients.iter().next().is_none() {
                             break 'event_loop;
                         }
                     }
-                    ApplicationEvent::ConnectionOutput { handle, buf } => {
+                    PlatformEvent::ConnectionOutput { handle, buf } => {
                         let mut events =
                             client_event_receiver.receive_events(handle, buf.as_bytes());
                         while let Some(event) = events.next(&client_event_receiver) {
@@ -173,13 +146,13 @@ impl ServerApplication {
                         }
                         events.finish(&mut client_event_receiver);
                     }
-                    ApplicationEvent::ProcessSpawned { tag, handle } => {
+                    PlatformEvent::ProcessSpawned { tag, handle } => {
                         editor.on_process_spawned(platform, tag, handle)
                     }
-                    ApplicationEvent::ProcessOutput { tag, buf } => {
+                    PlatformEvent::ProcessOutput { tag, buf } => {
                         editor.on_process_output(platform, &mut clients, tag, buf.as_bytes())
                     }
-                    ApplicationEvent::ProcessExit { tag } => {
+                    PlatformEvent::ProcessExit { tag } => {
                         editor.on_process_exit(platform, &mut clients, tag)
                     }
                 }
@@ -193,7 +166,7 @@ impl ServerApplication {
 
             let needs_redraw = editor.on_pre_render(&mut clients);
             if needs_redraw {
-                event_sender.send(ApplicationEvent::Redraw)?;
+                event_sender.send(PlatformEvent::Redraw)?;
             }
 
             let focused_client_handle = clients.focused_client();

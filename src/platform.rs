@@ -28,6 +28,32 @@ pub enum Key {
     Esc,
 }
 
+pub enum PlatformEvent {
+    Idle,
+    Redraw,
+    ConnectionOpen {
+        handle: ClientHandle,
+    },
+    ConnectionClose {
+        handle: ClientHandle,
+    },
+    ConnectionOutput {
+        handle: ClientHandle,
+        buf: SharedBuf,
+    },
+    ProcessSpawned {
+        tag: ProcessTag,
+        handle: ProcessHandle,
+    },
+    ProcessOutput {
+        tag: ProcessTag,
+        buf: SharedBuf,
+    },
+    ProcessExit {
+        tag: ProcessTag,
+    },
+}
+
 pub enum PlatformRequest {
     Quit,
     WriteToClient {
@@ -202,4 +228,3 @@ impl BufPool {
         self.pool.push(buf);
     }
 }
-

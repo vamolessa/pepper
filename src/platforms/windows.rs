@@ -54,11 +54,12 @@ use winapi::{
 };
 
 use pepper::{
-    application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
+    application::{AnyError, ClientApplication, ServerApplication},
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
-        BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf,
+        BufPool, ExclusiveBuf, Key, Platform, PlatformEvent, PlatformRequest, ProcessHandle,
+        ProcessTag, SharedBuf,
     },
     Args,
 };
@@ -906,19 +907,16 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                     match request {
                         PlatformRequest::Quit => return Ok(()),
                         PlatformRequest::WriteToClient { handle, buf } => {
-                            if let Some(connection) =
-                                &mut client_connections[handle.into_index()]
-                            {
+                            if let Some(connection) = &mut client_connections[handle.into_index()] {
                                 if !connection.write(buf.as_bytes()) {
                                     client_connections[handle.into_index()] = None;
-                                    event_sender
-                                        .send(ApplicationEvent::ConnectionClose { handle })?;
+                                    event_sender.send(PlatformEvent::ConnectionClose { handle })?;
                                 }
                             }
                         }
                         PlatformRequest::CloseClient { handle } => {
                             client_connections[handle.into_index()] = None;
-                            event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
+                            event_sender.send(PlatformEvent::ConnectionClose { handle })?;
                         }
                         PlatformRequest::SpawnProcess {
                             tag,
@@ -935,13 +933,13 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                 if let Ok(child) = command.spawn() {
                                     *p = Some(AsyncProcess::new(child, tag, buf_len));
                                     event_sender
-                                        .send(ApplicationEvent::ProcessSpawned { tag, handle })?;
+                                        .send(PlatformEvent::ProcessSpawned { tag, handle })?;
                                     spawned = true;
                                 }
                                 break;
                             }
                             if !spawned {
-                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
+                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
                             }
                         }
                         PlatformRequest::WriteToProcess { handle, buf } => {
@@ -950,7 +948,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                     let tag = process.tag;
                                     process.kill();
                                     processes[handle.0] = None;
-                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
+                                    event_sender.send(PlatformEvent::ProcessExit { tag })?;
                                 }
                             }
                         }
@@ -964,7 +962,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                 let tag = process.tag;
                                 process.kill();
                                 processes[handle.0] = None;
-                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
+                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
                             }
                         }
                     }
@@ -976,7 +974,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         if c.is_none() {
                             *c = Some(connection);
                             let handle = ClientHandle::from_index(i).unwrap();
-                            event_sender.send(ApplicationEvent::ConnectionOpen { handle })?;
+                            event_sender.send(PlatformEvent::ConnectionOpen { handle })?;
                             break;
                         }
                     }
@@ -990,11 +988,11 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                     {
                         Ok(None) => (),
                         Ok(Some(buf)) => {
-                            event_sender.send(ApplicationEvent::ConnectionOutput { handle, buf })?
+                            event_sender.send(PlatformEvent::ConnectionOutput { handle, buf })?
                         }
                         Err(()) => {
                             client_connections[i] = None;
-                            event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
+                            event_sender.send(PlatformEvent::ConnectionClose { handle })?;
                         }
                     }
                 }
@@ -1008,13 +1006,13 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         match pipe.read_async(&mut buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) if !buf.as_bytes().is_empty() => {
-                                event_sender.send(ApplicationEvent::ProcessOutput { tag, buf })?;
+                                event_sender.send(PlatformEvent::ProcessOutput { tag, buf })?;
                             }
                             _ => {
                                 process.stdout = None;
                                 process.kill();
                                 processes[i] = None;
-                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
+                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
                             }
                         }
                     }
@@ -1022,7 +1020,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             }
             None => {
                 timeout = None;
-                event_sender.send(ApplicationEvent::Idle)?;
+                event_sender.send(PlatformEvent::Idle)?;
             }
         }
     }
@@ -1292,4 +1290,3 @@ fn parse_console_events(
         }
     }
 }
-

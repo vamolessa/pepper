@@ -714,4 +714,3 @@ fn restore_saved_position(ctx: &mut ModeContext) {
         position,
     });
 }
-

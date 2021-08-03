@@ -526,4 +526,3 @@ pub mod lsp_workspace_symbol {
         }
     }
 }
-
