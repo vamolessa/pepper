@@ -101,11 +101,7 @@ impl Client {
             let buffer_view = editor.buffer_views.get(handle);
             if buffer_view.buffer_handle == buffer_handle {
                 self.buffer_view_handle = None;
-                NavigationHistory::move_in_history(
-                    self,
-                    editor,
-                    NavigationMovement::PreviousBuffer,
-                );
+                NavigationHistory::move_in_history(self, editor, NavigationMovement::Backward);
             }
         }
     }
@@ -253,3 +249,4 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
+

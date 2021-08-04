@@ -1214,10 +1214,9 @@ impl ModeState for State {
                         }
                         Key::Char('b') => {
                             handled_keys = true;
-                            NavigationHistory::move_in_history(
+                            NavigationHistory::move_to_previous_buffer(
                                 ctx.clients.get_mut(ctx.client_handle),
                                 ctx.editor,
-                                NavigationMovement::PreviousBuffer,
                             );
                         }
                         Key::Char('B') => {
@@ -1226,18 +1225,10 @@ impl ModeState for State {
                             let previous_client = ctx.clients.get_mut(previous_client_handle);
                             let buffer_view_handle = previous_client.buffer_view_handle();
 
-                            NavigationHistory::move_in_history(
-                                previous_client,
-                                ctx.editor,
-                                NavigationMovement::PreviousBuffer,
-                            );
+                            NavigationHistory::move_to_previous_buffer(previous_client, ctx.editor);
                             let mut previous_buffer_view_handle =
                                 previous_client.buffer_view_handle();
-                            NavigationHistory::move_in_history(
-                                previous_client,
-                                ctx.editor,
-                                NavigationMovement::PreviousBuffer,
-                            );
+                            NavigationHistory::move_to_previous_buffer(previous_client, ctx.editor);
 
                             if previous_buffer_view_handle == buffer_view_handle {
                                 previous_buffer_view_handle = None;
@@ -1702,3 +1693,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 }
+

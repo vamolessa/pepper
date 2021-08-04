@@ -805,8 +805,6 @@ impl Buffer {
         self.capabilities.can_save && self.needs_save
     }
 
-    // TODO: remove word_database and make buffers listen to EditorEvent::BufferInsertText
-    // like we already do with syntax highlighting
     pub fn insert_text(
         &mut self,
         word_database: &mut WordDatabase,

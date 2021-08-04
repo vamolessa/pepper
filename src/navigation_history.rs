@@ -1,17 +1,12 @@
 use crate::{
-    buffer::BufferHandle,
-    buffer_position::BufferPosition,
-    buffer_view::{BufferView, BufferViewCollection},
-    client::Client,
-    cursor::Cursor,
-    editor::Editor,
+    buffer::BufferHandle, buffer_position::BufferPosition, buffer_view::BufferViewCollection,
+    client::Client, cursor::Cursor, editor::Editor,
 };
 
 #[derive(Clone, Copy)]
 pub enum NavigationMovement {
     Forward,
     Backward,
-    PreviousBuffer,
 }
 
 #[derive(Clone)]
@@ -20,33 +15,34 @@ struct NavigationHistorySnapshot {
     pub position: BufferPosition,
 }
 
+#[derive(Default)]
 pub struct NavigationHistory {
     snapshots: Vec<NavigationHistorySnapshot>,
     current_snapshot_index: u32,
-    previous_movement: NavigationMovement,
+    previous_buffer: Option<BufferHandle>,
 }
 
 impl NavigationHistory {
     pub fn clear(&mut self) {
         self.snapshots.clear();
         self.current_snapshot_index = 0;
-        self.previous_movement = NavigationMovement::Forward;
+        self.previous_buffer = None;
     }
 
     pub fn save_client_snapshot(client: &mut Client, buffer_views: &BufferViewCollection) {
-        if let Some(handle) = client.buffer_view_handle() {
-            let buffer_view = buffer_views.get(handle);
-            client.navigation_history.add_snapshot(buffer_view);
-        }
-    }
+        let buffer_view_handle = match client.buffer_view_handle() {
+            Some(handle) => handle,
+            None => return,
+        };
+        let buffer_view = buffer_views.get(buffer_view_handle);
 
-    fn add_snapshot(&mut self, buffer_view: &BufferView) {
-        self.snapshots.truncate(self.current_snapshot_index as _);
+        let this = &mut client.navigation_history;
+        this.snapshots.truncate(this.current_snapshot_index as _);
 
         let buffer_handle = buffer_view.buffer_handle;
         let position = buffer_view.cursors.main_cursor().position;
 
-        if self
+        if this
             .snapshots
             .last()
             .map(|s| s.buffer_handle == buffer_handle && s.position == position)
@@ -55,17 +51,18 @@ impl NavigationHistory {
             return;
         }
 
-        self.snapshots.push(NavigationHistorySnapshot {
+        if this.previous_buffer != Some(buffer_handle) {
+            this.previous_buffer = Some(buffer_handle);
+        }
+
+        this.snapshots.push(NavigationHistorySnapshot {
             buffer_handle,
             position,
         });
-        self.current_snapshot_index = self.snapshots.len() as _;
+        this.current_snapshot_index = this.snapshots.len() as _;
     }
 
     pub fn move_in_history(client: &mut Client, editor: &mut Editor, movement: NavigationMovement) {
-        let previous_movement = client.navigation_history.previous_movement;
-        client.navigation_history.previous_movement = movement;
-
         match movement {
             NavigationMovement::Forward => {
                 if client.navigation_history.current_snapshot_index + 1
@@ -92,61 +89,6 @@ impl NavigationHistory {
 
                 client.navigation_history.current_snapshot_index -= 1;
             }
-            NavigationMovement::PreviousBuffer => {
-                let buffer_view_handle = client.buffer_view_handle();
-                let buffer_handle =
-                    buffer_view_handle.map(|h| editor.buffer_views.get(h).buffer_handle);
-
-                let index = client.navigation_history.current_snapshot_index as usize;
-                match previous_movement {
-                    NavigationMovement::Forward => match client.navigation_history.snapshots
-                        [..index]
-                        .iter()
-                        .rposition(|s| Some(s.buffer_handle) != buffer_handle)
-                    {
-                        Some(i) => {
-                            client.navigation_history.current_snapshot_index =
-                                client.navigation_history.snapshots.len().min(i + 1) as _;
-                            Self::save_client_snapshot(client, &editor.buffer_views);
-                        }
-                        None => return,
-                    },
-                    NavigationMovement::Backward => match client.navigation_history.snapshots
-                        [index..]
-                        .iter()
-                        .enumerate()
-                        .skip_while(|(_, s)| Some(s.buffer_handle) == buffer_handle)
-                        .take_while(|(_, s)| Some(s.buffer_handle) != buffer_handle)
-                        .map(|(i, _)| i)
-                        .last()
-                    {
-                        Some(i) => {
-                            client.navigation_history.current_snapshot_index =
-                                client.navigation_history.snapshots.len().min(index + i + 1) as _;
-                            Self::save_client_snapshot(client, &editor.buffer_views);
-                        }
-                        None => return,
-                    },
-                    NavigationMovement::PreviousBuffer => (),
-                }
-
-                let snapshots = &mut client.navigation_history.snapshots;
-                let len = snapshots.len();
-                if len < 2 {
-                    return;
-                }
-
-                if let Some(handle) = buffer_view_handle {
-                    let buffer_view = editor.buffer_views.get(handle);
-                    let last = &mut snapshots[len - 1];
-                    last.buffer_handle = buffer_view.buffer_handle;
-                    last.position = buffer_view.cursors.main_cursor().position;
-
-                    snapshots.swap(len - 2, len - 1);
-                }
-
-                client.navigation_history.current_snapshot_index = (len - 1) as _;
-            }
         }
 
         let snapshot = &client.navigation_history.snapshots
@@ -158,21 +100,53 @@ impl NavigationHistory {
             .content()
             .saturate_position(snapshot.position);
 
-        let view_handle = editor
+        let buffer_view_handle = editor
             .buffer_views
             .buffer_view_handle_from_buffer_handle(client.handle(), snapshot.buffer_handle);
 
-        let mut cursors = editor.buffer_views.get_mut(view_handle).cursors.mut_guard();
-        cursors.clear();
-        cursors.add(Cursor {
-            anchor: position,
-            position,
-        });
+        {
+            let mut cursors = editor
+                .buffer_views
+                .get_mut(buffer_view_handle)
+                .cursors
+                .mut_guard();
+            cursors.clear();
+            cursors.add(Cursor {
+                anchor: position,
+                position,
+            });
+        }
 
-        client.set_buffer_view_handle(Some(view_handle), &mut editor.events);
+        let current_buffer_handle = client
+            .buffer_view_handle()
+            .map(|h| editor.buffer_views.get(h).buffer_handle);
+        if current_buffer_handle != Some(snapshot.buffer_handle) {
+            client.navigation_history.previous_buffer = current_buffer_handle;
+        }
+
+        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+    }
+
+    pub fn move_to_previous_buffer(client: &mut Client, editor: &mut Editor) {
+        let current_buffer_handle = client
+            .buffer_view_handle()
+            .map(|h| editor.buffer_views.get(h).buffer_handle);
+
+        if let Some(buffer_handle) = client.navigation_history.previous_buffer {
+            let buffer_view_handle = editor
+                .buffer_views
+                .buffer_view_handle_from_buffer_handle(client.handle(), buffer_handle);
+            client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+        }
+
+        client.navigation_history.previous_buffer = current_buffer_handle;
     }
 
     pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {
+        if self.previous_buffer == Some(buffer_handle) {
+            self.previous_buffer = None;
+        }
+
         for i in (0..self.snapshots.len()).rev() {
             let snapshot = self.snapshots[i].clone();
             if snapshot.buffer_handle == buffer_handle {
@@ -182,16 +156,6 @@ impl NavigationHistory {
                     self.current_snapshot_index -= 1;
                 }
             }
-        }
-    }
-}
-
-impl Default for NavigationHistory {
-    fn default() -> Self {
-        Self {
-            snapshots: Vec::default(),
-            current_snapshot_index: 0,
-            previous_movement: NavigationMovement::Forward,
         }
     }
 }
@@ -229,43 +193,42 @@ mod tests {
         client.set_buffer_view_handle(Some(view_b), &mut editor.events);
         NavigationHistory::save_client_snapshot(&mut client, &editor.buffer_views);
         client.set_buffer_view_handle(Some(view_c), &mut editor.events);
-        NavigationHistory::save_client_snapshot(&mut client, &editor.buffer_views);
 
         (editor, client)
     }
 
-    fn buffer_handle(client: &Client, editor: &Editor) -> BufferHandle {
+    fn buffer_index(client: &Client, editor: &Editor) -> usize {
         let buffer_view_handle = client.buffer_view_handle().unwrap();
         let buffer_view = editor.buffer_views.get(buffer_view_handle);
-        buffer_view.buffer_handle
+        buffer_view.buffer_handle.0 as _
     }
 
     #[test]
     fn move_back_and_forward_in_history() {
         let (mut editor, mut client) = setup();
 
-        assert_eq!(3, client.navigation_history.current_snapshot_index);
-        assert_eq!(2, buffer_handle(&client, &editor).0);
+        assert_eq!(2, client.navigation_history.current_snapshot_index);
+        assert_eq!(2, buffer_index(&client, &editor));
 
         NavigationHistory::move_in_history(&mut client, &mut editor, NavigationMovement::Forward);
-        assert_eq!(3, client.navigation_history.current_snapshot_index);
-        assert_eq!(2, buffer_handle(&client, &editor).0);
+        assert_eq!(2, client.navigation_history.current_snapshot_index);
+        assert_eq!(2, buffer_index(&client, &editor));
 
         NavigationHistory::move_in_history(&mut client, &mut editor, NavigationMovement::Backward);
         assert_eq!(1, client.navigation_history.current_snapshot_index);
-        assert_eq!(1, buffer_handle(&client, &editor).0);
+        assert_eq!(1, buffer_index(&client, &editor));
 
         NavigationHistory::move_in_history(&mut client, &mut editor, NavigationMovement::Backward);
         assert_eq!(0, client.navigation_history.current_snapshot_index);
-        assert_eq!(0, buffer_handle(&client, &editor).0);
+        assert_eq!(0, buffer_index(&client, &editor));
 
         NavigationHistory::move_in_history(&mut client, &mut editor, NavigationMovement::Backward);
         assert_eq!(0, client.navigation_history.current_snapshot_index);
-        assert_eq!(0, buffer_handle(&client, &editor).0);
+        assert_eq!(0, buffer_index(&client, &editor));
 
         NavigationHistory::move_in_history(&mut client, &mut editor, NavigationMovement::Forward);
         assert_eq!(1, client.navigation_history.current_snapshot_index);
-        assert_eq!(1, buffer_handle(&client, &editor).0);
+        assert_eq!(1, buffer_index(&client, &editor));
 
         assert_eq!(3, client.navigation_history.snapshots.len());
     }
@@ -274,31 +237,16 @@ mod tests {
     fn move_to_previous_buffer_three_times() {
         let (mut editor, mut client) = setup();
 
-        NavigationHistory::move_in_history(
-            &mut client,
-            &mut editor,
-            NavigationMovement::PreviousBuffer,
-        );
-        assert_eq!(2, client.navigation_history.current_snapshot_index);
-        assert_eq!(1, buffer_handle(&client, &editor).0);
+        assert_eq!(2, buffer_index(&client, &editor));
 
-        NavigationHistory::move_in_history(
-            &mut client,
-            &mut editor,
-            NavigationMovement::PreviousBuffer,
-        );
-        assert_eq!(2, client.navigation_history.current_snapshot_index);
-        assert_eq!(2, buffer_handle(&client, &editor).0);
+        NavigationHistory::move_to_previous_buffer(&mut client, &mut editor);
+        assert_eq!(1, buffer_index(&client, &editor));
 
-        NavigationHistory::move_in_history(
-            &mut client,
-            &mut editor,
-            NavigationMovement::PreviousBuffer,
-        );
-        assert_eq!(2, client.navigation_history.current_snapshot_index);
-        assert_eq!(1, buffer_handle(&client, &editor).0);
+        NavigationHistory::move_to_previous_buffer(&mut client, &mut editor);
+        assert_eq!(2, buffer_index(&client, &editor));
 
-        assert_eq!(3, client.navigation_history.snapshots.len());
+        NavigationHistory::move_to_previous_buffer(&mut client, &mut editor);
+        assert_eq!(1, buffer_index(&client, &editor));
     }
 
     #[test]
@@ -307,44 +255,33 @@ mod tests {
 
         NavigationHistory::move_in_history(&mut client, &mut editor, NavigationMovement::Backward);
         assert_eq!(1, client.navigation_history.current_snapshot_index);
-        assert_eq!(1, buffer_handle(&client, &editor).0);
+        assert_eq!(1, buffer_index(&client, &editor));
 
         NavigationHistory::move_in_history(&mut client, &mut editor, NavigationMovement::Backward);
         assert_eq!(0, client.navigation_history.current_snapshot_index);
-        assert_eq!(0, buffer_handle(&client, &editor).0);
+        assert_eq!(0, buffer_index(&client, &editor));
 
         NavigationHistory::move_in_history(&mut client, &mut editor, NavigationMovement::Forward);
         assert_eq!(1, client.navigation_history.current_snapshot_index);
-        assert_eq!(1, buffer_handle(&client, &editor).0);
+        assert_eq!(1, buffer_index(&client, &editor));
 
         assert_eq!(3, client.navigation_history.snapshots.len());
 
-        NavigationHistory::move_in_history(
-            &mut client,
-            &mut editor,
-            NavigationMovement::PreviousBuffer,
-        );
+        NavigationHistory::move_to_previous_buffer(&mut client, &mut editor);
         assert_eq!(1, client.navigation_history.current_snapshot_index);
-        assert_eq!(0, buffer_handle(&client, &editor).0);
+        assert_eq!(0, buffer_index(&client, &editor));
 
-        assert_eq!(2, client.navigation_history.snapshots.len());
+        assert_eq!(3, client.navigation_history.snapshots.len());
 
-        NavigationHistory::move_in_history(
-            &mut client,
-            &mut editor,
-            NavigationMovement::PreviousBuffer,
-        );
+        NavigationHistory::move_to_previous_buffer(&mut client, &mut editor);
         assert_eq!(1, client.navigation_history.current_snapshot_index);
-        assert_eq!(1, buffer_handle(&client, &editor).0);
+        assert_eq!(1, buffer_index(&client, &editor));
 
-        NavigationHistory::move_in_history(
-            &mut client,
-            &mut editor,
-            NavigationMovement::PreviousBuffer,
-        );
+        NavigationHistory::move_to_previous_buffer(&mut client, &mut editor);
         assert_eq!(1, client.navigation_history.current_snapshot_index);
-        assert_eq!(0, buffer_handle(&client, &editor).0);
+        assert_eq!(0, buffer_index(&client, &editor));
 
-        assert_eq!(2, client.navigation_history.snapshots.len());
+        assert_eq!(3, client.navigation_history.snapshots.len());
     }
 }
+
