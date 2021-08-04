@@ -153,15 +153,18 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     ctx.editor.picker.clear_cursor();
 
     let mut arg_count = 0;
+    let ends_with_whitespace = input.ends_with(&[' ', '\t'][..]);
 
-    if let Some(aliased) = ctx.editor.commands.aliases.find(command_name) {
-        let mut aliased_tokens = CommandTokenizer(aliased);
-        command_name = aliased_tokens.next().unwrap_or("");
-        for _ in aliased_tokens {
-            arg_count += 1;
+    if ends_with_whitespace {
+        if let Some(aliased) = ctx.editor.commands.aliases.find(command_name) {
+            let mut aliased_tokens = CommandTokenizer(aliased);
+            command_name = aliased_tokens.next().unwrap_or("");
+            for _ in aliased_tokens {
+                arg_count += 1;
+            }
+
+            last_token = &input[input.len()..];
         }
-
-        last_token = &input[input.len()..];
     }
 
     for token in tokens {
@@ -171,7 +174,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
 
     let mut pattern = last_token;
 
-    if input.ends_with(&[' ', '\t'][..]) {
+    if ends_with_whitespace {
         arg_count += 1;
         pattern = &input[input.len()..];
     }
@@ -253,3 +256,4 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
+
