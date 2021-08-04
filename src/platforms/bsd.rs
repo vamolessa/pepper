@@ -9,9 +9,9 @@ use std::{
 };
 
 use pepper::{
-    application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
+    application::{AnyError, ClientApplication, ServerApplication},
     client::ClientHandle,
-    platform::{BufPool, Key, Platform, PlatformRequest, ProcessHandle},
+    platform::{BufPool, Key, Platform, PlatformEvent, PlatformRequest, ProcessHandle},
     Args,
 };
 
@@ -219,7 +219,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
         let events = kqueue.wait(&mut kqueue_events, timeout);
         if events.len() == 0 {
             timeout = None;
-            event_sender.send(ApplicationEvent::Idle)?;
+            event_sender.send(PlatformEvent::Idle)?;
             continue;
         }
 
@@ -241,7 +241,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                         kqueue.remove(Event::Fd(connection.as_raw_fd()));
                                         client_connections[index] = None;
                                         event_sender
-                                            .send(ApplicationEvent::ConnectionClose { handle })?;
+                                            .send(PlatformEvent::ConnectionClose { handle })?;
                                     }
                                 }
                             }
@@ -250,7 +250,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                 if let Some(connection) = client_connections[index].take() {
                                     kqueue.remove(Event::Fd(connection.as_raw_fd()));
                                 }
-                                event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
+                                event_sender.send(PlatformEvent::ConnectionClose { handle })?;
                             }
                             PlatformRequest::SpawnProcess {
                                 tag,
@@ -263,14 +263,14 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                         continue;
                                     }
 
-                                    let handle = ProcessHandle(i);
+                                    let handle = ProcessHandle(i as _);
                                     if let Ok(child) = command.spawn() {
                                         let process = Process::new(child, tag, buf_len);
                                         if let Some(fd) = process.try_as_raw_fd() {
                                             kqueue.add(Event::Fd(fd), PROCESSES_START_INDEX + i);
                                         }
                                         *p = Some(process);
-                                        event_sender.send(ApplicationEvent::ProcessSpawned {
+                                        event_sender.send(PlatformEvent::ProcessSpawned {
                                             tag,
                                             handle,
                                         })?;
@@ -279,11 +279,11 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                     break;
                                 }
                                 if !spawned {
-                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
+                                    event_sender.send(PlatformEvent::ProcessExit { tag })?;
                                 }
                             }
                             PlatformRequest::WriteToProcess { handle, buf } => {
-                                let index = handle.0;
+                                let index = handle.0 as usize;
                                 if let Some(ref mut process) = processes[index] {
                                     if !process.write(buf.as_bytes()) {
                                         if let Some(fd) = process.try_as_raw_fd() {
@@ -292,17 +292,17 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                         let tag = process.tag();
                                         process.kill();
                                         processes[index] = None;
-                                        event_sender.send(ApplicationEvent::ProcessExit { tag })?;
+                                        event_sender.send(PlatformEvent::ProcessExit { tag })?;
                                     }
                                 }
                             }
                             PlatformRequest::CloseProcessInput { handle } => {
-                                if let Some(ref mut process) = processes[handle.0] {
+                                if let Some(ref mut process) = processes[handle.0 as usize] {
                                     process.close_input();
                                 }
                             }
                             PlatformRequest::KillProcess { handle } => {
-                                let index = handle.0;
+                                let index = handle.0 as usize;
                                 if let Some(ref mut process) = processes[index] {
                                     if let Some(fd) = process.try_as_raw_fd() {
                                         kqueue.remove(Event::Fd(fd));
@@ -310,7 +310,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                     let tag = process.tag();
                                     process.kill();
                                     processes[index] = None;
-                                    event_sender.send(ApplicationEvent::ProcessExit { tag })?;
+                                    event_sender.send(PlatformEvent::ProcessExit { tag })?;
                                 }
                             }
                         }
@@ -329,7 +329,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                         *c = Some(connection);
                                         let handle = ClientHandle::from_index(i).unwrap();
                                         event_sender
-                                            .send(ApplicationEvent::ConnectionOpen { handle })?;
+                                            .send(PlatformEvent::ConnectionOpen { handle })?;
                                         break;
                                     }
                                 }
@@ -345,12 +345,12 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                         match read_from_connection(connection, &mut buf_pool, event_data as _) {
                             Ok(buf) if !buf.as_bytes().is_empty() => {
                                 event_sender
-                                    .send(ApplicationEvent::ConnectionOutput { handle, buf })?;
+                                    .send(PlatformEvent::ConnectionOutput { handle, buf })?;
                             }
                             _ => {
                                 kqueue.remove(Event::Fd(connection.as_raw_fd()));
                                 client_connections[index] = None;
-                                event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
+                                event_sender.send(PlatformEvent::ConnectionClose { handle })?;
                             }
                         }
                     }
@@ -364,7 +364,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                         match process.read(&mut buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) if !buf.as_bytes().is_empty() => {
-                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
+                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
                             }
                             _ => {
                                 if let Some(fd) = process.try_as_raw_fd() {
@@ -372,7 +372,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                 }
                                 process.kill();
                                 processes[index] = None;
-                                event_sender.send(ApplicationEvent::ProcessExit { tag })?;
+                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
                             }
                         }
                     }
@@ -471,3 +471,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
+

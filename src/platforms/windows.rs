@@ -929,7 +929,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                     continue;
                                 }
 
-                                let handle = ProcessHandle(i);
+                                let handle = ProcessHandle(i as _);
                                 if let Ok(child) = command.spawn() {
                                     *p = Some(AsyncProcess::new(child, tag, buf_len));
                                     event_sender
@@ -943,25 +943,25 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                             }
                         }
                         PlatformRequest::WriteToProcess { handle, buf } => {
-                            if let Some(process) = &mut processes[handle.0] {
+                            if let Some(process) = &mut processes[handle.0 as usize] {
                                 if !process.write(buf.as_bytes()) {
                                     let tag = process.tag;
                                     process.kill();
-                                    processes[handle.0] = None;
+                                    processes[handle.0 as usize] = None;
                                     event_sender.send(PlatformEvent::ProcessExit { tag })?;
                                 }
                             }
                         }
                         PlatformRequest::CloseProcessInput { handle } => {
-                            if let Some(process) = &mut processes[handle.0] {
+                            if let Some(process) = &mut processes[handle.0 as usize] {
                                 process.close_input();
                             }
                         }
                         PlatformRequest::KillProcess { handle } => {
-                            if let Some(process) = &mut processes[handle.0] {
+                            if let Some(process) = &mut processes[handle.0 as usize] {
                                 let tag = process.tag;
                                 process.kill();
-                                processes[handle.0] = None;
+                                processes[handle.0 as usize] = None;
                                 event_sender.send(PlatformEvent::ProcessExit { tag })?;
                             }
                         }
@@ -1290,3 +1290,4 @@ fn parse_console_events(
         }
     }
 }
+

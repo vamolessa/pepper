@@ -87,9 +87,8 @@ pub enum ProcessTag {
     Lsp(lsp::ClientHandle),
 }
 
-// TODO: change to u8
 #[derive(Clone, Copy)]
-pub struct ProcessHandle(pub usize);
+pub struct ProcessHandle(pub u8);
 
 pub struct Platform {
     read_from_clipboard: Option<fn(&mut String)>,
