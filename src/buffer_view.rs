@@ -600,8 +600,6 @@ mod tests {
     use crate::{buffer::BufferCapabilities, buffer_position::BufferPosition};
 
     struct TestContext {
-        pub word_database: WordDatabase,
-        pub events: EditorEventQueue,
         pub buffers: BufferCollection,
         pub buffer_views: BufferViewCollection,
         pub buffer_view_handle: BufferViewHandle,
@@ -627,8 +625,6 @@ mod tests {
                 buffer_views.add_new(ClientHandle::from_index(0).unwrap(), buffer.handle());
 
             Self {
-                word_database,
-                events,
                 buffers,
                 buffer_views,
                 buffer_view_handle,
@@ -723,3 +719,4 @@ mod tests {
         assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }
+
