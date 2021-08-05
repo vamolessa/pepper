@@ -435,6 +435,7 @@ impl DiagnosticCollection {
                 if diagnostics.buffer_handle.is_none() {
                     diagnostics.buffer_handle = find_buffer_with_path(editor, root, path);
                 }
+
                 return diagnostics;
             }
         }
@@ -2213,6 +2214,8 @@ impl Client {
         let id = self
             .protocol
             .request(platform, &mut self.json, method, params);
+        self.json.clear();
+
         self.pending_requests.add(id, method);
     }
 
@@ -2244,6 +2247,7 @@ impl Client {
         });
         self.protocol
             .respond(platform, &mut self.json, request_id, result);
+        self.json.clear();
     }
 
     fn notify(&mut self, platform: &mut Platform, method: &'static str, params: JsonObject) {
@@ -2255,6 +2259,7 @@ impl Client {
         });
         self.protocol
             .notify(platform, &mut self.json, method, params);
+        self.json.clear();
     }
 
     fn initialize(&mut self, platform: &mut Platform) {
@@ -2801,3 +2806,4 @@ impl ClientManager {
         }
     }
 }
+
