@@ -155,21 +155,24 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     let mut arg_count = 0;
     let ends_with_whitespace = input.ends_with(&[' ', '\t'][..]);
 
-    if ends_with_whitespace {
+    for token in tokens {
+        arg_count += 1;
+        last_token = token;
+    }
+
+    if ends_with_whitespace || arg_count > 0 {
         if let Some(aliased) = ctx.editor.commands.aliases.find(command_name) {
             let mut aliased_tokens = CommandTokenizer(aliased);
             command_name = aliased_tokens.next().unwrap_or("");
+
             for _ in aliased_tokens {
                 arg_count += 1;
             }
 
-            last_token = &input[input.len()..];
+            if ends_with_whitespace {
+                last_token = &input[input.len()..];
+            }
         }
-    }
-
-    for token in tokens {
-        arg_count += 1;
-        last_token = token;
     }
 
     let mut pattern = last_token;
