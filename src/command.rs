@@ -183,7 +183,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                         end = chars.as_str().as_ptr() as usize - 1;
                     }
                     '=' => matched += 1,
-                    _ => (),
+                    _ => ending = false,
                 }
             }
             let rest = chars.as_str();
@@ -464,6 +464,11 @@ mod tests {
         let mut tokens = CommandTokenizer("cmd [[arg]]");
         assert_eq!(Some("cmd"), tokens.next());
         assert_eq!(Some("arg"), tokens.next());
+        assert_eq!(None, tokens.next());
+
+        let mut tokens = CommandTokenizer("cmd [[%]%]=]]");
+        assert_eq!(Some("cmd"), tokens.next());
+        assert_eq!(Some("%]%]="), tokens.next());
         assert_eq!(None, tokens.next());
 
         let mut tokens = CommandTokenizer("cmd [==[arg]]=]]==]");

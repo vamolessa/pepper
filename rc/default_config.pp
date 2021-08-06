@@ -38,7 +38,7 @@ syntax-end
 
 syntax-begin "**/*.pp"
 syntax-keywords ""
-syntax-strings [=["{!".}|'{!'.}|%[%[{!(%]%]).}]=]
+syntax-strings [["{!".}|'{!'.}|%[%[{!(%]%]).}]]
 syntax-comments "#{.}"
 syntax-end
 
@@ -72,48 +72,46 @@ syntax-strings [["{(\")!".}]]
 syntax-comments //{.}|/*{!(*/).$}
 syntax-end
 
-#; https://www.lua.org/manual/5.1/manual.html#2
-#[syntax]
-#glob=**/*.lua"
-#keywords=and|break|do|elseif|else|end|for|function|if|in|local|not|or|repeat|return|then|until|while
-#symbols=+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.
-#literals=nil|false|true|_G|_ENV|%d{%d_}%.%w{%w_}|%d{%w_}
-#strings='{(\')!'.}|"{(\")!".}|%[%[{!(%]%]).}
-#comments=--{.}|--%[%[{!(%]%]).$}
-#
-#; https://docs.python.org/3/reference/lexical_analysis.html#keywords
-#[syntax]
-#glob=**/*.py
-#keywords=and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield
-#symbols=+|-|*|/|%%|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.
-#literals=None|False|True|%d{%d_}%.%w{%w_}|%d{%w_}
-#strings='{(\')!'.}|"{(\")!".}
-#comments=#{.}
-#
-#; https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#keywords
-#[syntax]
-#glob=**/*.{js,ts}
-#keywords=break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|new|return|super|switch|this|throw|try|typeof|var|void|while|witch|yield|enum|implements|interface|let|package|private|protected|public|static|yield|await
-#types=%u{%w_}
-#symbols=%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@
-#literals=null|undefined|this|true|false|%d{%d_}%.%w{%w_}|%d{%w_}
-#strings='{(\')!'.}|"{(\")!".}|`{(\`)!`.}
-#comments=//{.}|/*{!(*/).$}
-#
-#
-#[syntax]
-#glob=**/*.md
-#keywords=#{.}$
-#symbols=%||%!|-
-#literals=%[{!%].}%({!%).}
-#strings=```{!(```).$}|`{(\`)!`.}
-#texts={%w-_}
-#
-#[syntax]
-#glob=**/*.html
-#keywords=%!DOCTYPE
-#symbols==
-#strings='{(\')!'.}|"{(\")!".}
-#comments=<%!--{!(-->).$}
-#texts={%w-_}
-#
+# https://www.lua.org/manual/5.1/manual.html#2
+syntax-begin "**/*.lua"
+syntax-keywords and|break|do|elseif|else|end|for|function|if|in|local|not|or|repeat|return|then|until|while
+syntax-symbols [[+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.]]
+syntax-literals nil|false|true|_G|_ENV|%d{%d_}%.%w{%w_}|%d{%w_}
+syntax-strings [['{(\')!'.}|"{(\")!".}|%[%[{!(%]%]).}]]
+syntax-comments --{.}|--%[%[{!(%]%]).$}
+syntax-end
+
+# https://docs.python.org/3/reference/lexical_analysis.html#keywords
+syntax-begin "**/*.py"
+syntax-keywords and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield
+syntax-symbols +|-|*|/|%%|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.
+syntax-literals None|False|True|%d{%d_}%.%w{%w_}|%d{%w_}
+syntax-strings [['{(\')!'.}|"{(\")!".}]]
+syntax-comments [[#{.}]]
+syntax-end
+
+# https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#keywords
+syntax-begin "**/*.{js,ts}"
+syntax-keywords break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|new|return|super|switch|this|throw|try|typeof|var|void|while|witch|yield|enum|implements|interface|let|package|private|protected|public|static|yield|await
+syntax-types %u{%w_}
+syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@
+syntax-literals null|undefined|this|true|false|%d{%d_}%.%w{%w_}|%d{%w_}
+syntax-strings [['{(\')!'.}|"{(\")!".}|`{(\`)!`.}]]
+syntax-comments //{.}|/*{!(*/).$}
+syntax-end
+
+syntax-begin "**/*.md"
+syntax-keywords [[#{.}$]]
+syntax-symbols %||%!|-
+syntax-literals %[{!%].}%({!%).}
+syntax-strings [[```{!(```).$}|`{(\`)!`.}]]
+syntax-texts {%w-_}
+syntax-end
+
+syntax-begin "**/*.html"
+syntax-keywords "%!DOCTYPE"
+syntax-symbols =
+syntax-strings [['{(\')!'.}|"{(\")!".}]]
+syntax-comments <%!--{!(-->).$}
+syntax-texts {%w-_}
+syntax-end
