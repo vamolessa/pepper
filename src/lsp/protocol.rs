@@ -830,7 +830,10 @@ impl<'json> FromJson<'json> for DocumentCompletionItem {
         for (key, value) in value.members(json) {
             match key {
                 "label" => this.text = JsonString::from_json(value, json)?,
-                "insertText" => this.text = JsonString::from_json(value, json)?,
+                "insertText" => {
+                    this.text = JsonString::from_json(value, json)?;
+                    break;
+                }
                 _ => (),
             }
         }
