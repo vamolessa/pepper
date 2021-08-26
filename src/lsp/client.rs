@@ -2134,7 +2134,7 @@ impl Client {
                     if let Ok(completion) =
                         DocumentCompletionItem::from_json(completion, &self.json)
                     {
-                        let text = completion.text.as_str(&self.json).trim();
+                        let text = completion.text.as_str(&self.json);
                         editor.picker.add_custom_entry(text);
                     }
                 }
