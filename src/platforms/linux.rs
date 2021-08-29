@@ -95,7 +95,7 @@ impl SignalFd {
     }
 
     pub fn read(&self) {
-        let mut buf = [0u8; std::mem::size_of::<libc::signalfd_siginfo>()];
+        let mut buf = [0; std::mem::size_of::<libc::signalfd_siginfo>()];
         if read(self.0, &mut buf) != Ok(buf.len()) {
             panic!("could not read from signal fd");
         }
