@@ -9,12 +9,12 @@ use std::{
 
 use winapi::{
     shared::{
-        minwindef::{BOOL, DWORD, FALSE, TRUE},
+        minwindef::{DWORD, FALSE, TRUE},
         ntdef::NULL,
         winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
-        consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
+        consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleMode},
         errhandlingapi::GetLastError,
         fileapi::{
             CreateFileW, FindClose, FindFirstFileW, GetFileType, ReadFile, WriteFile, OPEN_EXISTING,
@@ -135,16 +135,6 @@ fn get_last_error() -> DWORD {
     unsafe { GetLastError() }
 }
 
-fn set_ctrlc_handler() {
-    unsafe extern "system" fn handler(_ctrl_type: DWORD) -> BOOL {
-        FALSE
-    }
-
-    if unsafe { SetConsoleCtrlHandler(Some(handler), TRUE) } == FALSE {
-        panic!("could not set ctrl handler");
-    }
-}
-
 fn pipe_exists(path: &[u16]) -> bool {
     unsafe {
         let mut find_data = std::mem::zeroed();
@@ -180,7 +170,7 @@ fn read_console_input<'a>(
     input_handle: &Handle,
     events: &'a mut [INPUT_RECORD],
 ) -> &'a [INPUT_RECORD] {
-    let mut event_count: DWORD = 0;
+    let mut event_count = 0;
     let result = unsafe {
         ReadConsoleInputW(
             input_handle.0,
@@ -1140,8 +1130,6 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         console_input_mode = None;
         console_output_mode = None;
     } else {
-        set_ctrlc_handler();
-
         let input_mode = ConsoleMode::new(&input_handle);
         input_mode.set(ENABLE_WINDOW_INPUT);
         console_input_mode = Some(input_mode);
