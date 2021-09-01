@@ -695,8 +695,13 @@ fn draw_statusbar(
     if needs_save {
         buf.push(b'*');
     }
-    buf.extend_from_slice(view_name.as_bytes());
+    if view_name.is_empty() {
+        buf.extend_from_slice(b"no buffer");
+    } else {
+        buf.extend_from_slice(view_name.as_bytes());
+    }
     buf.extend_from_slice(END_TITLE_CODE);
 
     clear_until_new_line(buf);
 }
+

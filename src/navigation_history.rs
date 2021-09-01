@@ -42,6 +42,10 @@ impl NavigationHistory {
         let buffer_handle = buffer_view.buffer_handle;
         let position = buffer_view.cursors.main_cursor().position;
 
+        if this.previous_buffer != Some(buffer_handle) {
+            this.previous_buffer = Some(buffer_handle);
+        }
+
         if this
             .snapshots
             .last()
@@ -49,10 +53,6 @@ impl NavigationHistory {
             .unwrap_or(false)
         {
             return;
-        }
-
-        if this.previous_buffer != Some(buffer_handle) {
-            this.previous_buffer = Some(buffer_handle);
         }
 
         this.snapshots.push(NavigationHistorySnapshot {
