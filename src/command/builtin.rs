@@ -82,7 +82,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let client_handle = ctx.client_handle()?;
             let (path, position) = parse_path_and_position(path);
 
-            NavigationHistory::save_client_snapshot(
+            NavigationHistory::save_snapshot(
                 ctx.clients.get_mut(client_handle),
                 &ctx.editor.buffer_views,
             );
@@ -251,7 +251,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
 
             let client_handle = ctx.client_handle()?;
             let client = ctx.clients.get_mut(client_handle);
-            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+            NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
             // TODO
             client.set_buffer_view_handle(None, &mut ctx.editor.events);
 
@@ -470,7 +470,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                             BufferCapabilities::log(),
                         );
                         let client = clients.get_mut(client_handle);
-                        NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
+                        NavigationHistory::save_snapshot(client, &editor.buffer_views);
                         client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                         Ok(())
                     }
@@ -749,4 +749,3 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
-

@@ -34,7 +34,7 @@ impl State {
                 .find_file_buf
                 .drain(..i + 1)
                 .as_slice()
-                .split(|&b| matches!(b, b'\n'| b'\r'))
+                .split(|&b| matches!(b, b'\n' | b'\r'))
             {
                 if line.is_empty() {
                     continue;
@@ -175,7 +175,7 @@ pub mod opened_buffers {
             };
 
             let client = ctx.clients.get_mut(ctx.client_handle);
-            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+            NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
 
             let path = ctx.editor.string_pool.acquire_with(path);
             let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
@@ -242,7 +242,7 @@ pub mod find_file {
             };
 
             let client = ctx.clients.get_mut(ctx.client_handle);
-            NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+            NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
 
             let path = ctx.editor.string_pool.acquire_with(path);
             let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
@@ -312,7 +312,7 @@ pub mod lsp_definition {
                         };
 
                         let client = ctx.clients.get_mut(ctx.client_handle);
-                        NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+                        NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
 
                         let path = ctx.editor.string_pool.acquire_with(path);
                         let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(

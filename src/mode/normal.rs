@@ -317,7 +317,7 @@ impl State {
                     Key::None => return None,
                     Key::Char('g') => {
                         if state.count > 0 {
-                            NavigationHistory::save_client_snapshot(
+                            NavigationHistory::save_snapshot(
                                 ctx.clients.get_mut(ctx.client_handle),
                                 &ctx.editor.buffer_views,
                             );
@@ -349,7 +349,7 @@ impl State {
                         ctx.editor.config.tab_size,
                     ),
                     Key::Char('j') => {
-                        NavigationHistory::save_client_snapshot(
+                        NavigationHistory::save_snapshot(
                             ctx.clients.get_mut(ctx.client_handle),
                             &ctx.editor.buffer_views,
                         );
@@ -362,7 +362,7 @@ impl State {
                         );
                     }
                     Key::Char('k') => {
-                        NavigationHistory::save_client_snapshot(
+                        NavigationHistory::save_snapshot(
                             ctx.clients.get_mut(ctx.client_handle),
                             &ctx.editor.buffer_views,
                         );
@@ -497,7 +497,7 @@ impl State {
                             }
 
                             if !jumped {
-                                NavigationHistory::save_client_snapshot(
+                                NavigationHistory::save_snapshot(
                                     ctx.clients.get_mut(ctx.client_handle),
                                     &ctx.editor.buffer_views,
                                 );
@@ -1416,7 +1416,7 @@ fn move_to_search_match<F>(ctx: &mut ModeContext, index_selector: F)
 where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
-    NavigationHistory::save_client_snapshot(
+    NavigationHistory::save_snapshot(
         ctx.clients.get_mut(ctx.client_handle),
         &ctx.editor.buffer_views,
     );
@@ -1534,7 +1534,7 @@ fn search_word_or_move_to_it(
             Err(i) => i,
         };
     } else {
-        NavigationHistory::save_client_snapshot(
+        NavigationHistory::save_snapshot(
             ctx.clients.get_mut(ctx.client_handle),
             &ctx.editor.buffer_views,
         );
@@ -1677,7 +1677,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     };
 
     let client = ctx.clients.get_mut(ctx.client_handle);
-    NavigationHistory::save_client_snapshot(client, &ctx.editor.buffer_views);
+    NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
 
     let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
@@ -1693,4 +1693,3 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 }
-

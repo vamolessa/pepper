@@ -260,10 +260,8 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                             epoll.add(fd, PROCESSES_START_INDEX + i);
                                         }
                                         *p = Some(process);
-                                        event_sender.send(PlatformEvent::ProcessSpawned {
-                                            tag,
-                                            handle,
-                                        })?;
+                                        event_sender
+                                            .send(PlatformEvent::ProcessSpawned { tag, handle })?;
                                         spawned = true;
                                     }
                                     break;

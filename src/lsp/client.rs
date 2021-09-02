@@ -1059,10 +1059,7 @@ impl Client {
         }
 
         if let Ok(position) = find_symbol_position(symbols, &self.json, index) {
-            NavigationHistory::save_client_snapshot(
-                clients.get_mut(client_handle),
-                &editor.buffer_views,
-            );
+            NavigationHistory::save_snapshot(clients.get_mut(client_handle), &editor.buffer_views);
 
             let position = position.into();
             let mut cursors = editor
@@ -1127,7 +1124,7 @@ impl Client {
             };
 
             let client = clients.get_mut(client_handle);
-            NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
+            NavigationHistory::save_snapshot(client, &editor.buffer_views);
 
             let position = symbol.range.start.into();
             let buffer_view_handle = editor.buffer_view_handle_from_path(
@@ -2309,7 +2306,7 @@ impl Client {
             DefinitionLocation::Single(location) => {
                 let Uri::Path(path) = Uri::parse(&self.root, location.uri.as_str(&self.json))?;
                 let client = clients.get_mut(client_handle);
-                NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
+                NavigationHistory::save_snapshot(client, &editor.buffer_views);
 
                 let buffer_view_handle = editor.buffer_view_handle_from_path(
                     client_handle,
@@ -2878,4 +2875,3 @@ impl ClientManager {
         }
     }
 }
-

@@ -270,10 +270,8 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                             kqueue.add(Event::Fd(fd), PROCESSES_START_INDEX + i);
                                         }
                                         *p = Some(process);
-                                        event_sender.send(PlatformEvent::ProcessSpawned {
-                                            tag,
-                                            handle,
-                                        })?;
+                                        event_sender
+                                            .send(PlatformEvent::ProcessSpawned { tag, handle })?;
                                         spawned = true;
                                     }
                                     break;
@@ -471,4 +469,3 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
-

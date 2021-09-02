@@ -29,7 +29,7 @@ impl NavigationHistory {
         self.previous_buffer = None;
     }
 
-    pub fn save_client_snapshot(client: &mut Client, buffer_views: &BufferViewCollection) {
+    pub fn save_snapshot(client: &mut Client, buffer_views: &BufferViewCollection) {
         let buffer_view_handle = match client.buffer_view_handle() {
             Some(handle) => handle,
             None => return,
@@ -81,7 +81,7 @@ impl NavigationHistory {
                 if client.navigation_history.current_snapshot_index
                     == client.navigation_history.snapshots.len() as _
                 {
-                    Self::save_client_snapshot(client, &editor.buffer_views);
+                    Self::save_snapshot(client, &editor.buffer_views);
                     if client.navigation_history.current_snapshot_index > 1 {
                         client.navigation_history.current_snapshot_index -= 1;
                     }
@@ -187,11 +187,11 @@ mod tests {
             .buffer_views
             .add_new(client.handle(), BufferHandle(2));
 
-        NavigationHistory::save_client_snapshot(&mut client, &editor.buffer_views);
+        NavigationHistory::save_snapshot(&mut client, &editor.buffer_views);
         client.set_buffer_view_handle(Some(view_a), &mut editor.events);
-        NavigationHistory::save_client_snapshot(&mut client, &editor.buffer_views);
+        NavigationHistory::save_snapshot(&mut client, &editor.buffer_views);
         client.set_buffer_view_handle(Some(view_b), &mut editor.events);
-        NavigationHistory::save_client_snapshot(&mut client, &editor.buffer_views);
+        NavigationHistory::save_snapshot(&mut client, &editor.buffer_views);
         client.set_buffer_view_handle(Some(view_c), &mut editor.events);
 
         (editor, client)
@@ -284,4 +284,3 @@ mod tests {
         assert_eq!(3, client.navigation_history.snapshots.len());
     }
 }
-
