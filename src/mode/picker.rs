@@ -32,9 +32,9 @@ impl State {
         if let Some(i) = self.find_file_buf.iter().rposition(|&b| b == b'\n') {
             for line in self
                 .find_file_buf
-                .drain(..i)
+                .drain(..i + 1)
                 .as_slice()
-                .split(|&b| b == b'\n')
+                .split(|&b| matches!(b, b'\n'| b'\r'))
             {
                 if line.is_empty() {
                     continue;
