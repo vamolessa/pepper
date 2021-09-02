@@ -534,6 +534,44 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "lsp-declaration",
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_empty()?;
+            let client_handle = ctx.client_handle()?;
+            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
+            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
+                client.declaration(
+                    editor,
+                    platform,
+                    buffer_handle,
+                    cursor.position,
+                    client_handle,
+                )
+            })?;
+            Ok(EditorControlFlow::Continue)
+        },
+    },
+    BuiltinCommand {
+        name: "lsp-implementation",
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_empty()?;
+            let client_handle = ctx.client_handle()?;
+            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
+            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
+                client.implementation(
+                    editor,
+                    platform,
+                    buffer_handle,
+                    cursor.position,
+                    client_handle,
+                )
+            })?;
+            Ok(EditorControlFlow::Continue)
+        },
+    },
+    BuiltinCommand {
         name: "lsp-references",
         completions: &[],
         func: |ctx| {
@@ -711,3 +749,4 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
+

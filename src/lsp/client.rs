@@ -516,6 +516,12 @@ enum RequestState {
     Definition {
         client_handle: client::ClientHandle,
     },
+    Declaration {
+        client_handle: client::ClientHandle,
+    },
+    Implementation {
+        client_handle: client::ClientHandle,
+    },
     References {
         client_handle: client::ClientHandle,
         context_len: usize,
@@ -713,18 +719,13 @@ impl Client {
         self.request(platform, "textDocument/signatureHelp", params);
     }
 
-    pub fn definition(
+    fn make_definition_params(
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
-        client_handle: client::ClientHandle,
-    ) {
-        if !self.server_capabilities.definition_provider.0 || !self.request_state.is_idle() {
-            return;
-        }
-
+    ) -> JsonObject {
         helper::send_pending_did_change(self, editor, platform);
 
         let buffer_path = &editor.buffers.get(buffer_handle).path;
@@ -739,8 +740,58 @@ impl Client {
             &mut self.json,
         );
 
+        params
+    }
+
+    pub fn definition(
+        &mut self,
+        editor: &Editor,
+        platform: &mut Platform,
+        buffer_handle: BufferHandle,
+        buffer_position: BufferPosition,
+        client_handle: client::ClientHandle,
+    ) {
+        if !self.server_capabilities.definition_provider.0 || !self.request_state.is_idle() {
+            return;
+        }
+
+        let params = self.make_definition_params(editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Definition { client_handle };
         self.request(platform, "textDocument/definition", params);
+    }
+
+    pub fn declaration(
+        &mut self,
+        editor: &Editor,
+        platform: &mut Platform,
+        buffer_handle: BufferHandle,
+        buffer_position: BufferPosition,
+        client_handle: client::ClientHandle,
+    ) {
+        if !self.server_capabilities.declaration_provider.0 || !self.request_state.is_idle() {
+            return;
+        }
+
+        let params = self.make_definition_params(editor, platform, buffer_handle, buffer_position);
+        self.request_state = RequestState::Declaration { client_handle };
+        self.request(platform, "textDocument/declaration", params);
+    }
+
+    pub fn implementation(
+        &mut self,
+        editor: &Editor,
+        platform: &mut Platform,
+        buffer_handle: BufferHandle,
+        buffer_position: BufferPosition,
+        client_handle: client::ClientHandle,
+    ) {
+        if !self.server_capabilities.implementation_provider.0 || !self.request_state.is_idle() {
+            return;
+        }
+
+        let params = self.make_definition_params(editor, platform, buffer_handle, buffer_position);
+        self.request_state = RequestState::Implementation { client_handle };
+        self.request(platform, "textDocument/implementation", params);
     }
 
     pub fn references(
@@ -1177,7 +1228,7 @@ impl Client {
         if let Some(ref mut buf) = self.log_file {
             use io::Write;
             writer(buf, &mut self.json);
-            let _ = buf.write_all(b"\n----\n\n");
+            let _ = buf.write_all(b"\n\n");
             let _ = buf.flush();
         }
     }
@@ -1620,106 +1671,25 @@ impl Client {
                 Ok(())
             }
             "textDocument/definition" => {
-                enum DefinitionLocation {
-                    Single(DocumentLocation),
-                    Many(JsonArray),
-                    Invalid,
-                }
-                impl DefinitionLocation {
-                    pub fn parse(value: JsonValue, json: &Json) -> Self {
-                        match value {
-                            JsonValue::Object(_) => {
-                                match DocumentLocation::from_json(value, json) {
-                                    Ok(location) => Self::Single(location),
-                                    Err(_) => Self::Invalid,
-                                }
-                            }
-                            JsonValue::Array(array) => {
-                                let mut locations = array
-                                    .clone()
-                                    .elements(json)
-                                    .filter_map(move |l| DocumentLocation::from_json(l, json).ok());
-                                let location = match locations.next() {
-                                    Some(location) => location,
-                                    None => return Self::Invalid,
-                                };
-                                match locations.next() {
-                                    Some(_) => Self::Many(array),
-                                    None => Self::Single(location),
-                                }
-                            }
-                            _ => Self::Invalid,
-                        }
-                    }
-                }
-
                 let client_handle = match self.request_state {
                     RequestState::Definition { client_handle } => client_handle,
                     _ => return Ok(()),
                 };
-                self.request_state = RequestState::Idle;
-                match DefinitionLocation::parse(result, &self.json) {
-                    DefinitionLocation::Single(location) => {
-                        let Uri::Path(path) =
-                            Uri::parse(&self.root, location.uri.as_str(&self.json))?;
-                        let client = clients.get_mut(client_handle);
-                        NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
-
-                        let buffer_view_handle = editor.buffer_view_handle_from_path(
-                            client_handle,
-                            path,
-                            BufferCapabilities::text(),
-                        );
-                        let position = location.range.start.into();
-                        let mut cursors = editor
-                            .buffer_views
-                            .get_mut(buffer_view_handle)
-                            .cursors
-                            .mut_guard();
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: position,
-                            position,
-                        });
-
-                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
-                    }
-                    DefinitionLocation::Many(locations) => {
-                        editor.picker.clear();
-                        for location in locations
-                            .elements(&self.json)
-                            .filter_map(|l| DocumentLocation::from_json(l, &self.json).ok())
-                        {
-                            let path = match Uri::parse(&self.root, location.uri.as_str(&self.json))
-                            {
-                                Ok(Uri::Path(path)) => path,
-                                Err(_) => continue,
-                            };
-                            let path = match path.to_str() {
-                                Some(path) => path,
-                                None => continue,
-                            };
-
-                            let position: BufferPosition = location.range.start.into();
-                            editor.picker.add_custom_entry_fmt(format_args!(
-                                "{}:{},{}",
-                                path,
-                                position.line_index + 1,
-                                position.column_byte_index + 1
-                            ));
-
-                            let mut ctx = ModeContext {
-                                editor,
-                                platform,
-                                clients,
-                                client_handle,
-                            };
-                            picker::lsp_definition::enter_mode(&mut ctx, self.handle());
-                        }
-                    }
-                    DefinitionLocation::Invalid => (),
-                }
-                Ok(())
+                self.goto_definition(editor, platform, clients, client_handle, result)
+            }
+            "textDocument/declaration" => {
+                let client_handle = match self.request_state {
+                    RequestState::Declaration { client_handle } => client_handle,
+                    _ => return Ok(()),
+                };
+                self.goto_definition(editor, platform, clients, client_handle, result)
+            }
+            "textDocument/implementation" => {
+                let client_handle = match self.request_state {
+                    RequestState::Implementation { client_handle } => client_handle,
+                    _ => return Ok(()),
+                };
+                self.goto_definition(editor, platform, clients, client_handle, result)
             }
             "textDocument/references" => {
                 let (client_handle, auto_close_buffer, context_len) = match self.request_state {
@@ -2293,6 +2263,108 @@ impl Client {
         self.initialized = true;
         self.request(platform, "initialize", params);
         self.initialized = false;
+    }
+
+    fn goto_definition(
+        &mut self,
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut client::ClientManager,
+        client_handle: client::ClientHandle,
+        result: JsonValue,
+    ) -> Result<(), ProtocolError> {
+        enum DefinitionLocation {
+            Single(DocumentLocation),
+            Many(JsonArray),
+            Invalid,
+        }
+        impl DefinitionLocation {
+            pub fn parse(value: JsonValue, json: &Json) -> Self {
+                match value {
+                    JsonValue::Object(_) => match DocumentLocation::from_json(value, json) {
+                        Ok(location) => Self::Single(location),
+                        Err(_) => Self::Invalid,
+                    },
+                    JsonValue::Array(array) => {
+                        let mut locations = array
+                            .clone()
+                            .elements(json)
+                            .filter_map(move |l| DocumentLocation::from_json(l, json).ok());
+                        let location = match locations.next() {
+                            Some(location) => location,
+                            None => return Self::Invalid,
+                        };
+                        match locations.next() {
+                            Some(_) => Self::Many(array),
+                            None => Self::Single(location),
+                        }
+                    }
+                    _ => Self::Invalid,
+                }
+            }
+        }
+
+        self.request_state = RequestState::Idle;
+        match DefinitionLocation::parse(result, &self.json) {
+            DefinitionLocation::Single(location) => {
+                let Uri::Path(path) = Uri::parse(&self.root, location.uri.as_str(&self.json))?;
+                let client = clients.get_mut(client_handle);
+                NavigationHistory::save_client_snapshot(client, &editor.buffer_views);
+
+                let buffer_view_handle = editor.buffer_view_handle_from_path(
+                    client_handle,
+                    path,
+                    BufferCapabilities::text(),
+                );
+                let position = location.range.start.into();
+                let mut cursors = editor
+                    .buffer_views
+                    .get_mut(buffer_view_handle)
+                    .cursors
+                    .mut_guard();
+                cursors.clear();
+                cursors.add(Cursor {
+                    anchor: position,
+                    position,
+                });
+
+                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+            }
+            DefinitionLocation::Many(locations) => {
+                editor.picker.clear();
+                for location in locations
+                    .elements(&self.json)
+                    .filter_map(|l| DocumentLocation::from_json(l, &self.json).ok())
+                {
+                    let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
+                        Ok(Uri::Path(path)) => path,
+                        Err(_) => continue,
+                    };
+                    let path = match path.to_str() {
+                        Some(path) => path,
+                        None => continue,
+                    };
+
+                    let position: BufferPosition = location.range.start.into();
+                    editor.picker.add_custom_entry_fmt(format_args!(
+                        "{}:{},{}",
+                        path,
+                        position.line_index + 1,
+                        position.column_byte_index + 1
+                    ));
+
+                    let mut ctx = ModeContext {
+                        editor,
+                        platform,
+                        clients,
+                        client_handle,
+                    };
+                    picker::lsp_definition::enter_mode(&mut ctx, self.handle());
+                }
+            }
+            DefinitionLocation::Invalid => (),
+        }
+        Ok(())
     }
 }
 
