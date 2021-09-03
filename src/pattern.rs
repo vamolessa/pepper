@@ -139,7 +139,11 @@ impl Pattern {
             [b'L', b'/', ..] => (true, false, &pattern[2..]),
             [b'p', b'/', ..] => (false, true, &pattern[2..]),
             [b'P', b'/', ..] => (false, false, &pattern[2..]),
-            _ => (true, pattern.chars().all(char::is_lowercase), pattern),
+            _ => (
+                true,
+                !pattern.chars().any(|c| c.is_ascii_uppercase()),
+                pattern,
+            ),
         };
 
         if is_literal {
@@ -1499,3 +1503,4 @@ mod tests {
         ));
     }
 }
+
