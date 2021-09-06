@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    fmt, io,
     path::{Path, PathBuf},
 };
 
@@ -9,7 +9,7 @@ use crate::{
     client::{Client, ClientHandle, ClientManager},
     command::CommandManager,
     config::Config,
-    editor_utils::{ReadLine, StatusBar, StringPool},
+    editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
         TargetClient,
@@ -154,7 +154,17 @@ impl Editor {
             buffer.path.clear();
             buffer.path.push(path);
             buffer.capabilities = capabilities;
-            let _ = buffer.discard_and_reload_from_file(&mut self.word_database, &mut self.events);
+
+            if let Err(error) =
+                buffer.discard_and_reload_from_file(&mut self.word_database, &mut self.events)
+            {
+                if !matches!(error.kind(), io::ErrorKind::NotFound) {
+                    self.status_bar.write(MessageKind::Error).fmt(format_args!(
+                        "error trying to open file {:?}: {}",
+                        path, error
+                    ));
+                }
+            }
 
             self.buffer_views.add_new(client_handle, buffer.handle())
         }
