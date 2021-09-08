@@ -399,7 +399,7 @@ impl BufferContent {
     }
 
     pub fn saturate_position(&self, mut position: BufferPosition) -> BufferPosition {
-        position.line_index = position.line_index.min((self.line_count()) as _);
+        position.line_index = position.line_index.min((self.line_count() - 1) as _);
         let line = self.line_at(position.line_index as _).as_str();
         position.column_byte_index = position.column_byte_index.min(line.len() as _);
         position
@@ -1864,3 +1864,4 @@ mod tests {
         );
     }
 }
+
