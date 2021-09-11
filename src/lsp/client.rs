@@ -1072,6 +1072,9 @@ impl Client {
                 anchor: position,
                 position,
             });
+        } else {
+            // TODO: debug
+            editor.status_bar.write(MessageKind::Error).str("opaa");
         }
     }
 
@@ -1404,6 +1407,7 @@ impl Client {
                         });
                     }
                     if let Some(true) = params.take_focus {
+                        // TODO: save_snapshot
                         client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                     }
                     true
@@ -1824,6 +1828,7 @@ impl Client {
                 );
                 editor.string_pool.release(text);
 
+                // TODO: save_snapshot
                 clients
                     .get_mut(client_handle)
                     .set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);

@@ -1,15 +1,15 @@
 use std::{
-    fmt, io,
+    fmt,
     path::{Path, PathBuf},
 };
 
 use crate::{
-    buffer::{BufferCapabilities, BufferCollection},
+    buffer::{BufferCapabilities, BufferCollection, BufferReadError},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{Client, ClientHandle, ClientManager},
     command::CommandManager,
     config::Config,
-    editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
+    editor_utils::{ReadLine, StatusBar, StringPool},
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
         TargetClient,
@@ -139,6 +139,7 @@ impl Editor {
         }
     }
 
+    // TODO: check callsites that relied on loading file from disk
     pub fn buffer_view_handle_from_path(
         &mut self,
         client_handle: ClientHandle,
@@ -155,6 +156,7 @@ impl Editor {
             buffer.path.push(path);
             buffer.capabilities = capabilities;
 
+            /*
             if let Err(error) =
                 buffer.discard_and_reload_from_file(&mut self.word_database, &mut self.events)
             {
@@ -165,9 +167,20 @@ impl Editor {
                     ));
                 }
             }
+            */
 
             self.buffer_views.add_new(client_handle, buffer.handle())
         }
+    }
+
+    // TODO: finish
+    pub fn reload_buffer_view_from_file(
+        &mut self,
+        buffer_view_handle: BufferViewHandle,
+    ) -> Result<(), BufferReadError> {
+        let buffer_view = self.buffer_views.get(buffer_view_handle);
+        let buffer = self.buffers.get_mut(buffer_view.buffer_handle);
+        buffer.read_from_file(&mut self.word_database, &mut self.events)
     }
 
     pub fn execute_keys(
@@ -458,3 +471,4 @@ impl Editor {
         }
     }
 }
+

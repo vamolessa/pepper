@@ -692,6 +692,42 @@ impl fmt::Display for BufferContent {
     }
 }
 
+pub enum BufferReadError {
+    FileNotFound,
+    InvalidData,
+    Other,
+}
+impl fmt::Display for BufferReadError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::FileNotFound => f.write_str("file not found"),
+            Self::InvalidData => f.write_str("invalid data while reading from file"),
+            Self::Other => f.write_str("could not read from file"),
+        }
+    }
+}
+impl From<io::Error> for BufferReadError {
+    fn from(other: io::Error) -> Self {
+        match other.kind() {
+            io::ErrorKind::NotFound => Self::FileNotFound,
+            io::ErrorKind::InvalidData => Self::InvalidData,
+            _ => Self::Other,
+        }
+    }
+}
+
+pub struct BufferWriteError;
+impl fmt::Display for BufferWriteError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("could not write to file")
+    }
+}
+impl From<io::Error> for BufferWriteError {
+    fn from(_: io::Error) -> Self {
+        Self
+    }
+}
+
 #[derive(Default)]
 pub struct BufferCapabilities {
     pub has_history: bool,
@@ -1070,43 +1106,11 @@ impl Buffer {
         &self.search_ranges
     }
 
-    pub fn save_to_file(
-        &mut self,
-        new_path: Option<&Path>,
-        events: &mut EditorEventQueue,
-    ) -> io::Result<()> {
-        let new_path = match new_path {
-            Some(path) => {
-                self.capabilities.can_save = true;
-                self.path.clear();
-                self.path.push(path);
-                true
-            }
-            None => false,
-        };
-
-        if !self.capabilities.can_save {
-            return Ok(());
-        }
-
-        let file = File::create(&self.path)?;
-        self.content.write(&mut io::BufWriter::new(file))?;
-
-        self.capabilities.can_save = true;
-        self.needs_save = false;
-
-        events.enqueue(EditorEvent::BufferSave {
-            handle: self.handle,
-            new_path,
-        });
-        Ok(())
-    }
-
-    pub fn discard_and_reload_from_file(
+    pub fn read_from_file(
         &mut self,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
-    ) -> io::Result<()> {
+    ) -> Result<(), BufferReadError> {
         self.history.clear();
         self.search_ranges.clear();
         self.needs_save = false;
@@ -1139,6 +1143,38 @@ impl Buffer {
             }
         }
 
+        Ok(())
+    }
+
+    pub fn write_to_file(
+        &mut self,
+        new_path: Option<&Path>,
+        events: &mut EditorEventQueue,
+    ) -> Result<(), BufferWriteError> {
+        let new_path = match new_path {
+            Some(path) => {
+                self.capabilities.can_save = true;
+                self.path.clear();
+                self.path.push(path);
+                true
+            }
+            None => false,
+        };
+
+        if !self.capabilities.can_save {
+            return Ok(());
+        }
+
+        let file = File::create(&self.path)?;
+        self.content.write(&mut io::BufWriter::new(file))?;
+
+        self.capabilities.can_save = true;
+        self.needs_save = false;
+
+        events.enqueue(EditorEvent::BufferSave {
+            handle: self.handle,
+            new_path,
+        });
         Ok(())
     }
 }

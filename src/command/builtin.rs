@@ -9,7 +9,6 @@ use crate::{
     cursor::Cursor,
     editor::{Editor, EditorControlFlow},
     editor_utils::MessageKind,
-    glob::InvalidGlobError,
     help, lsp,
     mode::{picker, ModeContext, ModeKind},
     navigation_history::NavigationHistory,
@@ -122,8 +121,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let buffer = ctx.editor.buffers.get_mut(buffer_handle);
 
             buffer
-                .save_to_file(path, &mut ctx.editor.events)
-                .map_err(CommandError::IoError)?;
+                .write_to_file(path, &mut ctx.editor.events)
+                .map_err(CommandError::BufferWriteError)?;
 
             ctx.editor
                 .status_bar
@@ -142,8 +141,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             for buffer in ctx.editor.buffers.iter_mut() {
                 if buffer.capabilities.can_save {
                     buffer
-                        .save_to_file(None, &mut ctx.editor.events)
-                        .map_err(CommandError::IoError)?;
+                        .write_to_file(None, &mut ctx.editor.events)
+                        .map_err(CommandError::BufferWriteError)?;
                     count += 1;
                 }
             }
@@ -166,8 +165,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let buffer = ctx.editor.buffers.get_mut(buffer_handle);
 
             buffer
-                .discard_and_reload_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
-                .map_err(CommandError::IoError)?;
+                .read_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
+                .map_err(CommandError::BufferReadError)?;
 
             ctx.editor
                 .status_bar
@@ -186,11 +185,8 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let mut count = 0;
             for buffer in ctx.editor.buffers.iter_mut() {
                 buffer
-                    .discard_and_reload_from_file(
-                        &mut ctx.editor.word_database,
-                        &mut ctx.editor.events,
-                    )
-                    .map_err(CommandError::IoError)?;
+                    .read_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
+                    .map_err(CommandError::BufferReadError)?;
                 count += 1;
             }
 
@@ -364,7 +360,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             ctx.editor.syntaxes.current_syntax = Some(syntax);
             match result {
                 Ok(()) => Ok(EditorControlFlow::Continue),
-                Err(_) => Err(CommandError::InvalidGlob),
+                Err(error) => Err(CommandError::InvalidGlob(error)),
             }
         },
     },
@@ -448,7 +444,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
 
             match ctx.editor.lsp.add_recipe(glob, command, None, log_path) {
                 Ok(()) => Ok(EditorControlFlow::Continue),
-                Err(InvalidGlobError) => Err(CommandError::InvalidGlob),
+                Err(error) => Err(CommandError::InvalidGlob(error)),
             }
         },
     },
@@ -749,3 +745,4 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
+

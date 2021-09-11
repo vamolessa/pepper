@@ -1,7 +1,7 @@
-use std::{collections::VecDeque, fmt, io};
+use std::{collections::VecDeque, fmt};
 
 use crate::{
-    buffer::{Buffer, BufferHandle},
+    buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
     buffer_view::BufferViewHandle,
     client::{ClientHandle, ClientManager},
     config::ParseConfigError,
@@ -24,13 +24,14 @@ pub enum CommandError {
     NoTargetClient,
     NoBufferOpened,
     UnsavedChanges,
-    IoError(io::Error),
+    BufferReadError(BufferReadError),
+    BufferWriteError(BufferWriteError),
     ConfigError(ParseConfigError),
     NoSuchColor,
     InvalidColorValue,
     KeyMapError(ParseKeyMapError),
     PatternError(PatternError),
-    InvalidGlob,
+    InvalidGlob(InvalidGlobError),
     RecursiveSyntaxBegin,
     NoCurrentSyntax,
     LspServerNotRunning,
@@ -45,13 +46,14 @@ impl fmt::Display for CommandError {
             Self::NoTargetClient => f.write_str("no target client"),
             Self::NoBufferOpened => f.write_str("no buffer opened"),
             Self::UnsavedChanges => f.write_str("unsaved changes"),
-            Self::IoError(error) => write!(f, "{}", error),
-            Self::ConfigError(error) => write!(f, "{}", error),
+            Self::BufferReadError(error) => error.fmt(f),
+            Self::BufferWriteError(error) => error.fmt(f),
+            Self::ConfigError(error) => error.fmt(f),
             Self::NoSuchColor => f.write_str("no such color"),
             Self::InvalidColorValue => f.write_str("invalid color value"),
-            Self::KeyMapError(error) => write!(f, "{}", error),
+            Self::KeyMapError(error) => error.fmt(f),
             Self::PatternError(error) => write!(f, "pattern error: {}", error),
-            Self::InvalidGlob => write!(f, "{}", InvalidGlobError),
+            Self::InvalidGlob(InvalidGlobError) => InvalidGlobError.fmt(f),
             Self::RecursiveSyntaxBegin => f.write_str("recursive syntax definition"),
             Self::NoCurrentSyntax => {
                 f.write_str("no current syntax. did you forget a `syntax-begin`?")

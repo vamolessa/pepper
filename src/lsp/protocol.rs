@@ -622,7 +622,7 @@ impl WorkspaceEdit {
                             buffer.capabilities.can_save = true;
                             buffer.path.clear();
                             buffer.path.push(path);
-                            let _ = buffer.discard_and_reload_from_file(
+                            let _ = buffer.read_from_file(
                                 &mut editor.word_database,
                                 &mut editor.events,
                             );
@@ -636,7 +636,7 @@ impl WorkspaceEdit {
                         let _ = editor
                             .buffers
                             .get_mut(buffer_handle)
-                            .save_to_file(None, &mut editor.events);
+                            .write_to_file(None, &mut editor.events);
 
                         editor
                             .buffers
