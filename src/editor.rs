@@ -139,16 +139,17 @@ impl Editor {
         }
     }
 
-    // TODO: check callsites that relied on loading file from disk
     pub fn buffer_view_handle_from_path(
         &mut self,
         client_handle: ClientHandle,
         path: &Path,
         capabilities: BufferCapabilities,
-    ) -> BufferViewHandle {
+    ) -> Result<BufferViewHandle, BufferReadError> {
         if let Some(buffer_handle) = self.buffers.find_with_path(&self.current_directory, path) {
-            self.buffer_views
-                .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle)
+            let handle = self
+                .buffer_views
+                .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
+            Ok(handle)
         } else {
             let path = path.strip_prefix(&self.current_directory).unwrap_or(path);
             let buffer = self.buffers.add_new();
@@ -156,31 +157,18 @@ impl Editor {
             buffer.path.push(path);
             buffer.capabilities = capabilities;
 
-            /*
-            if let Err(error) =
-                buffer.discard_and_reload_from_file(&mut self.word_database, &mut self.events)
-            {
-                if !matches!(error.kind(), io::ErrorKind::NotFound) {
-                    self.status_bar.write(MessageKind::Error).fmt(format_args!(
-                        "error trying to open file {:?}: {}",
-                        path, error
-                    ));
+            match buffer.read_from_file(&mut self.word_database, &mut self.events) {
+                Ok(()) => {
+                    let handle = self.buffer_views.add_new(client_handle, buffer.handle());
+                    Ok(handle)
+                }
+                Err(error) => {
+                    let handle = buffer.handle();
+                    self.buffers.defer_remove(handle, &mut self.events);
+                    Err(error)
                 }
             }
-            */
-
-            self.buffer_views.add_new(client_handle, buffer.handle())
         }
-    }
-
-    // TODO: finish
-    pub fn reload_buffer_view_from_file(
-        &mut self,
-        buffer_view_handle: BufferViewHandle,
-    ) -> Result<(), BufferReadError> {
-        let buffer_view = self.buffer_views.get(buffer_view_handle);
-        let buffer = self.buffers.get_mut(buffer_view.buffer_handle);
-        buffer.read_from_file(&mut self.word_database, &mut self.events)
     }
 
     pub fn execute_keys(
@@ -420,7 +408,7 @@ impl Editor {
             while let Some(event) = events.next(&self.events) {
                 match *event {
                     EditorEvent::Idle => (),
-                    EditorEvent::BufferOpen { handle } => {
+                    EditorEvent::BufferRead { handle } => {
                         let buffer = self.buffers.get_mut(handle);
                         buffer.refresh_syntax(&self.syntaxes);
                         self.buffer_views.on_buffer_load(buffer);
@@ -431,13 +419,14 @@ impl Editor {
                     EditorEvent::BufferDeleteText { handle, range } => {
                         self.buffer_views.on_buffer_delete_text(handle, range);
                     }
-                    EditorEvent::BufferSave { handle, new_path } => {
+                    EditorEvent::BufferWrite { handle, new_path } => {
                         if new_path {
                             self.buffers.get_mut(handle).refresh_syntax(&self.syntaxes);
                         }
                     }
                     EditorEvent::BufferClose { handle } => {
-                        self.buffers.remove(handle, &mut self.word_database);
+                        self.buffers
+                            .remove_from_editor_event_handler(handle, &mut self.word_database);
                         for client in clients.iter_mut() {
                             client.on_buffer_close(self, handle);
                         }

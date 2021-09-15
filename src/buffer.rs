@@ -1119,7 +1119,7 @@ impl Buffer {
         self.content.clear();
         self.highlighted.clear();
 
-        events.enqueue(EditorEvent::BufferOpen {
+        events.enqueue(EditorEvent::BufferRead {
             handle: self.handle,
         });
 
@@ -1171,7 +1171,7 @@ impl Buffer {
         self.capabilities.can_save = true;
         self.needs_save = false;
 
-        events.enqueue(EditorEvent::BufferSave {
+        events.enqueue(EditorEvent::BufferWrite {
             handle: self.handle,
             new_path,
         });
@@ -1261,7 +1261,7 @@ impl BufferCollection {
         }
     }
 
-    pub fn remove(&mut self, handle: BufferHandle, word_database: &mut WordDatabase) {
+    pub fn remove_from_editor_event_handler(&mut self, handle: BufferHandle, word_database: &mut WordDatabase) {
         let buffer = &mut self.buffers[handle.0 as usize];
         if buffer.alive {
             buffer.dispose(word_database);

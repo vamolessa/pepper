@@ -1129,24 +1129,31 @@ impl Client {
             let client = clients.get_mut(client_handle);
             NavigationHistory::save_snapshot(client, &editor.buffer_views);
 
-            let position = symbol.range.start.into();
-            let buffer_view_handle = editor.buffer_view_handle_from_path(
+            match editor.buffer_view_handle_from_path(
                 client_handle,
                 path,
                 BufferCapabilities::text(),
-            );
-            client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+            ) {
+                Ok(buffer_view_handle) => {
+                    let position = symbol.range.start.into();
+                    client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
 
-            let mut cursors = editor
-                .buffer_views
-                .get_mut(buffer_view_handle)
-                .cursors
-                .mut_guard();
-            cursors.clear();
-            cursors.add(Cursor {
-                anchor: position,
-                position,
-            });
+                    let mut cursors = editor
+                        .buffer_views
+                        .get_mut(buffer_view_handle)
+                        .cursors
+                        .mut_guard();
+                    cursors.clear();
+                    cursors.add(Cursor {
+                        anchor: position,
+                        position,
+                    });
+                }
+                Err(error) => editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!("{}", error)),
+            }
         }
     }
 
@@ -1392,25 +1399,38 @@ impl Client {
                     false
                 } else if let Some(client_handle) = clients.focused_client() {
                     let client = clients.get_mut(client_handle);
-                    let buffer_view_handle = editor.buffer_view_handle_from_path(
+                    match editor.buffer_view_handle_from_path(
                         client_handle,
                         path,
                         BufferCapabilities::text(),
-                    );
-                    if let Some(range) = params.selection {
-                        let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
-                        let mut cursors = buffer_view.cursors.mut_guard();
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: range.start.into(),
-                            position: range.end.into(),
-                        });
+                    ) {
+                        Ok(buffer_view_handle) => {
+                            if let Some(range) = params.selection {
+                                let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
+                                let mut cursors = buffer_view.cursors.mut_guard();
+                                cursors.clear();
+                                cursors.add(Cursor {
+                                    anchor: range.start.into(),
+                                    position: range.end.into(),
+                                });
+                            }
+                            if let Some(true) = params.take_focus {
+                                // TODO: save_snapshot
+                                client.set_buffer_view_handle(
+                                    Some(buffer_view_handle),
+                                    &mut editor.events,
+                                );
+                            }
+                            true
+                        }
+                        Err(error) => {
+                            editor
+                                .status_bar
+                                .write(MessageKind::Error)
+                                .fmt(format_args!("{}", error));
+                            false
+                        }
                     }
-                    if let Some(true) = params.take_focus {
-                        // TODO: save_snapshot
-                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
-                    }
-                    true
                 } else {
                     false
                 };
@@ -1734,6 +1754,16 @@ impl Client {
                     BufferCapabilities::text(),
                 );
                 editor.string_pool.release(buffer_name);
+                let buffer_view_handle = match buffer_view_handle {
+                    Ok(handle) => handle,
+                    Err(error) => {
+                        editor
+                            .status_bar
+                            .write(MessageKind::Error)
+                            .fmt(format_args!("{}", error));
+                        return Ok(());
+                    }
+                };
 
                 let mut count = 0;
                 let mut context_buffer = BufferContent::new();
@@ -2136,7 +2166,7 @@ impl Client {
                 EditorEvent::Idle => {
                     helper::send_pending_did_change(self, editor, platform);
                 }
-                EditorEvent::BufferOpen { handle } => {
+                EditorEvent::BufferRead { handle } => {
                     let handle = handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(editor, handle, &self.root);
@@ -2155,7 +2185,7 @@ impl Client {
                 EditorEvent::BufferDeleteText { handle, range, .. } => {
                     self.versioned_buffers.add_edit(handle, range, "");
                 }
-                EditorEvent::BufferSave { handle, .. } => {
+                EditorEvent::BufferWrite { handle, .. } => {
                     self.diagnostics.on_save_buffer(editor, handle, &self.root);
                     helper::send_pending_did_change(self, editor, platform);
                     helper::send_did_save(self, editor, platform, handle);
@@ -2313,24 +2343,31 @@ impl Client {
                 let client = clients.get_mut(client_handle);
                 NavigationHistory::save_snapshot(client, &editor.buffer_views);
 
-                let buffer_view_handle = editor.buffer_view_handle_from_path(
+                match editor.buffer_view_handle_from_path(
                     client_handle,
                     path,
                     BufferCapabilities::text(),
-                );
-                let position = location.range.start.into();
-                let mut cursors = editor
-                    .buffer_views
-                    .get_mut(buffer_view_handle)
-                    .cursors
-                    .mut_guard();
-                cursors.clear();
-                cursors.add(Cursor {
-                    anchor: position,
-                    position,
-                });
+                ) {
+                    Ok(buffer_view_handle) => {
+                        let position = location.range.start.into();
+                        let mut cursors = editor
+                            .buffer_views
+                            .get_mut(buffer_view_handle)
+                            .cursors
+                            .mut_guard();
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: position,
+                            position,
+                        });
 
-                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                    }
+                    Err(error) => editor
+                        .status_bar
+                        .write(MessageKind::Error)
+                        .fmt(format_args!("{}", error)),
+                }
             }
             DefinitionLocation::Many(locations) => {
                 editor.picker.clear();
@@ -2827,7 +2864,7 @@ impl ClientManager {
     pub fn on_editor_events(editor: &mut Editor, platform: &mut Platform) {
         let mut events = EditorEventIter::new();
         while let Some(event) = events.next(&editor.events) {
-            if let EditorEvent::BufferOpen { handle } = *event {
+            if let EditorEvent::BufferRead { handle } = *event {
                 let buffer_path = match editor.buffers.get(handle).path.to_str() {
                     Some(path) => path,
                     None => continue,
@@ -2880,3 +2917,4 @@ impl ClientManager {
         }
     }
 }
+

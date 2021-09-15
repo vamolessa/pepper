@@ -449,7 +449,9 @@ impl State {
 
                         let mut jumped = false;
                         let mut path_buf = ctx.editor.string_pool.acquire();
+                        let mut error_buf = ctx.editor.string_pool.acquire();
                         let fallback_line_index = state.count.saturating_sub(1) as _;
+
                         for range in &ranges[..len] {
                             let line_index = range.from.line_index;
                             if range.to.line_index != line_index {
@@ -503,31 +505,52 @@ impl State {
                                 );
                             }
 
-                            let handle = ctx.editor.buffer_view_handle_from_path(
+                            match ctx.editor.buffer_view_handle_from_path(
                                 ctx.client_handle,
                                 path,
                                 BufferCapabilities::text(),
-                            );
-                            let mut cursors =
-                                ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                            cursors.clear();
-                            cursors.add(Cursor {
-                                anchor: position,
-                                position,
-                            });
+                            ) {
+                                Ok(handle) => {
+                                    let mut cursors =
+                                        ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                                    cursors.clear();
+                                    cursors.add(Cursor {
+                                        anchor: position,
+                                        position,
+                                    });
 
-                            if jumped {
-                                continue;
+                                    if jumped {
+                                        continue;
+                                    }
+                                    jumped = true;
+
+                                    ctx.editor.mode.normal_state.movement_kind =
+                                        CursorMovementKind::PositionAndAnchor;
+                                    ctx.clients
+                                        .get_mut(ctx.client_handle)
+                                        .set_buffer_view_handle(
+                                            Some(handle),
+                                            &mut ctx.editor.events,
+                                        );
+                                }
+                                Err(error) => {
+                                    if !error_buf.is_empty() {
+                                        error_buf.push('\n');
+                                    }
+                                    let _ = write!(error_buf, "{}", error);
+                                }
                             }
-                            jumped = true;
-
-                            ctx.editor.mode.normal_state.movement_kind =
-                                CursorMovementKind::PositionAndAnchor;
-                            ctx.clients
-                                .get_mut(ctx.client_handle)
-                                .set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
                         }
+
+                        if !error_buf.is_empty() {
+                            ctx.editor
+                                .status_bar
+                                .write(MessageKind::Error)
+                                .str(&error_buf);
+                        }
+
                         ctx.editor.string_pool.release(path_buf);
+                        ctx.editor.string_pool.release(error_buf);
                     }
                     _ => (),
                 }
@@ -1672,7 +1695,16 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
                 BufferCapabilities::text(),
             );
             ctx.editor.string_pool.release(path);
-            handle
+            match handle {
+                Ok(handle) => handle,
+                Err(error) => {
+                    ctx.editor
+                        .status_bar
+                        .write(MessageKind::Error)
+                        .fmt(format_args!("{}", error));
+                    return;
+                }
+            }
         }
     };
 
@@ -1693,3 +1725,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 }
+

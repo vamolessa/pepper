@@ -178,14 +178,14 @@ pub mod opened_buffers {
             NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
 
             let path = ctx.editor.string_pool.acquire_with(path);
-            let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
+            if let Ok(buffer_view_handle) = ctx.editor.buffer_view_handle_from_path(
                 ctx.client_handle,
                 Path::new(&path),
                 BufferCapabilities::text(),
-            );
+            ) {
+                client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
+            }
             ctx.editor.string_pool.release(path);
-
-            client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 
             Mode::change_to(ctx, ModeKind::default());
             Some(EditorControlFlow::Continue)
@@ -245,14 +245,21 @@ pub mod find_file {
             NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
 
             let path = ctx.editor.string_pool.acquire_with(path);
-            let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
+            match ctx.editor.buffer_view_handle_from_path(
                 ctx.client_handle,
                 Path::new(&path),
                 BufferCapabilities::text(),
-            );
+            ) {
+                Ok(buffer_view_handle) => {
+                    client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
+                }
+                Err(error) => ctx
+                    .editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!("{}", error)),
+            }
             ctx.editor.string_pool.release(path);
-
-            client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 
             Mode::change_to(ctx, ModeKind::default());
             Some(EditorControlFlow::Continue)
@@ -315,28 +322,36 @@ pub mod lsp_definition {
                         NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
 
                         let path = ctx.editor.string_pool.acquire_with(path);
-                        let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
+                        match ctx.editor.buffer_view_handle_from_path(
                             ctx.client_handle,
                             Path::new(&path),
                             BufferCapabilities::text(),
-                        );
-                        ctx.editor.string_pool.release(path);
-                        let mut cursors = ctx
-                            .editor
-                            .buffer_views
-                            .get_mut(buffer_view_handle)
-                            .cursors
-                            .mut_guard();
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: position,
-                            position,
-                        });
+                        ) {
+                            Ok(buffer_view_handle) => {
+                                let mut cursors = ctx
+                                    .editor
+                                    .buffer_views
+                                    .get_mut(buffer_view_handle)
+                                    .cursors
+                                    .mut_guard();
+                                cursors.clear();
+                                cursors.add(Cursor {
+                                    anchor: position,
+                                    position,
+                                });
 
-                        client.set_buffer_view_handle(
-                            Some(buffer_view_handle),
-                            &mut ctx.editor.events,
-                        );
+                                client.set_buffer_view_handle(
+                                    Some(buffer_view_handle),
+                                    &mut ctx.editor.events,
+                                );
+                            }
+                            Err(error) => ctx
+                                .editor
+                                .status_bar
+                                .write(MessageKind::Error)
+                                .fmt(format_args!("{}", error)),
+                        }
+                        ctx.editor.string_pool.release(path);
                     }
                     Mode::change_to(ctx, ModeKind::default());
                     Some(EditorControlFlow::Continue)
@@ -526,3 +541,4 @@ pub mod lsp_workspace_symbol {
         }
     }
 }
+
