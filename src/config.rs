@@ -69,10 +69,10 @@ config_values! {
     tab_size: NonZeroU8 = NonZeroU8::new(4).unwrap(),
     indent_with_tabs: bool = true,
 
-    visual_empty: u8 = b'~',
-    visual_space: u8 = b'.',
-    visual_tab_first: u8 = b'|',
-    visual_tab_repeat: u8 = b' ',
+    visual_empty: char = '~',
+    visual_space: char = '.',
+    visual_tab_first: char = '|',
+    visual_tab_repeat: char = ' ',
 
     completion_min_len: u8 = 3,
     picker_max_height: u8 = 8,

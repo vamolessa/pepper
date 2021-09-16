@@ -94,14 +94,22 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     let margin_top = (height.saturating_sub(message_lines.len())) / 2;
     let margin_bottom = draw_height - margin_top - message_lines.len();
 
+    let mut visual_empty = [0; 4];
+    let visual_empty = ctx
+        .editor
+        .config
+        .visual_empty
+        .encode_utf8(&mut visual_empty)
+        .as_bytes();
+
     for _ in 0..margin_top {
-        buf.push(ctx.editor.config.visual_empty);
+        buf.extend_from_slice(visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);
     }
 
     for line in message_lines {
-        buf.push(ctx.editor.config.visual_empty);
+        buf.extend_from_slice(visual_empty);
 
         let margin_left = (width.saturating_sub(line.len())) / 2;
         buf.extend(std::iter::repeat(b' ').take(margin_left));
@@ -112,7 +120,7 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     }
 
     for _ in 0..margin_bottom {
-        buf.push(ctx.editor.config.visual_empty);
+        buf.extend_from_slice(visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);
     }
@@ -145,8 +153,6 @@ fn draw_buffer_view(
     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
     let cursors = &buffer_view.cursors[..];
     let active_line_index = buffer_view.cursors.main_cursor().position.line_index as usize;
-
-    let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let cursor_color = if ctx.has_focus {
         match ctx.editor.mode.kind() {
@@ -215,6 +221,40 @@ fn draw_buffer_view(
     move_cursor_to(buf, 0, 0);
     set_background_color(buf, ctx.editor.theme.background);
     set_not_underlined(buf);
+
+    let mut char_buf = [0; std::mem::size_of::<char>()];
+
+    let mut visual_empty = [0; 4];
+    let visual_empty = ctx
+        .editor
+        .config
+        .visual_empty
+        .encode_utf8(&mut visual_empty)
+        .as_bytes();
+
+    let mut visual_space = [0; 4];
+    let visual_space = ctx
+        .editor
+        .config
+        .visual_space
+        .encode_utf8(&mut visual_space)
+        .as_bytes();
+
+    let mut visual_tab_first = [0; 4];
+    let visual_tab_first = ctx
+        .editor
+        .config
+        .visual_space
+        .encode_utf8(&mut visual_tab_first)
+        .as_bytes();
+
+    let mut visual_tab_repeat = [0; 4];
+    let visual_tab_repeat = ctx
+        .editor
+        .config
+        .visual_space
+        .encode_utf8(&mut visual_tab_repeat)
+        .as_bytes();
 
     let mut lines_drawn_count = 0;
     for (line_index, line) in buffer_content
@@ -352,15 +392,15 @@ fn draw_buffer_view(
                 }
                 ' ' => {
                     x += 1;
-                    buf.push(ctx.editor.config.visual_space);
+                    buf.extend_from_slice(visual_space);
                 }
                 '\t' => {
                     let tab_size = ctx.editor.config.tab_size.get() as usize;
                     x += tab_size;
 
-                    buf.push(ctx.editor.config.visual_tab_first);
+                    buf.extend_from_slice(visual_tab_first);
                     for _ in 0..tab_size - 1 {
-                        buf.push(ctx.editor.config.visual_tab_repeat);
+                        buf.extend_from_slice(visual_tab_repeat);
                     }
                 }
                 _ => {
@@ -390,7 +430,7 @@ fn draw_buffer_view(
     set_foreground_color(buf, ctx.editor.theme.token_whitespace);
 
     for _ in lines_drawn_count..ctx.draw_height {
-        buf.push(ctx.editor.config.visual_empty);
+        buf.extend_from_slice(visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);
     }
@@ -704,3 +744,4 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
+
