@@ -53,7 +53,7 @@ impl Picker {
                 index = index + offset;
                 index = index.max(0);
 
-                *cursor = end_index.saturating_sub(1).min(index as _);
+                *cursor = end_index.min(index as _);
             }
             None => {
                 if self.len() > 0 {
@@ -105,12 +105,20 @@ impl Picker {
         let _ = fmt::write(entry, args);
     }
 
-    pub fn add_custom_entry_filtered(&mut self, name: &str, pattern: &str) {
-        self.add_custom_entry(name);
-        if self.filter_custom_entry(self.custom_entries_len - 1, pattern) {
-            self.filtered_entries
-                .sort_unstable_by(|a, b| b.score.cmp(&a.score));
+    pub fn add_custom_filtered_entries<'picker, 'pattern>(
+        &'picker mut self,
+        pattern: &'pattern str,
+    ) -> AddCustomFilteredEntryGuard<'picker, 'pattern> {
+        AddCustomFilteredEntryGuard {
+            picker: self,
+            pattern,
+            needs_sorting: false,
         }
+    }
+
+    pub fn sort_filtered_entries(&mut self) {
+        self.filtered_entries
+            .sort_unstable_by(|a, b| b.score.cmp(&a.score));
     }
 
     pub fn filter(&mut self, word_indices: WordIndicesIter, pattern: &str) {
@@ -181,6 +189,30 @@ fn filtered_to_picker_entry<'a>(
     match entry.source {
         EntrySource::Custom(i) => &custom_entries[i],
         EntrySource::WordDatabase(i) => words.word_at(i),
+    }
+}
+
+pub struct AddCustomFilteredEntryGuard<'picker, 'pattern> {
+    picker: &'picker mut Picker,
+    pattern: &'pattern str,
+    needs_sorting: bool,
+}
+impl<'picker, 'pattern> AddCustomFilteredEntryGuard<'picker, 'pattern> {
+    pub fn add(&mut self, name: &str) {
+        self.picker.add_custom_entry(name);
+        let matched = self
+            .picker
+            .filter_custom_entry(self.picker.custom_entries_len - 1, self.pattern);
+        self.needs_sorting = self.needs_sorting || matched;
+    }
+}
+impl<'picker, 'pattern> Drop for AddCustomFilteredEntryGuard<'picker, 'pattern> {
+    fn drop(&mut self) {
+        if self.needs_sorting {
+            self.picker
+                .filtered_entries
+                .sort_unstable_by(|a, b| b.score.cmp(&a.score));
+        }
     }
 }
 

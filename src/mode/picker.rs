@@ -28,23 +28,26 @@ impl State {
         }
 
         self.find_file_buf.extend_from_slice(bytes);
-        if let Some(i) = self.find_file_buf.iter().rposition(|&b| b == b'\n') {
-            for line in self
-                .find_file_buf
-                .drain(..i + 1)
-                .as_slice()
-                .split(|&b| matches!(b, b'\n' | b'\r'))
-            {
-                if line.is_empty() {
-                    continue;
-                }
-                if let Ok(line) = std::str::from_utf8(line) {
-                    picker.add_custom_entry(line);
+
+        {
+            let mut filtered_entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            if let Some(i) = self.find_file_buf.iter().rposition(|&b| b == b'\n') {
+                for line in self
+                    .find_file_buf
+                    .drain(..i + 1)
+                    .as_slice()
+                    .split(|&b| matches!(b, b'\n' | b'\r'))
+                {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if let Ok(line) = std::str::from_utf8(line) {
+                        filtered_entry_adder.add(line);
+                    }
                 }
             }
         }
 
-        picker.filter(WordIndicesIter::empty(), read_line.input());
         picker.move_cursor(0);
     }
 
@@ -54,16 +57,20 @@ impl State {
         }
 
         self.find_file_waiting_for_process = false;
-        for line in self.find_file_buf.split(|&b| b == b'\n') {
-            if line.is_empty() {
-                continue;
-            }
-            if let Ok(line) = std::str::from_utf8(line) {
-                picker.add_custom_entry(line);
+
+        {
+            let mut filtered_entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            for line in self.find_file_buf.split(|&b| b == b'\n') {
+                if line.is_empty() {
+                    continue;
+                }
+                if let Ok(line) = std::str::from_utf8(line) {
+                    filtered_entry_adder.add(line);
+                }
             }
         }
+
         self.find_file_buf.clear();
-        picker.filter(WordIndicesIter::empty(), read_line.input());
         picker.move_cursor(0);
     }
 }
