@@ -177,6 +177,7 @@ impl Client {
                 }
             }
 
+            // TODO: only center if new position is not visible
             if line_index < scroll_y.saturating_sub(half_height) {
                 scroll_y = line_index.saturating_sub(half_height);
             } else if line_index < scroll_y {
