@@ -432,6 +432,18 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "pid",
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_empty()?;
+            ctx.editor
+                .status_bar
+                .write(MessageKind::Info)
+                .fmt(format_args!("{}", std::process::id()));
+            Ok(EditorControlFlow::Continue)
+        },
+    },
+    BuiltinCommand {
         name: "lsp",
         completions: &[],
         func: |ctx| {

@@ -155,7 +155,7 @@ impl StringPool {
 }
 
 // FNV-1a : https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
-// TODO: is it still a good hash if we hash 8 bytes at a time and then combine them at the end?
+// TODO: will this still be a good hash if we hash 8 bytes at a time and then combine them at the end?
 // or should we just jump directly to a more complex hash that is simd-friendly?
 pub const fn hash_bytes(mut bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;

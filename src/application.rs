@@ -353,19 +353,3 @@ impl Drop for ClientApplication {
     }
 }
 
-pub fn set_panic_hook() {
-    static mut ORIGINAL_PANIC_HOOK: Option<Box<dyn Fn(&panic::PanicInfo) + Sync + Send + 'static>> =
-        None;
-    unsafe { ORIGINAL_PANIC_HOOK = Some(panic::take_hook()) };
-
-    panic::set_hook(Box::new(|info| unsafe {
-        if let Ok(mut file) = fs::File::create("pepper-crash.txt") {
-            use io::Write;
-            let _ = writeln!(file, "{}", info);
-        }
-
-        if let Some(ref hook) = ORIGINAL_PANIC_HOOK {
-            hook(info);
-        }
-    }));
-}

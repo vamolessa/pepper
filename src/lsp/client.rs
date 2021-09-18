@@ -1072,9 +1072,6 @@ impl Client {
                 anchor: position,
                 position,
             });
-        } else {
-            // TODO: debug
-            editor.status_bar.write(MessageKind::Error).str("opaa");
         }
     }
 
