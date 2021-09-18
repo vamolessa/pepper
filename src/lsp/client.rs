@@ -2663,7 +2663,7 @@ impl ClientManager {
         &mut self,
         glob: &str,
         command: &str,
-        root: Option<&Path>,
+        root: Option<&str>,
         log_file_path: Option<&str>,
     ) -> Result<(), InvalidGlobError> {
         let glob_hash = hash_bytes(glob.as_bytes());

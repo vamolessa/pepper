@@ -265,7 +265,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let client_handle = ctx.client_handle()?;
             let client = ctx.clients.get_mut(client_handle);
             NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
-            // TODO
+            // TODO status command
             client.set_buffer_view_handle(None, &mut ctx.editor.events);
 
             Ok(EditorControlFlow::Continue)
@@ -428,7 +428,6 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    // TODO: make lsp-log-file and lsp-root that change the previous `lsp` definition
     BuiltinCommand {
         name: "lsp",
         completions: &[],
@@ -707,7 +706,7 @@ fn syntax_pattern(
         .editor
         .syntaxes
         .get_current()
-        .set_pattern(token_kind, pattern)
+        .set_rule(token_kind, pattern)
     {
         Ok(()) => Ok(EditorControlFlow::Continue),
         Err(error) => Err(CommandError::PatternError(error)),
