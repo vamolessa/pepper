@@ -9,12 +9,13 @@ use std::{
 
 use winapi::{
     shared::{
-        minwindef::{DWORD, FALSE, TRUE},
+        minwindef::{DWORD, FALSE, MAX_PATH, TRUE},
         ntdef::NULL,
         winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleMode},
+        debugapi::{DebugBreak, IsDebuggerPresent},
         errhandlingapi::GetLastError,
         fileapi::{
             CreateFileW, FindClose, FindFirstFileW, GetFileType, ReadFile, WriteFile, OPEN_EXISTING,
@@ -26,9 +27,12 @@ use winapi::{
             ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, SetNamedPipeHandleState,
         },
         processenv::{GetCommandLineW, GetStdHandle},
-        processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
+        processthreadsapi::{
+            CreateProcessW, GetCurrentProcessId, PROCESS_INFORMATION, STARTUPINFOW,
+        },
         stringapiset::{MultiByteToWideChar, WideCharToMultiByte},
-        synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
+        synchapi::{CreateEventW, SetEvent, Sleep, WaitForMultipleObjects},
+        sysinfoapi::GetSystemDirectoryW,
         winbase::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED,
             FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX,
@@ -72,6 +76,72 @@ const _ASSERT_MAX_EVENT_COUNT_IS_MAX_WAIT_OBJECTS: [(); MAXIMUM_WAIT_OBJECTS as 
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 static PIPE_PREFIX: &str = r#"\\.\pipe\"#;
+
+pub fn try_launching_debugger() {
+    let mut buf = [0; MAX_PATH + 1];
+    let len = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as _) as usize };
+    if len == 0 || len > buf.len() {
+        return;
+    }
+
+    let debugger_command = b"\\vsjitdebugger.exe -p ".map(|b| b as u16);
+    let mut pid_buf = [0; 10];
+
+    if len + debugger_command.len() + pid_buf.len() + 1 > buf.len() {
+        return;
+    }
+
+    buf[len..len + debugger_command.len()].copy_from_slice(&debugger_command);
+    let len = len + debugger_command.len();
+
+    let pid = unsafe { GetCurrentProcessId() };
+
+    use io::Write;
+    let mut pid_cursor = io::Cursor::new(&mut pid_buf[..]);
+    let _ = write!(pid_cursor, "{}", pid);
+    let pid_len = pid_cursor.position() as usize;
+    let pid_buf = pid_buf.map(|b| b as u16);
+    let pid_buf = &pid_buf[..pid_len];
+
+    buf[len..len + pid_buf.len()].copy_from_slice(&pid_buf);
+    let len = len + pid_buf.len();
+
+    buf[len] = 0;
+    let len = len + 1;
+
+    let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
+    startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
+
+    let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
+
+    let result = unsafe {
+        CreateProcessW(
+            std::ptr::null(),
+            buf[..len].as_mut_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            FALSE,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut startup_info,
+            &mut process_info,
+        )
+    };
+
+    let _ = Handle(process_info.hProcess);
+    let _ = Handle(process_info.hThread);
+
+    if result == FALSE {
+        return;
+    }
+
+    while unsafe { IsDebuggerPresent() == FALSE } {
+        unsafe { Sleep(100) };
+    }
+
+    unsafe { DebugBreak() };
+}
 
 pub fn main() {
     let args = Args::parse();
@@ -332,7 +402,7 @@ fn fork() {
             command_line.push(short);
         }
     }
-    command_line.extend(b" --server".iter().map(|&b| b as u16));
+    command_line.extend_from_slice(&b" --server".map(|b| b as u16));
     command_line.push(0);
 
     let result = unsafe {

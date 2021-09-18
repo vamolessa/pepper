@@ -25,6 +25,8 @@ const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
+pub fn try_launching_debugger() {}
+
 pub fn main() {
     run(run_server, run_client);
 }
