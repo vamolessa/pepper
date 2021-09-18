@@ -202,15 +202,15 @@ impl ServerApplication {
     }
 }
 
-pub struct ClientApplication<'stdout> {
+pub struct ClientApplication {
     is_pipped: bool,
     target_client: TargetClient,
     stdin_read_buf: Vec<u8>, // TODO: do something with it
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
-    stdout: io::StdoutLock<'stdout>, // TODO: leak it since it's lifetime is the whole program
+    stdout: io::StdoutLock<'static>,
 }
-impl<'stdout> ClientApplication<'stdout> {
+impl ClientApplication {
     pub const fn stdin_buffer_len() -> usize {
         4 * 1024
     }
@@ -219,7 +219,11 @@ impl<'stdout> ClientApplication<'stdout> {
         48 * 1024
     }
 
-    pub fn new(stdout: io::StdoutLock<'stdout>, is_pipped: bool) -> Self {
+    pub fn new(is_pipped: bool) -> Self {
+        let stdout = Box::new(io::stdout());
+        let stdout = Box::leak(stdout);
+        let stdout = stdout.lock();
+
         Self {
             is_pipped,
             target_client: TargetClient::Sender,
@@ -343,7 +347,7 @@ impl<'stdout> ClientApplication<'stdout> {
         (suspend, self.server_write_buf.as_slice())
     }
 }
-impl<'stdout> Drop for ClientApplication<'stdout> {
+impl Drop for ClientApplication {
     fn drop(&mut self) {
         self.restore_screen();
     }

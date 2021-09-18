@@ -385,8 +385,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     use io::{Read, Write};
 
     let is_pipped = is_pipped();
-    let stdout = io::stdout();
-    let mut application = ClientApplication::new(stdout.lock(), is_pipped);
+    let mut application = ClientApplication::new(is_pipped);
     let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
         return;
