@@ -1546,17 +1546,6 @@ fn search_word_or_move_to_it(
 
         let _ = ctx.editor.aux_pattern.compile_searcher(register);
         buffer.set_search(&ctx.editor.aux_pattern);
-
-        drop(cursors);
-
-        let main_position = buffer_view.cursors.main_cursor().position;
-        state.search_index = match buffer
-            .search_ranges()
-            .binary_search_by_key(&main_position, |r| r.from)
-        {
-            Ok(i) => i,
-            Err(i) => i,
-        };
     } else {
         NavigationHistory::save_snapshot(
             ctx.clients.get_mut(ctx.client_handle),
@@ -1576,6 +1565,16 @@ fn search_word_or_move_to_it(
             });
         }
     }
+
+    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+    let main_position = buffer_view.cursors.main_cursor().position;
+    state.search_index = match buffer
+        .search_ranges()
+        .binary_search_by_key(&main_position, |r| r.from)
+    {
+        Ok(i) => i,
+        Err(i) => i,
+    };
 
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
