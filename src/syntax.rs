@@ -96,11 +96,18 @@ impl Syntax {
         }
     }
 
-    pub fn set_glob(&mut self, pattern: &str) -> Result<(), InvalidGlobError> {
-        self.glob_hash = hash_bytes(pattern.as_bytes());
-        self.glob.compile(pattern)
+    fn clear_rules(&mut self) {
+        for r in &mut self.rules {
+            r.clear();
+        }
     }
 
+    fn set_glob(&mut self, glob: &str, glob_hash: u64) -> Result<(), InvalidGlobError> {
+        self.glob_hash = glob_hash;
+        self.glob.compile(glob)
+    }
+
+    // TODO: rename to set_rule
     pub fn set_pattern(&mut self, kind: TokenKind, pattern: &str) -> Result<(), PatternError> {
         self.rules[kind as usize].compile(pattern)
     }
@@ -216,18 +223,18 @@ impl Syntax {
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub struct SyntaxHandle(usize);
+pub struct SyntaxHandle(u32);
 
 pub struct SyntaxCollection {
     syntaxes: Vec<Syntax>,
-    pub current_syntax: Option<Syntax>, // TODO: change to Option<SyntaxHandle>
+    current_syntax_index: u32,
 }
 
 impl SyntaxCollection {
     pub fn new() -> Self {
         Self {
             syntaxes: vec![Syntax::new()],
-            current_syntax: None,
+            current_syntax_index: 0,
         }
     }
 
@@ -236,25 +243,36 @@ impl SyntaxCollection {
         iter.next();
         for (i, syntax) in iter {
             if syntax.glob.matches(path) {
-                return Some(SyntaxHandle(i));
+                return Some(SyntaxHandle(i as _));
             }
         }
 
         None
     }
 
-    pub fn add(&mut self, syntax: Syntax) {
-        for s in &mut self.syntaxes {
-            if s.glob_hash == syntax.glob_hash {
-                *s = syntax;
-                return;
+    pub fn set_current_from_glob(&mut self, glob: &str) -> Result<(), InvalidGlobError> {
+        let glob_hash = hash_bytes(glob.as_bytes());
+        for (i, s) in self.syntaxes.iter_mut().enumerate() {
+            if s.glob_hash == glob_hash {
+                s.clear_rules();
+                self.current_syntax_index = i as _;
+                return Ok(());
             }
         }
+
+        self.current_syntax_index = self.syntaxes.len() as _;
+        let mut syntax = Syntax::new();
+        syntax.set_glob(glob, glob_hash)?;
         self.syntaxes.push(syntax);
+        Ok(())
+    }
+
+    pub fn get_current(&mut self) -> &mut Syntax {
+        &mut self.syntaxes[self.current_syntax_index as usize]
     }
 
     pub fn get(&self, handle: SyntaxHandle) -> &Syntax {
-        &self.syntaxes[handle.0]
+        &self.syntaxes[handle.0 as usize]
     }
 }
 
@@ -711,3 +729,4 @@ mod tests {
         }
     }
 }
+

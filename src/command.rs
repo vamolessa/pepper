@@ -32,8 +32,6 @@ pub enum CommandError {
     KeyMapError(ParseKeyMapError),
     PatternError(PatternError),
     InvalidGlob(InvalidGlobError),
-    RecursiveSyntaxBegin,
-    NoCurrentSyntax,
     LspServerNotRunning,
     LspServerNotLogging,
 }
@@ -54,10 +52,6 @@ impl fmt::Display for CommandError {
             Self::KeyMapError(error) => error.fmt(f),
             Self::PatternError(error) => write!(f, "pattern error: {}", error),
             Self::InvalidGlob(InvalidGlobError) => InvalidGlobError.fmt(f),
-            Self::RecursiveSyntaxBegin => f.write_str("recursive syntax definition"),
-            Self::NoCurrentSyntax => {
-                f.write_str("no current syntax. did you forget a `syntax-begin`?")
-            }
             Self::LspServerNotRunning => f.write_str("no lsp server running"),
             Self::LspServerNotLogging => f.write_str("lsp server is not logging"),
         }

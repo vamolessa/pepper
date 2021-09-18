@@ -13,7 +13,7 @@ use crate::{
     mode::{picker, ModeContext, ModeKind},
     navigation_history::NavigationHistory,
     platform::Platform,
-    syntax::{Syntax, TokenKind},
+    syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
 };
 
@@ -364,35 +364,14 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "syntax-begin",
+        name: "syntax",
         completions: &[],
         func: |ctx| {
             let glob = ctx.args.next()?;
             ctx.args.assert_empty()?;
-            if ctx.editor.syntaxes.current_syntax.is_some() {
-                return Err(CommandError::RecursiveSyntaxBegin);
-            }
-            let mut syntax = Syntax::new();
-            let result = syntax.set_glob(glob);
-            ctx.editor.syntaxes.current_syntax = Some(syntax);
-            match result {
+            match ctx.editor.syntaxes.set_current_from_glob(glob) {
                 Ok(()) => Ok(EditorControlFlow::Continue),
                 Err(error) => Err(CommandError::InvalidGlob(error)),
-            }
-        },
-    },
-    // TODO: remove this as it can be not needed
-    BuiltinCommand {
-        name: "syntax-end",
-        completions: &[],
-        func: |ctx| {
-            ctx.args.assert_empty()?;
-            match ctx.editor.syntaxes.current_syntax.take() {
-                Some(syntax) => {
-                    ctx.editor.syntaxes.add(syntax);
-                    Ok(EditorControlFlow::Continue)
-                }
-                None => Err(CommandError::NoCurrentSyntax),
             }
         },
     },
@@ -724,11 +703,12 @@ fn syntax_pattern(
 ) -> Result<EditorControlFlow, CommandError> {
     let pattern = ctx.args.next()?;
     ctx.args.assert_empty()?;
-    let syntax = match &mut ctx.editor.syntaxes.current_syntax {
-        Some(syntax) => syntax,
-        None => return Err(CommandError::NoCurrentSyntax),
-    };
-    match syntax.set_pattern(token_kind, pattern) {
+    match ctx
+        .editor
+        .syntaxes
+        .get_current()
+        .set_pattern(token_kind, pattern)
+    {
         Ok(()) => Ok(EditorControlFlow::Continue),
         Err(error) => Err(CommandError::PatternError(error)),
     }
