@@ -42,46 +42,25 @@ impl Picker {
     }
 
     pub fn move_cursor(&mut self, offset: isize) {
-        if self.filtered_entries.is_empty() {
-            return;
-        }
+        let end_index = match self.filtered_entries.len().checked_sub(1) {
+            Some(i) => i,
+            None => return,
+        };
 
-        let end_index = self.filtered_entries.len() - 1;
-        let cursor = match self.cursor {
-            Some(ref mut cursor) => cursor,
+        match &mut self.cursor {
+            Some(cursor) => {
+                let mut index = *cursor as isize;
+                index = index + offset;
+                index = index.max(0);
+
+                *cursor = end_index.saturating_sub(1).min(index as _);
+            }
             None => {
                 if self.len() > 0 {
                     self.cursor = Some(0);
                 }
-                return;
             }
         };
-
-        if offset > 0 {
-            let mut offset = offset as usize;
-            if *cursor == end_index {
-                offset -= 1;
-                *cursor = 0;
-            }
-
-            if offset < end_index - *cursor {
-                *cursor += offset;
-            } else {
-                *cursor = end_index;
-            }
-        } else if offset < 0 {
-            let mut offset = (-offset) as usize;
-            if *cursor == 0 {
-                offset -= 1;
-                *cursor = end_index;
-            }
-
-            if offset < *cursor {
-                *cursor -= offset;
-            } else {
-                *cursor = 0;
-            }
-        }
     }
 
     pub fn update_scroll(&mut self, max_height: usize) -> usize {
@@ -356,3 +335,4 @@ mod tests {
         );
     }
 }
+

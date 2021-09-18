@@ -125,9 +125,7 @@ impl Client {
         buffer_views: &BufferViewCollection,
         events: &mut EditorEventQueue,
     ) {
-        if self.buffer_view_handle != handle {
-            NavigationHistory::save_snapshot(self, buffer_views);
-        }
+        NavigationHistory::save_snapshot(self, buffer_views);
         self.set_buffer_view_handle_no_history(handle, events);
     }
 

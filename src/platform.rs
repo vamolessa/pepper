@@ -93,9 +93,11 @@ pub struct ProcessHandle(pub u8);
 pub struct Platform {
     read_from_clipboard: Option<fn(&mut String)>,
     write_to_clipboard: Option<fn(&str)>,
+
     flush_requests: fn(),
     request_sender: mpsc::Sender<PlatformRequest>,
     needs_flushing: bool,
+
     pub buf_pool: BufPool,
 
     internal_clipboard: String,
@@ -107,9 +109,11 @@ impl Platform {
         Self {
             read_from_clipboard: None,
             write_to_clipboard: None,
+
             flush_requests,
             request_sender,
             needs_flushing: false,
+
             buf_pool: BufPool::default(),
             internal_clipboard: String::new(),
             copy_command: String::new(),
