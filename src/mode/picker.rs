@@ -8,7 +8,6 @@ use crate::{
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeState},
-    navigation_history::NavigationHistory,
     picker::{EntrySource, Picker},
     platform::{Key, PlatformRequest, ProcessTag},
     word_database::WordIndicesIter,
@@ -149,8 +148,6 @@ pub mod opened_buffers {
 
     use std::path::Path;
 
-    use crate::navigation_history::NavigationHistory;
-
     pub fn enter_mode(ctx: &mut ModeContext) {
         fn on_client_keys(
             ctx: &mut ModeContext,
@@ -174,16 +171,18 @@ pub mod opened_buffers {
                 }
             };
 
-            let client = ctx.clients.get_mut(ctx.client_handle);
-            NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
-
             let path = ctx.editor.string_pool.acquire_with(path);
             if let Ok(buffer_view_handle) = ctx.editor.buffer_view_handle_from_path(
                 ctx.client_handle,
                 Path::new(&path),
                 BufferCapabilities::text(),
             ) {
-                client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
+                let client = ctx.clients.get_mut(ctx.client_handle);
+                client.set_buffer_view_handle(
+                    Some(buffer_view_handle),
+                    &ctx.editor.buffer_views,
+                    &mut ctx.editor.events,
+                );
             }
             ctx.editor.string_pool.release(path);
 
@@ -241,9 +240,6 @@ pub mod find_file {
                 }
             };
 
-            let client = ctx.clients.get_mut(ctx.client_handle);
-            NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
-
             let path = ctx.editor.string_pool.acquire_with(path);
             match ctx.editor.buffer_view_handle_from_path(
                 ctx.client_handle,
@@ -251,7 +247,12 @@ pub mod find_file {
                 BufferCapabilities::text(),
             ) {
                 Ok(buffer_view_handle) => {
-                    client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
+                    let client = ctx.clients.get_mut(ctx.client_handle);
+                    client.set_buffer_view_handle(
+                        Some(buffer_view_handle),
+                        &ctx.editor.buffer_views,
+                        &mut ctx.editor.events,
+                    );
                 }
                 Err(error) => ctx
                     .editor
@@ -318,9 +319,6 @@ pub mod lsp_definition {
                             None => BufferPosition::zero(),
                         };
 
-                        let client = ctx.clients.get_mut(ctx.client_handle);
-                        NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
-
                         let path = ctx.editor.string_pool.acquire_with(path);
                         match ctx.editor.buffer_view_handle_from_path(
                             ctx.client_handle,
@@ -328,20 +326,24 @@ pub mod lsp_definition {
                             BufferCapabilities::text(),
                         ) {
                             Ok(buffer_view_handle) => {
-                                let mut cursors = ctx
-                                    .editor
-                                    .buffer_views
-                                    .get_mut(buffer_view_handle)
-                                    .cursors
-                                    .mut_guard();
-                                cursors.clear();
-                                cursors.add(Cursor {
-                                    anchor: position,
-                                    position,
-                                });
+                                {
+                                    let mut cursors = ctx
+                                        .editor
+                                        .buffer_views
+                                        .get_mut(buffer_view_handle)
+                                        .cursors
+                                        .mut_guard();
+                                    cursors.clear();
+                                    cursors.add(Cursor {
+                                        anchor: position,
+                                        position,
+                                    });
+                                }
 
+                                let client = ctx.clients.get_mut(ctx.client_handle);
                                 client.set_buffer_view_handle(
                                     Some(buffer_view_handle),
+                                    &ctx.editor.buffer_views,
                                     &mut ctx.editor.events,
                                 );
                             }

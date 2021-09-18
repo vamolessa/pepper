@@ -11,7 +11,6 @@ use crate::{
     editor_utils::MessageKind,
     help, lsp,
     mode::{picker, ModeContext, ModeKind},
-    navigation_history::NavigationHistory,
     platform::Platform,
     syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
@@ -37,15 +36,22 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 BufferCapabilities::log(),
             ) {
                 Ok(handle) => {
-                    let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(Cursor {
-                        anchor: position,
-                        position,
-                    });
+                    {
+                        let mut cursors =
+                            ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: position,
+                            position,
+                        });
+                    }
 
                     let client = ctx.clients.get_mut(client_handle);
-                    client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
+                    client.set_buffer_view_handle(
+                        Some(handle),
+                        &ctx.editor.buffer_views,
+                        &mut ctx.editor.events,
+                    );
                     client.scroll.0 = 0;
                     client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
                 }
@@ -89,11 +95,6 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             let client_handle = ctx.client_handle()?;
             let (path, position) = parse_path_and_position(path);
 
-            NavigationHistory::save_snapshot(
-                ctx.clients.get_mut(client_handle),
-                &ctx.editor.buffer_views,
-            );
-
             let path = ctx.editor.string_pool.acquire_with(path);
             match ctx.editor.buffer_view_handle_from_path(
                 client_handle,
@@ -113,9 +114,12 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                         });
                     }
 
-                    ctx.clients
-                        .get_mut(client_handle)
-                        .set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
+                    let client = ctx.clients.get_mut(client_handle);
+                    client.set_buffer_view_handle(
+                        Some(handle),
+                        &ctx.editor.buffer_views,
+                        &mut ctx.editor.events,
+                    );
                 }
                 Err(error) => ctx
                     .editor
@@ -262,11 +266,10 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_empty()?;
 
+            // TODO status command
             let client_handle = ctx.client_handle()?;
             let client = ctx.clients.get_mut(client_handle);
-            NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
-            // TODO status command
-            client.set_buffer_view_handle(None, &mut ctx.editor.events);
+            client.set_buffer_view_handle(None, &ctx.editor.buffer_views, &mut ctx.editor.events);
 
             Ok(EditorControlFlow::Continue)
         },
@@ -462,9 +465,9 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                         ) {
                             Ok(buffer_view_handle) => {
                                 let client = clients.get_mut(client_handle);
-                                NavigationHistory::save_snapshot(client, &editor.buffer_views);
                                 client.set_buffer_view_handle(
                                     Some(buffer_view_handle),
+                                    &editor.buffer_views,
                                     &mut editor.events,
                                 );
                             }

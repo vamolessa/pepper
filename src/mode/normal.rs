@@ -498,26 +498,25 @@ impl State {
                                 continue;
                             }
 
-                            if !jumped {
-                                NavigationHistory::save_snapshot(
-                                    ctx.clients.get_mut(ctx.client_handle),
-                                    &ctx.editor.buffer_views,
-                                );
-                            }
-
                             match ctx.editor.buffer_view_handle_from_path(
                                 ctx.client_handle,
                                 path,
                                 BufferCapabilities::text(),
                             ) {
                                 Ok(handle) => {
-                                    let mut cursors =
-                                        ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                                    cursors.clear();
-                                    cursors.add(Cursor {
-                                        anchor: position,
-                                        position,
-                                    });
+                                    {
+                                        let mut cursors = ctx
+                                            .editor
+                                            .buffer_views
+                                            .get_mut(handle)
+                                            .cursors
+                                            .mut_guard();
+                                        cursors.clear();
+                                        cursors.add(Cursor {
+                                            anchor: position,
+                                            position,
+                                        });
+                                    }
 
                                     if jumped {
                                         continue;
@@ -526,12 +525,12 @@ impl State {
 
                                     ctx.editor.mode.normal_state.movement_kind =
                                         CursorMovementKind::PositionAndAnchor;
-                                    ctx.clients
-                                        .get_mut(ctx.client_handle)
-                                        .set_buffer_view_handle(
-                                            Some(handle),
-                                            &mut ctx.editor.events,
-                                        );
+                                    let client = ctx.clients.get_mut(ctx.client_handle);
+                                    client.set_buffer_view_handle(
+                                        Some(handle),
+                                        &ctx.editor.buffer_views,
+                                        &mut ctx.editor.events,
+                                    );
                                 }
                                 Err(error) => {
                                     if !error_buf.is_empty() {
@@ -1257,14 +1256,16 @@ impl ModeState for State {
                                 previous_buffer_view_handle = None;
                             }
 
-                            previous_client.set_buffer_view_handle(
+                            previous_client.set_buffer_view_handle_no_history(
                                 previous_buffer_view_handle,
                                 &mut ctx.editor.events,
                             );
 
                             let client = ctx.clients.get_mut(ctx.client_handle);
-                            client
-                                .set_buffer_view_handle(buffer_view_handle, &mut ctx.editor.events);
+                            client.set_buffer_view_handle_no_history(
+                                buffer_view_handle,
+                                &mut ctx.editor.events,
+                            );
                         }
                         _ => (),
                     }
@@ -1708,21 +1709,25 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         }
     };
 
-    let client = ctx.clients.get_mut(ctx.client_handle);
-    NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
-
     let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
     let position = buffer.content().saturate_position(position);
 
-    let mut cursors = buffer_view.cursors.mut_guard();
-    cursors.clear();
-    cursors.add(Cursor {
-        anchor: position,
-        position,
-    });
+    {
+        let mut cursors = buffer_view.cursors.mut_guard();
+        cursors.clear();
+        cursors.add(Cursor {
+            anchor: position,
+            position,
+        });
+    }
 
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
-    client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
+    let client = ctx.clients.get_mut(ctx.client_handle);
+    client.set_buffer_view_handle(
+        Some(buffer_view_handle),
+        &ctx.editor.buffer_views,
+        &mut ctx.editor.events,
+    );
 }
 

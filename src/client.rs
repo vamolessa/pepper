@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use crate::{
     buffer::{BufferHandle, CharDisplayDistances},
     buffer_position::BufferPositionIndex,
-    buffer_view::BufferViewHandle,
+    buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     events::{EditorEvent, EditorEventQueue},
     navigation_history::{NavigationHistory, NavigationMovement},
@@ -106,7 +106,7 @@ impl Client {
         }
     }
 
-    pub fn set_buffer_view_handle(
+    pub fn set_buffer_view_handle_no_history(
         &mut self,
         handle: Option<BufferViewHandle>,
         events: &mut EditorEventQueue,
@@ -117,6 +117,18 @@ impl Client {
             }
             self.buffer_view_handle = handle;
         }
+    }
+
+    pub fn set_buffer_view_handle(
+        &mut self,
+        handle: Option<BufferViewHandle>,
+        buffer_views: &BufferViewCollection,
+        events: &mut EditorEventQueue,
+    ) {
+        if self.buffer_view_handle != handle {
+            NavigationHistory::save_snapshot(self, buffer_views);
+        }
+        self.set_buffer_view_handle_no_history(handle, events);
     }
 
     pub fn has_ui(&self) -> bool {
@@ -249,3 +261,4 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
+

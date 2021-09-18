@@ -1126,18 +1126,20 @@ impl Client {
                 Err(_) => return,
             };
 
-            let client = clients.get_mut(client_handle);
-            NavigationHistory::save_snapshot(client, &editor.buffer_views);
-
             match editor.buffer_view_handle_from_path(
                 client_handle,
                 path,
                 BufferCapabilities::text(),
             ) {
                 Ok(buffer_view_handle) => {
-                    let position = symbol.range.start.into();
-                    client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                    let client = clients.get_mut(client_handle);
+                    client.set_buffer_view_handle(
+                        Some(buffer_view_handle),
+                        &editor.buffer_views,
+                        &mut editor.events,
+                    );
 
+                    let position = symbol.range.start.into();
                     let mut cursors = editor
                         .buffer_views
                         .get_mut(buffer_view_handle)
@@ -1398,7 +1400,6 @@ impl Client {
                 let success = if let Some(true) = params.external {
                     false
                 } else if let Some(client_handle) = clients.focused_client() {
-                    let client = clients.get_mut(client_handle);
                     match editor.buffer_view_handle_from_path(
                         client_handle,
                         path,
@@ -1415,9 +1416,10 @@ impl Client {
                                 });
                             }
                             if let Some(true) = params.take_focus {
-                                // TODO: save_snapshot
+                                let client = clients.get_mut(client_handle);
                                 client.set_buffer_view_handle(
                                     Some(buffer_view_handle),
+                                    &editor.buffer_views,
                                     &mut editor.events,
                                 );
                             }
@@ -1858,10 +1860,12 @@ impl Client {
                 );
                 editor.string_pool.release(text);
 
-                // TODO: save_snapshot
-                clients
-                    .get_mut(client_handle)
-                    .set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                let client = clients.get_mut(client_handle);
+                client.set_buffer_view_handle(
+                    Some(buffer_view_handle),
+                    &editor.buffer_views,
+                    &mut editor.events,
+                );
                 editor.trigger_event_handlers(platform, clients);
 
                 let mut cursors = editor
@@ -2340,8 +2344,6 @@ impl Client {
         match DefinitionLocation::parse(result, &self.json) {
             DefinitionLocation::Single(location) => {
                 let Uri::Path(path) = Uri::parse(&self.root, location.uri.as_str(&self.json))?;
-                let client = clients.get_mut(client_handle);
-                NavigationHistory::save_snapshot(client, &editor.buffer_views);
 
                 match editor.buffer_view_handle_from_path(
                     client_handle,
@@ -2349,19 +2351,26 @@ impl Client {
                     BufferCapabilities::text(),
                 ) {
                     Ok(buffer_view_handle) => {
-                        let position = location.range.start.into();
-                        let mut cursors = editor
-                            .buffer_views
-                            .get_mut(buffer_view_handle)
-                            .cursors
-                            .mut_guard();
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: position,
-                            position,
-                        });
+                        {
+                            let position = location.range.start.into();
+                            let mut cursors = editor
+                                .buffer_views
+                                .get_mut(buffer_view_handle)
+                                .cursors
+                                .mut_guard();
+                            cursors.clear();
+                            cursors.add(Cursor {
+                                anchor: position,
+                                position,
+                            });
+                        }
 
-                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                        let client = clients.get_mut(client_handle);
+                        client.set_buffer_view_handle(
+                            Some(buffer_view_handle),
+                            &editor.buffer_views,
+                            &mut editor.events,
+                        );
                     }
                     Err(error) => editor
                         .status_bar
@@ -2690,7 +2699,7 @@ impl ClientManager {
             glob_hash,
             glob: recipe_glob,
             command: command.into(),
-            root: root.unwrap_or(Path::new("")).into(),
+            root: root.unwrap_or("").into(),
             log_file_path: log_file_path.unwrap_or("").into(),
             running_client: None,
         });

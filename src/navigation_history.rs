@@ -124,7 +124,7 @@ impl NavigationHistory {
             client.navigation_history.previous_buffer = current_buffer_handle;
         }
 
-        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+        client.set_buffer_view_handle_no_history(Some(buffer_view_handle), &mut editor.events);
     }
 
     pub fn move_to_previous_buffer(client: &mut Client, editor: &mut Editor) {
@@ -136,7 +136,7 @@ impl NavigationHistory {
             let buffer_view_handle = editor
                 .buffer_views
                 .buffer_view_handle_from_buffer_handle(client.handle(), buffer_handle);
-            client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+            client.set_buffer_view_handle_no_history(Some(buffer_view_handle), &mut editor.events);
         }
 
         client.navigation_history.previous_buffer = current_buffer_handle;
@@ -188,11 +188,11 @@ mod tests {
             .add_new(client.handle(), BufferHandle(2));
 
         NavigationHistory::save_snapshot(&mut client, &editor.buffer_views);
-        client.set_buffer_view_handle(Some(view_a), &mut editor.events);
+        client.set_buffer_view_handle_no_history(Some(view_a), &mut editor.events);
         NavigationHistory::save_snapshot(&mut client, &editor.buffer_views);
-        client.set_buffer_view_handle(Some(view_b), &mut editor.events);
+        client.set_buffer_view_handle_no_history(Some(view_b), &mut editor.events);
         NavigationHistory::save_snapshot(&mut client, &editor.buffer_views);
-        client.set_buffer_view_handle(Some(view_c), &mut editor.events);
+        client.set_buffer_view_handle_no_history(Some(view_c), &mut editor.events);
 
         (editor, client)
     }
@@ -284,3 +284,4 @@ mod tests {
         assert_eq!(3, client.navigation_history.snapshots.len());
     }
 }
+
