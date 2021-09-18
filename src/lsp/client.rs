@@ -1018,15 +1018,14 @@ impl Client {
         client_handle: client::ClientHandle,
         index: usize,
     ) {
-        self.request_state = RequestState::Idle;
-        if !self.server_capabilities.document_symbol_provider.0 {
-            return;
-        }
-
         let buffer_view_handle = match self.request_state {
             RequestState::FinishDocumentSymbols { buffer_view_handle } => buffer_view_handle,
             _ => return,
         };
+        self.request_state = RequestState::Idle;
+        if !self.server_capabilities.document_symbol_provider.0 {
+            return;
+        }
 
         let mut reader = io::Cursor::new(&self.request_raw_json);
         let symbols = match self.json.read(&mut reader) {
@@ -2000,29 +1999,37 @@ impl Client {
                     _ => return Ok(()),
                 };
 
-                fn add_symbols(picker: &mut Picker, symbols: JsonArray, json: &Json) {
+                fn add_symbols(picker: &mut Picker, depth: usize, symbols: JsonArray, json: &Json) {
+                    let indent_buf = [b' '; 32];
+                    let indent_len = indent_buf.len().min(depth * 2);
+
                     for symbol in symbols
                         .elements(json)
                         .filter_map(|s| DocumentSymbolInformation::from_json(s, json).ok())
                     {
+                        let indent =
+                            unsafe { std::str::from_utf8_unchecked(&indent_buf[..indent_len]) };
+
                         let name = symbol.name.as_str(json);
                         match symbol.container_name {
                             Some(container_name) => {
                                 let container_name = container_name.as_str(json);
                                 picker.add_custom_entry_fmt(format_args!(
-                                    "{} ({})",
-                                    name, container_name
+                                    "{}{} ({})",
+                                    indent, name, container_name,
                                 ));
                             }
-                            None => picker.add_custom_entry(name),
+                            None => {
+                                picker.add_custom_entry_fmt(format_args!("{}{}", indent, name,))
+                            }
                         }
 
-                        add_symbols(picker, symbol.children.clone(), json);
+                        add_symbols(picker, depth + 1, symbol.children.clone(), json);
                     }
                 }
 
                 editor.picker.clear();
-                add_symbols(&mut editor.picker, symbols.clone(), &self.json);
+                add_symbols(&mut editor.picker, 0, symbols.clone(), &self.json);
 
                 let mut ctx = ModeContext {
                     editor,
