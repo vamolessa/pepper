@@ -57,7 +57,7 @@ use winapi::{
 };
 
 use pepper::{
-    application::{AnyError, ClientApplication, ServerApplication},
+    application::{ClientApplication, ServerApplication},
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
@@ -951,16 +951,13 @@ fn run_server(args: Args, pipe_path: &[u16]) {
 
         let event = match event_listener.wait_next(timeout) {
             Some(event) => {
-                eprintln!("platform: got event");
                 timeout = Some(Duration::ZERO);
                 event
             }
             None => {
-                eprintln!("platform: timeout");
                 match timeout {
                     Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
                     Some(_) => {
-                        eprintln!("platform: timeout (nonzero)");
                         events.push(PlatformEvent::Idle);
                         timeout = None;
                     }
@@ -970,10 +967,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 application.update(events.drain(..));
                 for request in application.platform.drain_requests() {
                     match request {
-                        PlatformRequest::Quit => {
-                            eprintln!("quit requests");
-                            return;
-                        }
+                        PlatformRequest::Quit => return,
                         PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
                         PlatformRequest::WriteToClient { handle, buf } => {
                             if let Some(connection) = &mut client_connections[handle.into_index()] {
@@ -1036,8 +1030,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                     }
                 }
 
-                if timeout.is_none() && !events.is_empty() {
-                    eprintln!("platform: more events => timeout = Some(ZERO)");
+                if !events.is_empty() {
                     timeout = Some(Duration::ZERO);
                 }
 

@@ -87,13 +87,11 @@ impl ServerApplication {
     where
         I: Iterator<Item = PlatformEvent>,
     {
-        eprintln!("application: more events");
         for event in events {
             match event {
                 PlatformEvent::Idle => self.editor.on_idle(&mut self.clients, &mut self.platform),
                 PlatformEvent::ConnectionOpen { handle } => self.clients.on_client_joined(handle),
                 PlatformEvent::ConnectionClose { handle } => {
-                    eprintln!("connection close");
                     self.clients.on_client_left(handle);
                     if self.clients.iter().next().is_none() {
                         self.platform.enqueue_request(PlatformRequest::Quit);
