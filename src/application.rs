@@ -83,12 +83,17 @@ impl ServerApplication {
         })
     }
 
-    pub fn update(&mut self, events: &[PlatformEvent]) {
+    pub fn update<I>(&mut self, events: I)
+    where
+        I: Iterator<Item = PlatformEvent>,
+    {
+        eprintln!("application: more events");
         for event in events {
             match event {
                 PlatformEvent::Idle => self.editor.on_idle(&mut self.clients, &mut self.platform),
-                &PlatformEvent::ConnectionOpen { handle } => self.clients.on_client_joined(handle),
-                &PlatformEvent::ConnectionClose { handle } => {
+                PlatformEvent::ConnectionOpen { handle } => self.clients.on_client_joined(handle),
+                PlatformEvent::ConnectionClose { handle } => {
+                    eprintln!("connection close");
                     self.clients.on_client_left(handle);
                     if self.clients.iter().next().is_none() {
                         self.platform.enqueue_request(PlatformRequest::Quit);
@@ -96,7 +101,6 @@ impl ServerApplication {
                     }
                 }
                 PlatformEvent::ConnectionOutput { handle, buf } => {
-                    let handle = *handle;
                     let mut events = self
                         .client_event_receiver
                         .receive_events(handle, buf.as_bytes());
@@ -132,17 +136,17 @@ impl ServerApplication {
                     }
                     events.finish(&mut self.client_event_receiver);
                 }
-                &PlatformEvent::ProcessSpawned { tag, handle } => {
+                PlatformEvent::ProcessSpawned { tag, handle } => {
                     self.editor
                         .on_process_spawned(&mut self.platform, tag, handle)
                 }
                 PlatformEvent::ProcessOutput { tag, buf } => self.editor.on_process_output(
                     &mut self.platform,
                     &mut self.clients,
-                    *tag,
+                    tag,
                     buf.as_bytes(),
                 ),
-                &PlatformEvent::ProcessExit { tag } => {
+                PlatformEvent::ProcessExit { tag } => {
                     self.editor
                         .on_process_exit(&mut self.platform, &mut self.clients, tag)
                 }
@@ -176,7 +180,8 @@ impl ServerApplication {
             let handle = c.handle();
             let buf = buf.share();
             self.platform.buf_pool.release(buf.clone());
-            self.platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+            self.platform
+                .enqueue_request(PlatformRequest::WriteToClient { handle, buf });
         }
     }
 }

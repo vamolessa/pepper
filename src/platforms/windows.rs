@@ -911,14 +911,14 @@ impl EventListener {
     }
 }
 
-fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
+fn run_server(args: Args, pipe_path: &[u16]) {
     let mut event_listener = EventListener::new();
     let mut listener =
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
     let mut application = match ServerApplication::new(args) {
         Some(application) => application,
-        None => return Ok(()),
+        None => return,
     };
 
     application
@@ -932,7 +932,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     let mut buf_pool = BufPool::default();
 
     let mut events = Vec::new();
-    let mut timeout = Some(ServerApplication::idle_duration());
+    let mut timeout = None;
 
     loop {
         event_listener.track(listener.event(), EventSource::ConnectionListener);
@@ -951,21 +951,29 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
 
         let event = match event_listener.wait_next(timeout) {
             Some(event) => {
+                eprintln!("platform: got event");
                 timeout = Some(Duration::ZERO);
                 event
             }
             None => {
-                if timeout != Some(Duration::ZERO) {
-                    events.push(PlatformEvent::Idle);
+                eprintln!("platform: timeout");
+                match timeout {
+                    Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
+                    Some(_) => {
+                        eprintln!("platform: timeout (nonzero)");
+                        events.push(PlatformEvent::Idle);
+                        timeout = None;
+                    }
+                    None => unreachable!(),
                 }
-                timeout = None;
 
-                application.update(&events);
-                events.clear();
-
+                application.update(events.drain(..));
                 for request in application.platform.drain_requests() {
                     match request {
-                        PlatformRequest::Quit => return Ok(()),
+                        PlatformRequest::Quit => {
+                            eprintln!("quit requests");
+                            return;
+                        }
                         PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
                         PlatformRequest::WriteToClient { handle, buf } => {
                             if let Some(connection) = &mut client_connections[handle.into_index()] {
@@ -1028,7 +1036,8 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                     }
                 }
 
-                if !events.is_empty() {
+                if timeout.is_none() && !events.is_empty() {
+                    eprintln!("platform: more events => timeout = Some(ZERO)");
                     timeout = Some(Duration::ZERO);
                 }
 
