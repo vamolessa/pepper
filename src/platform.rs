@@ -1,7 +1,7 @@
 use std::{
     io,
     process::{Command, Stdio},
-    sync::{mpsc, Arc},
+    sync::Arc,
 };
 
 use crate::{client::ClientHandle, editor_utils::parse_process_command, lsp};
@@ -30,7 +30,6 @@ pub enum Key {
 
 pub enum PlatformEvent {
     Idle,
-    Redraw,
     ConnectionOpen {
         handle: ClientHandle,
     },
@@ -56,6 +55,7 @@ pub enum PlatformEvent {
 
 pub enum PlatformRequest {
     Quit,
+    Redraw,
     WriteToClient {
         handle: ClientHandle,
         buf: SharedBuf,
@@ -90,6 +90,7 @@ pub enum ProcessTag {
 #[derive(Clone, Copy)]
 pub struct ProcessHandle(pub u8);
 
+#[derive(Default)]
 pub struct Platform {
     pending_requests: Vec<PlatformRequest>,
 
@@ -103,20 +104,6 @@ pub struct Platform {
     pub paste_command: String,
 }
 impl Platform {
-    pub fn new() -> Self {
-        Self {
-            pending_requests: Vec::new(),
-
-            read_from_clipboard: None,
-            write_to_clipboard: None,
-
-            buf_pool: BufPool::default(),
-            internal_clipboard: String::new(),
-            copy_command: String::new(),
-            paste_command: String::new(),
-        }
-    }
-
     pub fn set_clipboard_api(
         &mut self,
         read_from_clipboard: fn(&mut String),
