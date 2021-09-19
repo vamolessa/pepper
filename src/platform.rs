@@ -91,12 +91,10 @@ pub enum ProcessTag {
 pub struct ProcessHandle(pub u8);
 
 pub struct Platform {
+    pending_requests: Vec<PlatformRequest>,
+
     read_from_clipboard: Option<fn(&mut String)>,
     write_to_clipboard: Option<fn(&str)>,
-
-    flush_requests: fn(),
-    request_sender: mpsc::Sender<PlatformRequest>,
-    needs_flushing: bool,
 
     pub buf_pool: BufPool,
 
@@ -105,14 +103,12 @@ pub struct Platform {
     pub paste_command: String,
 }
 impl Platform {
-    pub fn new(flush_requests: fn(), request_sender: mpsc::Sender<PlatformRequest>) -> Self {
+    pub fn new() -> Self {
         Self {
+            pending_requests: Vec::new(),
+
             read_from_clipboard: None,
             write_to_clipboard: None,
-
-            flush_requests,
-            request_sender,
-            needs_flushing: false,
 
             buf_pool: BufPool::default(),
             internal_clipboard: String::new(),
@@ -169,15 +165,11 @@ impl Platform {
     }
 
     pub fn enqueue_request(&mut self, request: PlatformRequest) {
-        self.needs_flushing = true;
-        let _ = self.request_sender.send(request);
+        self.pending_requests.push(request);
     }
-
-    pub fn flush_requests(&mut self) {
-        if self.needs_flushing {
-            self.needs_flushing = false;
-            (self.flush_requests)();
-        }
+    
+    pub fn drain_requests<'a>(&'a mut self) -> impl 'a + Iterator<Item = PlatformRequest> {
+        self.pending_requests.drain(..)
     }
 }
 
@@ -231,3 +223,4 @@ impl BufPool {
         self.pool.push(buf);
     }
 }
+

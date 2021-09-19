@@ -20,25 +20,10 @@ where
     }
 }
 
-pub struct ApplicationEventSender(mpsc::Sender<PlatformEvent>);
-impl ApplicationEventSender {
-    pub fn send(&self, event: PlatformEvent) -> Result<(), AnyError> {
-        match self.0.send(event) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(AnyError),
-        }
-    }
+pub struct ServerApplication {
+    platform: Platform,
 }
-
-pub struct ServerApplication;
 impl ServerApplication {
-    pub fn platform_request_channel() -> (
-        mpsc::Sender<PlatformRequest>,
-        mpsc::Receiver<PlatformRequest>,
-    ) {
-        mpsc::channel()
-    }
-
     pub const fn connection_buffer_len() -> usize {
         512
     }
@@ -47,7 +32,7 @@ impl ServerApplication {
         Duration::from_secs(1)
     }
 
-    pub fn run(args: Args, mut platform: Platform) -> Option<ApplicationEventSender> {
+    pub fn new(args: Args, mut platform: Platform) -> Option<Self> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
         let mut clients = ClientManager::default();
@@ -86,16 +71,12 @@ impl ServerApplication {
             }
         }
 
-        let (event_sender, event_receiver) = mpsc::channel();
-        let application_event_sender = ApplicationEventSender(event_sender.clone());
-        std::thread::spawn(move || {
-            let _ =
-                Self::run_application(editor, &mut platform, clients, event_sender, event_receiver);
-            platform.enqueue_request(PlatformRequest::Quit);
-            platform.flush_requests();
-        });
-
-        Some(application_event_sender)
+        Some(Self { platform })
+    }
+    
+    pub fn update<'a>(&'a mut self, events: &[PlatformEvent]) -> impl 'a + Iterator<Item = PlatformRequest> {
+        // TODO
+        self.platform.drain_requests()
     }
 
     fn run_application(
@@ -194,8 +175,6 @@ impl ServerApplication {
                 platform.buf_pool.release(buf.clone());
                 platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
             }
-
-            platform.flush_requests();
         }
 
         Ok(())

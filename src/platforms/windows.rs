@@ -878,7 +878,6 @@ impl Drop for AsyncProcess {
 }
 
 enum EventSource {
-    NewRequest,
     ConnectionListener,
     Connection(usize),
     Process(usize),
@@ -918,35 +917,26 @@ impl Events {
 }
 
 fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
-    const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
-    static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
-
     let mut events = Events::new();
     let mut listener =
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
-    let new_request_event = Event::automatic();
-    NEW_REQUEST_EVENT_HANDLE.store(new_request_event.0 as _, Ordering::Relaxed);
-
-    let (request_sender, request_receiver) = ServerApplication::platform_request_channel();
-    let mut platform = Platform::new(
-        || set_event(NEW_REQUEST_EVENT_HANDLE.load(Ordering::Relaxed) as _),
-        request_sender,
-    );
+    let mut platform = Platform::new();
     platform.set_clipboard_api(read_from_clipboard, write_to_clipboard);
-    let event_sender = match ServerApplication::run(args, platform) {
-        Some(sender) => sender,
+    let mut application = match ServerApplication::run(args, platform) {
+        Some(application) => application,
         None => return Ok(()),
     };
 
     let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
+
+    const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
     let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
     let mut buf_pool = BufPool::default();
 
     let mut timeout = Some(ServerApplication::idle_duration());
 
     loop {
-        events.track(&new_request_event, EventSource::NewRequest);
         events.track(listener.event(), EventSource::ConnectionListener);
         for (i, connection) in client_connections.iter().enumerate() {
             if let Some(connection) = connection {
@@ -962,6 +952,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
         }
 
         match events.wait_next(timeout) {
+            /*
             Some(EventSource::NewRequest) => {
                 for request in request_receiver.try_iter() {
                     match request {
@@ -1028,6 +1019,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                     }
                 }
             }
+            */
             Some(EventSource::ConnectionListener) => {
                 if let Some(connection) = listener.accept(pipe_path) {
                     for (i, c) in client_connections.iter_mut().enumerate() {
