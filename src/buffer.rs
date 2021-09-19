@@ -15,7 +15,7 @@ use crate::{
     help,
     history::{Edit, EditKind, History},
     pattern::Pattern,
-    platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
+    platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, PooledBuf},
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
@@ -1186,7 +1186,7 @@ pub struct InsertProcess {
     pub alive: bool,
     pub buffer_handle: BufferHandle,
     pub position: BufferPosition,
-    pub input: Option<SharedBuf>,
+    pub input: Option<PooledBuf>,
     pub output: Vec<u8>,
 }
 
@@ -1274,7 +1274,7 @@ impl BufferCollection {
         mut command: Command,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-        stdin: Option<SharedBuf>,
+        stdin: Option<PooledBuf>,
     ) {
         let mut index = None;
         for (i, process) in self.insert_processes.iter().enumerate() {

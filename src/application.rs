@@ -102,6 +102,8 @@ impl ServerApplication {
                     let mut events = self
                         .client_event_receiver
                         .receive_events(handle, buf.as_bytes());
+                    self.platform.buf_pool.release(buf);
+
                     while let Some(event) = events.next(&self.client_event_receiver) {
                         match self.editor.on_client_event(
                             &mut self.platform,
@@ -114,7 +116,6 @@ impl ServerApplication {
                                 let mut buf = self.platform.buf_pool.acquire();
                                 let write = buf.write();
                                 ServerEvent::Suspend.serialize(write);
-                                let buf = buf.share();
                                 self.platform
                                     .enqueue_request(PlatformRequest::WriteToClient {
                                         handle,
@@ -138,12 +139,15 @@ impl ServerApplication {
                     self.editor
                         .on_process_spawned(&mut self.platform, tag, handle)
                 }
-                PlatformEvent::ProcessOutput { tag, buf } => self.editor.on_process_output(
-                    &mut self.platform,
-                    &mut self.clients,
-                    tag,
-                    buf.as_bytes(),
-                ),
+                PlatformEvent::ProcessOutput { tag, buf } => {
+                    self.editor.on_process_output(
+                        &mut self.platform,
+                        &mut self.clients,
+                        tag,
+                        buf.as_bytes(),
+                    );
+                    self.platform.buf_pool.release(buf);
+                }
                 PlatformEvent::ProcessExit { tag } => {
                     self.editor
                         .on_process_exit(&mut self.platform, &mut self.clients, tag)
@@ -176,8 +180,6 @@ impl ServerApplication {
             ServerEvent::serialize_display_header(write);
 
             let handle = c.handle();
-            let buf = buf.share();
-            self.platform.buf_pool.release(buf.clone());
             self.platform
                 .enqueue_request(PlatformRequest::WriteToClient { handle, buf });
         }

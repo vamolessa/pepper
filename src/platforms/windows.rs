@@ -61,8 +61,7 @@ use pepper::{
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
-        BufPool, ExclusiveBuf, Key, PlatformEvent, PlatformRequest, ProcessHandle, ProcessTag,
-        SharedBuf,
+        BufPool, Key, PlatformEvent, PlatformRequest, PooledBuf, ProcessHandle, ProcessTag,
     },
     Args,
 };
@@ -649,7 +648,7 @@ impl Drop for ConsoleMode {
 
 struct ConnectionToClient {
     reader: AsyncReader,
-    current_buf: Option<ExclusiveBuf>,
+    current_buf: Option<PooledBuf>,
 }
 impl ConnectionToClient {
     pub fn new(reader: AsyncReader) -> Self {
@@ -667,7 +666,7 @@ impl ConnectionToClient {
         &mut self,
         buf_len: usize,
         buf_pool: &mut BufPool,
-    ) -> Result<Option<SharedBuf>, ()> {
+    ) -> Result<Option<PooledBuf>, ()> {
         let mut buf = match self.current_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
@@ -681,12 +680,10 @@ impl ConnectionToClient {
             }
             ReadResult::Ok(len) => {
                 write.truncate(len);
-                let buf = buf.share();
-                buf_pool.release(buf.clone());
                 Ok(Some(buf))
             }
             ReadResult::Err => {
-                buf_pool.release(buf.share());
+                buf_pool.release(buf);
                 Err(())
             }
         }
@@ -774,7 +771,7 @@ impl ConnectionToClientListener {
 struct ProcessPipe {
     reader: AsyncReader,
     buf_len: usize,
-    current_buf: Option<ExclusiveBuf>,
+    current_buf: Option<PooledBuf>,
 }
 impl ProcessPipe {
     pub fn new(reader: AsyncReader, buf_len: usize) -> Self {
@@ -791,7 +788,7 @@ impl ProcessPipe {
         self.reader.event()
     }
 
-    pub fn read_async(&mut self, buf_pool: &mut BufPool) -> Result<Option<SharedBuf>, ()> {
+    pub fn read_async(&mut self, buf_pool: &mut BufPool) -> Result<Option<PooledBuf>, ()> {
         let mut buf = match self.current_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
@@ -805,12 +802,10 @@ impl ProcessPipe {
             }
             ReadResult::Ok(len) => {
                 write.truncate(len);
-                let buf = buf.share();
-                buf_pool.release(buf.clone());
                 Ok(Some(buf))
             }
             ReadResult::Err => {
-                buf_pool.release(buf.share());
+                buf_pool.release(buf);
                 Err(())
             }
         }
@@ -929,7 +924,6 @@ fn run_server(args: Args, pipe_path: &[u16]) {
 
     const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
     let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
-    let mut buf_pool = BufPool::default();
 
     let mut events = Vec::new();
     let mut timeout = None;
@@ -976,6 +970,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
                             }
+                            application.platform.buf_pool.release(buf);
                         }
                         PlatformRequest::CloseClient { handle } => {
                             client_connections[handle.into_index()] = None;
@@ -1013,6 +1008,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                                     events.push(PlatformEvent::ProcessExit { tag });
                                 }
                             }
+                            application.platform.buf_pool.release(buf);
                         }
                         PlatformRequest::CloseProcessInput { handle } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
@@ -1054,9 +1050,10 @@ fn run_server(args: Args, pipe_path: &[u16]) {
             EventSource::Connection(i) => {
                 if let Some(connection) = &mut client_connections[i] {
                     let handle = ClientHandle::from_index(i).unwrap();
-                    match connection
-                        .read_async(ServerApplication::connection_buffer_len(), &mut buf_pool)
-                    {
+                    match connection.read_async(
+                        ServerApplication::connection_buffer_len(),
+                        &mut application.platform.buf_pool,
+                    ) {
                         Ok(None) => (),
                         Ok(Some(buf)) => {
                             events.push(PlatformEvent::ConnectionOutput { handle, buf });
@@ -1072,10 +1069,19 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 if let Some(process) = &mut processes[i] {
                     if let Some(pipe) = &mut process.stdout {
                         let tag = process.tag;
-                        match pipe.read_async(&mut buf_pool) {
+                        match pipe.read_async(&mut application.platform.buf_pool) {
                             Ok(None) => (),
-                            Ok(Some(buf)) if !buf.as_bytes().is_empty() => {
-                                events.push(PlatformEvent::ProcessOutput { tag, buf });
+                            Ok(Some(buf)) => {
+                                if buf.as_bytes().is_empty() {
+                                    process.stdout = None;
+                                    process.kill();
+                                    processes[i] = None;
+                                    events.push(PlatformEvent::ProcessExit { tag });
+
+                                    application.platform.buf_pool.release(buf);
+                                } else {
+                                    events.push(PlatformEvent::ProcessOutput { tag, buf });
+                                }
                             }
                             _ => {
                                 process.stdout = None;

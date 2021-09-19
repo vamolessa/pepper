@@ -7,7 +7,7 @@ use crate::{
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeState},
     pattern::Pattern,
-    platform::SharedBuf,
+    platform::PooledBuf,
 };
 
 pub struct State {
@@ -600,8 +600,8 @@ pub mod process {
         let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
         let content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
-        const DEFAULT_SHARED_BUF: Option<SharedBuf> = None;
-        let mut stdins = [DEFAULT_SHARED_BUF; CursorCollection::capacity()];
+        const DEFAULT_POOLED_BUF: Option<PooledBuf> = None;
+        let mut stdins = [DEFAULT_POOLED_BUF; CursorCollection::capacity()];
 
         if pipe {
             for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
@@ -613,8 +613,6 @@ pub mod process {
                 let mut buf = ctx.platform.buf_pool.acquire();
                 let writer = buf.write();
                 writer.extend_from_slice(text.as_bytes());
-                let buf = buf.share();
-                ctx.platform.buf_pool.release(buf.clone());
 
                 stdins[i] = Some(buf);
 
