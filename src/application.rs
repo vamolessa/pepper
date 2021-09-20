@@ -10,16 +10,6 @@ use crate::{
     ui, Args,
 };
 
-pub struct AnyError;
-impl<T> From<T> for AnyError
-where
-    T: std::error::Error,
-{
-    fn from(_: T) -> Self {
-        Self
-    }
-}
-
 pub struct ServerApplication {
     editor: Editor,
     pub platform: Platform,

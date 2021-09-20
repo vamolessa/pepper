@@ -2283,7 +2283,7 @@ impl Client {
         let mut client_info = JsonObject::default();
         client_info.set("name".into(), env!("CARGO_PKG_NAME").into(), &mut self.json);
         client_info.set(
-            "name".into(),
+            "version".into(),
             env!("CARGO_PKG_VERSION").into(),
             &mut self.json,
         );

@@ -4,14 +4,13 @@ use std::{
         io::{AsRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
-    sync::atomic::{AtomicIsize, Ordering},
     time::Duration,
 };
 
 use pepper::{
-    application::{AnyError, ClientApplication, ServerApplication},
+    application::{ClientApplication, ServerApplication},
     client::ClientHandle,
-    platform::{BufPool, Key, Platform, PlatformEvent, PlatformRequest, ProcessHandle},
+    platform::{Key, PlatformEvent, PlatformRequest, ProcessHandle},
     Args,
 };
 
@@ -22,7 +21,7 @@ use unix_utils::{
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
-const MAX_PROCESS_COUNT: usize = 42;
+const MAX_PROCESS_COUNT: usize = 43;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn try_launching_debugger() {}
@@ -33,42 +32,6 @@ pub fn main() {
 
 fn errno() -> libc::c_int {
     unsafe { *libc::__errno_location() }
-}
-
-struct EventFd(RawFd);
-impl EventFd {
-    pub fn new() -> Self {
-        let fd = unsafe { libc::eventfd(0, 0) };
-        if fd == -1 {
-            panic!("could not create event fd");
-        }
-        Self(fd)
-    }
-
-    pub fn write(fd: RawFd) {
-        let mut buf = 1u64.to_ne_bytes();
-        let result = unsafe { libc::write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
-        if result != buf.len() as _ {
-            panic!("could not write to event fd");
-        }
-    }
-
-    pub fn read(&self) {
-        let mut buf = [0; 8];
-        if read(self.0, &mut buf) != Ok(buf.len()) {
-            panic!("could not read from event fd");
-        }
-    }
-}
-impl AsRawFd for EventFd {
-    fn as_raw_fd(&self) -> RawFd {
-        self.0
-    }
-}
-impl Drop for EventFd {
-    fn drop(&mut self) {
-        unsafe { libc::close(self.0) };
-    }
 }
 
 struct SignalFd(RawFd);
@@ -176,144 +139,54 @@ impl Drop for Epoll {
     }
 }
 
-fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
+fn run_server(args: Args, listener: UnixListener) {
     use io::Write;
 
     const NONE_PROCESS: Option<Process> = None;
-    static NEW_REQUEST_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
 
-    let new_request_event = EventFd::new();
-    NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
-
-    let (request_sender, request_receiver) = ServerApplication::platform_request_channel();
-    let platform = Platform::new(
-        || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
-        request_sender,
-    );
-    let event_sender = match ServerApplication::run(args, platform) {
-        Some(sender) => sender,
-        None => return Ok(()),
+    let mut application = match ServerApplication::new(args) {
+        Some(application) => application,
+        None => return,
     };
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];
-    let mut buf_pool = BufPool::default();
 
-    let mut timeout = Some(ServerApplication::idle_duration());
+    let mut events = Vec::new();
+    let mut timeout = None;
 
-    const CLIENTS_START_INDEX: usize = 1 + 1;
+    const CLIENTS_START_INDEX: usize = 1;
     const CLIENTS_LAST_INDEX: usize = CLIENTS_START_INDEX + MAX_CLIENT_COUNT - 1;
     const PROCESSES_START_INDEX: usize = CLIENTS_LAST_INDEX + 1;
     const PROCESSES_LAST_INDEX: usize = PROCESSES_START_INDEX + MAX_PROCESS_COUNT - 1;
 
     let epoll = Epoll::new();
-    epoll.add(new_request_event.as_raw_fd(), 0);
-    epoll.add(listener.as_raw_fd(), 1);
+    epoll.add(listener.as_raw_fd(), 0);
     let mut epoll_events = EpollEvents::new();
 
     loop {
-        let events = epoll.wait(&mut epoll_events, timeout);
-        if events.len() == 0 {
-            timeout = None;
-            event_sender.send(PlatformEvent::Idle)?;
-            continue;
+        let epoll_events = epoll.wait(&mut epoll_events, timeout);
+        if epoll_events.len() == 0 {
+            match timeout {
+                Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
+                Some(_) => {
+                    events.push(PlatformEvent::Idle);
+                    timeout = None;
+                }
+                None => unreachable!(),
+            }
         }
 
-        for event_index in events {
+        for event_index in epoll_events {
             match event_index {
-                0 => {
-                    new_request_event.read();
-                    for request in request_receiver.try_iter() {
-                        match request {
-                            PlatformRequest::Quit => return Ok(()),
-                            PlatformRequest::WriteToClient { handle, buf } => {
-                                let index = handle.into_index();
-                                if let Some(ref mut connection) = client_connections[index] {
-                                    if connection.write_all(buf.as_bytes()).is_err() {
-                                        epoll.remove(connection.as_raw_fd());
-                                        client_connections[index] = None;
-                                        event_sender
-                                            .send(PlatformEvent::ConnectionClose { handle })?;
-                                    }
-                                }
-                            }
-                            PlatformRequest::CloseClient { handle } => {
-                                let index = handle.into_index();
-                                if let Some(connection) = client_connections[index].take() {
-                                    epoll.remove(connection.as_raw_fd());
-                                }
-                                event_sender.send(PlatformEvent::ConnectionClose { handle })?;
-                            }
-                            PlatformRequest::SpawnProcess {
-                                tag,
-                                mut command,
-                                buf_len,
-                            } => {
-                                let mut spawned = false;
-                                for (i, p) in processes.iter_mut().enumerate() {
-                                    if p.is_some() {
-                                        continue;
-                                    }
-
-                                    let handle = ProcessHandle(i as _);
-                                    if let Ok(child) = command.spawn() {
-                                        let process = Process::new(child, tag, buf_len);
-                                        if let Some(fd) = process.try_as_raw_fd() {
-                                            epoll.add(fd, PROCESSES_START_INDEX + i);
-                                        }
-                                        *p = Some(process);
-                                        event_sender
-                                            .send(PlatformEvent::ProcessSpawned { tag, handle })?;
-                                        spawned = true;
-                                    }
-                                    break;
-                                }
-                                if !spawned {
-                                    event_sender.send(PlatformEvent::ProcessExit { tag })?;
-                                }
-                            }
-                            PlatformRequest::WriteToProcess { handle, buf } => {
-                                let index = handle.0 as usize;
-                                if let Some(ref mut process) = processes[index] {
-                                    if !process.write(buf.as_bytes()) {
-                                        if let Some(fd) = process.try_as_raw_fd() {
-                                            epoll.remove(fd);
-                                        }
-                                        let tag = process.tag();
-                                        process.kill();
-                                        processes[index] = None;
-                                        event_sender.send(PlatformEvent::ProcessExit { tag })?;
-                                    }
-                                }
-                            }
-                            PlatformRequest::CloseProcessInput { handle } => {
-                                if let Some(ref mut process) = processes[handle.0 as usize] {
-                                    process.close_input();
-                                }
-                            }
-                            PlatformRequest::KillProcess { handle } => {
-                                let index = handle.0 as usize;
-                                if let Some(ref mut process) = processes[index] {
-                                    if let Some(fd) = process.try_as_raw_fd() {
-                                        epoll.remove(fd);
-                                    }
-                                    let tag = process.tag();
-                                    process.kill();
-                                    processes[index] = None;
-                                    event_sender.send(PlatformEvent::ProcessExit { tag })?;
-                                }
-                            }
-                        }
-                    }
-                }
-                1 => match listener.accept() {
+                0 => match listener.accept() {
                     Ok((connection, _)) => {
                         for (i, c) in client_connections.iter_mut().enumerate() {
                             if c.is_none() {
                                 epoll.add(connection.as_raw_fd(), CLIENTS_START_INDEX + i);
                                 *c = Some(connection);
                                 let handle = ClientHandle::from_index(i).unwrap();
-                                event_sender.send(PlatformEvent::ConnectionOpen { handle })?;
+                                events.push(PlatformEvent::ConnectionOpen { handle });
                                 break;
                             }
                         }
@@ -326,45 +199,127 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                         let handle = ClientHandle::from_index(index).unwrap();
                         match read_from_connection(
                             connection,
-                            &mut buf_pool,
+                            &mut application.platform.buf_pool,
                             ServerApplication::connection_buffer_len(),
                         ) {
-                            Ok(buf) if !buf.as_bytes().is_empty() => {
-                                event_sender
-                                    .send(PlatformEvent::ConnectionOutput { handle, buf })?;
-                            }
-                            _ => {
+                            Ok(buf) => events.push(PlatformEvent::ConnectionOutput { handle, buf }),
+                            Err(()) => {
                                 epoll.remove(connection.as_raw_fd());
                                 client_connections[index] = None;
-                                event_sender.send(PlatformEvent::ConnectionClose { handle })?;
+                                events.push(PlatformEvent::ConnectionClose { handle });
                             }
                         }
                     }
-
-                    timeout = Some(ServerApplication::idle_duration());
                 }
                 PROCESSES_START_INDEX..=PROCESSES_LAST_INDEX => {
                     let index = event_index - PROCESSES_START_INDEX;
                     if let Some(ref mut process) = processes[index] {
                         let tag = process.tag();
-                        match process.read(&mut buf_pool) {
+                        match process.read(&mut application.platform.buf_pool) {
                             Ok(None) => (),
-                            Ok(Some(buf)) if !buf.as_bytes().is_empty() => {
-                                event_sender.send(PlatformEvent::ProcessOutput { tag, buf })?;
-                            }
-                            _ => {
+                            Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
+                            Err(()) => {
                                 if let Some(fd) = process.try_as_raw_fd() {
                                     epoll.remove(fd);
                                 }
                                 process.kill();
                                 processes[index] = None;
-                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
+                                events.push(PlatformEvent::ProcessExit { tag });
                             }
                         }
                     }
                 }
                 _ => unreachable!(),
             }
+        }
+
+        application.update(events.drain(..));
+        for request in application.platform.requests.drain() {
+            match request {
+                PlatformRequest::Quit => return,
+                PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
+                PlatformRequest::WriteToClient { handle, buf } => {
+                    let index = handle.into_index();
+                    if let Some(ref mut connection) = client_connections[index] {
+                        if connection.write_all(buf.as_bytes()).is_err() {
+                            epoll.remove(connection.as_raw_fd());
+                            client_connections[index] = None;
+                            events.push(PlatformEvent::ConnectionClose { handle });
+                        }
+                    }
+                    application.platform.buf_pool.release(buf);
+                }
+                PlatformRequest::CloseClient { handle } => {
+                    let index = handle.into_index();
+                    if let Some(connection) = client_connections[index].take() {
+                        epoll.remove(connection.as_raw_fd());
+                    }
+                    events.push(PlatformEvent::ConnectionClose { handle });
+                }
+                PlatformRequest::SpawnProcess {
+                    tag,
+                    mut command,
+                    buf_len,
+                } => {
+                    let mut spawned = false;
+                    for (i, p) in processes.iter_mut().enumerate() {
+                        if p.is_some() {
+                            continue;
+                        }
+
+                        let handle = ProcessHandle(i as _);
+                        if let Ok(child) = command.spawn() {
+                            let process = Process::new(child, tag, buf_len);
+                            if let Some(fd) = process.try_as_raw_fd() {
+                                epoll.add(fd, PROCESSES_START_INDEX + i);
+                            }
+                            *p = Some(process);
+                            events.push(PlatformEvent::ProcessSpawned { tag, handle });
+                            spawned = true;
+                        }
+                        break;
+                    }
+                    if !spawned {
+                        events.push(PlatformEvent::ProcessExit { tag });
+                    }
+                }
+                PlatformRequest::WriteToProcess { handle, buf } => {
+                    let index = handle.0 as usize;
+                    if let Some(ref mut process) = processes[index] {
+                        if !process.write(buf.as_bytes()) {
+                            if let Some(fd) = process.try_as_raw_fd() {
+                                epoll.remove(fd);
+                            }
+                            let tag = process.tag();
+                            process.kill();
+                            processes[index] = None;
+                            events.push(PlatformEvent::ProcessExit { tag });
+                        }
+                    }
+                    application.platform.buf_pool.release(buf);
+                }
+                PlatformRequest::CloseProcessInput { handle } => {
+                    if let Some(ref mut process) = processes[handle.0 as usize] {
+                        process.close_input();
+                    }
+                }
+                PlatformRequest::KillProcess { handle } => {
+                    let index = handle.0 as usize;
+                    if let Some(ref mut process) = processes[index] {
+                        if let Some(fd) = process.try_as_raw_fd() {
+                            epoll.remove(fd);
+                        }
+                        let tag = process.tag();
+                        process.kill();
+                        processes[index] = None;
+                        events.push(PlatformEvent::ProcessExit { tag });
+                    }
+                }
+            }
+        }
+
+        if !events.is_empty() {
+            timeout = Some(Duration::ZERO);
         }
     }
 }

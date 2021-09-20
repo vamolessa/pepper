@@ -67,8 +67,8 @@ use pepper::{
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
-const MAX_PROCESS_COUNT: usize = 42;
-const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
+const MAX_PROCESS_COUNT: usize = 43;
+const MAX_EVENT_COUNT: usize = 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
 const _ASSERT_MAX_EVENT_COUNT_IS_MAX_WAIT_OBJECTS: [(); MAXIMUM_WAIT_OBJECTS as _] =
     [(); MAX_EVENT_COUNT];
 
@@ -806,13 +806,13 @@ impl ProcessPipe {
                 self.current_buf = Some(buf);
                 Ok(None)
             }
+            ReadResult::Ok(0) | ReadResult::Err => {
+                buf_pool.release(buf);
+                Err(())
+            }
             ReadResult::Ok(len) => {
                 write.truncate(len);
                 Ok(Some(buf))
-            }
-            ReadResult::Err => {
-                buf_pool.release(buf);
-                Err(())
             }
         }
     }
@@ -1090,19 +1090,8 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                         let tag = process.tag;
                         match pipe.read_async(&mut application.platform.buf_pool) {
                             Ok(None) => (),
-                            Ok(Some(buf)) => {
-                                if buf.as_bytes().is_empty() {
-                                    process.stdout = None;
-                                    process.kill();
-                                    processes[i] = None;
-                                    events.push(PlatformEvent::ProcessExit { tag });
-
-                                    application.platform.buf_pool.release(buf);
-                                } else {
-                                    events.push(PlatformEvent::ProcessOutput { tag, buf });
-                                }
-                            }
-                            _ => {
+                            Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
+                            Err(()) => {
                                 process.stdout = None;
                                 process.kill();
                                 processes[i] = None;

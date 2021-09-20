@@ -29,11 +29,12 @@ fn main() {
             let _ = writeln!(file, "{}", info);
         }
 
-        sys::try_launching_debugger();
-
         let hook = ORIGINAL_PANIC_HOOK.assume_init_ref();
         hook(info);
     }));
 
-    sys::main();
+    if let Err(error) = panic::catch_unwind(sys::main) {
+        sys::try_launching_debugger();
+        panic::resume_unwind(error);
+    }
 }

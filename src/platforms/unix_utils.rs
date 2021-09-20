@@ -11,16 +11,13 @@ use std::{
 };
 
 use pepper::{
-    application::{AnyError, ClientApplication},
+    application::ClientApplication,
     editor_utils::hash_bytes,
-    platform::{BufPool, Key, ProcessTag, SharedBuf},
+    platform::{BufPool, Key, PooledBuf, ProcessTag},
     Args,
 };
 
-pub fn run(
-    server_fn: fn(Args, UnixListener) -> Result<(), AnyError>,
-    client_fn: fn(Args, UnixStream),
-) {
+pub fn run(server_fn: fn(Args, UnixListener), client_fn: fn(Args, UnixStream)) {
     let args = Args::parse();
 
     let mut session_path = String::new();
@@ -65,7 +62,7 @@ pub fn run(
     }
 
     if args.server {
-        let _ = server_fn(args, start_server(session_path));
+        server_fn(args, start_server(session_path));
         let _ = fs::remove_file(session_path);
     } else {
         match UnixStream::connect(session_path) {
@@ -73,7 +70,7 @@ pub fn run(
             Err(_) => match unsafe { libc::fork() } {
                 -1 => panic!("could not start server"),
                 0 => {
-                    let _ = server_fn(args, start_server(session_path));
+                    server_fn(args, start_server(session_path));
                     let _ = fs::remove_file(session_path);
                 }
                 _ => loop {
@@ -147,20 +144,18 @@ pub fn read_from_connection(
     connection: &mut UnixStream,
     buf_pool: &mut BufPool,
     len: usize,
-) -> Result<SharedBuf, ()> {
+) -> Result<PooledBuf, ()> {
     use io::Read;
     let mut buf = buf_pool.acquire();
     let write = buf.write_with_len(len);
     match connection.read(write) {
+        Ok(0) | Err(_) => {
+            buf_pool.release(buf);
+            Err(())
+        }
         Ok(len) => {
             write.truncate(len);
-            let buf = buf.share();
-            buf_pool.release(buf.clone());
             Ok(buf)
-        }
-        Err(_) => {
-            buf_pool.release(buf.share());
-            Err(())
         }
     }
 }
@@ -189,22 +184,20 @@ impl Process {
         self.child.stdout.as_ref().map(|s| s.as_raw_fd())
     }
 
-    pub fn read(&mut self, buf_pool: &mut BufPool) -> Result<Option<SharedBuf>, ()> {
+    pub fn read(&mut self, buf_pool: &mut BufPool) -> Result<Option<PooledBuf>, ()> {
         use io::Read;
         match self.child.stdout {
             Some(ref mut stdout) => {
                 let mut buf = buf_pool.acquire();
                 let write = buf.write_with_len(self.buf_len);
                 match stdout.read(write) {
+                    Ok(0) | Err(_) => {
+                        buf_pool.release(buf);
+                        Err(())
+                    }
                     Ok(len) => {
                         write.truncate(len);
-                        let buf = buf.share();
-                        buf_pool.release(buf.clone());
                         Ok(Some(buf))
-                    }
-                    Err(_) => {
-                        buf_pool.release(buf.share());
-                        Err(())
                     }
                 }
             }
