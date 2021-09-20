@@ -234,9 +234,21 @@ fn run_server(args: Args, listener: UnixListener) {
         }
 
         application.update(events.drain(..));
-        for request in application.platform.requests.drain() {
+        let mut requests = application.platform.requests.drain();
+        while let Some(request) = requests.next() {
             match request {
-                PlatformRequest::Quit => return,
+                PlatformRequest::Quit => {
+                    for request in requests {
+                        match request {
+                            PlatformRequest::WriteToClient { buf, .. }
+                            | PlatformRequest::WriteToProcess { buf, .. } => {
+                                application.platform.buf_pool.release(buf);
+                            }
+                            _ => (),
+                        }
+                    }
+                    return;
+                }
                 PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
                 PlatformRequest::WriteToClient { handle, buf } => {
                     let index = handle.into_index();
