@@ -294,11 +294,13 @@ pub mod find_file {
         };
 
         ctx.editor.mode.picker_state.find_file_waiting_for_process = true;
-        ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::FindFiles,
-            command,
-            buf_len: 4 * 1024,
-        });
+        ctx.platform
+            .requests
+            .enqueue(PlatformRequest::SpawnProcess {
+                tag: ProcessTag::FindFiles,
+                command,
+                buf_len: 4 * 1024,
+            });
 
         ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::Picker);

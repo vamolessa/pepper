@@ -91,8 +91,22 @@ pub enum ProcessTag {
 pub struct ProcessHandle(pub u8);
 
 #[derive(Default)]
-pub struct Platform {
+pub struct PlatformRequestCollection {
     pending_requests: Vec<PlatformRequest>,
+}
+impl PlatformRequestCollection {
+    pub fn enqueue(&mut self, request: PlatformRequest) {
+        self.pending_requests.push(request);
+    }
+
+    pub fn drain(&mut self) -> impl '_ + Iterator<Item = PlatformRequest> {
+        self.pending_requests.drain(..)
+    }
+}
+
+#[derive(Default)]
+pub struct Platform {
+    pub requests: PlatformRequestCollection,
 
     read_from_clipboard: Option<fn(&mut String)>,
     write_to_clipboard: Option<fn(&str)>,
@@ -149,14 +163,6 @@ impl Platform {
             self.internal_clipboard.clear();
             self.internal_clipboard.push_str(text);
         }
-    }
-
-    pub fn enqueue_request(&mut self, request: PlatformRequest) {
-        self.pending_requests.push(request);
-    }
-
-    pub fn drain_requests<'a>(&'a mut self) -> impl 'a + Iterator<Item = PlatformRequest> {
-        self.pending_requests.drain(..)
     }
 }
 

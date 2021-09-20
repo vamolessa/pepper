@@ -692,6 +692,12 @@ impl ConnectionToClient {
     pub fn write(&self, buf: &[u8]) -> bool {
         write_all_bytes(self.reader.handle(), buf)
     }
+
+    pub fn dispose(&mut self, buf_pool: &mut BufPool) {
+        if let Some(buf) = self.current_buf.take() {
+            buf_pool.release(buf);
+        }
+    }
 }
 impl Drop for ConnectionToClient {
     fn drop(&mut self) {
@@ -849,6 +855,12 @@ impl AsyncProcess {
         self.child.stdin = None;
     }
 
+    pub fn dispose(&mut self, buf_pool: &mut BufPool) {
+        if let Some(buf) = self.stdout.take().and_then(|p| p.current_buf) {
+            buf_pool.release(buf);
+        }
+    }
+
     pub fn kill(&mut self) {
         if !self.alive {
             return;
@@ -959,13 +971,14 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 }
 
                 application.update(events.drain(..));
-                for request in application.platform.drain_requests() {
+                for request in application.platform.requests.drain() {
                     match request {
                         PlatformRequest::Quit => return,
                         PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
                         PlatformRequest::WriteToClient { handle, buf } => {
                             if let Some(connection) = &mut client_connections[handle.into_index()] {
                                 if !connection.write(buf.as_bytes()) {
+                                    connection.dispose(&mut application.platform.buf_pool);
                                     client_connections[handle.into_index()] = None;
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
@@ -973,7 +986,11 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                             application.platform.buf_pool.release(buf);
                         }
                         PlatformRequest::CloseClient { handle } => {
-                            client_connections[handle.into_index()] = None;
+                            if let Some(mut connection) =
+                                client_connections[handle.into_index()].take()
+                            {
+                                connection.dispose(&mut application.platform.buf_pool)
+                            }
                             events.push(PlatformEvent::ConnectionClose { handle });
                         }
                         PlatformRequest::SpawnProcess {
@@ -1003,6 +1020,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                             if let Some(process) = &mut processes[handle.0 as usize] {
                                 if !process.write(buf.as_bytes()) {
                                     let tag = process.tag;
+                                    process.dispose(&mut application.platform.buf_pool);
                                     process.kill();
                                     processes[handle.0 as usize] = None;
                                     events.push(PlatformEvent::ProcessExit { tag });
@@ -1018,6 +1036,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                         PlatformRequest::KillProcess { handle } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
                                 let tag = process.tag;
+                                process.dispose(&mut application.platform.buf_pool);
                                 process.kill();
                                 processes[handle.0 as usize] = None;
                                 events.push(PlatformEvent::ProcessExit { tag });

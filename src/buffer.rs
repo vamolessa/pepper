@@ -1313,7 +1313,7 @@ impl BufferCollection {
         command.stdout(Stdio::piped());
         command.stderr(Stdio::null());
 
-        platform.enqueue_request(PlatformRequest::SpawnProcess {
+        platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Buffer(index),
             command,
             buf_len: 4 * 1024,
@@ -1327,8 +1327,8 @@ impl BufferCollection {
         handle: ProcessHandle,
     ) {
         if let Some(buf) = self.insert_processes[index].input.take() {
-            platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
-            platform.enqueue_request(PlatformRequest::CloseProcessInput { handle });
+            platform.requests.enqueue(PlatformRequest::WriteToProcess { handle, buf });
+            platform.requests.enqueue(PlatformRequest::CloseProcessInput { handle });
         }
     }
 

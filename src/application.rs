@@ -94,7 +94,7 @@ impl ServerApplication {
                 PlatformEvent::ConnectionClose { handle } => {
                     self.clients.on_client_left(handle);
                     if self.clients.iter().next().is_none() {
-                        self.platform.enqueue_request(PlatformRequest::Quit);
+                        self.platform.requests.enqueue(PlatformRequest::Quit);
                         break;
                     }
                 }
@@ -117,18 +117,17 @@ impl ServerApplication {
                                 let write = buf.write();
                                 ServerEvent::Suspend.serialize(write);
                                 self.platform
-                                    .enqueue_request(PlatformRequest::WriteToClient {
-                                        handle,
-                                        buf,
-                                    });
+                                    .requests
+                                    .enqueue(PlatformRequest::WriteToClient { handle, buf });
                             }
                             EditorControlFlow::Quit => {
                                 self.platform
-                                    .enqueue_request(PlatformRequest::CloseClient { handle });
+                                    .requests
+                                    .enqueue(PlatformRequest::CloseClient { handle });
                                 break;
                             }
                             EditorControlFlow::QuitAll => {
-                                self.platform.enqueue_request(PlatformRequest::Quit);
+                                self.platform.requests.enqueue(PlatformRequest::Quit);
                                 break;
                             }
                         }
@@ -157,7 +156,7 @@ impl ServerApplication {
 
         let needs_redraw = self.editor.on_pre_render(&mut self.clients);
         if needs_redraw {
-            self.platform.enqueue_request(PlatformRequest::Redraw);
+            self.platform.requests.enqueue(PlatformRequest::Redraw);
         }
 
         let focused_client_handle = self.clients.focused_client();
@@ -181,7 +180,8 @@ impl ServerApplication {
 
             let handle = c.handle();
             self.platform
-                .enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+                .requests
+                .enqueue(PlatformRequest::WriteToClient { handle, buf });
         }
     }
 }

@@ -1057,7 +1057,7 @@ impl Protocol {
         write.append(&mut self.body_buf);
 
         if let Some(handle) = self.process_handle {
-            platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
+            platform.requests.enqueue(PlatformRequest::WriteToProcess { handle, buf });
         }
     }
 }
