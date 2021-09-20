@@ -1377,4 +1377,3 @@ fn parse_console_events(
         }
     }
 }
-

@@ -466,4 +466,3 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
-

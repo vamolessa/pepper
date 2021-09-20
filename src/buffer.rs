@@ -15,7 +15,7 @@ use crate::{
     help,
     history::{Edit, EditKind, History},
     pattern::Pattern,
-    platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, PooledBuf},
+    platform::{Platform, PlatformRequest, PooledBuf, ProcessHandle, ProcessTag},
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
@@ -1261,7 +1261,11 @@ impl BufferCollection {
         }
     }
 
-    pub fn remove_from_editor_event_handler(&mut self, handle: BufferHandle, word_database: &mut WordDatabase) {
+    pub fn remove_from_editor_event_handler(
+        &mut self,
+        handle: BufferHandle,
+        word_database: &mut WordDatabase,
+    ) {
         let buffer = &mut self.buffers[handle.0 as usize];
         if buffer.alive {
             buffer.dispose(word_database);
@@ -1327,8 +1331,12 @@ impl BufferCollection {
         handle: ProcessHandle,
     ) {
         if let Some(buf) = self.insert_processes[index].input.take() {
-            platform.requests.enqueue(PlatformRequest::WriteToProcess { handle, buf });
-            platform.requests.enqueue(PlatformRequest::CloseProcessInput { handle });
+            platform
+                .requests
+                .enqueue(PlatformRequest::WriteToProcess { handle, buf });
+            platform
+                .requests
+                .enqueue(PlatformRequest::CloseProcessInput { handle });
         }
     }
 
@@ -1900,4 +1908,3 @@ mod tests {
         );
     }
 }
-

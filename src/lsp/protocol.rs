@@ -622,10 +622,8 @@ impl WorkspaceEdit {
                             buffer.capabilities.can_save = true;
                             buffer.path.clear();
                             buffer.path.push(path);
-                            let _ = buffer.read_from_file(
-                                &mut editor.word_database,
-                                &mut editor.events,
-                            );
+                            let _ = buffer
+                                .read_from_file(&mut editor.word_database, &mut editor.events);
                             (true, buffer.handle())
                         }
                     };
@@ -1057,7 +1055,9 @@ impl Protocol {
         write.append(&mut self.body_buf);
 
         if let Some(handle) = self.process_handle {
-            platform.requests.enqueue(PlatformRequest::WriteToProcess { handle, buf });
+            platform
+                .requests
+                .enqueue(PlatformRequest::WriteToProcess { handle, buf });
         }
     }
 }
