@@ -1045,16 +1045,16 @@ impl Protocol {
     }
 
     fn send_body(&mut self, platform: &mut Platform, json: &mut Json, body: JsonValue) {
-        use io::Write;
-
-        let mut buf = platform.buf_pool.acquire();
-        let write = buf.write();
-
-        let _ = json.write(&mut self.body_buf, &body);
-        let _ = write!(write, "Content-Length: {}\r\n\r\n", self.body_buf.len());
-        write.append(&mut self.body_buf);
-
         if let Some(handle) = self.process_handle {
+            use io::Write;
+
+            let mut buf = platform.buf_pool.acquire();
+            let write = buf.write();
+
+            let _ = json.write(&mut self.body_buf, &body);
+            let _ = write!(write, "Content-Length: {}\r\n\r\n", self.body_buf.len());
+            write.append(&mut self.body_buf);
+
             platform
                 .requests
                 .enqueue(PlatformRequest::WriteToProcess { handle, buf });

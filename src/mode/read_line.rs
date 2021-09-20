@@ -611,9 +611,7 @@ pub mod process {
                 content.append_range_text_to_string(range, &mut text);
 
                 let mut buf = ctx.platform.buf_pool.acquire();
-                let writer = buf.write();
-                writer.extend_from_slice(text.as_bytes());
-
+                buf.write().extend_from_slice(text.as_bytes());
                 stdins[i] = Some(buf);
 
                 ctx.editor.string_pool.release(text);

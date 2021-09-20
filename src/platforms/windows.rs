@@ -294,6 +294,8 @@ impl AsyncReader {
     pub fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
         let mut read_len = 0;
         if self.pending_io {
+            self.pending_io = false;
+
             let result = unsafe {
                 GetOverlappedResult(
                     self.handle.0,
@@ -302,8 +304,6 @@ impl AsyncReader {
                     FALSE,
                 )
             };
-
-            self.pending_io = false;
 
             if result == FALSE {
                 match get_last_error() {

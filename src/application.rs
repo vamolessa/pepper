@@ -104,8 +104,7 @@ impl ServerApplication {
                             EditorControlFlow::Continue => (),
                             EditorControlFlow::Suspend => {
                                 let mut buf = self.platform.buf_pool.acquire();
-                                let write = buf.write();
-                                ServerEvent::Suspend.serialize(write);
+                                ServerEvent::Suspend.serialize(buf.write());
                                 self.platform
                                     .requests
                                     .enqueue(PlatformRequest::WriteToClient { handle, buf });
