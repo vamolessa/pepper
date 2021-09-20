@@ -971,9 +971,24 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 }
 
                 application.update(events.drain(..));
-                for request in application.platform.requests.drain() {
+                let mut requests = application.platform.requests.drain();
+                while let Some(request) = requests.next() {
                     match request {
-                        PlatformRequest::Quit => return,
+                        PlatformRequest::Quit => {
+                            for connection in client_connections.iter_mut().flatten() {
+                                connection.dispose(&mut application.platform.buf_pool);
+                            }
+                            for request in requests {
+                                match request {
+                                    PlatformRequest::WriteToClient { buf, .. }
+                                    | PlatformRequest::WriteToProcess { buf, .. } => {
+                                        application.platform.buf_pool.release(buf);
+                                    }
+                                    _ => (),
+                                }
+                            }
+                            return;
+                        }
                         PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
                         PlatformRequest::WriteToClient { handle, buf } => {
                             if let Some(connection) = &mut client_connections[handle.into_index()] {
