@@ -600,8 +600,8 @@ pub mod process {
         let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
         let content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
-        const DEFAULT_POOLED_BUF: Option<PooledBuf> = None;
-        let mut stdins = [DEFAULT_POOLED_BUF; CursorCollection::capacity()];
+        const NONE_POOLED_BUF: Option<PooledBuf> = None;
+        let mut stdins = [NONE_POOLED_BUF; CursorCollection::capacity()];
 
         if pipe {
             for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
