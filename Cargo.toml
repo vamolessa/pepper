@@ -13,6 +13,9 @@ repository = "https://github.com/vamolessa/pepper"
 readme = "README.md"
 categories = ["command-line-utilities", "text-editors"]
 
+[profile.release]
+debug = true
+
 [lib]
 name = "pepper"
 path = "src/lib.rs"

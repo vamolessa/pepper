@@ -7,7 +7,6 @@ use crate::{
     editor::Editor,
     editor_utils::MessageKind,
     mode::ModeKind,
-    platform::Platform,
     syntax::{Token, TokenKind},
     theme::Color,
 };
@@ -65,7 +64,6 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
 
 pub struct RenderContext<'a> {
     pub editor: &'a Editor,
-    pub platform: &'a Platform,
     pub clients: &'a ClientManager,
     pub viewport_size: (u16, u16),
     pub scroll: (u32, u32),
@@ -744,4 +742,3 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
-

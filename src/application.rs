@@ -1,4 +1,4 @@
-use std::{env, fs, io, panic, path::Path, sync::mpsc, time::Duration};
+use std::{env, fs, io, panic, path::Path, time::Duration};
 
 use crate::{
     client::ClientManager,
@@ -10,35 +10,13 @@ use crate::{
     ui, Args,
 };
 
-pub struct AnyError;
-impl<T> From<T> for AnyError
-where
-    T: std::error::Error,
-{
-    fn from(_: T) -> Self {
-        Self
-    }
+pub struct ServerApplication {
+    editor: Editor,
+    pub platform: Platform,
+    clients: ClientManager,
+    client_event_receiver: ClientEventReceiver,
 }
-
-pub struct ApplicationEventSender(mpsc::Sender<PlatformEvent>);
-impl ApplicationEventSender {
-    pub fn send(&self, event: PlatformEvent) -> Result<(), AnyError> {
-        match self.0.send(event) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(AnyError),
-        }
-    }
-}
-
-pub struct ServerApplication;
 impl ServerApplication {
-    pub fn platform_request_channel() -> (
-        mpsc::Sender<PlatformRequest>,
-        mpsc::Receiver<PlatformRequest>,
-    ) {
-        mpsc::channel()
-    }
-
     pub const fn connection_buffer_len() -> usize {
         512
     }
@@ -47,9 +25,10 @@ impl ServerApplication {
         Duration::from_secs(1)
     }
 
-    pub fn run(args: Args, mut platform: Platform) -> Option<ApplicationEventSender> {
+    pub fn new(args: Args) -> Option<Self> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
+        let mut platform = Platform::default();
         let mut clients = ClientManager::default();
 
         if !args.no_default_config {
@@ -86,119 +65,113 @@ impl ServerApplication {
             }
         }
 
-        let (event_sender, event_receiver) = mpsc::channel();
-        let application_event_sender = ApplicationEventSender(event_sender.clone());
-        std::thread::spawn(move || {
-            let _ =
-                Self::run_application(editor, &mut platform, clients, event_sender, event_receiver);
-            platform.enqueue_request(PlatformRequest::Quit);
-            platform.flush_requests();
-        });
-
-        Some(application_event_sender)
+        Some(Self {
+            editor,
+            platform,
+            clients,
+            client_event_receiver: ClientEventReceiver::default(),
+        })
     }
 
-    fn run_application(
-        mut editor: Editor,
-        platform: &mut Platform,
-        mut clients: ClientManager,
-        event_sender: mpsc::Sender<PlatformEvent>,
-        event_receiver: mpsc::Receiver<PlatformEvent>,
-    ) -> Result<(), AnyError> {
-        let mut client_event_receiver = ClientEventReceiver::default();
-
-        'event_loop: loop {
-            let mut event = event_receiver.recv()?;
-            loop {
-                match event {
-                    PlatformEvent::Idle => editor.on_idle(&mut clients, platform),
-                    PlatformEvent::Redraw => (),
-                    PlatformEvent::ConnectionOpen { handle } => clients.on_client_joined(handle),
-                    PlatformEvent::ConnectionClose { handle } => {
-                        clients.on_client_left(handle);
-                        if clients.iter().next().is_none() {
-                            break 'event_loop;
-                        }
+    pub fn update<I>(&mut self, events: I)
+    where
+        I: Iterator<Item = PlatformEvent>,
+    {
+        for event in events {
+            match event {
+                PlatformEvent::Idle => self.editor.on_idle(&mut self.clients, &mut self.platform),
+                PlatformEvent::ConnectionOpen { handle } => self.clients.on_client_joined(handle),
+                PlatformEvent::ConnectionClose { handle } => {
+                    self.clients.on_client_left(handle);
+                    if self.clients.iter().next().is_none() {
+                        self.platform.requests.enqueue(PlatformRequest::Quit);
+                        break;
                     }
-                    PlatformEvent::ConnectionOutput { handle, buf } => {
-                        let mut events =
-                            client_event_receiver.receive_events(handle, buf.as_bytes());
-                        while let Some(event) = events.next(&client_event_receiver) {
-                            match editor.on_client_event(platform, &mut clients, handle, event) {
-                                EditorControlFlow::Continue => (),
-                                EditorControlFlow::Suspend => {
-                                    let mut buf = platform.buf_pool.acquire();
-                                    let write = buf.write();
-                                    ServerEvent::Suspend.serialize(write);
-                                    let buf = buf.share();
-                                    platform.enqueue_request(PlatformRequest::WriteToClient {
-                                        handle,
-                                        buf,
-                                    });
-                                }
-                                EditorControlFlow::Quit => {
-                                    platform
-                                        .enqueue_request(PlatformRequest::CloseClient { handle });
-                                    break;
-                                }
-                                EditorControlFlow::QuitAll => break 'event_loop,
+                }
+                PlatformEvent::ConnectionOutput { handle, buf } => {
+                    let mut events = self
+                        .client_event_receiver
+                        .receive_events(handle, buf.as_bytes());
+                    self.platform.buf_pool.release(buf);
+
+                    while let Some(event) = events.next(&self.client_event_receiver) {
+                        match self.editor.on_client_event(
+                            &mut self.platform,
+                            &mut self.clients,
+                            handle,
+                            event,
+                        ) {
+                            EditorControlFlow::Continue => (),
+                            EditorControlFlow::Suspend => {
+                                let mut buf = self.platform.buf_pool.acquire();
+                                ServerEvent::Suspend.serialize(buf.write());
+                                self.platform
+                                    .requests
+                                    .enqueue(PlatformRequest::WriteToClient { handle, buf });
+                            }
+                            EditorControlFlow::Quit => {
+                                self.platform
+                                    .requests
+                                    .enqueue(PlatformRequest::CloseClient { handle });
+                                break;
+                            }
+                            EditorControlFlow::QuitAll => {
+                                self.platform.requests.enqueue(PlatformRequest::Quit);
+                                break;
                             }
                         }
-                        events.finish(&mut client_event_receiver);
                     }
-                    PlatformEvent::ProcessSpawned { tag, handle } => {
-                        editor.on_process_spawned(platform, tag, handle)
-                    }
-                    PlatformEvent::ProcessOutput { tag, buf } => {
-                        editor.on_process_output(platform, &mut clients, tag, buf.as_bytes())
-                    }
-                    PlatformEvent::ProcessExit { tag } => {
-                        editor.on_process_exit(platform, &mut clients, tag)
-                    }
+                    events.finish(&mut self.client_event_receiver);
                 }
-
-                event = match event_receiver.try_recv() {
-                    Ok(event) => event,
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    Err(mpsc::TryRecvError::Disconnected) => return Err(AnyError),
-                };
-            }
-
-            let needs_redraw = editor.on_pre_render(&mut clients);
-            if needs_redraw {
-                event_sender.send(PlatformEvent::Redraw)?;
-            }
-
-            let focused_client_handle = clients.focused_client();
-            for c in clients.iter() {
-                if !c.has_ui() {
-                    continue;
+                PlatformEvent::ProcessSpawned { tag, handle } => {
+                    self.editor
+                        .on_process_spawned(&mut self.platform, tag, handle)
                 }
-
-                let mut buf = platform.buf_pool.acquire();
-                let write = buf.write_with_len(ServerEvent::display_header_len());
-                let ctx = ui::RenderContext {
-                    editor: &editor,
-                    clients: &clients,
-                    platform,
-                    viewport_size: c.viewport_size,
-                    scroll: c.scroll,
-                    draw_height: c.height,
-                    has_focus: focused_client_handle == Some(c.handle()),
-                };
-                ui::render(&ctx, c.buffer_view_handle(), write);
-                ServerEvent::serialize_display_header(write);
-
-                let handle = c.handle();
-                let buf = buf.share();
-                platform.buf_pool.release(buf.clone());
-                platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+                PlatformEvent::ProcessOutput { tag, buf } => {
+                    self.editor.on_process_output(
+                        &mut self.platform,
+                        &mut self.clients,
+                        tag,
+                        buf.as_bytes(),
+                    );
+                    self.platform.buf_pool.release(buf);
+                }
+                PlatformEvent::ProcessExit { tag } => {
+                    self.editor
+                        .on_process_exit(&mut self.platform, &mut self.clients, tag)
+                }
             }
-
-            platform.flush_requests();
         }
 
-        Ok(())
+        let needs_redraw = self.editor.on_pre_render(&mut self.clients);
+        if needs_redraw {
+            self.platform.requests.enqueue(PlatformRequest::Redraw);
+        }
+
+        let focused_client_handle = self.clients.focused_client();
+        for c in self.clients.iter() {
+            if !c.has_ui() {
+                continue;
+            }
+
+            let mut buf = self.platform.buf_pool.acquire();
+            let write = buf.write_with_len(ServerEvent::display_header_len());
+            let ctx = ui::RenderContext {
+                editor: &self.editor,
+                clients: &self.clients,
+                viewport_size: c.viewport_size,
+                scroll: c.scroll,
+                draw_height: c.height,
+                has_focus: focused_client_handle == Some(c.handle()),
+            };
+            ui::render(&ctx, c.buffer_view_handle(), write);
+            ServerEvent::serialize_display_header(write);
+
+            let handle = c.handle();
+            self.platform
+                .requests
+                .enqueue(PlatformRequest::WriteToClient { handle, buf });
+        }
     }
 }
 
@@ -352,4 +325,3 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
-

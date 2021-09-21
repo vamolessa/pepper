@@ -15,7 +15,7 @@ use crate::{
     help,
     history::{Edit, EditKind, History},
     pattern::Pattern,
-    platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
+    platform::{Platform, PlatformRequest, PooledBuf, ProcessHandle, ProcessTag},
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
@@ -1186,7 +1186,7 @@ pub struct InsertProcess {
     pub alive: bool,
     pub buffer_handle: BufferHandle,
     pub position: BufferPosition,
-    pub input: Option<SharedBuf>,
+    pub input: Option<PooledBuf>,
     pub output: Vec<u8>,
 }
 
@@ -1261,7 +1261,11 @@ impl BufferCollection {
         }
     }
 
-    pub fn remove_from_editor_event_handler(&mut self, handle: BufferHandle, word_database: &mut WordDatabase) {
+    pub fn remove_from_editor_event_handler(
+        &mut self,
+        handle: BufferHandle,
+        word_database: &mut WordDatabase,
+    ) {
         let buffer = &mut self.buffers[handle.0 as usize];
         if buffer.alive {
             buffer.dispose(word_database);
@@ -1274,7 +1278,7 @@ impl BufferCollection {
         mut command: Command,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-        stdin: Option<SharedBuf>,
+        stdin: Option<PooledBuf>,
     ) {
         let mut index = None;
         for (i, process) in self.insert_processes.iter().enumerate() {
@@ -1313,7 +1317,7 @@ impl BufferCollection {
         command.stdout(Stdio::piped());
         command.stderr(Stdio::null());
 
-        platform.enqueue_request(PlatformRequest::SpawnProcess {
+        platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Buffer(index),
             command,
             buf_len: 4 * 1024,
@@ -1327,8 +1331,12 @@ impl BufferCollection {
         handle: ProcessHandle,
     ) {
         if let Some(buf) = self.insert_processes[index].input.take() {
-            platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
-            platform.enqueue_request(PlatformRequest::CloseProcessInput { handle });
+            platform
+                .requests
+                .enqueue(PlatformRequest::WriteToProcess { handle, buf });
+            platform
+                .requests
+                .enqueue(PlatformRequest::CloseProcessInput { handle });
         }
     }
 
@@ -1900,4 +1908,3 @@ mod tests {
         );
     }
 }
-

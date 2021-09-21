@@ -1,7 +1,7 @@
 use std::{
     io,
+    mem::ManuallyDrop,
     process::{Command, Stdio},
-    sync::{mpsc, Arc},
 };
 
 use crate::{client::ClientHandle, editor_utils::parse_process_command, lsp};
@@ -30,7 +30,6 @@ pub enum Key {
 
 pub enum PlatformEvent {
     Idle,
-    Redraw,
     ConnectionOpen {
         handle: ClientHandle,
     },
@@ -39,7 +38,7 @@ pub enum PlatformEvent {
     },
     ConnectionOutput {
         handle: ClientHandle,
-        buf: SharedBuf,
+        buf: PooledBuf,
     },
     ProcessSpawned {
         tag: ProcessTag,
@@ -47,7 +46,7 @@ pub enum PlatformEvent {
     },
     ProcessOutput {
         tag: ProcessTag,
-        buf: SharedBuf,
+        buf: PooledBuf,
     },
     ProcessExit {
         tag: ProcessTag,
@@ -56,9 +55,10 @@ pub enum PlatformEvent {
 
 pub enum PlatformRequest {
     Quit,
+    Redraw,
     WriteToClient {
         handle: ClientHandle,
-        buf: SharedBuf,
+        buf: PooledBuf,
     },
     CloseClient {
         handle: ClientHandle,
@@ -70,7 +70,7 @@ pub enum PlatformRequest {
     },
     WriteToProcess {
         handle: ProcessHandle,
-        buf: SharedBuf,
+        buf: PooledBuf,
     },
     CloseProcessInput {
         handle: ProcessHandle,
@@ -90,13 +90,26 @@ pub enum ProcessTag {
 #[derive(Clone, Copy)]
 pub struct ProcessHandle(pub u8);
 
+#[derive(Default)]
+pub struct PlatformRequestCollection {
+    pending_requests: Vec<PlatformRequest>,
+}
+impl PlatformRequestCollection {
+    pub fn enqueue(&mut self, request: PlatformRequest) {
+        self.pending_requests.push(request);
+    }
+
+    pub fn drain(&mut self) -> impl '_ + Iterator<Item = PlatformRequest> {
+        self.pending_requests.drain(..)
+    }
+}
+
+#[derive(Default)]
 pub struct Platform {
+    pub requests: PlatformRequestCollection,
+
     read_from_clipboard: Option<fn(&mut String)>,
     write_to_clipboard: Option<fn(&str)>,
-
-    flush_requests: fn(),
-    request_sender: mpsc::Sender<PlatformRequest>,
-    needs_flushing: bool,
 
     pub buf_pool: BufPool,
 
@@ -105,22 +118,6 @@ pub struct Platform {
     pub paste_command: String,
 }
 impl Platform {
-    pub fn new(flush_requests: fn(), request_sender: mpsc::Sender<PlatformRequest>) -> Self {
-        Self {
-            read_from_clipboard: None,
-            write_to_clipboard: None,
-
-            flush_requests,
-            request_sender,
-            needs_flushing: false,
-
-            buf_pool: BufPool::default(),
-            internal_clipboard: String::new(),
-            copy_command: String::new(),
-            paste_command: String::new(),
-        }
-    }
-
     pub fn set_clipboard_api(
         &mut self,
         read_from_clipboard: fn(&mut String),
@@ -167,67 +164,45 @@ impl Platform {
             self.internal_clipboard.push_str(text);
         }
     }
-
-    pub fn enqueue_request(&mut self, request: PlatformRequest) {
-        self.needs_flushing = true;
-        let _ = self.request_sender.send(request);
-    }
-
-    pub fn flush_requests(&mut self) {
-        if self.needs_flushing {
-            self.needs_flushing = false;
-            (self.flush_requests)();
-        }
-    }
 }
 
-pub struct ExclusiveBuf(Arc<Vec<u8>>);
-impl ExclusiveBuf {
-    pub fn share(self) -> SharedBuf {
-        SharedBuf(self.0)
+pub struct PooledBuf(Vec<u8>);
+impl PooledBuf {
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 
     pub fn write(&mut self) -> &mut Vec<u8> {
-        let buf = Arc::get_mut(&mut self.0).unwrap();
+        let buf = &mut self.0;
         buf.clear();
         buf
     }
 
     pub fn write_with_len(&mut self, len: usize) -> &mut Vec<u8> {
-        let buf = Arc::get_mut(&mut self.0).unwrap();
+        let buf = &mut self.0;
         buf.resize(len, 0);
         buf
     }
 }
-
-#[derive(Clone)]
-pub struct SharedBuf(Arc<Vec<u8>>);
-impl SharedBuf {
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
+impl Drop for PooledBuf {
+    fn drop(&mut self) {
+        panic!("buf was dropped outside of a pool");
     }
 }
 
-// TODO: later try to make a SharedPool<T>
-// which is globally available and lock free
-// maybe even an arena/bump/temp allocator
 #[derive(Default)]
 pub struct BufPool {
-    pool: Vec<SharedBuf>,
+    pool: Vec<ManuallyDrop<PooledBuf>>,
 }
 impl BufPool {
-    pub fn acquire(&mut self) -> ExclusiveBuf {
-        for (i, buf) in self.pool.iter_mut().enumerate() {
-            if Arc::get_mut(&mut buf.0).is_some() {
-                let buf = self.pool.swap_remove(i);
-                return ExclusiveBuf(buf.0);
-            }
+    pub fn acquire(&mut self) -> PooledBuf {
+        match self.pool.pop() {
+            Some(buf) => ManuallyDrop::into_inner(buf),
+            None => PooledBuf(Vec::new()),
         }
-
-        ExclusiveBuf(Arc::new(Vec::new()))
     }
 
-    pub fn release(&mut self, buf: SharedBuf) {
-        self.pool.push(buf);
+    pub fn release(&mut self, buf: PooledBuf) {
+        self.pool.push(ManuallyDrop::new(buf));
     }
 }

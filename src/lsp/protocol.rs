@@ -622,10 +622,8 @@ impl WorkspaceEdit {
                             buffer.capabilities.can_save = true;
                             buffer.path.clear();
                             buffer.path.push(path);
-                            let _ = buffer.read_from_file(
-                                &mut editor.word_database,
-                                &mut editor.events,
-                            );
+                            let _ = buffer
+                                .read_from_file(&mut editor.word_database, &mut editor.events);
                             (true, buffer.handle())
                         }
                     };
@@ -1047,18 +1045,19 @@ impl Protocol {
     }
 
     fn send_body(&mut self, platform: &mut Platform, json: &mut Json, body: JsonValue) {
-        use io::Write;
-
-        let mut buf = platform.buf_pool.acquire();
-        let write = buf.write();
-
-        let _ = json.write(&mut self.body_buf, &body);
-        let _ = write!(write, "Content-Length: {}\r\n\r\n", self.body_buf.len());
-        write.append(&mut self.body_buf);
-
         if let Some(handle) = self.process_handle {
-            let buf = buf.share();
-            platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
+            use io::Write;
+
+            let mut buf = platform.buf_pool.acquire();
+            let write = buf.write();
+
+            let _ = json.write(&mut self.body_buf, &body);
+            let _ = write!(write, "Content-Length: {}\r\n\r\n", self.body_buf.len());
+            write.append(&mut self.body_buf);
+
+            platform
+                .requests
+                .enqueue(PlatformRequest::WriteToProcess { handle, buf });
         }
     }
 }

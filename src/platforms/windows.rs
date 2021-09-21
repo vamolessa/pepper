@@ -3,7 +3,6 @@ use std::{
     os::windows::{ffi::OsStrExt, io::IntoRawHandle},
     process::Child,
     ptr::NonNull,
-    sync::atomic::{AtomicPtr, Ordering},
     time::Duration,
 };
 
@@ -58,19 +57,18 @@ use winapi::{
 };
 
 use pepper::{
-    application::{AnyError, ClientApplication, ServerApplication},
+    application::{ClientApplication, ServerApplication},
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
-        BufPool, ExclusiveBuf, Key, Platform, PlatformEvent, PlatformRequest, ProcessHandle,
-        ProcessTag, SharedBuf,
+        BufPool, Key, PlatformEvent, PlatformRequest, PooledBuf, ProcessHandle, ProcessTag,
     },
     Args,
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
-const MAX_PROCESS_COUNT: usize = 42;
-const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
+const MAX_PROCESS_COUNT: usize = 43;
+const MAX_EVENT_COUNT: usize = 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
 const _ASSERT_MAX_EVENT_COUNT_IS_MAX_WAIT_OBJECTS: [(); MAXIMUM_WAIT_OBJECTS as _] =
     [(); MAX_EVENT_COUNT];
 
@@ -296,6 +294,8 @@ impl AsyncReader {
     pub fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
         let mut read_len = 0;
         if self.pending_io {
+            self.pending_io = false;
+
             let result = unsafe {
                 GetOverlappedResult(
                     self.handle.0,
@@ -304,8 +304,6 @@ impl AsyncReader {
                     FALSE,
                 )
             };
-
-            self.pending_io = false;
 
             if result == FALSE {
                 match get_last_error() {
@@ -567,10 +565,6 @@ fn set_event(handle: HANDLE) {
 
 struct Event(HANDLE);
 impl Event {
-    pub fn automatic() -> Self {
-        Self(create_event(false, false))
-    }
-
     pub fn manual() -> Self {
         Self(create_event(true, false))
     }
@@ -654,7 +648,7 @@ impl Drop for ConsoleMode {
 
 struct ConnectionToClient {
     reader: AsyncReader,
-    current_buf: Option<ExclusiveBuf>,
+    current_buf: Option<PooledBuf>,
 }
 impl ConnectionToClient {
     pub fn new(reader: AsyncReader) -> Self {
@@ -672,7 +666,7 @@ impl ConnectionToClient {
         &mut self,
         buf_len: usize,
         buf_pool: &mut BufPool,
-    ) -> Result<Option<SharedBuf>, ()> {
+    ) -> Result<Option<PooledBuf>, ()> {
         let mut buf = match self.current_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
@@ -686,12 +680,10 @@ impl ConnectionToClient {
             }
             ReadResult::Ok(len) => {
                 write.truncate(len);
-                let buf = buf.share();
-                buf_pool.release(buf.clone());
                 Ok(Some(buf))
             }
             ReadResult::Err => {
-                buf_pool.release(buf.share());
+                buf_pool.release(buf);
                 Err(())
             }
         }
@@ -699,6 +691,12 @@ impl ConnectionToClient {
 
     pub fn write(&self, buf: &[u8]) -> bool {
         write_all_bytes(self.reader.handle(), buf)
+    }
+
+    pub fn dispose(&mut self, buf_pool: &mut BufPool) {
+        if let Some(buf) = self.current_buf.take() {
+            buf_pool.release(buf);
+        }
     }
 }
 impl Drop for ConnectionToClient {
@@ -779,7 +777,7 @@ impl ConnectionToClientListener {
 struct ProcessPipe {
     reader: AsyncReader,
     buf_len: usize,
-    current_buf: Option<ExclusiveBuf>,
+    current_buf: Option<PooledBuf>,
 }
 impl ProcessPipe {
     pub fn new(reader: AsyncReader, buf_len: usize) -> Self {
@@ -796,7 +794,7 @@ impl ProcessPipe {
         self.reader.event()
     }
 
-    pub fn read_async(&mut self, buf_pool: &mut BufPool) -> Result<Option<SharedBuf>, ()> {
+    pub fn read_async(&mut self, buf_pool: &mut BufPool) -> Result<Option<PooledBuf>, ()> {
         let mut buf = match self.current_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
@@ -808,15 +806,13 @@ impl ProcessPipe {
                 self.current_buf = Some(buf);
                 Ok(None)
             }
+            ReadResult::Ok(0) | ReadResult::Err => {
+                buf_pool.release(buf);
+                Err(())
+            }
             ReadResult::Ok(len) => {
                 write.truncate(len);
-                let buf = buf.share();
-                buf_pool.release(buf.clone());
                 Ok(Some(buf))
-            }
-            ReadResult::Err => {
-                buf_pool.release(buf.share());
-                Err(())
             }
         }
     }
@@ -859,6 +855,12 @@ impl AsyncProcess {
         self.child.stdin = None;
     }
 
+    pub fn dispose(&mut self, buf_pool: &mut BufPool) {
+        if let Some(buf) = self.stdout.take().and_then(|p| p.current_buf) {
+            buf_pool.release(buf);
+        }
+    }
+
     pub fn kill(&mut self) {
         if !self.alive {
             return;
@@ -878,17 +880,16 @@ impl Drop for AsyncProcess {
 }
 
 enum EventSource {
-    NewRequest,
     ConnectionListener,
     Connection(usize),
     Process(usize),
 }
-struct Events {
+struct EventListener {
     wait_handles: [HANDLE; MAX_EVENT_COUNT],
     sources: [EventSource; MAX_EVENT_COUNT],
     len: usize,
 }
-impl Events {
+impl EventListener {
     pub fn new() -> Self {
         const DEFAULT_EVENT_SOURCE: EventSource = EventSource::ConnectionListener;
 
@@ -917,66 +918,97 @@ impl Events {
     }
 }
 
-fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
-    const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
-    static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
-
-    let mut events = Events::new();
+fn run_server(args: Args, pipe_path: &[u16]) {
+    let mut event_listener = EventListener::new();
     let mut listener =
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
-    let new_request_event = Event::automatic();
-    NEW_REQUEST_EVENT_HANDLE.store(new_request_event.0 as _, Ordering::Relaxed);
-
-    let (request_sender, request_receiver) = ServerApplication::platform_request_channel();
-    let mut platform = Platform::new(
-        || set_event(NEW_REQUEST_EVENT_HANDLE.load(Ordering::Relaxed) as _),
-        request_sender,
-    );
-    platform.set_clipboard_api(read_from_clipboard, write_to_clipboard);
-    let event_sender = match ServerApplication::run(args, platform) {
-        Some(sender) => sender,
-        None => return Ok(()),
+    let mut application = match ServerApplication::new(args) {
+        Some(application) => application,
+        None => return,
     };
 
-    let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
-    let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
-    let mut buf_pool = BufPool::default();
+    application
+        .platform
+        .set_clipboard_api(read_from_clipboard, write_to_clipboard);
 
-    let mut timeout = Some(ServerApplication::idle_duration());
+    let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
+
+    const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
+    let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
+
+    let mut events = Vec::new();
+    let mut timeout = None;
 
     loop {
-        events.track(&new_request_event, EventSource::NewRequest);
-        events.track(listener.event(), EventSource::ConnectionListener);
+        event_listener.track(listener.event(), EventSource::ConnectionListener);
         for (i, connection) in client_connections.iter().enumerate() {
             if let Some(connection) = connection {
-                events.track(connection.event(), EventSource::Connection(i));
+                event_listener.track(connection.event(), EventSource::Connection(i));
             }
         }
         for (i, process) in processes.iter().enumerate() {
             if let Some(process) = process {
                 if let Some(stdout) = &process.stdout {
-                    events.track(stdout.event(), EventSource::Process(i));
+                    event_listener.track(stdout.event(), EventSource::Process(i));
                 }
             }
         }
 
-        match events.wait_next(timeout) {
-            Some(EventSource::NewRequest) => {
-                for request in request_receiver.try_iter() {
+        let event = match event_listener.wait_next(timeout) {
+            Some(event) => {
+                timeout = Some(Duration::ZERO);
+                event
+            }
+            None => {
+                match timeout {
+                    Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
+                    Some(_) => {
+                        events.push(PlatformEvent::Idle);
+                        timeout = None;
+                    }
+                    None => unreachable!(),
+                }
+
+                application.update(events.drain(..));
+                let mut requests = application.platform.requests.drain();
+                while let Some(request) = requests.next() {
                     match request {
-                        PlatformRequest::Quit => return Ok(()),
+                        PlatformRequest::Quit => {
+                            for connection in client_connections.iter_mut().flatten() {
+                                connection.dispose(&mut application.platform.buf_pool);
+                            }
+                            for process in processes.iter_mut().flatten() {
+                                process.dispose(&mut application.platform.buf_pool);
+                                process.kill();
+                            }
+                            for request in requests {
+                                if let PlatformRequest::WriteToClient { buf, .. }
+                                | PlatformRequest::WriteToProcess { buf, .. } = request
+                                {
+                                    application.platform.buf_pool.release(buf);
+                                }
+                            }
+                            return;
+                        }
+                        PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
                         PlatformRequest::WriteToClient { handle, buf } => {
                             if let Some(connection) = &mut client_connections[handle.into_index()] {
                                 if !connection.write(buf.as_bytes()) {
+                                    connection.dispose(&mut application.platform.buf_pool);
                                     client_connections[handle.into_index()] = None;
-                                    event_sender.send(PlatformEvent::ConnectionClose { handle })?;
+                                    events.push(PlatformEvent::ConnectionClose { handle });
                                 }
                             }
+                            application.platform.buf_pool.release(buf);
                         }
                         PlatformRequest::CloseClient { handle } => {
-                            client_connections[handle.into_index()] = None;
-                            event_sender.send(PlatformEvent::ConnectionClose { handle })?;
+                            if let Some(mut connection) =
+                                client_connections[handle.into_index()].take()
+                            {
+                                connection.dispose(&mut application.platform.buf_pool)
+                            }
+                            events.push(PlatformEvent::ConnectionClose { handle });
                         }
                         PlatformRequest::SpawnProcess {
                             tag,
@@ -992,25 +1024,26 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                 let handle = ProcessHandle(i as _);
                                 if let Ok(child) = command.spawn() {
                                     *p = Some(AsyncProcess::new(child, tag, buf_len));
-                                    event_sender
-                                        .send(PlatformEvent::ProcessSpawned { tag, handle })?;
+                                    events.push(PlatformEvent::ProcessSpawned { tag, handle });
                                     spawned = true;
                                 }
                                 break;
                             }
                             if !spawned {
-                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
+                                events.push(PlatformEvent::ProcessExit { tag });
                             }
                         }
                         PlatformRequest::WriteToProcess { handle, buf } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
                                 if !process.write(buf.as_bytes()) {
                                     let tag = process.tag;
+                                    process.dispose(&mut application.platform.buf_pool);
                                     process.kill();
                                     processes[handle.0 as usize] = None;
-                                    event_sender.send(PlatformEvent::ProcessExit { tag })?;
+                                    events.push(PlatformEvent::ProcessExit { tag });
                                 }
                             }
+                            application.platform.buf_pool.release(buf);
                         }
                         PlatformRequest::CloseProcessInput { handle } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
@@ -1020,67 +1053,70 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         PlatformRequest::KillProcess { handle } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
                                 let tag = process.tag;
+                                process.dispose(&mut application.platform.buf_pool);
                                 process.kill();
                                 processes[handle.0 as usize] = None;
-                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
+                                events.push(PlatformEvent::ProcessExit { tag });
                             }
                         }
                     }
                 }
+
+                if !events.is_empty() {
+                    timeout = Some(Duration::ZERO);
+                }
+
+                continue;
             }
-            Some(EventSource::ConnectionListener) => {
+        };
+
+        match event {
+            EventSource::ConnectionListener => {
                 if let Some(connection) = listener.accept(pipe_path) {
                     for (i, c) in client_connections.iter_mut().enumerate() {
                         if c.is_none() {
                             *c = Some(connection);
                             let handle = ClientHandle::from_index(i).unwrap();
-                            event_sender.send(PlatformEvent::ConnectionOpen { handle })?;
+                            events.push(PlatformEvent::ConnectionOpen { handle });
                             break;
                         }
                     }
                 }
             }
-            Some(EventSource::Connection(i)) => {
+            EventSource::Connection(i) => {
                 if let Some(connection) = &mut client_connections[i] {
                     let handle = ClientHandle::from_index(i).unwrap();
-                    match connection
-                        .read_async(ServerApplication::connection_buffer_len(), &mut buf_pool)
-                    {
+                    match connection.read_async(
+                        ServerApplication::connection_buffer_len(),
+                        &mut application.platform.buf_pool,
+                    ) {
                         Ok(None) => (),
                         Ok(Some(buf)) => {
-                            event_sender.send(PlatformEvent::ConnectionOutput { handle, buf })?
+                            events.push(PlatformEvent::ConnectionOutput { handle, buf });
                         }
                         Err(()) => {
                             client_connections[i] = None;
-                            event_sender.send(PlatformEvent::ConnectionClose { handle })?;
+                            events.push(PlatformEvent::ConnectionClose { handle });
                         }
                     }
                 }
-
-                timeout = Some(ServerApplication::idle_duration());
             }
-            Some(EventSource::Process(i)) => {
+            EventSource::Process(i) => {
                 if let Some(process) = &mut processes[i] {
                     if let Some(pipe) = &mut process.stdout {
                         let tag = process.tag;
-                        match pipe.read_async(&mut buf_pool) {
+                        match pipe.read_async(&mut application.platform.buf_pool) {
                             Ok(None) => (),
-                            Ok(Some(buf)) if !buf.as_bytes().is_empty() => {
-                                event_sender.send(PlatformEvent::ProcessOutput { tag, buf })?;
-                            }
-                            _ => {
+                            Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
+                            Err(()) => {
                                 process.stdout = None;
                                 process.kill();
                                 processes[i] = None;
-                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
+                                events.push(PlatformEvent::ProcessExit { tag });
                             }
                         }
                     }
                 }
-            }
-            None => {
-                timeout = None;
-                event_sender.send(PlatformEvent::Idle)?;
             }
         }
     }

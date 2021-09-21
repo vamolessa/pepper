@@ -2283,7 +2283,7 @@ impl Client {
         let mut client_info = JsonObject::default();
         client_info.set("name".into(), env!("CARGO_PKG_NAME").into(), &mut self.json);
         client_info.set(
-            "name".into(),
+            "version".into(),
             env!("CARGO_PKG_VERSION").into(),
             &mut self.json,
         );
@@ -2735,7 +2735,7 @@ impl ClientManager {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        platform.enqueue_request(PlatformRequest::SpawnProcess {
+        platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Lsp(handle),
             command,
             buf_len: protocol::BUFFER_LEN,
@@ -2750,7 +2750,7 @@ impl ClientManager {
         if let ClientEntry::Occupied(client) = &mut self.entries[handle.0 as usize] {
             let _ = client.notify(platform, "exit", JsonObject::default());
             if let Some(process_handle) = client.protocol.process_handle() {
-                platform.enqueue_request(PlatformRequest::KillProcess {
+                platform.requests.enqueue(PlatformRequest::KillProcess {
                     handle: process_handle,
                 });
             }
@@ -2930,4 +2930,3 @@ impl ClientManager {
         }
     }
 }
-

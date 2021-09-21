@@ -4,12 +4,11 @@ use std::{
         io::{AsRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
-    sync::atomic::{AtomicIsize, Ordering},
     time::Duration,
 };
 
 use pepper::{
-    application::{AnyError, ClientApplication, ServerApplication},
+    application::{ClientApplication, ServerApplication},
     client::ClientHandle,
     platform::{BufPool, Key, Platform, PlatformEvent, PlatformRequest, ProcessHandle},
     Args,
@@ -22,7 +21,7 @@ use unix_utils::{
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
-const MAX_PROCESS_COUNT: usize = 42;
+const MAX_PROCESS_COUNT: usize = 43;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn try_launching_debugger() {}
@@ -37,7 +36,6 @@ fn errno() -> libc::c_int {
 
 enum Event {
     Resize,
-    FlushRequests(bool),
     Fd(RawFd),
 }
 impl Event {
@@ -48,14 +46,6 @@ impl Event {
                 filter: libc::EVFILT_SIGNAL,
                 flags,
                 fflags: 0,
-                data: 0,
-                udata: index as _,
-            },
-            Self::FlushRequests(triggered) => libc::kevent {
-                ident: 0,
-                filter: libc::EVFILT_USER,
-                flags: flags | libc::EV_ONESHOT,
-                fflags: if triggered { libc::NOTE_TRIGGER } else { 0 },
                 data: 0,
                 udata: index as _,
             },
@@ -178,145 +168,52 @@ impl Drop for Kqueue {
     }
 }
 
-fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
+fn run_server(args: Args, listener: UnixListener) {
     use io::Write;
 
     const NONE_PROCESS: Option<Process> = None;
-    static KQUEUE_FD: AtomicIsize = AtomicIsize::new(-1);
 
-    let kqueue = Kqueue::new();
-    kqueue.add(Event::FlushRequests(false), 0);
-    kqueue.add(Event::Fd(listener.as_raw_fd()), 1);
-    let mut kqueue_events = KqueueEvents::new();
-
-    KQUEUE_FD.store(kqueue.as_raw_fd() as _, Ordering::Relaxed);
-
-    fn flush_requests() {
-        let fd = KQUEUE_FD.load(Ordering::Relaxed) as _;
-        let event = Event::FlushRequests(true).into_kevent(libc::EV_ADD, 0);
-        if !modify_kqueue(fd, &event) {
-            panic!("error trigerring flush events");
-        }
-    }
-
-    let (request_sender, request_receiver) = ServerApplication::platform_request_channel();
-    let platform = Platform::new(flush_requests, request_sender);
-    let event_sender = match ServerApplication::run(args, platform) {
-        Some(sender) => sender,
-        None => return Ok(()),
+    let mut application = match ServerApplication::new(args) {
+        Some(application) => application,
+        None => return,
     };
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];
-    let mut buf_pool = BufPool::default();
 
-    let mut timeout = Some(ServerApplication::idle_duration());
+    let mut events = Vec::new();
+    let mut timeout = None;
 
-    const CLIENTS_START_INDEX: usize = 1 + 1;
+    const CLIENTS_START_INDEX: usize = 1;
     const CLIENTS_LAST_INDEX: usize = CLIENTS_START_INDEX + MAX_CLIENT_COUNT - 1;
     const PROCESSES_START_INDEX: usize = CLIENTS_LAST_INDEX + 1;
     const PROCESSES_LAST_INDEX: usize = PROCESSES_START_INDEX + MAX_PROCESS_COUNT - 1;
 
+    let kqueue = Kqueue::new();
+    kqueue.add(Event::Fd(listener.as_raw_fd()), 0);
+    let mut kqueue_events = KqueueEvents::new();
+
     loop {
-        let events = kqueue.wait(&mut kqueue_events, timeout);
-        if events.len() == 0 {
-            timeout = None;
-            event_sender.send(PlatformEvent::Idle)?;
-            continue;
+        let kqueue_events = kqueue.wait(&mut kqueue_events, timeout);
+        if kqueue_events.len() == 0 {
+            match timeout {
+                Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
+                Some(_) => {
+                    events.push(PlatformEvent::Idle);
+                    timeout = None;
+                }
+                None => unreachable!(),
+            }
         }
 
-        for event in events {
+        for event in kqueue_events {
             let (event_index, event_data) = match event {
                 Ok(event) => (event.index, event.data),
-                Err(()) => return Ok(()),
+                Err(()) => return,
             };
+
             match event_index {
                 0 => {
-                    kqueue.add(Event::FlushRequests(false), 0);
-                    for request in request_receiver.try_iter() {
-                        match request {
-                            PlatformRequest::Quit => return Ok(()),
-                            PlatformRequest::WriteToClient { handle, buf } => {
-                                let index = handle.into_index();
-                                if let Some(ref mut connection) = client_connections[index] {
-                                    if connection.write_all(buf.as_bytes()).is_err() {
-                                        kqueue.remove(Event::Fd(connection.as_raw_fd()));
-                                        client_connections[index] = None;
-                                        event_sender
-                                            .send(PlatformEvent::ConnectionClose { handle })?;
-                                    }
-                                }
-                            }
-                            PlatformRequest::CloseClient { handle } => {
-                                let index = handle.into_index();
-                                if let Some(connection) = client_connections[index].take() {
-                                    kqueue.remove(Event::Fd(connection.as_raw_fd()));
-                                }
-                                event_sender.send(PlatformEvent::ConnectionClose { handle })?;
-                            }
-                            PlatformRequest::SpawnProcess {
-                                tag,
-                                mut command,
-                                buf_len,
-                            } => {
-                                let mut spawned = false;
-                                for (i, p) in processes.iter_mut().enumerate() {
-                                    if p.is_some() {
-                                        continue;
-                                    }
-
-                                    let handle = ProcessHandle(i as _);
-                                    if let Ok(child) = command.spawn() {
-                                        let process = Process::new(child, tag, buf_len);
-                                        if let Some(fd) = process.try_as_raw_fd() {
-                                            kqueue.add(Event::Fd(fd), PROCESSES_START_INDEX + i);
-                                        }
-                                        *p = Some(process);
-                                        event_sender
-                                            .send(PlatformEvent::ProcessSpawned { tag, handle })?;
-                                        spawned = true;
-                                    }
-                                    break;
-                                }
-                                if !spawned {
-                                    event_sender.send(PlatformEvent::ProcessExit { tag })?;
-                                }
-                            }
-                            PlatformRequest::WriteToProcess { handle, buf } => {
-                                let index = handle.0 as usize;
-                                if let Some(ref mut process) = processes[index] {
-                                    if !process.write(buf.as_bytes()) {
-                                        if let Some(fd) = process.try_as_raw_fd() {
-                                            kqueue.remove(Event::Fd(fd));
-                                        }
-                                        let tag = process.tag();
-                                        process.kill();
-                                        processes[index] = None;
-                                        event_sender.send(PlatformEvent::ProcessExit { tag })?;
-                                    }
-                                }
-                            }
-                            PlatformRequest::CloseProcessInput { handle } => {
-                                if let Some(ref mut process) = processes[handle.0 as usize] {
-                                    process.close_input();
-                                }
-                            }
-                            PlatformRequest::KillProcess { handle } => {
-                                let index = handle.0 as usize;
-                                if let Some(ref mut process) = processes[index] {
-                                    if let Some(fd) = process.try_as_raw_fd() {
-                                        kqueue.remove(Event::Fd(fd));
-                                    }
-                                    let tag = process.tag();
-                                    process.kill();
-                                    processes[index] = None;
-                                    event_sender.send(PlatformEvent::ProcessExit { tag })?;
-                                }
-                            }
-                        }
-                    }
-                }
-                1 => {
                     for _ in 0..event_data {
                         match listener.accept() {
                             Ok((connection, _)) => {
@@ -328,8 +225,7 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                                         );
                                         *c = Some(connection);
                                         let handle = ClientHandle::from_index(i).unwrap();
-                                        event_sender
-                                            .send(PlatformEvent::ConnectionOpen { handle })?;
+                                        events.push(PlatformEvent::ConnectionOpen { handle });
                                         break;
                                     }
                                 }
@@ -342,42 +238,138 @@ fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
                     let index = event_index - CLIENTS_START_INDEX;
                     if let Some(ref mut connection) = client_connections[index] {
                         let handle = ClientHandle::from_index(index).unwrap();
-                        match read_from_connection(connection, &mut buf_pool, event_data as _) {
-                            Ok(buf) if !buf.as_bytes().is_empty() => {
-                                event_sender
-                                    .send(PlatformEvent::ConnectionOutput { handle, buf })?;
-                            }
-                            _ => {
+                        match read_from_connection(
+                            connection,
+                            &mut application.platform.buf_pool,
+                            event_data as _,
+                        ) {
+                            Ok(buf) => events.push(PlatformEvent::ConnectionOutput { handle, buf }),
+                            Err(()) => {
                                 kqueue.remove(Event::Fd(connection.as_raw_fd()));
                                 client_connections[index] = None;
-                                event_sender.send(PlatformEvent::ConnectionClose { handle })?;
+                                events.push(PlatformEvent::ConnectionClose { handle });
                             }
                         }
                     }
-
-                    timeout = Some(ServerApplication::idle_duration());
                 }
                 PROCESSES_START_INDEX..=PROCESSES_LAST_INDEX => {
                     let index = event_index - PROCESSES_START_INDEX;
                     if let Some(ref mut process) = processes[index] {
                         let tag = process.tag();
-                        match process.read(&mut buf_pool) {
+                        match process.read(&mut application.platform.buf_pool) {
                             Ok(None) => (),
-                            Ok(Some(buf)) if !buf.as_bytes().is_empty() => {
-                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
-                            }
-                            _ => {
+                            Ok(Some(buf)) => events.push(PlatformEvent::ProcessExit { tag }),
+                            Err(()) => {
                                 if let Some(fd) = process.try_as_raw_fd() {
                                     kqueue.remove(Event::Fd(fd));
                                 }
                                 process.kill();
                                 processes[index] = None;
-                                event_sender.send(PlatformEvent::ProcessExit { tag })?;
+                                events.push(PlatformEvent::ProcessExit { tag });
                             }
                         }
                     }
                 }
                 _ => unreachable!(),
+            }
+
+            application.update(events.drain(..));
+            let mut requests = application.platform.requests.drain();
+            while let Some(request) = requests.next() {
+                match request {
+                    PlatformRequest::Quit => {
+                        for request in requests {
+                            if let PlatformRequest::WriteToClient { buf, .. }
+                            | PlatformRequest::WriteToProcess { buf, .. } = request
+                            {
+                                application.platform.buf_pool.release(buf);
+                            }
+                        }
+                        return;
+                    }
+                    PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
+                    PlatformRequest::WriteToClient { handle, buf } => {
+                        let index = handle.into_index();
+                        if let Some(ref mut connection) = client_connections[index] {
+                            if connection.write_all(buf.as_bytes()).is_err() {
+                                kqueue.remove(Event::Fd(connection.as_raw_fd()));
+                                client_connections[index] = None;
+                                events.push(PlatformEvent::ConnectionClose { handle });
+                            }
+                        }
+                        application.platform.buf_pool.release(buf);
+                    }
+                    PlatformRequest::CloseClient { handle } => {
+                        let index = handle.into_index();
+                        if let Some(connection) = client_connections[index].take() {
+                            kqueue.remove(Event::Fd(connection.as_raw_fd()));
+                        }
+                        events.push(PlatformEvent::ConnectionClose { handle });
+                    }
+                    PlatformRequest::SpawnProcess {
+                        tag,
+                        mut command,
+                        buf_len,
+                    } => {
+                        let mut spawned = false;
+                        for (i, p) in processes.iter_mut().enumerate() {
+                            if p.is_some() {
+                                continue;
+                            }
+
+                            let handle = ProcessHandle(i as _);
+                            if let Ok(child) = command.spawn() {
+                                let process = Process::new(child, tag, buf_len);
+                                if let Some(fd) = process.try_as_raw_fd() {
+                                    kqueue.add(Event::Fd(fd), PROCESSES_START_INDEX + i);
+                                }
+                                *p = Some(process);
+                                events.push(PlatformEvent::ProcessSpawned { tag, handle });
+                                spawned = true;
+                            }
+                            break;
+                        }
+                        if !spawned {
+                            events.push(PlatformEvent::ProcessExit { tag });
+                        }
+                    }
+                    PlatformRequest::WriteToProcess { handle, buf } => {
+                        let index = handle.0 as usize;
+                        if let Some(ref mut process) = processes[index] {
+                            if !process.write(buf.as_bytes()) {
+                                if let Some(fd) = process.try_as_raw_fd() {
+                                    kqueue.remove(Event::Fd(fd));
+                                }
+                                let tag = process.tag();
+                                process.kill();
+                                processes[index] = None;
+                                events.push(PlatformEvent::ProcessExit { tag });
+                            }
+                        }
+                        application.platform.buf_pool.release(buf);
+                    }
+                    PlatformRequest::CloseProcessInput { handle } => {
+                        if let Some(ref mut process) = processes[handle.0 as usize] {
+                            process.close_input();
+                        }
+                    }
+                    PlatformRequest::KillProcess { handle } => {
+                        let index = handle.0 as usize;
+                        if let Some(ref mut process) = processes[index] {
+                            if let Some(fd) = process.try_as_raw_fd() {
+                                kqueue.remove(Event::Fd(fd));
+                            }
+                            let tag = process.tag();
+                            process.kill();
+                            processes[index] = None;
+                            events.push(PlatformEvent::ProcessExit { tag });
+                        }
+                    }
+                }
+            }
+
+            if !events.is_empty() {
+                timeout = Some(Duration::ZERO);
             }
         }
     }
@@ -470,3 +462,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
+
