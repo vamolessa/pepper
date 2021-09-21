@@ -1017,7 +1017,6 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                             mut command,
                             buf_len,
                         } => {
-                            eprintln!("spawn process");
                             let mut spawned = false;
                             for (i, p) in processes.iter_mut().enumerate() {
                                 if p.is_some() {
@@ -1039,8 +1038,6 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                         PlatformRequest::WriteToProcess { handle, buf } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
                                 if !process.write(buf.as_bytes()) {
-                                    eprintln!("could not write to process. killing it...");
-
                                     let tag = process.tag;
                                     process.dispose(&mut application.platform.buf_pool);
                                     process.kill();
@@ -1052,13 +1049,11 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                         }
                         PlatformRequest::CloseProcessInput { handle } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
-                                eprintln!("close process input");
                                 process.close_input();
                             }
                         }
                         PlatformRequest::KillProcess { handle } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
-                                eprintln!("kill process");
                                 let tag = process.tag;
                                 process.dispose(&mut application.platform.buf_pool);
                                 process.kill();
@@ -1109,20 +1104,13 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 }
             }
             EventSource::Process(i) => {
-                eprintln!("process [{}] event", i);
                 if let Some(process) = &mut processes[i] {
-                    eprintln!("process exists");
                     if let Some(pipe) = &mut process.stdout {
-                        eprintln!("process has stdout");
                         let tag = process.tag;
                         match pipe.read_async(&mut application.platform.buf_pool) {
                             Ok(None) => (),
-                            Ok(Some(buf)) => {
-                                eprintln!("read {} bytes", buf.as_bytes().len());
-                                events.push(PlatformEvent::ProcessOutput { tag, buf });
-                            }
+                            Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
                             Err(()) => {
-                                eprintln!("could not read from process. killing it...");
                                 process.stdout = None;
                                 process.kill();
                                 processes[i] = None;
@@ -1397,3 +1385,4 @@ fn parse_console_events(
         }
     }
 }
+

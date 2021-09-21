@@ -173,11 +173,13 @@ impl PooledBuf {
     }
 
     pub fn write(&mut self) -> &mut Vec<u8> {
-        &mut self.0
+        let buf = &mut self.0;
+        buf.clear();
+        buf
     }
 
     pub fn write_with_len(&mut self, len: usize) -> &mut Vec<u8> {
-        let buf = self.write();
+        let buf = &mut self.0;
         buf.resize(len, 0);
         buf
     }
@@ -204,3 +206,4 @@ impl BufPool {
         self.pool.push(ManuallyDrop::new(buf));
     }
 }
+
