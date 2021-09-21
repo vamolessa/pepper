@@ -239,12 +239,10 @@ fn run_server(args: Args, listener: UnixListener) {
             match request {
                 PlatformRequest::Quit => {
                     for request in requests {
-                        match request {
-                            PlatformRequest::WriteToClient { buf, .. }
-                            | PlatformRequest::WriteToProcess { buf, .. } => {
-                                application.platform.buf_pool.release(buf);
-                            }
-                            _ => (),
+                        if let PlatformRequest::WriteToClient { buf, .. }
+                        | PlatformRequest::WriteToProcess { buf, .. } = request
+                        {
+                            application.platform.buf_pool.release(buf);
                         }
                     }
                     return;
@@ -433,3 +431,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
+

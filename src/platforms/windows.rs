@@ -983,12 +983,10 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                                 process.kill();
                             }
                             for request in requests {
-                                match request {
-                                    PlatformRequest::WriteToClient { buf, .. }
-                                    | PlatformRequest::WriteToProcess { buf, .. } => {
-                                        application.platform.buf_pool.release(buf);
-                                    }
-                                    _ => (),
+                                if let PlatformRequest::WriteToClient { buf, .. }
+                                | PlatformRequest::WriteToProcess { buf, .. } = request
+                                {
+                                    application.platform.buf_pool.release(buf);
                                 }
                             }
                             return;
