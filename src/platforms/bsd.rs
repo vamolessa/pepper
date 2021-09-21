@@ -225,8 +225,7 @@ fn run_server(args: Args, listener: UnixListener) {
                                         );
                                         *c = Some(connection);
                                         let handle = ClientHandle::from_index(i).unwrap();
-                                        event_sender
-                                            .send(PlatformEvent::ConnectionOpen { handle })?;
+                                        events.push(PlatformEvent::ConnectionOpen { handle });
                                         break;
                                     }
                                 }
@@ -363,7 +362,7 @@ fn run_server(args: Args, listener: UnixListener) {
                             let tag = process.tag();
                             process.kill();
                             processes[index] = None;
-                            event_sender.send(PlatformEvent::ProcessExit { tag })?;
+                            events.push(PlatformEvent::ProcessExit { tag });
                         }
                     }
                 }
