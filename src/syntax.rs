@@ -119,28 +119,27 @@ impl Syntax {
     ) -> LineParseState {
         tokens.clear();
 
-        let line_len = line.len();
         let mut index = 0;
 
         match previous_parse_state {
             LineParseState::Dirty => unreachable!(),
             LineParseState::Finished => (),
             LineParseState::Unfinished(kind, state) => {
-                match self.rules[kind as usize].matches_with_state(line, state) {
-                    MatchResult::Ok(len) => {
+                match self.rules[kind as usize].matches_with_state(line, 0, state) {
+                    MatchResult::Ok(end) => {
                         tokens.push(Token {
                             kind,
                             from: 0,
-                            to: len as _,
+                            to: end as _,
                         });
-                        index += len;
+                        index = end;
                     }
                     MatchResult::Err => (),
                     MatchResult::Pending(state) => {
                         tokens.push(Token {
                             kind,
                             from: 0,
-                            to: line_len as _,
+                            to: line.len() as _,
                         });
                         return LineParseState::Unfinished(kind, state);
                     }
@@ -148,18 +147,17 @@ impl Syntax {
             }
         }
 
-        while index < line_len {
-            let line_slice = &line[index..];
-            let whitespace_len = line_slice
+        while index < line.len() {
+            let from = index;
+            index += line[from..]
                 .bytes()
                 .take_while(u8::is_ascii_whitespace)
                 .count();
-            let line_slice = &line_slice[whitespace_len..];
 
             let mut best_pattern_kind = TokenKind::Text;
-            let mut max_len = 0;
+            let mut max_end = index;
 
-            const ALL_NON_WHITESPACE_TOKEN_KINDS: [TokenKind; 7] = [
+            static ALL_NON_WHITESPACE_TOKEN_KINDS: [TokenKind; 7] = [
                 TokenKind::Keyword,
                 TokenKind::Type,
                 TokenKind::Symbol,
@@ -169,12 +167,12 @@ impl Syntax {
                 TokenKind::Text,
             ];
 
-            for &kind in ALL_NON_WHITESPACE_TOKEN_KINDS.iter() {
+            for kind in ALL_NON_WHITESPACE_TOKEN_KINDS {
                 let pattern = &self.rules[kind as usize];
-                match pattern.matches(line_slice) {
-                    MatchResult::Ok(len) => {
-                        if len > max_len {
-                            max_len = len;
+                match pattern.matches(line, index) {
+                    MatchResult::Ok(end) => {
+                        if end > max_end {
+                            max_end = end;
                             best_pattern_kind = kind;
                         }
                     }
@@ -182,8 +180,8 @@ impl Syntax {
                     MatchResult::Pending(state) => {
                         tokens.push(Token {
                             kind,
-                            from: index as _,
-                            to: line_len as _,
+                            from: from as _,
+                            to: line.len() as _,
                         });
                         return LineParseState::Unfinished(kind, state);
                     }
@@ -192,23 +190,21 @@ impl Syntax {
 
             let mut kind = best_pattern_kind;
 
-            if max_len == 0 {
+            if max_end == index {
                 kind = TokenKind::Text;
-                max_len = line_slice
-                    .bytes()
-                    .take_while(u8::is_ascii_alphanumeric)
+                max_end += line.as_bytes()[index..]
+                    .iter()
+                    .take_while(|b| b.is_ascii_alphanumeric())
                     .count()
                     .max(1);
+
+                max_end = max_end.min(line.len());
+                while !line.is_char_boundary(max_end) {
+                    max_end += 1;
+                }
             }
 
-            max_len += whitespace_len;
-
-            let from = index;
-            index = line_len.min(index + max_len);
-
-            while !line.is_char_boundary(index) {
-                index += 1;
-            }
+            index = max_end;
 
             tokens.push(Token {
                 kind,
@@ -716,3 +712,4 @@ mod tests {
         }
     }
 }
+

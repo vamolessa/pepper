@@ -437,10 +437,9 @@ impl BufferContent {
         let search_anchor = pattern.search_anchor();
         for (line_index, line) in self.lines.iter().enumerate() {
             let line = line.as_str();
-            for (column_index, text) in pattern.match_indices(line, search_anchor) {
-                let from = BufferPosition::line_col(line_index as _, column_index as _);
-                let end = column_index + text.len();
-                let to = BufferPosition::line_col(line_index as _, end as _);
+            for range in pattern.match_indices(line, search_anchor) {
+                let from = BufferPosition::line_col(line_index as _, range.start as _);
+                let to = BufferPosition::line_col(line_index as _, range.end as _);
                 ranges.push(BufferRange::between(from, to));
             }
         }
@@ -1908,3 +1907,4 @@ mod tests {
         );
     }
 }
+

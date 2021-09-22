@@ -298,11 +298,11 @@ pub mod split_cursors {
             start_position: BufferPosition,
         ) -> usize {
             let search_anchor = pattern.search_anchor();
-            for (index, s) in pattern.match_indices(line, search_anchor) {
+            for range in pattern.match_indices(line, search_anchor) {
                 let mut anchor = start_position;
-                anchor.column_byte_index += index as BufferPositionIndex;
-                let mut position = anchor;
-                position.column_byte_index += s.len() as BufferPositionIndex;
+                anchor.column_byte_index += range.start as BufferPositionIndex;
+                let mut position = start_position;
+                position.column_byte_index += range.end as BufferPositionIndex;
 
                 if cursors_len >= cursors.len() {
                     return cursors.len();
@@ -334,12 +334,12 @@ pub mod split_cursors {
         ) -> usize {
             let search_anchor = pattern.search_anchor();
             let mut index = 0;
-            for (i, s) in pattern.match_indices(line, search_anchor) {
-                if index != i {
+            for range in pattern.match_indices(line, search_anchor) {
+                if index != range.start {
                     let mut anchor = start_position;
                     anchor.column_byte_index += index as BufferPositionIndex;
                     let mut position = start_position;
-                    position.column_byte_index += i as BufferPositionIndex;
+                    position.column_byte_index += range.start as BufferPositionIndex;
 
                     if cursors_len >= cursors.len() {
                         return cursors.len();
@@ -348,7 +348,7 @@ pub mod split_cursors {
                     cursors_len += 1;
                 }
 
-                index = i + s.len();
+                index = range.end;
             }
 
             if index < line.len() {

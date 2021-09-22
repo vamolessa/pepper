@@ -1,4 +1,4 @@
-use std::{convert::TryInto, fmt, num::TryFromIntError, str::Chars};
+use std::{convert::TryInto, fmt, num::TryFromIntError, ops::Range, str::Chars};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {
@@ -45,38 +45,26 @@ pub struct MatchIndices<'pattern, 'text> {
     anchor: Option<char>,
 }
 impl<'pattern, 'text> Iterator for MatchIndices<'pattern, 'text> {
-    type Item = (usize, &'text str);
+    type Item = Range<usize>;
     fn next(&mut self) -> Option<Self::Item> {
-        fn next_char(iter: &mut MatchIndices) -> Option<()> {
-            let mut chars = iter.text.chars();
-            let c = chars.next()?;
-            iter.text = chars.as_str();
-            iter.index += c.len_utf8();
-            Some(())
-        }
-
         loop {
             if let Some(anchor) = self.anchor {
-                match self.text.find(anchor) {
-                    Some(i) => {
-                        self.text = &self.text[i..];
-                        self.index += i;
-                    }
+                match self.text[self.index..].find(anchor) {
+                    Some(i) => self.index += i,
                     None => {
-                        self.text = "";
+                        self.index = self.text.len();
                         return None;
                     }
                 }
             }
-            match self.pattern.matches(self.text) {
-                MatchResult::Ok(0) => next_char(self)?,
-                MatchResult::Ok(len) => {
-                    let result = (self.index, &self.text[..len]);
-                    self.text = &self.text[len..];
-                    self.index += len;
-                    return Some(result);
+
+            match self.pattern.matches(self.text, self.index) {
+                MatchResult::Ok(index) if index > self.index => {
+                    let from = self.index;
+                    self.index = index;
+                    return Some(from..self.index);
                 }
-                _ => next_char(self)?,
+                _ => self.index += self.text[self.index..].chars().next()?.len_utf8(),
             }
         }
     }
@@ -135,8 +123,8 @@ impl Pattern {
 
     pub fn compile_searcher(&mut self, pattern: &str) -> Result<(), PatternError> {
         let (is_literal, ignore_case, pattern) = match pattern.as_bytes() {
-            [b'l', b'/', ..] => (true, true, &pattern[2..]),
-            [b'L', b'/', ..] => (true, false, &pattern[2..]),
+            [b'f', b'/', ..] => (true, true, &pattern[2..]),
+            [b'F', b'/', ..] => (true, false, &pattern[2..]),
             [b'p', b'/', ..] => (false, true, &pattern[2..]),
             [b'P', b'/', ..] => (false, false, &pattern[2..]),
             _ => (
@@ -234,21 +222,22 @@ impl Pattern {
         }
     }
 
-    pub fn matches(&self, text: &str) -> MatchResult {
+    pub fn matches(&self, text: &str, index: usize) -> MatchResult {
         self.matches_with_state(
             text,
+            index,
             PatternState {
                 op_jump: self.start_jump,
             },
         )
     }
 
-    pub fn matches_with_state(&self, text: &str, state: PatternState) -> MatchResult {
-        let mut chars = text.chars();
+    pub fn matches_with_state(&self, text: &str, index: usize, state: PatternState) -> MatchResult {
+        let mut chars = text[index..].chars();
         let ops = OpsSlice(&self.ops);
         let mut op_jump = state.op_jump;
 
-        fn index(text: &str, chars: &Chars) -> usize {
+        fn offset(text: &str, chars: &Chars) -> usize {
             chars.as_str().as_ptr() as usize - text.as_ptr() as usize
         }
 
@@ -268,26 +257,32 @@ impl Pattern {
 
         loop {
             match ops.at(op_jump) {
-                Op::Ok => return MatchResult::Ok(index(text, &chars)),
+                Op::Ok => return MatchResult::Ok(offset(text, &chars)),
                 Op::Error => return MatchResult::Err,
                 &Op::Reset(jump) => {
-                    chars = text.chars();
+                    chars = text[index..].chars();
                     op_jump = jump;
                 }
                 &Op::Unwind(jump, len) => {
                     let len = (len.0 - 1) as _;
-                    let index = index(text, &chars);
-                    chars = match text[..index].char_indices().rev().nth(len) {
+                    let offset = offset(text, &chars);
+                    chars = match text[..offset].char_indices().rev().nth(len) {
                         Some((i, _)) => text[i..].chars(),
                         None => unreachable!(),
                     };
                     op_jump = jump;
                 }
-                &Op::EndAnchor(okj, erj) => {
+                &Op::BeginningAnchor(okj, erj) => {
+                    op_jump = match index {
+                        0 => okj,
+                        _ => erj,
+                    };
+                }
+                &Op::EndingAnchor(okj, erj) => {
                     if chars.as_str().is_empty() {
                         op_jump = okj;
                         return match ops.at(op_jump) {
-                            Op::Ok => MatchResult::Ok(index(text, &chars)),
+                            Op::Ok => MatchResult::Ok(offset(text, &chars)),
                             _ => MatchResult::Pending(PatternState { op_jump }),
                         };
                     } else {
@@ -296,7 +291,10 @@ impl Pattern {
                 }
                 &Op::WordBoundary(okj, erj) => {
                     let rest = chars.as_str();
-                    let previous_char = text[..text.len() - rest.len()].chars().next_back();
+                    let previous_char = text[..text.len() - rest.len()]
+                        .chars()
+                        .next_back()
+                        .or_else(|| text[..index].chars().next_back());
                     let current_char = rest.chars().next();
                     let at_boundary = match previous_char.zip(current_char) {
                         Some((p, c)) => p.is_ascii_alphanumeric() != c.is_ascii_alphanumeric(),
@@ -424,15 +422,14 @@ enum JumpFrom {
 const OP_STRING_LEN: usize = 10;
 const _ASSERT_OP_SIZE: [(); 16] = [(); std::mem::size_of::<Op>()];
 
-// TODO: add Op for word boundary?
-// TODO: add Op for start of line?
 #[derive(Clone)]
 enum Op {
     Ok,
     Error,
     Reset(Jump),
     Unwind(Jump, Length),
-    EndAnchor(Jump, Jump),
+    BeginningAnchor(Jump, Jump),
+    EndingAnchor(Jump, Jump),
     WordBoundary(Jump, Jump),
     SkipOne(Jump, Jump),
     SkipMany(Jump, Jump, Length),
@@ -467,7 +464,8 @@ impl fmt::Debug for Op {
                 jump.0,
                 width = WIDTH - 4
             ),
-            &Op::EndAnchor(okj, erj) => p(f, "EndAnchor", okj, erj),
+            &Op::BeginningAnchor(okj, erj) => p(f, "BeginningAnchor", okj, erj),
+            &Op::EndingAnchor(okj, erj) => p(f, "EndAnchor", okj, erj),
             &Op::WordBoundary(okj, erj) => p(f, "WordBoundary", okj, erj),
             &Op::SkipOne(okj, erj) => p(f, "SkipOne", okj, erj),
             &Op::SkipMany(okj, erj, len) => write!(
@@ -821,6 +819,7 @@ impl<'a> PatternCompiler<'a> {
                     return Ok(Length(0));
                 }
                 '%' => Op::Char(okj, erj, '%'),
+                '^' => Op::Char(okj, erj, '^'),
                 '$' => Op::Char(okj, erj, '$'),
                 '.' => Op::Char(okj, erj, '.'),
                 '!' => Op::Char(okj, erj, '!'),
@@ -833,8 +832,12 @@ impl<'a> PatternCompiler<'a> {
                 '|' => Op::Char(okj, erj, '|'),
                 c => return Err(PatternError::InvalidEscaping(c)),
             },
+            '^' => {
+                self.ops.push(Op::BeginningAnchor(okj, erj));
+                return Ok(Length(0));
+            }
             '$' => {
-                self.ops.push(Op::EndAnchor(okj, erj));
+                self.ops.push(Op::EndingAnchor(okj, erj));
                 return Ok(Length(0));
             }
             '.' => Op::SkipOne(okj, erj),
@@ -893,7 +896,8 @@ impl<'a> PatternCompiler<'a> {
             match op {
                 Op::Ok | Op::Error => (),
                 Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index, jump),
-                Op::EndAnchor(okj, erj)
+                Op::BeginningAnchor(okj, erj)
+                | Op::EndingAnchor(okj, erj)
                 | Op::WordBoundary(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
@@ -958,7 +962,8 @@ impl<'a> PatternCompiler<'a> {
             match op {
                 Op::Ok | Op::Error => (),
                 Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index, fix),
-                Op::EndAnchor(okj, erj)
+                Op::BeginningAnchor(okj, erj)
+                | Op::EndingAnchor(okj, erj)
                 | Op::WordBoundary(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
@@ -1039,7 +1044,8 @@ impl<'a> PatternCompiler<'a> {
             match op {
                 Op::Ok | Op::Error => (),
                 Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index, fix),
-                Op::EndAnchor(okj, erj)
+                Op::BeginningAnchor(okj, erj)
+                | Op::EndingAnchor(okj, erj)
                 | Op::WordBoundary(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
@@ -1092,262 +1098,292 @@ mod tests {
     #[test]
     fn simple_pattern() {
         let p = new_pattern("");
-        assert_eq!(MatchResult::Ok(0), p.matches(""));
-        assert_eq!(MatchResult::Ok(0), p.matches("a"));
-        assert_eq!(MatchResult::Ok(0), p.matches("z"));
-        assert_eq!(MatchResult::Ok(0), p.matches("A"));
-        assert_eq!(MatchResult::Ok(0), p.matches("Z"));
-        assert_eq!(MatchResult::Ok(0), p.matches("0"));
-        assert_eq!(MatchResult::Ok(0), p.matches("9"));
-        assert_eq!(MatchResult::Ok(0), p.matches("!"));
+        assert_eq!(MatchResult::Ok(0), p.matches("", 0));
+        assert_eq!(MatchResult::Ok(0), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(0), p.matches("z", 0));
+        assert_eq!(MatchResult::Ok(0), p.matches("A", 0));
+        assert_eq!(MatchResult::Ok(0), p.matches("Z", 0));
+        assert_eq!(MatchResult::Ok(0), p.matches("0", 0));
+        assert_eq!(MatchResult::Ok(0), p.matches("9", 0));
+        assert_eq!(MatchResult::Ok(0), p.matches("!", 0));
 
         let p = new_pattern("a");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("aa"));
-        assert_eq!(MatchResult::Err, p.matches("b"));
-        assert_eq!(MatchResult::Err, p.matches(""));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("aa", 0));
+        assert_eq!(MatchResult::Err, p.matches("b", 0));
+        assert_eq!(MatchResult::Err, p.matches("", 0));
 
         let p = new_pattern("aa");
-        assert_eq!(MatchResult::Ok(2), p.matches("aa"));
-        assert_eq!(MatchResult::Ok(2), p.matches("aaa"));
-        assert_eq!(MatchResult::Err, p.matches("baa"));
+        assert_eq!(MatchResult::Ok(2), p.matches("aa", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("aaa", 0));
+        assert_eq!(MatchResult::Err, p.matches("baa", 0));
 
         let p = new_pattern("abc");
-        assert_eq!(MatchResult::Ok(3), p.matches("abc"));
-        assert_eq!(MatchResult::Ok(3), p.matches("abcd"));
-        assert_eq!(MatchResult::Err, p.matches("aabc"));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("abcd", 0));
+        assert_eq!(MatchResult::Err, p.matches("aabc", 0));
 
         let p = new_pattern("%% %$ %. %! %( %) %[ %] %{ %}");
         let matched_text = "% $ . ! ( ) [ ] { }";
-        assert_eq!(MatchResult::Ok(matched_text.len()), p.matches(matched_text));
+        assert_eq!(
+            MatchResult::Ok(matched_text.len()),
+            p.matches(matched_text, 0)
+        );
 
         let p = new_pattern(".");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("z"));
-        assert_eq!(MatchResult::Ok(1), p.matches("A"));
-        assert_eq!(MatchResult::Ok(1), p.matches("Z"));
-        assert_eq!(MatchResult::Ok(1), p.matches("0"));
-        assert_eq!(MatchResult::Ok(1), p.matches("9"));
-        assert_eq!(MatchResult::Ok(1), p.matches("!"));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("z", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("A", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("Z", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("0", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("9", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("!", 0));
 
         let p = new_pattern("%a");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("z"));
-        assert_eq!(MatchResult::Ok(1), p.matches("A"));
-        assert_eq!(MatchResult::Ok(1), p.matches("Z"));
-        assert_eq!(MatchResult::Err, p.matches("0"));
-        assert_eq!(MatchResult::Err, p.matches("9"));
-        assert_eq!(MatchResult::Err, p.matches("!"));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("z", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("A", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("Z", 0));
+        assert_eq!(MatchResult::Err, p.matches("0", 0));
+        assert_eq!(MatchResult::Err, p.matches("9", 0));
+        assert_eq!(MatchResult::Err, p.matches("!", 0));
 
         let p = new_pattern("%l");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("z"));
-        assert_eq!(MatchResult::Err, p.matches("A"));
-        assert_eq!(MatchResult::Err, p.matches("Z"));
-        assert_eq!(MatchResult::Err, p.matches("0"));
-        assert_eq!(MatchResult::Err, p.matches("9"));
-        assert_eq!(MatchResult::Err, p.matches("!"));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("z", 0));
+        assert_eq!(MatchResult::Err, p.matches("A", 0));
+        assert_eq!(MatchResult::Err, p.matches("Z", 0));
+        assert_eq!(MatchResult::Err, p.matches("0", 0));
+        assert_eq!(MatchResult::Err, p.matches("9", 0));
+        assert_eq!(MatchResult::Err, p.matches("!", 0));
 
         let p = new_pattern("%u");
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("z"));
-        assert_eq!(MatchResult::Ok(1), p.matches("A"));
-        assert_eq!(MatchResult::Ok(1), p.matches("Z"));
-        assert_eq!(MatchResult::Err, p.matches("0"));
-        assert_eq!(MatchResult::Err, p.matches("9"));
-        assert_eq!(MatchResult::Err, p.matches("!"));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("z", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("A", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("Z", 0));
+        assert_eq!(MatchResult::Err, p.matches("0", 0));
+        assert_eq!(MatchResult::Err, p.matches("9", 0));
+        assert_eq!(MatchResult::Err, p.matches("!", 0));
 
         let p = new_pattern("%d");
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("z"));
-        assert_eq!(MatchResult::Err, p.matches("A"));
-        assert_eq!(MatchResult::Err, p.matches("Z"));
-        assert_eq!(MatchResult::Ok(1), p.matches("0"));
-        assert_eq!(MatchResult::Ok(1), p.matches("9"));
-        assert_eq!(MatchResult::Err, p.matches("!"));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("z", 0));
+        assert_eq!(MatchResult::Err, p.matches("A", 0));
+        assert_eq!(MatchResult::Err, p.matches("Z", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("0", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("9", 0));
+        assert_eq!(MatchResult::Err, p.matches("!", 0));
 
         let p = new_pattern("%w");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("z"));
-        assert_eq!(MatchResult::Ok(1), p.matches("A"));
-        assert_eq!(MatchResult::Ok(1), p.matches("Z"));
-        assert_eq!(MatchResult::Ok(1), p.matches("0"));
-        assert_eq!(MatchResult::Ok(1), p.matches("9"));
-        assert_eq!(MatchResult::Err, p.matches("!"));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("z", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("A", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("Z", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("0", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("9", 0));
+        assert_eq!(MatchResult::Err, p.matches("!", 0));
 
         let p = new_pattern("abcdefghij");
-        assert_eq!(MatchResult::Ok(10), p.matches("abcdefghij"));
+        assert_eq!(MatchResult::Ok(10), p.matches("abcdefghij", 0));
 
         let p = new_pattern("abcdefghijk");
-        assert_eq!(MatchResult::Ok(11), p.matches("abcdefghijk"));
+        assert_eq!(MatchResult::Ok(11), p.matches("abcdefghijk", 0));
 
         let p = new_pattern("abcdefghijklmnopqrstuvwxyz");
-        assert_eq!(MatchResult::Ok(26), p.matches("abcdefghijklmnopqrstuvwxyz"));
+        assert_eq!(
+            MatchResult::Ok(26),
+            p.matches("abcdefghijklmnopqrstuvwxyz", 0)
+        );
     }
 
     #[test]
     fn group() {
         let p = new_pattern("[abc]");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("b"));
-        assert_eq!(MatchResult::Ok(1), p.matches("c"));
-        assert_eq!(MatchResult::Err, p.matches("d"));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("b", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("c", 0));
+        assert_eq!(MatchResult::Err, p.matches("d", 0));
 
         let p = new_pattern("z[abc]y");
-        assert_eq!(MatchResult::Ok(3), p.matches("zay"));
-        assert_eq!(MatchResult::Ok(3), p.matches("zby"));
-        assert_eq!(MatchResult::Ok(3), p.matches("zcy"));
-        assert_eq!(MatchResult::Err, p.matches("z"));
-        assert_eq!(MatchResult::Err, p.matches("zy"));
-        assert_eq!(MatchResult::Err, p.matches("zdy"));
+        assert_eq!(MatchResult::Ok(3), p.matches("zay", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("zby", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("zcy", 0));
+        assert_eq!(MatchResult::Err, p.matches("z", 0));
+        assert_eq!(MatchResult::Err, p.matches("zy", 0));
+        assert_eq!(MatchResult::Err, p.matches("zdy", 0));
 
         let p = new_pattern("z[a]");
-        assert_eq!(MatchResult::Ok(2), p.matches("za"));
-        assert_eq!(MatchResult::Err, p.matches("z"));
-        assert_eq!(MatchResult::Err, p.matches("zb"));
+        assert_eq!(MatchResult::Ok(2), p.matches("za", 0));
+        assert_eq!(MatchResult::Err, p.matches("z", 0));
+        assert_eq!(MatchResult::Err, p.matches("zb", 0));
 
         let p = new_pattern("z[%l%d]");
-        assert_eq!(MatchResult::Ok(2), p.matches("za"));
-        assert_eq!(MatchResult::Ok(2), p.matches("zz"));
-        assert_eq!(MatchResult::Ok(2), p.matches("z0"));
-        assert_eq!(MatchResult::Ok(2), p.matches("z9"));
-        assert_eq!(MatchResult::Err, p.matches("z"));
-        assert_eq!(MatchResult::Err, p.matches("zA"));
-        assert_eq!(MatchResult::Err, p.matches("zZ"));
+        assert_eq!(MatchResult::Ok(2), p.matches("za", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("zz", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("z0", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("z9", 0));
+        assert_eq!(MatchResult::Err, p.matches("z", 0));
+        assert_eq!(MatchResult::Err, p.matches("zA", 0));
+        assert_eq!(MatchResult::Err, p.matches("zZ", 0));
 
         let p = new_pattern("[!abc]");
-        assert_eq!(MatchResult::Ok(1), p.matches("d"));
-        assert_eq!(MatchResult::Ok(1), p.matches("3"));
-        assert_eq!(MatchResult::Ok(1), p.matches("@"));
-        assert_eq!(MatchResult::Ok(1), p.matches("@a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("@b"));
-        assert_eq!(MatchResult::Ok(1), p.matches("@c"));
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("b"));
-        assert_eq!(MatchResult::Err, p.matches("c"));
+        assert_eq!(MatchResult::Ok(1), p.matches("d", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("3", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("@", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("@a", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("@b", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("@c", 0));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("b", 0));
+        assert_eq!(MatchResult::Err, p.matches("c", 0));
 
         let p = new_pattern("x[!%w]y");
-        assert_eq!(MatchResult::Err, p.matches("xay"));
-        assert_eq!(MatchResult::Err, p.matches("xzy"));
-        assert_eq!(MatchResult::Err, p.matches("xAy"));
-        assert_eq!(MatchResult::Err, p.matches("xZy"));
-        assert_eq!(MatchResult::Err, p.matches("x0y"));
-        assert_eq!(MatchResult::Err, p.matches("x9y"));
-        assert_eq!(MatchResult::Ok(3), p.matches("x#y"));
+        assert_eq!(MatchResult::Err, p.matches("xay", 0));
+        assert_eq!(MatchResult::Err, p.matches("xzy", 0));
+        assert_eq!(MatchResult::Err, p.matches("xAy", 0));
+        assert_eq!(MatchResult::Err, p.matches("xZy", 0));
+        assert_eq!(MatchResult::Err, p.matches("x0y", 0));
+        assert_eq!(MatchResult::Err, p.matches("x9y", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("x#y", 0));
     }
 
     #[test]
     fn sequence() {
         let p = new_pattern("(abc)");
-        assert_eq!(MatchResult::Ok(3), p.matches("abc"));
-        assert_eq!(MatchResult::Ok(3), p.matches("abcd"));
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("ab"));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("abcd", 0));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("ab", 0));
 
         let p = new_pattern("z(abc)y");
-        assert_eq!(MatchResult::Ok(5), p.matches("zabcy"));
-        assert_eq!(MatchResult::Ok(5), p.matches("zabcyd"));
-        assert_eq!(MatchResult::Err, p.matches("zay"));
-        assert_eq!(MatchResult::Err, p.matches("zaby"));
+        assert_eq!(MatchResult::Ok(5), p.matches("zabcy", 0));
+        assert_eq!(MatchResult::Ok(5), p.matches("zabcyd", 0));
+        assert_eq!(MatchResult::Err, p.matches("zay", 0));
+        assert_eq!(MatchResult::Err, p.matches("zaby", 0));
 
         let p = new_pattern("z(%u%w)y");
-        assert_eq!(MatchResult::Ok(4), p.matches("zA0y"));
-        assert_eq!(MatchResult::Ok(4), p.matches("zZay"));
-        assert_eq!(MatchResult::Ok(4), p.matches("zA0yA"));
-        assert_eq!(MatchResult::Err, p.matches("zaay"));
-        assert_eq!(MatchResult::Err, p.matches("z8ay"));
+        assert_eq!(MatchResult::Ok(4), p.matches("zA0y", 0));
+        assert_eq!(MatchResult::Ok(4), p.matches("zZay", 0));
+        assert_eq!(MatchResult::Ok(4), p.matches("zA0yA", 0));
+        assert_eq!(MatchResult::Err, p.matches("zaay", 0));
+        assert_eq!(MatchResult::Err, p.matches("z8ay", 0));
 
         let p = new_pattern("(!abc)");
-        assert_eq!(MatchResult::Err, p.matches("abc"));
-        assert_eq!(MatchResult::Err, p.matches("abcd"));
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("ac"));
-        assert_eq!(MatchResult::Err, p.matches("ab"));
-        assert_eq!(MatchResult::Ok(3), p.matches("abz"));
-        assert_eq!(MatchResult::Ok(3), p.matches("ab!"));
-        assert_eq!(MatchResult::Err, p.matches("z"));
-        assert_eq!(MatchResult::Err, p.matches("7a"));
-        assert_eq!(MatchResult::Ok(3), p.matches("7ab"));
+        assert_eq!(MatchResult::Err, p.matches("abc", 0));
+        assert_eq!(MatchResult::Err, p.matches("abcd", 0));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("ac", 0));
+        assert_eq!(MatchResult::Err, p.matches("ab", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("abz", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("ab!", 0));
+        assert_eq!(MatchResult::Err, p.matches("z", 0));
+        assert_eq!(MatchResult::Err, p.matches("7a", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("7ab", 0));
 
         let p = new_pattern("(abcdefghij)");
-        assert_eq!(MatchResult::Ok(10), p.matches("abcdefghij"));
+        assert_eq!(MatchResult::Ok(10), p.matches("abcdefghij", 0));
 
         let p = new_pattern("(abcdefghijk)");
-        assert_eq!(MatchResult::Ok(11), p.matches("abcdefghijk"));
+        assert_eq!(MatchResult::Ok(11), p.matches("abcdefghijk", 0));
 
         let p = new_pattern("(abcdefghijklmnopqrstuvwxyz)");
-        assert_eq!(MatchResult::Ok(26), p.matches("abcdefghijklmnopqrstuvwxyz"));
+        assert_eq!(
+            MatchResult::Ok(26),
+            p.matches("abcdefghijklmnopqrstuvwxyz", 0)
+        );
     }
 
     #[test]
     fn repeat() {
         let p = new_pattern("{a}");
-        assert_eq!(MatchResult::Ok(0), p.matches(""));
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(4), p.matches("aaaa"));
-        assert_eq!(MatchResult::Ok(0), p.matches("b"));
+        assert_eq!(MatchResult::Ok(0), p.matches("", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(4), p.matches("aaaa", 0));
+        assert_eq!(MatchResult::Ok(0), p.matches("b", 0));
 
         let p = new_pattern("{a}b");
-        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
-        assert_eq!(MatchResult::Ok(3), p.matches("aab"));
-        assert_eq!(MatchResult::Ok(5), p.matches("aaaab"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ab", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("aab", 0));
+        assert_eq!(MatchResult::Ok(5), p.matches("aaaab", 0));
 
         let p = new_pattern("a{b}c");
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("ab"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
-        assert_eq!(MatchResult::Ok(3), p.matches("abc"));
-        assert_eq!(MatchResult::Ok(5), p.matches("abbbc"));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("ab", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc", 0));
+        assert_eq!(MatchResult::Ok(5), p.matches("abbbc", 0));
 
         let p = new_pattern("a{bc}d");
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ad"));
-        assert_eq!(MatchResult::Ok(3), p.matches("abd"));
-        assert_eq!(MatchResult::Ok(3), p.matches("acd"));
-        assert_eq!(MatchResult::Ok(4), p.matches("abcd"));
-        assert_eq!(MatchResult::Ok(5), p.matches("abcbd"));
-        assert_eq!(MatchResult::Ok(6), p.matches("abcbcd"));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("ad", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("abd", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("acd", 0));
+        assert_eq!(MatchResult::Ok(4), p.matches("abcd", 0));
+        assert_eq!(MatchResult::Ok(5), p.matches("abcbd", 0));
+        assert_eq!(MatchResult::Ok(6), p.matches("abcbcd", 0));
 
         let p = new_pattern("a{b!c}d");
-        assert_eq!(MatchResult::Err, p.matches("ad"));
-        assert_eq!(MatchResult::Err, p.matches("abd"));
-        assert_eq!(MatchResult::Ok(3), p.matches("acd"));
-        assert_eq!(MatchResult::Ok(5), p.matches("abbcd"));
+        assert_eq!(MatchResult::Err, p.matches("ad", 0));
+        assert_eq!(MatchResult::Err, p.matches("abd", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("acd", 0));
+        assert_eq!(MatchResult::Ok(5), p.matches("abbcd", 0));
     }
 
     #[test]
-    fn end_anchor() {
+    fn middle_text_matching() {
+        let p = new_pattern("abc");
+        assert_eq!(MatchResult::Ok(4), p.matches("_abc", 1));
+        assert_eq!(MatchResult::Ok(6), p.matches("abcabc", 3));
+
+        let p = new_pattern("a|b");
+        assert_eq!(MatchResult::Ok(2), p.matches("_a", 1));
+        assert_eq!(MatchResult::Ok(2), p.matches("_b", 1));
+
+        let p = new_pattern("/*{!(*/).}");
+        assert_eq!(MatchResult::Ok(7), p.matches("a /* */", 2));
+    }
+
+    #[test]
+    fn beginning_anchor() {
+        let p = new_pattern("^abc");
+        assert_eq!(MatchResult::Ok(3), p.matches("abc", 0));
+        assert_eq!(MatchResult::Err, p.matches("_abc", 1));
+    }
+
+    #[test]
+    fn ending_anchor() {
         let p = new_pattern("a$");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("aa"));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("aa", 0));
 
         let p = new_pattern("a$b");
         assert_eq!(
             MatchResult::Pending(PatternState { op_jump: Jump(4) }),
-            p.matches("a")
+            p.matches("a", 0)
         );
         assert_eq!(
             MatchResult::Ok(1),
-            p.matches_with_state("b", PatternState { op_jump: Jump(4) })
+            p.matches_with_state("b", 0, PatternState { op_jump: Jump(4) })
         );
 
         let p = new_pattern("a{.!$}b");
-        match p.matches("axyz") {
+        match p.matches("axyz", 0) {
             MatchResult::Pending(state) => {
-                assert_eq!(MatchResult::Ok(1), p.matches_with_state("b", state))
+                assert_eq!(MatchResult::Ok(1), p.matches_with_state("b", 0, state))
             }
             _ => assert!(false),
         }
 
         let p = new_pattern("a[b(c$)]");
-        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ab", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac", 0));
 
         let p = new_pattern("a{b$!c}{c!d}");
-        match p.matches("abb") {
-            MatchResult::Pending(state) => match p.matches_with_state("bb", state) {
+        match p.matches("abb", 0) {
+            MatchResult::Pending(state) => match p.matches_with_state("bb", 0, state) {
                 MatchResult::Pending(state) => {
-                    assert_eq!(MatchResult::Ok(4), p.matches_with_state("bccd", state));
+                    assert_eq!(MatchResult::Ok(4), p.matches_with_state("bccd", 0, state));
                 }
                 _ => assert!(false),
             },
@@ -1358,53 +1394,55 @@ mod tests {
     #[test]
     fn word_boundary() {
         let p = new_pattern("%babc%b");
-        assert_eq!(MatchResult::Ok(3), p.matches("abc"));
-        assert_eq!(MatchResult::Ok(3), p.matches("abc."));
-        assert_eq!(MatchResult::Ok(3), p.matches("abc,def"));
-        assert_eq!(MatchResult::Err, p.matches("abcd"));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc.", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc,def", 0));
+        assert_eq!(MatchResult::Err, p.matches("abcd", 0));
+        assert_eq!(MatchResult::Ok(4), p.matches(",abc,", 1));
+        assert_eq!(MatchResult::Err, p.matches("xabc,", 1));
     }
 
     #[test]
     fn complex_pattern() {
         let p = new_pattern("{.!$}");
-        assert_eq!(MatchResult::Ok(10), p.matches("things 890"));
-        assert_eq!(MatchResult::Ok(1), p.matches("0"));
-        assert_eq!(MatchResult::Ok(1), p.matches(" "));
+        assert_eq!(MatchResult::Ok(10), p.matches("things 890", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("0", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches(" ", 0));
 
         let p = new_pattern("{[ab%d]!c}");
-        assert_eq!(MatchResult::Ok(1), p.matches("c"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
-        assert_eq!(MatchResult::Ok(2), p.matches("bc"));
-        assert_eq!(MatchResult::Ok(3), p.matches("bac"));
-        assert_eq!(MatchResult::Ok(5), p.matches("0b4ac"));
-        assert_eq!(MatchResult::Ok(14), p.matches("a1b234ba9bbbbc"));
+        assert_eq!(MatchResult::Ok(1), p.matches("c", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("bc", 0));
+        assert_eq!(MatchResult::Ok(3), p.matches("bac", 0));
+        assert_eq!(MatchResult::Ok(5), p.matches("0b4ac", 0));
+        assert_eq!(MatchResult::Ok(14), p.matches("a1b234ba9bbbbc", 0));
 
         let p = new_pattern("%d{[%w_%.]!@}");
-        assert_eq!(MatchResult::Ok(6), p.matches("1x4_5@"));
-        assert_eq!(MatchResult::Ok(15), p.matches("9xxasd_234.45f@"));
+        assert_eq!(MatchResult::Ok(6), p.matches("1x4_5@", 0));
+        assert_eq!(MatchResult::Ok(15), p.matches("9xxasd_234.45f@", 0));
 
         let p = new_pattern("ab{(!ba)!b}a");
-        assert_eq!(MatchResult::Ok(4), p.matches("abba"));
+        assert_eq!(MatchResult::Ok(4), p.matches("abba", 0));
     }
 
     #[test]
     fn edge_cases() {
         let p = new_pattern("(!(!abc))");
-        assert_eq!(MatchResult::Ok(3), p.matches("abc"));
-        assert_eq!(MatchResult::Err, p.matches("xyz"));
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("ab"));
-        assert_eq!(MatchResult::Err, p.matches("abz"));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc", 0));
+        assert_eq!(MatchResult::Err, p.matches("xyz", 0));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("ab", 0));
+        assert_eq!(MatchResult::Err, p.matches("abz", 0));
 
         let p = new_pattern("[![!abc]]");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("b"));
-        assert_eq!(MatchResult::Ok(1), p.matches("c"));
-        assert_eq!(MatchResult::Err, p.matches("x"));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("b", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("c", 0));
+        assert_eq!(MatchResult::Err, p.matches("x", 0));
 
         let p = new_pattern("()");
-        assert_eq!(MatchResult::Ok(0), p.matches(""));
-        assert_eq!(MatchResult::Ok(0), p.matches("x"));
+        assert_eq!(MatchResult::Ok(0), p.matches("", 0));
+        assert_eq!(MatchResult::Ok(0), p.matches("x", 0));
     }
 
     #[test]
@@ -1415,72 +1453,72 @@ mod tests {
         ));
 
         let p = new_pattern("[(ab)(cd)]");
-        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
-        assert_eq!(MatchResult::Ok(2), p.matches("cd"));
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("c"));
-        assert_eq!(MatchResult::Err, p.matches("ad"));
-        assert_eq!(MatchResult::Err, p.matches("cb"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ab", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("cd", 0));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("c", 0));
+        assert_eq!(MatchResult::Err, p.matches("ad", 0));
+        assert_eq!(MatchResult::Err, p.matches("cb", 0));
 
         let p = new_pattern("[![(ab)(cd)]]");
-        assert_eq!(MatchResult::Ok(2), p.matches("ad"));
-        assert_eq!(MatchResult::Ok(2), p.matches("bc"));
-        assert_eq!(MatchResult::Err, p.matches("ab"));
-        assert_eq!(MatchResult::Err, p.matches("cd"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ad", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("bc", 0));
+        assert_eq!(MatchResult::Err, p.matches("ab", 0));
+        assert_eq!(MatchResult::Err, p.matches("cd", 0));
 
         let p = new_pattern("[(ab)(!cd)]");
-        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
-        assert_eq!(MatchResult::Err, p.matches("b"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ax"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
-        assert_eq!(MatchResult::Ok(2), p.matches("acd"));
-        assert_eq!(MatchResult::Ok(2), p.matches("cb"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ab", 0));
+        assert_eq!(MatchResult::Err, p.matches("b", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("ax", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("acd", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("cb", 0));
 
         let p = new_pattern("{(a[!ab])!x!$}");
-        assert_eq!(MatchResult::Ok(0), p.matches(""));
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
-        assert_eq!(MatchResult::Err, p.matches("aca"));
-        assert_eq!(MatchResult::Err, p.matches("acab"));
-        assert_eq!(MatchResult::Ok(4), p.matches("acax"));
+        assert_eq!(MatchResult::Ok(0), p.matches("", 0));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac", 0));
+        assert_eq!(MatchResult::Err, p.matches("aca", 0));
+        assert_eq!(MatchResult::Err, p.matches("acab", 0));
+        assert_eq!(MatchResult::Ok(4), p.matches("acax", 0));
 
         let p = new_pattern("{[(!ab)(cd)]!$}");
-        assert_eq!(MatchResult::Ok(0), p.matches(""));
-        assert_eq!(MatchResult::Ok(2), p.matches("cd"));
-        assert_eq!(MatchResult::Err, p.matches("ab"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
-        assert_eq!(MatchResult::Ok(4), p.matches("accd"));
+        assert_eq!(MatchResult::Ok(0), p.matches("", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("cd", 0));
+        assert_eq!(MatchResult::Err, p.matches("ab", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac", 0));
+        assert_eq!(MatchResult::Ok(4), p.matches("accd", 0));
     }
 
     #[test]
     fn multi_subpatterns() {
         let p = new_pattern("a|b");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("b"));
-        assert_eq!(MatchResult::Err, p.matches("c"));
-        assert_eq!(MatchResult::Err, p.matches(""));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("b", 0));
+        assert_eq!(MatchResult::Err, p.matches("c", 0));
+        assert_eq!(MatchResult::Err, p.matches("", 0));
 
         let p = new_pattern("ab{(ab)}|c");
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
-        assert_eq!(MatchResult::Ok(2), p.matches("aba"));
-        assert_eq!(MatchResult::Ok(4), p.matches("abab"));
-        assert_eq!(MatchResult::Ok(1), p.matches("c"));
-        assert_eq!(MatchResult::Ok(1), p.matches("ca"));
-        assert_eq!(MatchResult::Ok(1), p.matches("cab"));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("ab", 0));
+        assert_eq!(MatchResult::Ok(2), p.matches("aba", 0));
+        assert_eq!(MatchResult::Ok(4), p.matches("abab", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("c", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("ca", 0));
+        assert_eq!(MatchResult::Ok(1), p.matches("cab", 0));
     }
 
     #[test]
     fn utf8() {
         let p = new_pattern("[açé]");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok('ç'.len_utf8()), p.matches("ç"));
-        assert_eq!(MatchResult::Ok('é'.len_utf8()), p.matches("é"));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok('ç'.len_utf8()), p.matches("ç", 0));
+        assert_eq!(MatchResult::Ok('é'.len_utf8()), p.matches("é", 0));
 
         let p = new_pattern(".");
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok('ç'.len_utf8()), p.matches("ç"));
-        assert_eq!(MatchResult::Ok('é'.len_utf8()), p.matches("é"));
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Ok('ç'.len_utf8()), p.matches("ç", 0));
+        assert_eq!(MatchResult::Ok('é'.len_utf8()), p.matches("é", 0));
     }
 
     #[test]

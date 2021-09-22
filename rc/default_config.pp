@@ -30,7 +30,7 @@ alias c close
 alias ca close-all
 
 syntax "**/*.refs"
-syntax-keywords "%w:{%a/%._-!:}|{%a/%._-!:}"
+syntax-keywords "^%w:{%a/%._-!:}|{%a/%._-!:}"
 syntax-symbols ","
 syntax-literals "%d"
 syntax-texts "{%w-_}"
