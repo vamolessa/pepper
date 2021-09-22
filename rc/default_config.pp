@@ -46,7 +46,7 @@ syntax-keywords as|break|const|continue|crate|else|enum|extern|fn|for|if|impl|in
 syntax-types bool|u8|u16|u32|u64|usize|i8|i16|i32|i64|isize|f32|f64|str|char|%u{%w_}
 syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%!|?|&|%||@
 syntax-literals [[true|false|self|'\''|'\{!'.}|'.'|b'{(\')(\\)!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|'%a{%w_}]]
-syntax-strings [["{(\")!".}|b"{(\")!".}]]
+syntax-strings [["{(\\)(\")!".}|b"{(\\)(\")!".}]]
 syntax-comments //{.}|/*{!(*/).$}
 
 # https://docs.microsoft.com/en-us/cpp/cpp/keywords-cpp
@@ -55,7 +55,7 @@ syntax-keywords alignas|alignof|and_eq|and|asm|auto|bitand|bitor|bool|break|case
 syntax-types char|char8_t|char16_t|char32_t|double|float|int|long|short|signed|unsigned|void|wchar_t|%u{%w_}
 syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@
 syntax-literals [[true|false|this|nullptr|'{(\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{ }{%a}]]
-syntax-strings [["{(\")!".}]]
+syntax-strings [["{(\\)(\")!".}]]
 syntax-comments //{.}|/*{!(*/).$}
 
 # https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/
@@ -64,7 +64,7 @@ syntax-keywords abstract|as|base|break|case|catch|checked|class|const|continue|d
 syntax-types bool|byte|char|decimal|double|float|int|long|object|sbyte|short|string|uint|ulong|ushort|void|%u{%w_}
 syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@
 syntax-literals [[true|false|this|null|'{(\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{%a}]]
-syntax-strings [["{(\")!".}]]
+syntax-strings [["{(\\)(\")!".}]]
 syntax-comments //{.}|/*{!(*/).$}
 
 # https://www.lua.org/manual/5.1/manual.html#2
@@ -72,7 +72,7 @@ syntax "**/*.lua"
 syntax-keywords and|break|do|elseif|else|end|for|function|if|in|local|not|or|repeat|return|then|until|while
 syntax-symbols [[+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.]]
 syntax-literals nil|false|true|_G|_ENV|%d{%d_}%.%w{%w_}|%d{%w_}
-syntax-strings [['{(\')!'.}|"{(\")!".}|%[%[{!(%]%]).}]]
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}|%[%[{!(%]%]).}]]
 syntax-comments --{.}|--%[%[{!(%]%]).$}
 
 # https://docs.python.org/3/reference/lexical_analysis.html#keywords
@@ -80,7 +80,7 @@ syntax "**/*.py"
 syntax-keywords and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield
 syntax-symbols +|-|*|/|%%|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.
 syntax-literals None|False|True|%d{%d_}%.%w{%w_}|%d{%w_}
-syntax-strings [['{(\')!'.}|"{(\")!".}]]
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}]]
 syntax-comments [[#{.}]]
 
 # https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#keywords
@@ -89,20 +89,20 @@ syntax-keywords break|case|catch|class|const|continue|debugger|default|delete|do
 syntax-types %u{%w_}
 syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@
 syntax-literals null|undefined|this|true|false|%d{%d_}%.%w{%w_}|%d{%w_}
-syntax-strings [['{(\')!'.}|"{(\")!".}|`{(\`)!`.}]]
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}|`{(\\)(\`)!`.}]]
 syntax-comments //{.}|/*{!(*/).$}
 
 syntax "**/*.md"
 syntax-keywords [[#{.}$]]
 syntax-symbols %||%!|-
 syntax-literals %[{!%].}%({!%).}
-syntax-strings [[```{!(```).$}|`{(\`)!`.}]]
+syntax-strings [[```{!(```).$}|`{!`.}]]
 syntax-texts {%w-_}
 
 syntax "**/*.html"
 syntax-keywords "%!DOCTYPE"
 syntax-symbols =
-syntax-strings [['{(\')!'.}|"{(\")!".}]]
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}]]
 syntax-comments <%!--{!(-->).$}
 syntax-texts {%w-_}
 
