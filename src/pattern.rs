@@ -294,6 +294,16 @@ impl Pattern {
                         op_jump = erj;
                     }
                 }
+                &Op::WordBoundary(okj, erj) => {
+                    let rest = chars.as_str();
+                    let previous_char = text[..text.len() - rest.len()].chars().next_back();
+                    let current_char = rest.chars().next();
+                    let at_boundary = match previous_char.zip(current_char) {
+                        Some((p, c)) => p.is_ascii_alphanumeric() != c.is_ascii_alphanumeric(),
+                        None => true,
+                    };
+                    op_jump = if at_boundary { okj } else { erj };
+                }
                 &Op::SkipOne(okj, erj) => op_jump = check_and_jump(&mut chars, okj, erj, |_| true),
                 &Op::SkipMany(okj, erj, len) => {
                     let len = (len.0 - 1) as _;
@@ -347,7 +357,7 @@ impl Pattern {
                         erj
                     }
                 }
-            };
+            }
         }
     }
 }
@@ -423,6 +433,7 @@ enum Op {
     Reset(Jump),
     Unwind(Jump, Length),
     EndAnchor(Jump, Jump),
+    WordBoundary(Jump, Jump),
     SkipOne(Jump, Jump),
     SkipMany(Jump, Jump, Length),
     Alphabetic(Jump, Jump),
@@ -457,6 +468,7 @@ impl fmt::Debug for Op {
                 width = WIDTH - 4
             ),
             &Op::EndAnchor(okj, erj) => p(f, "EndAnchor", okj, erj),
+            &Op::WordBoundary(okj, erj) => p(f, "WordBoundary", okj, erj),
             &Op::SkipOne(okj, erj) => p(f, "SkipOne", okj, erj),
             &Op::SkipMany(okj, erj, len) => write!(
                 f,
@@ -804,6 +816,10 @@ impl<'a> PatternCompiler<'a> {
                 'u' => Op::Upper(okj, erj),
                 'd' => Op::Digit(okj, erj),
                 'w' => Op::Alphanumeric(okj, erj),
+                'b' => {
+                    self.ops.push(Op::WordBoundary(okj, erj));
+                    return Ok(Length(0));
+                }
                 '%' => Op::Char(okj, erj, '%'),
                 '$' => Op::Char(okj, erj, '$'),
                 '.' => Op::Char(okj, erj, '.'),
@@ -878,6 +894,7 @@ impl<'a> PatternCompiler<'a> {
                 Op::Ok | Op::Error => (),
                 Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index, jump),
                 Op::EndAnchor(okj, erj)
+                | Op::WordBoundary(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
                 | Op::Alphabetic(okj, erj)
@@ -942,6 +959,7 @@ impl<'a> PatternCompiler<'a> {
                 Op::Ok | Op::Error => (),
                 Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index, fix),
                 Op::EndAnchor(okj, erj)
+                | Op::WordBoundary(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
                 | Op::Alphabetic(okj, erj)
@@ -1022,6 +1040,7 @@ impl<'a> PatternCompiler<'a> {
                 Op::Ok | Op::Error => (),
                 Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index, fix),
                 Op::EndAnchor(okj, erj)
+                | Op::WordBoundary(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
                 | Op::Alphabetic(okj, erj)
@@ -1320,6 +1339,10 @@ mod tests {
             _ => assert!(false),
         }
 
+        let p = new_pattern("a[b(c$)]");
+        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
+
         let p = new_pattern("a{b$!c}{c!d}");
         match p.matches("abb") {
             MatchResult::Pending(state) => match p.matches_with_state("bb", state) {
@@ -1330,6 +1353,15 @@ mod tests {
             },
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn word_boundary() {
+        let p = new_pattern("%babc%b");
+        assert_eq!(MatchResult::Ok(3), p.matches("abc"));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc."));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc,def"));
+        assert_eq!(MatchResult::Err, p.matches("abcd"));
     }
 
     #[test]
@@ -1503,3 +1535,4 @@ mod tests {
         ));
     }
 }
+
