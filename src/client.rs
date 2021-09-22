@@ -154,6 +154,7 @@ impl Client {
 
             let height = this.height as BufferPositionIndex;
             let half_height = height / 2;
+            let quarter_height = half_height / 2;
 
             let (mut scroll_x, mut scroll_y) = this.scroll;
 
@@ -175,12 +176,11 @@ impl Client {
                 }
             }
 
-            // TODO: only center if new position is not visible
-            if line_index < scroll_y.saturating_sub(half_height) {
+            if line_index < scroll_y.saturating_sub(quarter_height) {
                 scroll_y = line_index.saturating_sub(half_height);
             } else if line_index < scroll_y {
                 scroll_y = line_index;
-            } else if line_index >= scroll_y + height + half_height {
+            } else if line_index >= scroll_y + height + quarter_height {
                 scroll_y = line_index + 1 - half_height;
             } else if line_index >= scroll_y + height {
                 scroll_y = line_index + 1 - height;
@@ -260,3 +260,4 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
+
