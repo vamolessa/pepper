@@ -679,12 +679,18 @@ impl State {
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 for cursor in &mut cursors[..] {
+                    let mut was_empty = true;
                     let position = match buffer
                         .lines()
                         .enumerate()
-                        .skip(cursor.position.line_index as usize + 1)
-                        .filter(|(_, l)| l.as_str().chars().all(|c| c.is_whitespace()))
-                        .nth(state.count.max(1).saturating_sub(1) as _)
+                        .skip(cursor.position.line_index as usize)
+                        .filter(|(_, l)| {
+                            let is_empty = l.as_str().chars().all(|c| c.is_whitespace());
+                            let keep = !was_empty && is_empty;
+                            was_empty = is_empty;
+                            keep
+                        })
+                        .nth(state.count.saturating_sub(1) as _)
                     {
                         Some((i, line)) => {
                             BufferPosition::line_col(i as _, line.as_str().len() as _)
@@ -711,13 +717,19 @@ impl State {
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 for cursor in &mut cursors[..] {
+                    let mut was_empty = true;
                     let position = match buffer
                         .lines()
                         .enumerate()
                         .rev()
                         .skip(buffer.line_count() - cursor.position.line_index as usize)
-                        .filter(|(_, l)| l.as_str().chars().all(|c| c.is_whitespace()))
-                        .nth(state.count.max(1).saturating_sub(1) as _)
+                        .filter(|(_, l)| {
+                            let is_empty = l.as_str().chars().all(|c| c.is_whitespace());
+                            let keep = !was_empty && is_empty;
+                            was_empty = is_empty;
+                            keep
+                        })
+                        .nth(state.count.saturating_sub(1) as _)
                     {
                         Some((i, line)) => {
                             BufferPosition::line_col(i as _, line.as_str().len() as _)
@@ -1729,3 +1741,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         &mut ctx.editor.events,
     );
 }
+
