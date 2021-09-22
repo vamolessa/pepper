@@ -38,6 +38,36 @@ impl From<TryFromIntError> for PatternError {
     }
 }
 
+pub struct PatternEscaper<'a> {
+    chars: Chars<'a>,
+    pending_char: Option<char>,
+}
+impl<'a> PatternEscaper<'a> {
+    pub fn escape(text: &'a str) -> Self {
+        Self {
+            chars: text.chars(),
+            pending_char: None,
+        }
+    }
+}
+impl<'a> Iterator for PatternEscaper<'a> {
+    type Item = char;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.pending_char.take() {
+            Some(c) => Some(c),
+            None => match self.chars.next() {
+                Some(
+                    c @ ('%' | '^' | '$' | '.' | '!' | '(' | ')' | '[' | ']' | '{' | '}' | '|'),
+                ) => {
+                    self.pending_char = Some(c);
+                    Some('%')
+                }
+                c => c,
+            },
+        }
+    }
+}
+
 pub struct MatchIndices<'pattern, 'text> {
     pattern: &'pattern Pattern,
     text: &'text str,
@@ -297,7 +327,7 @@ impl Pattern {
                         .or_else(|| text[..index].chars().next_back());
                     let current_char = rest.chars().next();
                     let at_boundary = match previous_char.zip(current_char) {
-                        Some((p, c)) => p.is_ascii_alphanumeric() != c.is_ascii_alphanumeric(),
+                        Some((p, c)) => !p.is_ascii_alphanumeric() || !c.is_ascii_alphanumeric(),
                         None => true,
                     };
                     op_jump = if at_boundary { okj } else { erj };
@@ -1573,4 +1603,3 @@ mod tests {
         ));
     }
 }
-

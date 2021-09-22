@@ -7,34 +7,34 @@ These token kinds control which theme color to use when rendering that token.
 Here's an example of syntax definition for the lua language:
 
 ```
-syntax "**/*.lua" {
-	keywords = {and|break|do|else|elseif|end|for|function|if|in|local|not|or|repeat|return|then|until|while}
-	symbols = {+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|:|,|%.|%.%.|%.%.%.}
-	literals = {nil|false|true|_G|_ENV|%d{%w%._}}
-	strings = {'{(\')!'.}|"{(\")!".}|%[%[{!(%]%]).}}
-	comments = {--{.}|--%[%[{!(%]%]).$}}
-}
+syntax "**/*.lua"
+syntax-keywords and|break|do|elseif|else|end|for|function|if|in|local|not|or|repeat|return|then|until|while
+syntax-symbols [[+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.]]
+syntax-literals nil|false|true|_G|_ENV|%d{%d_}%.%w{%w_}|%d{%w_}
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}|%[%[{!(%]%]).}]]
+syntax-comments --{.}|--%[%[{!(%]%]).$}
 ```
 
 You can see a full example of language definitions that [come out-of-the-box](default_config.pp).
 
-Note that it's not possible to break a pattern in multiple lines and a new syntax definition is loaded,
-the token pattern priorities are always:
-- keywords
-- types
-- symbols
-- literals
-- strings
-- comments
-- texts
+Note that there's always a `syntax` command that defines the glob that matches that syntax filepaths.
+Then following the call to `syntax` command, it's possible to override each token pattern using the following commands:
+- `syntax-keywords`
+- `syntax-types`
+- `syntax-symbols`
+- `syntax-literals`
+- `syntax-strings`
+- `syntax-comments`
+Each of these commands takes a single pattern argument.
 
-Also, if a syntax can't match a token kind to a text slice, it will assume `text` kind which is used for normal text.
+Also, if a syntax can't match a token to a text slice, it will assume a `text` token kind which is used for normal text.
 So in theory, when defining a syntax definition, you can skip defining a pattern for the `texts` token kind.
 The default pattern for text tokens is `%a{%w_}|_{%w_}` which is the rule most languages use for their identifiers.
 
 ## token patterns
-Pepper uses it's own syntax to define patterns. It's inspired by both lua patterns and simple regexes, however the
-syntax was designed so it's simpler to compile and the interpreter is not recursive.
+Pepper uses it's own syntax to define patterns. It's inspired by both lua patterns and simple regexes.
+However the syntax was designed in a way that not only makes it super easy to compile,
+but also lets the interpreter be non-recursive.
 
 ### pattern syntax
 
@@ -46,9 +46,12 @@ syntax was designed so it's simpler to compile and the interpreter is not recurs
 | `%u` | matches an uppercase character |
 | `%d` | matches a single digit |
 | `%w` | matches an alphanumeric character |
+| `%b` | matches a word boundary |
+| `^` | matches line start |
 | `$` | matches line end |
 | `.` | matches any character |
 | `%%` | matches `%` |
+| `%^` | matches `^` |
 | `%$` | matches `$` |
 | `%.` | matches `.` |
 | `%!` | matches `!` |
@@ -58,18 +61,19 @@ syntax was designed so it's simpler to compile and the interpreter is not recurs
 | `%]` | matches `]` |
 | `%{` | matches `{` |
 | `%}` | matches `}` |
-| `[ ... ]` | matches any of these subpatterns |
-| `[! ... ]` | matches anything except these subpatterns |
-| `( ... )` | matches a sequence of subpatterns |
-| `(! ... )` | matches anything except this sequence of subpatterns |
-| `{ ... }` | tries to match any of these subpatterns as much as possible |
+| `[...]` | matches any of these subpatterns |
+| `[!...]` | matches anything except these subpatterns |
+| `(...)` | matches a sequence of subpatterns |
+| `(!...)` | matches anything except this sequence of subpatterns |
+| `{...}` | tries to match any of these subpatterns as much as possible |
 | `<pipe>` | if what came before it fails, try again from the beginning with the new pattern to the right kinda like an 'or' |
 
-### group subpatterns `[ ... ]`
+### group subpatterns `[...]`
 This will try to match each subpattern inside the brackets in declaration order.
 As soon as one of them matches, the pattern continues by jumping to after the `]`. If all of them fails, then
 this group subpattern also fails. If right after `[` there is a `!`, then the logic is inverted and this group
 subpattern only matches if every subpattern inside it fails, and fails if any of them matches.
+All subpatterns need to have the same exact length.
 
 #### examples
 
@@ -79,7 +83,7 @@ subpattern only matches if every subpattern inside it fails, and fails if any of
 | `x[abc]y` | `xay`, `xby` | `xy`, `xdy` |
 | `[!abc]` | `d`, `8` | `a`, `b` |
 
-### sequence subpatterns `( ... )`
+### sequence subpatterns `(...)`
 A sequence attempts to match each subpattern inside the brackets in declaration order.
 As soon as one of them fails, the sequence fails. If right after `(` there is a `!`, then the logic
 is inverted and this sequence subpattern will fail if all subpatterns inside it match. On the other hand,
@@ -93,7 +97,7 @@ however consuming those `n` chars.
 | `(abc)` | `abc` | `ab`, `ab2` |
 | `(!abc)` | `ab4` | `ab`, `abc` |
 
-### repeat subpatterns `{ ... }`
+### repeat subpatterns `{...}`
 This subpattern will try to match each of the subpatterns inside the brackets in declaration order. If any
 of them matches, it will repeat and try again from the `{`. If none matches, the pattern continues by jumping
 to after the `}`. If any of the subpatterns inside it is prefixed by `!` it is treated as an 'exit pattern'
@@ -102,11 +106,24 @@ it will only match if one of the 'exit pattern' matches.
 
 #### examples
 
-| pattern | maatches | does not match |
+| pattern | matches | does not match |
 | --- | --- | --- |
 | `{a}b` | `b`, `ab`, `aaab` | `c` |
 | `{ab}c` | `ac`, `bc`, `abbbabbbc` | `5` |
 | `{ab!c}` | `c`, `abbabc` | `ababa` |
+
+### or subpatterns `...|...`
+This enables branching a pattern. It will either match everything on the left or everything on the right.
+As soon as a subpattern matches, it ends the pattern matching. Although it can't be used inside other constructs,
+it's possible to use subpatterns with different lengths.
+
+#### examples
+
+| pattern | matches | does not match |
+| --- | --- | --- |
+| `a|b` | `a`, `b` | `c` |
+| `abc|%d` | `abc`, `0`, `8` | `!`, `ab` |
+| `{a}|bb` | `` (empty), `a`, `aaa`, `bb` | `b`, `c` |
 
 ### common patterns
 
@@ -117,5 +134,6 @@ it will only match if one of the 'exit pattern' matches.
 | `"{(\")!".}` | string delimited by `"` which can contain escaped `\"`. note that `(\")` is checked first so it can be ignored correctly |
 | `//{.}` | c-style single line comment. will match everything to the right of the `//` |
 | `/*{!(*/).$}` | c-style multi line comment. the order inside `{}` is important. the 'exit pattern' comes first to stop as soon as a `*/` is found |
+| `if|while|for` | tries to match against several keywords |
 
 <!-- {% endraw %} -->

@@ -13,6 +13,7 @@ use crate::{
     lsp,
     mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeState},
     navigation_history::{NavigationHistory, NavigationMovement},
+    pattern::PatternEscaper,
     platform::Key,
     register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
@@ -1554,7 +1555,9 @@ fn search_word_or_move_to_it(
         let register = ctx.editor.registers.get_mut(SEARCH_REGISTER);
         register.clear();
         register.push_str("P/%b");
-        register.push_str(text);
+        for c in PatternEscaper::escape(text) {
+            register.push(c);
+        }
         register.push_str("%b");
 
         let _ = ctx.editor.aux_pattern.compile_searcher(register);
@@ -1742,4 +1745,3 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         &mut ctx.editor.events,
     );
 }
-
