@@ -134,65 +134,64 @@ impl Client {
     }
 
     pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
-        fn calculate_scroll(
-            this: &Client,
-            editor: &Editor,
-        ) -> Option<(BufferPositionIndex, BufferPositionIndex)> {
-            let width = this.viewport_size.0 as BufferPositionIndex;
-            if width == 0 {
-                return None;
-            }
-
-            let buffer_view = editor.buffer_views.get(this.buffer_view_handle()?);
-            let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
-
-            let position = buffer_view.cursors.main_cursor().position;
-
-            let line_index = position.line_index;
-            let line = buffer.line_at(line_index as _).as_str();
-            let column_index = position.column_byte_index;
-
-            let height = this.height as BufferPositionIndex;
-            let half_height = height / 2;
-            let quarter_height = half_height / 2;
-
-            let (mut scroll_x, mut scroll_y) = this.scroll;
-
-            if column_index < scroll_x {
-                scroll_x = column_index
-            } else {
-                let index = column_index as usize;
-                let (width, text) = match line[index..].chars().next() {
-                    Some(c) => (width, &line[..index + c.len_utf8()]),
-                    None => (width - 1, line),
-                };
-
-                if let Some(d) = CharDisplayDistances::new(text, editor.config.tab_size)
-                    .rev()
-                    .take_while(|d| d.distance <= width as _)
-                    .last()
-                {
-                    scroll_x = scroll_x.max(d.char_index as _);
-                }
-            }
-
-            if line_index < scroll_y.saturating_sub(quarter_height) {
-                scroll_y = line_index.saturating_sub(half_height);
-            } else if line_index < scroll_y {
-                scroll_y = line_index;
-            } else if line_index >= scroll_y + height + quarter_height {
-                scroll_y = line_index + 1 - half_height;
-            } else if line_index >= scroll_y + height {
-                scroll_y = line_index + 1 - height;
-            }
-
-            Some((scroll_x, scroll_y))
-        }
-
         self.height = self.viewport_size.1.saturating_sub(1 + picker_height);
-        if let Some(scroll) = calculate_scroll(self, editor) {
-            self.scroll = scroll;
+
+        let width = self.viewport_size.0 as BufferPositionIndex;
+        if width == 0 {
+            return;
         }
+        let height = self.height as BufferPositionIndex;
+        if height == 0 {
+            return;
+        }
+        let buffer_view_handle = match self.buffer_view_handle() {
+            Some(handle) => handle,
+            None => return,
+        };
+
+        let buffer_view = editor.buffer_views.get(buffer_view_handle);
+        let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
+
+        let position = buffer_view.cursors.main_cursor().position;
+
+        let line_index = position.line_index;
+        let line = buffer.line_at(line_index as _).as_str();
+        let column_index = position.column_byte_index;
+
+        let half_height = height / 2;
+        let quarter_height = half_height / 2;
+
+        let (mut scroll_x, mut scroll_y) = self.scroll;
+
+        if column_index < scroll_x {
+            scroll_x = column_index
+        } else {
+            let index = column_index as usize;
+            let (width, text) = match line[index..].chars().next() {
+                Some(c) => (width, &line[..index + c.len_utf8()]),
+                None => (width - 1, line),
+            };
+
+            if let Some(d) = CharDisplayDistances::new(text, editor.config.tab_size)
+                .rev()
+                .take_while(|d| d.distance <= width as _)
+                .last()
+            {
+                scroll_x = scroll_x.max(d.char_index as _);
+            }
+        }
+
+        if line_index < scroll_y.saturating_sub(quarter_height) {
+            scroll_y = line_index.saturating_sub(half_height);
+        } else if line_index < scroll_y {
+            scroll_y = line_index;
+        } else if line_index >= scroll_y + height + quarter_height {
+            scroll_y = line_index + 1 - half_height;
+        } else if line_index >= scroll_y + height {
+            scroll_y = line_index + 1 - height;
+        }
+
+        self.scroll = (scroll_x, scroll_y);
     }
 }
 

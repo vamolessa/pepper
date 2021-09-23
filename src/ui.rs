@@ -242,7 +242,7 @@ fn draw_buffer_view(
     let visual_tab_first = ctx
         .editor
         .config
-        .visual_space
+        .visual_tab_first
         .encode_utf8(&mut visual_tab_first)
         .as_bytes();
 
@@ -250,7 +250,7 @@ fn draw_buffer_view(
     let visual_tab_repeat = ctx
         .editor
         .config
-        .visual_space
+        .visual_tab_repeat
         .encode_utf8(&mut visual_tab_repeat)
         .as_bytes();
 

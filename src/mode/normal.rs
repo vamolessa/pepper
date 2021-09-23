@@ -1750,4 +1750,3 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         &mut ctx.editor.events,
     );
 }
-
