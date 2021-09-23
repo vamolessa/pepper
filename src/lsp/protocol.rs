@@ -950,6 +950,7 @@ impl ServerEventIter {
 
     pub fn finish(self, protocol: &mut Protocol) {
         protocol.read_buf.drain(..self.read_len);
+        std::mem::forget(self);
     }
 }
 impl Drop for ServerEventIter {
