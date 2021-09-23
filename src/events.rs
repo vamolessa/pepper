@@ -623,8 +623,14 @@ impl ClientEventIter {
         }
     }
 
-    pub fn finish(&self, receiver: &mut ClientEventReceiver) {
+    pub fn finish(self, receiver: &mut ClientEventReceiver) {
         receiver.bufs[self.buf_index].drain(..self.read_len);
+        std::mem::forget(self);
+    }
+}
+impl Drop for ClientEventIter {
+    fn drop(&mut self) {
+        panic!("forgot to call 'finish' on ClientEventIter");
     }
 }
 
