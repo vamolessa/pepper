@@ -41,7 +41,7 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 # goals
 
-- small, but orthogonal, set of editing primitives
+- small, however orthogonal, set of editing primitives
 - mnemonic and easy to reach default keybindings (assuming a qwerty keyboard)
 - cross-plaftorm (Windows, Linux, BSD, Mac)
 - extensible through external cli tools
@@ -52,13 +52,12 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 - support every possible workflow (it will never ever get close to feature parity with vim or emacs)
 - complex ui (like breadcumbs, floating windows, extra status bars, etc)
-- multiple viewports (leave that to your window manager/terminal multiplexer.
-Instead clients can connect to each other and act together as if they're a single application)
+- multiple viewports (leave that to your window manager/terminal multiplexer). Instead clients can connect to each other and act together as if they're a single application)
 - undo tree
 - support for text encodings other than UTF-8
 - fuzzy file picker (you can integrate with fzf, skim, fd, etc)
 - workspace wide search (you can integrate with grep, ripgrep, etc)
-- having any other feature that could be implemented by integrating an external tool
+- having any other feature that could instead be implemented by integrating an external tool
 
 # features
 
