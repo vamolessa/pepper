@@ -1402,6 +1402,14 @@ impl Client {
                         BufferCapabilities::text(),
                     ) {
                         Ok(buffer_view_handle) => {
+                            if let Some(true) = params.take_focus {
+                                let client = clients.get_mut(client_handle);
+                                client.set_buffer_view_handle(
+                                    Some(buffer_view_handle),
+                                    &editor.buffer_views,
+                                    &mut editor.events,
+                                );
+                            }
                             if let Some(range) = params.selection {
                                 let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
                                 let mut cursors = buffer_view.cursors.mut_guard();
@@ -1410,14 +1418,6 @@ impl Client {
                                     anchor: range.start.into(),
                                     position: range.end.into(),
                                 });
-                            }
-                            if let Some(true) = params.take_focus {
-                                let client = clients.get_mut(client_handle);
-                                client.set_buffer_view_handle(
-                                    Some(buffer_view_handle),
-                                    &editor.buffer_views,
-                                    &mut editor.events,
-                                );
                             }
                             true
                         }
@@ -2355,26 +2355,24 @@ impl Client {
                     BufferCapabilities::text(),
                 ) {
                     Ok(buffer_view_handle) => {
-                        {
-                            let position = location.range.start.into();
-                            let mut cursors = editor
-                                .buffer_views
-                                .get_mut(buffer_view_handle)
-                                .cursors
-                                .mut_guard();
-                            cursors.clear();
-                            cursors.add(Cursor {
-                                anchor: position,
-                                position,
-                            });
-                        }
-
                         let client = clients.get_mut(client_handle);
                         client.set_buffer_view_handle(
                             Some(buffer_view_handle),
                             &editor.buffer_views,
                             &mut editor.events,
                         );
+
+                        let position = location.range.start.into();
+                        let mut cursors = editor
+                            .buffer_views
+                            .get_mut(buffer_view_handle)
+                            .cursors
+                            .mut_guard();
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: position,
+                            position,
+                        });
                     }
                     Err(error) => editor
                         .status_bar

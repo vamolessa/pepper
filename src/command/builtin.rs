@@ -36,16 +36,6 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 BufferCapabilities::log(),
             ) {
                 Ok(handle) => {
-                    {
-                        let mut cursors =
-                            ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: position,
-                            position,
-                        });
-                    }
-
                     let client = ctx.clients.get_mut(client_handle);
                     client.set_buffer_view_handle(
                         Some(handle),
@@ -54,6 +44,13 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     );
                     client.scroll.0 = 0;
                     client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
+
+                    let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add(Cursor {
+                        anchor: position,
+                        position,
+                    });
                 }
                 Err(error) => ctx
                     .editor
@@ -102,7 +99,12 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                 BufferCapabilities::text(),
             ) {
                 Ok(handle) => {
-                    ctx.editor.string_pool.release(path);
+                    let client = ctx.clients.get_mut(client_handle);
+                    client.set_buffer_view_handle(
+                        Some(handle),
+                        &ctx.editor.buffer_views,
+                        &mut ctx.editor.events,
+                    );
 
                     if let Some(position) = position {
                         let mut cursors =
@@ -113,13 +115,6 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                             position,
                         });
                     }
-
-                    let client = ctx.clients.get_mut(client_handle);
-                    client.set_buffer_view_handle(
-                        Some(handle),
-                        &ctx.editor.buffer_views,
-                        &mut ctx.editor.events,
-                    );
                 }
                 Err(error) => ctx
                     .editor
@@ -127,6 +122,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
                     .write(MessageKind::Error)
                     .fmt(format_args!("{}", error)),
             }
+            ctx.editor.string_pool.release(path);
 
             Ok(EditorControlFlow::Continue)
         },

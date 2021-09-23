@@ -335,26 +335,24 @@ pub mod lsp_definition {
                             BufferCapabilities::text(),
                         ) {
                             Ok(buffer_view_handle) => {
-                                {
-                                    let mut cursors = ctx
-                                        .editor
-                                        .buffer_views
-                                        .get_mut(buffer_view_handle)
-                                        .cursors
-                                        .mut_guard();
-                                    cursors.clear();
-                                    cursors.add(Cursor {
-                                        anchor: position,
-                                        position,
-                                    });
-                                }
-
                                 let client = ctx.clients.get_mut(ctx.client_handle);
                                 client.set_buffer_view_handle(
                                     Some(buffer_view_handle),
                                     &ctx.editor.buffer_views,
                                     &mut ctx.editor.events,
                                 );
+
+                                let mut cursors = ctx
+                                    .editor
+                                    .buffer_views
+                                    .get_mut(buffer_view_handle)
+                                    .cursors
+                                    .mut_guard();
+                                cursors.clear();
+                                cursors.add(Cursor {
+                                    anchor: position,
+                                    position,
+                                });
                             }
                             Err(error) => ctx
                                 .editor

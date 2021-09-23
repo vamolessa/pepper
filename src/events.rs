@@ -119,13 +119,9 @@ impl EditorEventIter {
     }
 
     pub fn next<'a>(&mut self, queue: &'a EditorEventQueue) -> Option<&'a EditorEvent> {
-        if self.0 < queue.read.events.len() {
-            let event = &queue.read.events[self.0];
-            self.0 += 1;
-            Some(event)
-        } else {
-            None
-        }
+        let event = queue.read.events.get(self.0)?;
+        self.0 += 1;
+        Some(event)
     }
 }
 

@@ -504,21 +504,7 @@ impl State {
                                 path,
                                 BufferCapabilities::text(),
                             ) {
-                                Ok(handle) => {
-                                    {
-                                        let mut cursors = ctx
-                                            .editor
-                                            .buffer_views
-                                            .get_mut(handle)
-                                            .cursors
-                                            .mut_guard();
-                                        cursors.clear();
-                                        cursors.add(Cursor {
-                                            anchor: position,
-                                            position,
-                                        });
-                                    }
-
+                                Ok(buffer_view_handle) => {
                                     if jumped {
                                         continue;
                                     }
@@ -528,10 +514,25 @@ impl State {
                                         CursorMovementKind::PositionAndAnchor;
                                     let client = ctx.clients.get_mut(ctx.client_handle);
                                     client.set_buffer_view_handle(
-                                        Some(handle),
+                                        Some(buffer_view_handle),
                                         &ctx.editor.buffer_views,
                                         &mut ctx.editor.events,
                                     );
+
+                                    let buffer_view =
+                                        ctx.editor.buffer_views.get_mut(buffer_view_handle);
+                                    let position = ctx
+                                        .editor
+                                        .buffers
+                                        .get(buffer_view.buffer_handle)
+                                        .content()
+                                        .saturate_position(position);
+                                    let mut cursors = buffer_view.cursors.mut_guard();
+                                    cursors.clear();
+                                    cursors.add(Cursor {
+                                        anchor: position,
+                                        position,
+                                    });
                                 }
                                 Err(error) => {
                                     if !error_buf.is_empty() {
@@ -1729,19 +1730,6 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         }
     };
 
-    let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
-    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
-    let position = buffer.content().saturate_position(position);
-
-    {
-        let mut cursors = buffer_view.cursors.mut_guard();
-        cursors.clear();
-        cursors.add(Cursor {
-            anchor: position,
-            position,
-        });
-    }
-
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     let client = ctx.clients.get_mut(ctx.client_handle);
     client.set_buffer_view_handle(
@@ -1749,4 +1737,15 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         &ctx.editor.buffer_views,
         &mut ctx.editor.events,
     );
+
+    let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+    let position = buffer.content().saturate_position(position);
+
+    let mut cursors = buffer_view.cursors.mut_guard();
+    cursors.clear();
+    cursors.add(Cursor {
+        anchor: position,
+        position,
+    });
 }
