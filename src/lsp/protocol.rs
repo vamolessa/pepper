@@ -948,8 +948,13 @@ impl ServerEventIter {
         Some(event)
     }
 
-    pub fn finish(&self, protocol: &mut Protocol) {
+    pub fn finish(self, protocol: &mut Protocol) {
         protocol.read_buf.drain(..self.read_len);
+    }
+}
+impl Drop for ServerEventIter {
+    fn drop(&mut self) {
+        panic!("forgot to call 'finish' on ServerEventIter");
     }
 }
 
