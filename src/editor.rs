@@ -265,23 +265,16 @@ impl Editor {
         client_handle: ClientHandle,
         event: ClientEvent,
     ) -> EditorControlFlow {
-        fn get_client_handle(
-            clients: &ClientManager,
-            handle: ClientHandle,
-            target: TargetClient,
-        ) -> ClientHandle {
-            match target {
-                TargetClient::Sender => handle,
-                TargetClient::Focused => match clients.focused_client() {
-                    Some(handle) => handle,
-                    None => handle,
-                },
-            }
-        }
-
         match event {
             ClientEvent::Key(target, key) => {
-                let client_handle = get_client_handle(clients, client_handle, target);
+                let client_handle = match target {
+                    TargetClient::Sender => client_handle,
+                    TargetClient::Focused => match clients.focused_client() {
+                        Some(handle) => handle,
+                        None => return EditorControlFlow::Continue,
+                    },
+                };
+
                 if clients.focus_client(client_handle) {
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
@@ -309,7 +302,14 @@ impl Editor {
                 EditorControlFlow::Continue
             }
             ClientEvent::Command(target, command) => {
-                let client_handle = get_client_handle(clients, client_handle, target);
+                let client_handle = match target {
+                    TargetClient::Sender => client_handle,
+                    TargetClient::Focused => match clients.focused_client() {
+                        Some(handle) => handle,
+                        None => return EditorControlFlow::Continue,
+                    },
+                };
+
                 let mut command = self.string_pool.acquire_with(command);
                 let flow = CommandManager::eval(
                     self,
@@ -460,3 +460,4 @@ impl Editor {
         }
     }
 }
+
