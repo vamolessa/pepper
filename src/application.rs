@@ -226,9 +226,9 @@ impl ClientApplication {
         let mut commands = String::new();
         for path in &args.files {
             commands.clear();
-            commands.push_str("open '");
+            commands.push_str("open \"");
             commands.push_str(path);
-            commands.push('\'');
+            commands.push('"');
             ClientEvent::Command(self.target_client, &commands)
                 .serialize(&mut self.server_write_buf);
         }
