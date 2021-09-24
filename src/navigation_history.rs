@@ -23,12 +23,14 @@ struct NavigationHistorySnapshot {
 pub struct NavigationHistory {
     snapshots: Vec<NavigationHistorySnapshot>,
     current_snapshot_index: u32,
+    on_previous_buffer: bool,
 }
 
 impl NavigationHistory {
     pub fn clear(&mut self) {
         self.snapshots.clear();
         self.current_snapshot_index = 0;
+        self.on_previous_buffer = false;
     }
 
     pub fn save_snapshot(client: &mut Client, buffer_views: &BufferViewCollection) {
@@ -39,7 +41,11 @@ impl NavigationHistory {
         let buffer_view = buffer_views.get(buffer_view_handle);
 
         let this = &mut client.navigation_history;
+        if this.on_previous_buffer {
+            this.current_snapshot_index = this.snapshots.len() as _;
+        }
         this.snapshots.truncate(this.current_snapshot_index as _);
+        this.on_previous_buffer = false;
 
         let buffer_handle = buffer_view.buffer_handle;
         let position = buffer_view.cursors.main_cursor().position;
@@ -114,6 +120,7 @@ impl NavigationHistory {
         });
 
         client.set_buffer_view_handle_no_history(Some(buffer_view_handle), &mut editor.events);
+        client.navigation_history.on_previous_buffer = false;
     }
 
     pub fn move_to_previous_buffer(client: &mut Client, editor: &mut Editor) {
@@ -160,6 +167,7 @@ impl NavigationHistory {
                     &mut editor.events,
                 );
                 client.navigation_history.current_snapshot_index = i as _;
+                client.navigation_history.on_previous_buffer = true;
                 break;
             }
         }
@@ -303,4 +311,3 @@ mod tests {
         assert_eq!(3, client.navigation_history.snapshots.len());
     }
 }
-
