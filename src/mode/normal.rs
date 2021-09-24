@@ -1050,6 +1050,75 @@ impl State {
                 _ => (),
             },
             Key::Char('s') => read_line::search::enter_mode(ctx),
+            Key::Char('m') => match keys.next(&ctx.editor.buffered_keys) {
+                Key::None => return None,
+                Key::Char(c) => {
+                    if let Some(key) = RegisterKey::from_char(c) {
+                        let register = ctx.editor.registers.get_mut(key);
+                        register.clear();
+
+                        let buffer_view = ctx.editor.buffer_views.get(handle);
+                        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+                        if let Some(path) = buffer.path.to_str() {
+                            let position = buffer_view.cursors.main_cursor().position;
+                            let line = position.line_index + 1;
+                            let column = position.column_byte_index + 1;
+                            let _ = write!(register, "{}:{},{}", path, line, column);
+                        }
+
+                        ctx.editor
+                            .status_bar
+                            .write(MessageKind::Info)
+                            .fmt(format_args!("mark saved to register {}", c));
+                    }
+                }
+                _ => (),
+            },
+            Key::Char('M') => match keys.next(&ctx.editor.buffered_keys) {
+                Key::None => return None,
+                Key::Char(c) => {
+                    let c = c.to_ascii_lowercase();
+                    if let Some(key) = RegisterKey::from_char(c) {
+                        let register = ctx.editor.registers.get(key);
+                        let (path, position) = parse_path_and_position(register);
+                        let path = ctx.editor.string_pool.acquire_with(path);
+                        match ctx.editor.buffer_view_handle_from_path(
+                            ctx.client_handle,
+                            Path::new(&path),
+                            BufferCapabilities::text(),
+                        ) {
+                            Ok(handle) => {
+                                let client = ctx.clients.get_mut(ctx.client_handle);
+                                client.set_buffer_view_handle(
+                                    Some(handle),
+                                    &ctx.editor.buffer_views,
+                                    &mut ctx.editor.events,
+                                );
+
+                                if let Some(position) = position {
+                                    let mut cursors =
+                                        ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                                    cursors.clear();
+                                    cursors.add(Cursor {
+                                        anchor: position,
+                                        position,
+                                    });
+                                }
+
+                                ctx.editor.mode.normal_state.movement_kind =
+                                    CursorMovementKind::PositionAndAnchor;
+                            }
+                            Err(error) => ctx
+                                .editor
+                                .status_bar
+                                .write(MessageKind::Error)
+                                .fmt(format_args!("{}", error)),
+                        }
+                        ctx.editor.string_pool.release(path);
+                    }
+                }
+                _ => (),
+            },
             Key::Char('y') => {
                 let mut text = ctx.editor.string_pool.acquire();
                 copy_text(ctx, handle, &mut text);
@@ -1749,3 +1818,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         position,
     });
 }
+
