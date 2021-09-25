@@ -257,20 +257,6 @@ pub static COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "status",
-        completions: &[],
-        func: |ctx| {
-            ctx.args.assert_empty()?;
-
-            // TODO status command
-            let client_handle = ctx.client_handle()?;
-            let client = ctx.clients.get_mut(client_handle);
-            client.set_buffer_view_handle(None, &ctx.editor.buffer_views, &mut ctx.editor.events);
-
-            Ok(EditorControlFlow::Continue)
-        },
-    },
-    BuiltinCommand {
         name: "config",
         completions: &[(CompletionSource::Custom(CONFIG_NAMES))],
         func: |ctx| {
