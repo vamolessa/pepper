@@ -348,8 +348,8 @@ fn run_client(args: Args, mut connection: UnixStream) {
     let resize_signal;
 
     let epoll = Epoll::new();
-    epoll.add(connection.as_raw_fd(), 0);
-    epoll.add(libc::STDIN_FILENO, 1);
+    epoll.add(libc::STDIN_FILENO, 0);
+    epoll.add(connection.as_raw_fd(), 1);
     let mut epoll_events = EpollEvents::new();
 
     if is_pipped {
@@ -391,11 +391,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
             keys.clear();
 
             match event_index {
-                0 => match connection.read(&mut buf) {
-                    Ok(0) | Err(_) => break 'main_loop,
-                    Ok(len) => server_bytes = &buf[..len],
-                },
-                1 => match read(libc::STDIN_FILENO, &mut buf) {
+                0 => match read(libc::STDIN_FILENO, &mut buf) {
                     Ok(0) | Err(()) => {
                         epoll.remove(libc::STDIN_FILENO);
                         continue;
@@ -409,6 +405,10 @@ fn run_client(args: Args, mut connection: UnixStream) {
                             parse_terminal_keys(bytes, backspace_code, &mut keys);
                         }
                     }
+                },
+                1 => match connection.read(&mut buf) {
+                    Ok(0) | Err(_) => break 'main_loop,
+                    Ok(len) => server_bytes = &buf[..len],
                 },
                 2 => {
                     if let Some(ref signal) = resize_signal {

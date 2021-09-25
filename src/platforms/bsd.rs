@@ -388,8 +388,8 @@ fn run_client(args: Args, mut connection: UnixStream) {
     let mut raw_mode;
 
     let kqueue = Kqueue::new();
-    kqueue.add(Event::Fd(connection.as_raw_fd()), 0);
-    kqueue.add(Event::Fd(libc::STDIN_FILENO), 1);
+    kqueue.add(Event::Fd(libc::STDIN_FILENO), 0);
+    kqueue.add(Event::Fd(connection.as_raw_fd()), 1);
     let mut kqueue_events = KqueueEvents::new();
 
     if is_pipped {
@@ -423,13 +423,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
             match event {
                 Ok(TriggeredEvent { index: 0, data }) => {
                     buf.resize(data as _, 0);
-                    match connection.read(&mut buf) {
-                        Ok(0) | Err(_) => break 'main_loop,
-                        Ok(len) => server_bytes = &buf[..len],
-                    }
-                }
-                Ok(TriggeredEvent { index: 1, data }) => {
-                    buf.resize(data as _, 0);
                     match read(libc::STDIN_FILENO, &mut buf) {
                         Ok(0) | Err(()) => {
                             kqueue.remove(Event::Fd(libc::STDIN_FILENO));
@@ -443,6 +436,13 @@ fn run_client(args: Args, mut connection: UnixStream) {
                                 parse_terminal_keys(bytes, backspace_code, &mut keys);
                             }
                         }
+                    }
+                }
+                Ok(TriggeredEvent { index: 1, data }) => {
+                    buf.resize(data as _, 0);
+                    match connection.read(&mut buf) {
+                        Ok(0) | Err(_) => break 'main_loop,
+                        Ok(len) => server_bytes = &buf[..len],
                     }
                 }
                 Ok(TriggeredEvent { index: 2, .. }) => resize = Some(get_terminal_size()),

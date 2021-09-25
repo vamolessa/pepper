@@ -1268,7 +1268,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         Input::Console(handle) => handle.0,
     };
 
-    let wait_handles = [connection.event().handle(), input_wait_handle];
+    let wait_handles = [input_wait_handle, connection.event().handle()];
 
     loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
@@ -1283,16 +1283,16 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         keys.clear();
 
         match wait_handle_index {
-            0 => match connection.read_async() {
-                Ok(bytes) => server_bytes = bytes,
-                Err(()) => break,
-            },
-            1 => match input {
+            0 => match input {
                 Input::Stdin(ref mut stdin) => stdin_bytes = stdin.read_async(),
                 Input::Console(ref handle) => {
                     let console_events = read_console_input(handle, &mut console_event_buf);
                     parse_console_events(console_events, &mut keys, &mut resize);
                 }
+            },
+            1 => match connection.read_async() {
+                Ok(bytes) => server_bytes = bytes,
+                Err(()) => break,
             },
             _ => unreachable!(),
         }
