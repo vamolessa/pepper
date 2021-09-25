@@ -696,18 +696,13 @@ pub enum BufferReadError {
     InvalidData,
     Other,
 }
-impl BufferReadError {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::FileNotFound => "file not found",
-            Self::InvalidData => "invalid data while reading from file",
-            Self::Other => "could not read from file",
-        }
-    }
-}
 impl fmt::Display for BufferReadError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.as_str())
+        match self {
+            Self::FileNotFound => f.write_str("file not found"),
+            Self::InvalidData => f.write_str("invalid data while reading from file"),
+            Self::Other => f.write_str("could not read from file"),
+        }
     }
 }
 impl From<io::Error> for BufferReadError {
@@ -721,14 +716,9 @@ impl From<io::Error> for BufferReadError {
 }
 
 pub struct BufferWriteError;
-impl BufferWriteError {
-    pub fn as_str(&self) -> &'static str {
-        "could not write to file"
-    }
-}
 impl fmt::Display for BufferWriteError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.as_str())
+        f.write_str("could not write to file")
     }
 }
 impl From<io::Error> for BufferWriteError {

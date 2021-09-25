@@ -1,10 +1,10 @@
-use std::{convert::TryInto, num::TryFromIntError, str::Chars};
+use std::{convert::TryInto, fmt, num::TryFromIntError, str::Chars};
 
 #[derive(Debug)]
 pub struct InvalidGlobError;
-impl InvalidGlobError {
-    pub fn as_str(&self) -> &'static str {
-        "invalid glob"
+impl fmt::Display for InvalidGlobError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("invalid glob")
     }
 }
 impl From<TryFromIntError> for InvalidGlobError {

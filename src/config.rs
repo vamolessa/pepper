@@ -4,11 +4,11 @@ pub enum ParseConfigError {
     NoSuchConfig,
     InvalidValue,
 }
-impl ParseConfigError {
-    pub fn as_str(&self) -> &'static str {
+impl fmt::Display for ParseConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::NoSuchConfig => "no such config",
-            Self::InvalidValue => "invalid config value",
+            Self::NoSuchConfig => f.write_str("no such config"),
+            Self::InvalidValue => f.write_str("invalid config value"),
         }
     }
 }
