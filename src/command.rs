@@ -11,11 +11,11 @@ use crate::{
     config::ParseConfigError,
     editor::{Editor, EditorControlFlow},
     editor_utils::MessageKind,
-    ffi::{plugin_api_ptr, PluginApi},
     glob::InvalidGlobError,
     keymap::ParseKeyMapError,
     pattern::PatternError,
     platform::Platform,
+    plugin::{PluginApi, PluginHandle, PLUGIN_API},
 };
 
 mod builtin;
@@ -101,6 +101,7 @@ pub struct CommandContext<'state, 'command> {
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
+    pub plugin_handle: PluginHandle,
 
     pub args: CommandArgs<'command>,
     pub bang: bool,
@@ -235,14 +236,17 @@ impl<'a> Iterator for CommandTokenizer<'a> {
     }
 }
 
-type BuiltinCommandFn = fn(&mut CommandContext) -> Result<(), CommandError>;
-type ExternCommandFn =
-    extern "C" fn(*const PluginApi, *const CommandContext, *mut c_void) -> *const c_void;
+pub type BuiltinCommandFn = fn(ctx: &mut CommandContext) -> Result<(), CommandError>;
+pub type PluginCommandFn = extern "C" fn(
+    api: *const PluginApi,
+    ctx: *const CommandContext,
+    userdata: *mut c_void,
+) -> *const c_void;
 
 #[derive(Clone, Copy)]
 enum CommandFn {
     BuiltinCommandFn(BuiltinCommandFn),
-    ExternCommandFn(ExternCommandFn, *mut c_void),
+    PluginCommandFn(PluginCommandFn, PluginHandle),
 }
 
 pub struct Command {
@@ -346,17 +350,17 @@ impl CommandManager {
         });
     }
 
-    pub fn register_extern_command(
+    pub fn register_plugin_command(
         &mut self,
+        handle: PluginHandle,
         name: &'static str,
         completions: &'static [CompletionSource],
-        command_fn: ExternCommandFn,
-        userdata: *mut c_void,
+        command_fn: PluginCommandFn,
     ) {
         self.commands.push(Command {
             name,
             completions,
-            command_fn: CommandFn::ExternCommandFn(command_fn, userdata),
+            command_fn: CommandFn::PluginCommandFn(command_fn, handle),
         });
     }
 
@@ -464,14 +468,17 @@ impl CommandManager {
             platform,
             clients,
             client_handle,
+            plugin_handle: PluginHandle::default(),
             args: CommandArgs(tokenizer),
             bang,
             flow: EditorControlFlow::Continue,
         };
         match command_fn {
             CommandFn::BuiltinCommandFn(f) => f(&mut ctx)?,
-            CommandFn::ExternCommandFn(f, userdata) => {
-                let error = f(plugin_api_ptr(), &mut ctx, userdata);
+            CommandFn::PluginCommandFn(f, handle) => {
+                ctx.plugin_handle = handle;
+                // TODO get actuall userdata
+                let error = f(&PLUGIN_API, &mut ctx, std::ptr::null_mut());
                 if !error.is_null() {
                     return match unsafe { CStr::from_ptr(error as _) }.to_str() {
                         Ok(error) => Err(CommandError::PluginError(error)),

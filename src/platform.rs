@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{client::ClientHandle, editor_utils::parse_process_command, ffi::InitPluginFn, lsp};
+use crate::{client::ClientHandle, editor_utils::parse_process_command, plugin::InitPluginFn, lsp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {

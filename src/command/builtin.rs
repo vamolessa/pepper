@@ -4,7 +4,7 @@ use crate::{
     buffer::{parse_path_and_position, BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
     client::ClientManager,
-    command::{Command, CommandContext, CommandError, CommandManager, CompletionSource},
+    command::{CommandContext, CommandError, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
     editor::{Editor, EditorControlFlow},
