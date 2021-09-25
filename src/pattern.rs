@@ -17,6 +17,21 @@ pub enum PatternError {
     GroupWithElementsOfDifferentSize,
     PatternTooLong,
 }
+impl PatternError {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::UnexpectedEndOfPattern => "unexpected end of pattern",
+            Self::Expected(_) => "expected character",
+            Self::InvalidEscaping(_) => "invalid escaping",
+            Self::Unescaped(_) => "unescaped character",
+            Self::EmptyGroup => "empty pattern group",
+            Self::GroupWithElementsOfDifferentSize => {
+                "pattern group has elements of different size"
+            }
+            Self::PatternTooLong => "pattern is too long",
+        }
+    }
+}
 impl fmt::Display for PatternError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -1603,3 +1618,4 @@ mod tests {
         ));
     }
 }
+

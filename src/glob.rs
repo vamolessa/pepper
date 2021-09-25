@@ -1,13 +1,12 @@
-use std::{convert::TryInto, error::Error, fmt, num::TryFromIntError, str::Chars};
+use std::{convert::TryInto, num::TryFromIntError, str::Chars};
 
 #[derive(Debug)]
 pub struct InvalidGlobError;
-impl fmt::Display for InvalidGlobError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("invalid glob")
+impl InvalidGlobError {
+    pub fn as_str(&self) -> &'static str {
+        "invalid glob"
     }
 }
-impl Error for InvalidGlobError {}
 impl From<TryFromIntError> for InvalidGlobError {
     fn from(_: TryFromIntError) -> Self {
         Self
@@ -423,3 +422,4 @@ mod tests {
         assert_glob(&mut glob, false, "**/*.{é,ç}", "p.c");
     }
 }
+

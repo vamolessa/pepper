@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{client::ClientHandle, editor_utils::parse_process_command, lsp};
+use crate::{client::ClientHandle, editor_utils::parse_process_command, ffi::InitPluginFn, lsp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -108,8 +108,9 @@ impl PlatformRequestCollection {
 pub struct Platform {
     pub requests: PlatformRequestCollection,
 
-    read_from_clipboard: Option<fn(&mut String)>,
-    write_to_clipboard: Option<fn(&str)>,
+    load_plugin_fn: Option<fn(&str) -> Option<InitPluginFn>>,
+    read_from_clipboard_fn: Option<fn(&mut String)>,
+    write_to_clipboard_fn: Option<fn(&str)>,
 
     pub buf_pool: BufPool,
 
@@ -118,13 +119,22 @@ pub struct Platform {
     pub paste_command: String,
 }
 impl Platform {
+    pub fn set_plugin_api(&mut self, load_plugin_fn: fn(&str) -> Option<InitPluginFn>) {
+        self.load_plugin_fn = Some(load_plugin_fn);
+    }
+
     pub fn set_clipboard_api(
         &mut self,
-        read_from_clipboard: fn(&mut String),
-        write_to_clipboard: fn(&str),
+        read_from_clipboard_fn: fn(&mut String),
+        write_to_clipboard_fn: fn(&str),
     ) {
-        self.read_from_clipboard = Some(read_from_clipboard);
-        self.write_to_clipboard = Some(write_to_clipboard);
+        self.read_from_clipboard_fn = Some(read_from_clipboard_fn);
+        self.write_to_clipboard_fn = Some(write_to_clipboard_fn);
+    }
+
+    pub fn load_plugin(&self, path: &str) -> Option<InitPluginFn> {
+        let loader = self.load_plugin_fn?;
+        loader(path)
     }
 
     pub fn read_from_clipboard(&self, text: &mut String) {
@@ -138,7 +148,7 @@ impl Platform {
                     text.push_str(&output);
                 }
             }
-        } else if let Some(read_from_clipboard) = self.read_from_clipboard {
+        } else if let Some(read_from_clipboard) = self.read_from_clipboard_fn {
             read_from_clipboard(text);
         } else {
             text.push_str(&self.internal_clipboard);
@@ -157,7 +167,7 @@ impl Platform {
                 }
                 let _ = child.wait();
             }
-        } else if let Some(write_to_clipboard) = self.write_to_clipboard {
+        } else if let Some(write_to_clipboard) = self.write_to_clipboard_fn {
             write_to_clipboard(text);
         } else {
             self.internal_clipboard.clear();
@@ -206,3 +216,4 @@ impl BufPool {
         self.pool.push(ManuallyDrop::new(buf));
     }
 }
+

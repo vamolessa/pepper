@@ -9,6 +9,7 @@ pub mod cursor;
 pub mod editor;
 pub mod editor_utils;
 pub mod events;
+pub mod ffi;
 pub mod glob;
 pub mod help;
 pub mod history;
@@ -161,3 +162,4 @@ impl Args {
         parsed
     }
 }
+

@@ -202,7 +202,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
 
         match completion_source {
             CompletionSource::Commands => {
-                for command in ctx.editor.commands.builtin_commands() {
+                for command in ctx.editor.commands.commands() {
                     ctx.editor.picker.add_custom_entry(command.name);
                 }
             }

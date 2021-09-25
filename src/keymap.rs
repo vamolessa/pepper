@@ -17,6 +17,14 @@ pub enum ParseKeyMapError {
     From(KeyParseAllError),
     To(KeyParseAllError),
 }
+impl ParseKeyMapError {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::From(_) => "invalid 'from' binding",
+            Self::To(_) => "invalid 'to' binding",
+        }
+    }
+}
 impl fmt::Display for ParseKeyMapError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

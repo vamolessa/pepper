@@ -1,4 +1,7 @@
-use std::{collections::VecDeque, fmt};
+use std::{
+    collections::VecDeque,
+    ffi::{c_void, CStr},
+};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
@@ -7,6 +10,7 @@ use crate::{
     config::ParseConfigError,
     editor::{Editor, EditorControlFlow},
     editor_utils::MessageKind,
+    ffi::PluginApi,
     glob::InvalidGlobError,
     keymap::ParseKeyMapError,
     pattern::PatternError,
@@ -18,6 +22,7 @@ mod builtin;
 pub const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandError {
+    ErrorMessageNotUtf8,
     NoSuchCommand,
     TooManyArguments,
     TooFewArguments,
@@ -35,30 +40,29 @@ pub enum CommandError {
     LspServerNotRunning,
     LspServerNotLogging,
 }
-impl fmt::Display for CommandError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl CommandError {
+    pub fn as_str(&self) -> &'static str {
         match self {
-            Self::NoSuchCommand => f.write_str("no such command"),
-            Self::TooManyArguments => f.write_str("too many arguments"),
-            Self::TooFewArguments => f.write_str("too few arguments"),
-            Self::NoTargetClient => f.write_str("no target client"),
-            Self::NoBufferOpened => f.write_str("no buffer opened"),
-            Self::UnsavedChanges => f.write_str("unsaved changes"),
-            Self::BufferReadError(error) => error.fmt(f),
-            Self::BufferWriteError(error) => error.fmt(f),
-            Self::ConfigError(error) => error.fmt(f),
-            Self::NoSuchColor => f.write_str("no such color"),
-            Self::InvalidColorValue => f.write_str("invalid color value"),
-            Self::KeyMapError(error) => error.fmt(f),
-            Self::PatternError(error) => write!(f, "pattern error: {}", error),
-            Self::InvalidGlob(InvalidGlobError) => InvalidGlobError.fmt(f),
-            Self::LspServerNotRunning => f.write_str("no lsp server running"),
-            Self::LspServerNotLogging => f.write_str("lsp server is not logging"),
+            Self::ErrorMessageNotUtf8 => "error message is not utf8",
+            Self::NoSuchCommand => "no such command",
+            Self::TooManyArguments => "too many arguments",
+            Self::TooFewArguments => "too few arguments",
+            Self::NoTargetClient => "no target client",
+            Self::NoBufferOpened => "no buffer opened",
+            Self::UnsavedChanges => "unsaved changes",
+            Self::BufferReadError(error) => error.as_str(),
+            Self::BufferWriteError(error) => error.as_str(),
+            Self::ConfigError(error) => error.as_str(),
+            Self::NoSuchColor => "no such color",
+            Self::InvalidColorValue => "invalid color value",
+            Self::KeyMapError(error) => error.as_str(),
+            Self::PatternError(error) => error.as_str(),
+            Self::InvalidGlob(error) => error.as_str(),
+            Self::LspServerNotRunning => "no lsp server running",
+            Self::LspServerNotLogging => "lsp server is not logging",
         }
     }
 }
-
-type CommandFn = fn(&mut CommandContext) -> Result<EditorControlFlow, CommandError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionSource {
@@ -97,6 +101,7 @@ pub struct CommandContext<'state, 'command> {
 
     pub args: CommandArgs<'command>,
     pub bang: bool,
+    pub flow: EditorControlFlow,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
     pub fn client_handle(&self) -> Result<ClientHandle, CommandError> {
@@ -227,10 +232,13 @@ impl<'a> Iterator for CommandTokenizer<'a> {
     }
 }
 
-pub struct BuiltinCommand {
+type CommandFn = fn(*const PluginApi, *mut CommandContext, *mut c_void) -> *const c_void;
+
+pub struct Command {
     pub name: &'static str,
     pub completions: &'static [CompletionSource],
-    pub func: CommandFn,
+    command_fn: CommandFn,
+    userdata: *mut c_void,
 }
 
 struct Alias {
@@ -299,26 +307,32 @@ impl AliasCollection {
 }
 
 pub struct CommandManager {
-    builtin_commands: &'static [BuiltinCommand],
+    commands: Vec<Command>,
     history: VecDeque<String>,
     pub aliases: AliasCollection,
 }
 
 impl CommandManager {
     pub fn new() -> Self {
-        Self {
-            builtin_commands: builtin::COMMANDS,
+        let mut this = Self {
+            commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
             aliases: AliasCollection::default(),
-        }
+        };
+        builtin::init(&mut this);
+        this
     }
 
-    pub fn find_command(&self, name: &str) -> Option<&BuiltinCommand> {
-        self.builtin_commands.iter().find(|c| c.name == name)
+    pub fn register_command(&mut self, command: Command) {
+        self.commands.push(command);
     }
 
-    pub fn builtin_commands(&self) -> &[BuiltinCommand] {
-        &self.builtin_commands
+    pub fn find_command(&self, name: &str) -> Option<&Command> {
+        self.commands.iter().find(|c| c.name == name)
+    }
+
+    pub fn commands(&self) -> &[Command] {
+        &self.commands
     }
 
     pub fn history_len(&self) -> usize {
@@ -363,10 +377,7 @@ impl CommandManager {
         match Self::try_eval(editor, platform, clients, client_handle, command) {
             Ok(flow) => flow,
             Err(error) => {
-                editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("{}", error));
+                editor.status_bar.write(MessageKind::Error).str(error);
                 EditorControlFlow::Continue
             }
         }
@@ -378,7 +389,7 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: &mut String,
-    ) -> Result<EditorControlFlow, CommandError> {
+    ) -> Result<EditorControlFlow, &'static str> {
         if let Some(alias) = CommandTokenizer(command).next() {
             let alias = alias.trim_end_matches('!');
             if let Some(aliased) = editor.commands.aliases.find(alias) {
@@ -397,19 +408,19 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: &str,
-    ) -> Result<EditorControlFlow, CommandError> {
+    ) -> Result<EditorControlFlow, &'static str> {
         let mut tokenizer = CommandTokenizer(command);
         let command = match tokenizer.next() {
             Some(command) => command,
-            None => return Err(CommandError::NoSuchCommand),
+            None => return Err(CommandError::NoSuchCommand.as_str()),
         };
         let (command, bang) = match command.strip_suffix('!') {
             Some(command) => (command, true),
             None => (command, false),
         };
-        let command_func = match editor.commands.find_command(command) {
-            Some(command) => command.func,
-            None => return Err(CommandError::NoSuchCommand),
+        let (command_fn, userdata) = match editor.commands.find_command(command) {
+            Some(command) => (command.command_fn, command.userdata),
+            None => return Err(CommandError::NoSuchCommand.as_str()),
         };
 
         let mut ctx = CommandContext {
@@ -419,8 +430,18 @@ impl CommandManager {
             client_handle,
             args: CommandArgs(tokenizer),
             bang,
+            flow: EditorControlFlow::Continue,
         };
-        (command_func)(&mut ctx)
+        // TODO pass api ptr
+        let error = command_fn(std::ptr::null(), &mut ctx, userdata);
+        if error.is_null() {
+            Ok(ctx.flow)
+        } else {
+            match unsafe { CStr::from_ptr(error as _) }.to_str() {
+                Ok(error) => Err(error),
+                Err(_) => Err(CommandError::ErrorMessageNotUtf8.as_str()),
+            }
+        }
     }
 }
 
@@ -473,3 +494,4 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
+

@@ -70,7 +70,7 @@ syntax-comments //{.}|/*{!(*/).$}
 # https://www.lua.org/manual/5.1/manual.html#2
 syntax "**/*.lua"
 syntax-keywords and|break|do|elseif|else|end|for|function|if|in|local|not|or|repeat|return|then|until|while
-syntax-symbols [[+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.]]
+syntax-symbols [[+|-|*|/|%%|%^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.]]
 syntax-literals nil|false|true|_G|_ENV|%d{%d_}%.%w{%w_}|%d{%w_}
 syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}|%[%[{!(%]%]).}]]
 syntax-comments --{.}|--%[%[{!(%]%]).$}

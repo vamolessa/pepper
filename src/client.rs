@@ -102,6 +102,7 @@ impl Client {
             if buffer_view.buffer_handle == buffer_handle {
                 self.buffer_view_handle = None;
                 NavigationHistory::move_in_history(self, editor, NavigationMovement::Backward);
+                NavigationHistory::move_in_history(self, editor, NavigationMovement::Forward);
             }
         }
     }

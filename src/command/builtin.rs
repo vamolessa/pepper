@@ -4,7 +4,7 @@ use crate::{
     buffer::{parse_path_and_position, BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
     client::ClientManager,
-    command::{BuiltinCommand, CommandContext, CommandError, CompletionSource},
+    command::{CommandManager, Command, CommandContext, CommandError, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
     editor::{Editor, EditorControlFlow},
@@ -16,8 +16,12 @@ use crate::{
     theme::{Color, THEME_COLOR_NAMES},
 };
 
-pub static COMMANDS: &[BuiltinCommand] = &[
-    BuiltinCommand {
+pub fn init(commands: &mut CommandManager) {
+    
+}
+
+pub static COMMANDS: &[Command] = &[
+    Command {
         name: "help",
         completions: &[CompletionSource::Commands],
         func: |ctx| {
@@ -62,7 +66,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "quit",
         completions: &[],
         func: |ctx| {
@@ -73,7 +77,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Quit)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "quit-all",
         completions: &[],
         func: |ctx| {
@@ -82,7 +86,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::QuitAll)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "open",
         completions: &[CompletionSource::Files],
         func: |ctx| {
@@ -127,7 +131,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "save",
         completions: &[],
         func: |ctx| {
@@ -148,7 +152,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "save-all",
         completions: &[],
         func: |ctx| {
@@ -171,7 +175,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "reopen",
         completions: &[],
         func: |ctx| {
@@ -192,7 +196,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "reopen-all",
         completions: &[],
         func: |ctx| {
@@ -214,7 +218,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "close",
         completions: &[],
         func: |ctx| {
@@ -234,7 +238,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "close-all",
         completions: &[],
         func: |ctx| {
@@ -256,7 +260,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "config",
         completions: &[(CompletionSource::Custom(CONFIG_NAMES))],
         func: |ctx| {
@@ -282,7 +286,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             }
         },
     },
-    BuiltinCommand {
+    Command {
         name: "color",
         completions: &[CompletionSource::Custom(THEME_COLOR_NAMES)],
         func: |ctx| {
@@ -312,32 +316,32 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "map-normal",
         completions: &[],
         func: |ctx| map(ctx, ModeKind::Normal),
     },
-    BuiltinCommand {
+    Command {
         name: "map-insert",
         completions: &[],
         func: |ctx| map(ctx, ModeKind::Insert),
     },
-    BuiltinCommand {
+    Command {
         name: "map-command",
         completions: &[],
         func: |ctx| map(ctx, ModeKind::Command),
     },
-    BuiltinCommand {
+    Command {
         name: "map-readline",
         completions: &[],
         func: |ctx| map(ctx, ModeKind::Command),
     },
-    BuiltinCommand {
+    Command {
         name: "map-picker",
         completions: &[],
         func: |ctx| map(ctx, ModeKind::Picker),
     },
-    BuiltinCommand {
+    Command {
         name: "alias",
         completions: &[CompletionSource::Custom(&[]), CompletionSource::Commands],
         func: |ctx| {
@@ -348,7 +352,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "syntax",
         completions: &[],
         func: |ctx| {
@@ -360,42 +364,42 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             }
         },
     },
-    BuiltinCommand {
+    Command {
         name: "syntax-keywords",
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::Keyword),
     },
-    BuiltinCommand {
+    Command {
         name: "syntax-types",
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::Type),
     },
-    BuiltinCommand {
+    Command {
         name: "syntax-symbols",
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::Symbol),
     },
-    BuiltinCommand {
+    Command {
         name: "syntax-literals",
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::Literal),
     },
-    BuiltinCommand {
+    Command {
         name: "syntax-strings",
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::String),
     },
-    BuiltinCommand {
+    Command {
         name: "syntax-comments",
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::Comment),
     },
-    BuiltinCommand {
+    Command {
         name: "syntax-texts",
         completions: &[],
         func: |ctx| syntax_pattern(ctx, TokenKind::Text),
     },
-    BuiltinCommand {
+    Command {
         name: "find-file",
         completions: &[],
         func: |ctx| {
@@ -413,7 +417,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "pid",
         completions: &[],
         func: |ctx| {
@@ -425,7 +429,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp",
         completions: &[],
         func: |ctx| {
@@ -440,7 +444,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             }
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-open-log",
         completions: &[],
         func: |ctx| {
@@ -478,7 +482,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-stop",
         completions: &[],
         func: |ctx| {
@@ -491,7 +495,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-stop-all",
         completions: &[],
         func: |ctx| {
@@ -500,7 +504,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-hover",
         completions: &[],
         func: |ctx| {
@@ -512,7 +516,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-definition",
         completions: &[],
         func: |ctx| {
@@ -531,7 +535,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-declaration",
         completions: &[],
         func: |ctx| {
@@ -550,7 +554,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-implementation",
         completions: &[],
         func: |ctx| {
@@ -569,7 +573,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-references",
         completions: &[],
         func: |ctx| {
@@ -593,7 +597,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-rename",
         completions: &[],
         func: |ctx| {
@@ -615,7 +619,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-code-action",
         completions: &[],
         func: |ctx| {
@@ -636,7 +640,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-document-symbols",
         completions: &[],
         func: |ctx| {
@@ -652,7 +656,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-workspace-symbols",
         completions: &[],
         func: |ctx| {
@@ -668,7 +672,7 @@ pub static COMMANDS: &[BuiltinCommand] = &[
             Ok(EditorControlFlow::Continue)
         },
     },
-    BuiltinCommand {
+    Command {
         name: "lsp-format",
         completions: &[],
         func: |ctx| {
