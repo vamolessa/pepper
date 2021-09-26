@@ -7,6 +7,9 @@ documentation = true
 style = "tag"
 
 [export]
-prefix = "Pepper_"
+prefix = "Pepper"
 include = ["PluginApi", "PluginCommandFn"]
 item_types = ["structs", "opaque", "typedefs"]
+
+[parse]
+parse_deps = false
