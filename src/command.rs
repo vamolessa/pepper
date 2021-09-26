@@ -15,7 +15,7 @@ use crate::{
     keymap::ParseKeyMapError,
     pattern::PatternError,
     platform::Platform,
-    plugin::{PluginApi, PluginHandle, PLUGIN_API},
+    plugin::{PluginApi, PluginHandle, PLUGIN_API, PluginUserData},
 };
 
 mod builtin;
@@ -37,6 +37,7 @@ pub enum CommandError {
     KeyMapError(ParseKeyMapError),
     PatternError(PatternError),
     InvalidGlob(InvalidGlobError),
+    CouldNotLoadPlugin,
     LspServerNotRunning,
     LspServerNotLogging,
     ErrorMessageNotUtf8,
@@ -59,6 +60,7 @@ impl fmt::Display for CommandError {
             Self::KeyMapError(error) => error.fmt(f),
             Self::PatternError(error) => error.fmt(f),
             Self::InvalidGlob(error) => error.fmt(f),
+            Self::CouldNotLoadPlugin => f.write_str("could not load plugin"),
             Self::LspServerNotRunning => f.write_str("no lsp server running"),
             Self::LspServerNotLogging => f.write_str("lsp server is not logging"),
             Self::ErrorMessageNotUtf8 => f.write_str("error message is not utf8"),
@@ -238,9 +240,9 @@ impl<'a> Iterator for CommandTokenizer<'a> {
 
 pub type BuiltinCommandFn = fn(ctx: &mut CommandContext) -> Result<(), CommandError>;
 pub type PluginCommandFn = extern "C" fn(
-    api: *const PluginApi,
-    ctx: *const CommandContext,
-    userdata: *mut c_void,
+    api: &PluginApi,
+    ctx: &mut CommandContext,
+    userdata: PluginUserData,
 ) -> *const c_void;
 
 #[derive(Clone, Copy)]
@@ -477,8 +479,8 @@ impl CommandManager {
             CommandFn::BuiltinCommandFn(f) => f(&mut ctx)?,
             CommandFn::PluginCommandFn(f, handle) => {
                 ctx.plugin_handle = handle;
-                // TODO get actuall userdata
-                let error = f(&PLUGIN_API, &mut ctx, std::ptr::null_mut());
+                let userdata = ctx.editor.plugins.get_userdata(handle);
+                let error = f(&PLUGIN_API, &mut ctx, userdata);
                 if !error.is_null() {
                     return match unsafe { CStr::from_ptr(error as _) }.to_str() {
                         Ok(error) => Err(CommandError::PluginError(error)),

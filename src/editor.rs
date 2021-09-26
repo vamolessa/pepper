@@ -20,6 +20,7 @@ use crate::{
     pattern::Pattern,
     picker::Picker,
     platform::{Key, Platform, ProcessHandle, ProcessTag},
+    plugin::PluginCollection,
     register::{RegisterCollection, RegisterKey},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -105,6 +106,7 @@ pub struct Editor {
     pub aux_pattern: Pattern,
 
     pub commands: CommandManager,
+    pub plugins: PluginCollection,
     pub lsp: lsp::ClientManager,
     pub events: EditorEventQueue,
 }
@@ -134,6 +136,7 @@ impl Editor {
             aux_pattern: Pattern::new(),
 
             commands: CommandManager::new(),
+            plugins: PluginCollection::default(),
             lsp: lsp::ClientManager::new(),
             events: EditorEventQueue::default(),
         }
@@ -460,3 +463,4 @@ impl Editor {
         }
     }
 }
+

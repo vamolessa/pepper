@@ -1,61 +1,104 @@
 use std::{
-    os::raw::{c_int, c_void},
+    ffi::CStr,
+    os::raw::{c_char, c_int, c_void},
     process,
 };
 
-use crate::command::{CommandContext, PluginCommandFn};
-
-pub type InitPluginFn = extern "C" fn(api: &PluginApi, ctx: &mut CommandContext) -> *const c_void;
-
-pub struct PluginApi {
-    pub register_command: extern "C" fn(
-        ctx: &mut CommandContext,
-        name: *const u8,
-        name_len: c_int,
-        completions: *const c_int,
-        completions_len: c_int,
-        command_fn: PluginCommandFn,
-    ),
-}
-
-pub static PLUGIN_API: PluginApi = PluginApi {
-    register_command,
-    //
+use crate::{
+    command::{CommandContext, PluginCommandFn},
+    editor_utils::MessageKind,
 };
 
-extern "C" fn register_command(
-    ctx: &mut CommandContext,
-    name: *const u8,
-    name_len: c_int,
-    completions: *const c_int,
-    completions_len: c_int,
-    command_fn: PluginCommandFn,
-) {
-    let name = to_str(name, name_len);
-    let completions = &[];
-    ctx.editor
-        .commands
-        .register_plugin_command(ctx.plugin_handle, name, completions, command_fn);
+pub type PluginInitFn = extern "C" fn(api: &PluginApi, ctx: &mut CommandContext) -> Plugin;
+pub type PluginDeinitFn = extern "C" fn(userdata: PluginUserData);
+
+#[repr(C)]
+pub struct PluginApi {
+    pub register_command:
+        extern "C" fn(ctx: &mut CommandContext, name: *const c_char, command_fn: PluginCommandFn),
+
+    pub write_to_statusbar:
+        extern "C" fn(ctx: &mut CommandContext, level: c_int, message: *const c_char),
 }
+
+use api::*;
+pub static PLUGIN_API: PluginApi = PluginApi {
+    register_command,
+    write_to_statusbar,
+};
+
+mod api {
+    use super::*;
+
+    pub extern "C" fn register_command(
+        ctx: &mut CommandContext,
+        name: *const c_char,
+        command_fn: PluginCommandFn,
+    ) {
+        let name = to_str(name);
+        ctx.editor
+            .commands
+            .register_plugin_command(ctx.plugin_handle, name, &[], command_fn);
+    }
+
+    pub extern "C" fn write_to_statusbar(
+        ctx: &mut CommandContext,
+        level: c_int,
+        message: *const c_char,
+    ) {
+        let kind = match level {
+            0 => MessageKind::Info,
+            1 => MessageKind::Error,
+            _ => return,
+        };
+        let message = to_str(message);
+        ctx.editor.status_bar.write(kind).str(message);
+    }
+}
+
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct PluginUserData(pub *mut c_void);
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct PluginHandle(u32);
 
-fn to_str<'a>(ptr: *const u8, len: c_int) -> &'a str {
-    if ptr.is_null() || len < 0 {
-        process::abort();
+pub struct Plugin {
+    pub userdata: PluginUserData,
+    pub deinit_fn: Option<PluginDeinitFn>,
+}
+
+#[derive(Default)]
+pub struct PluginCollection {
+    plugins: Vec<Plugin>,
+}
+impl PluginCollection {
+    pub fn load(ctx: &mut CommandContext, init_fn: PluginInitFn) {
+        let handle = PluginHandle(ctx.editor.plugins.plugins.len() as _);
+        ctx.plugin_handle = handle;
+        let plugin = init_fn(&PLUGIN_API, ctx);
+        ctx.editor.plugins.plugins.push(plugin);
     }
 
-    let bytes = unsafe { std::slice::from_raw_parts(ptr, len as _) };
-    match std::str::from_utf8(bytes) {
-        Ok(s) => s,
-        Err(_) => process::abort(),
+    pub fn get_userdata(&self, handle: PluginHandle) -> PluginUserData {
+        self.plugins[handle.0 as usize].userdata
     }
 }
 
-fn plugin_init_test(api: &PluginApi) -> c_int {
-    //let result = (api.hello)();
-    //eprintln!("hello {}", result);
-    true as _
+fn abort(message: &str) -> ! {
+    eprintln!("{}", message);
+    process::abort();
+}
+
+fn to_str<'a>(ptr: *const c_char) -> &'a str {
+    if ptr.is_null() {
+        abort("tried to dereference null ptr as &str");
+    }
+
+    let cstr = unsafe { CStr::from_ptr(ptr) };
+    match cstr.to_str() {
+        Ok(s) => s,
+        Err(_) => abort("invalid c string"),
+    }
 }
 

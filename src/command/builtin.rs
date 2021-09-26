@@ -12,6 +12,7 @@ use crate::{
     help, lsp,
     mode::{picker, ModeContext, ModeKind},
     platform::Platform,
+    plugin::PluginCollection,
     syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
 };
@@ -329,6 +330,18 @@ pub fn init(commands: &mut CommandManager) {
     });
     r("syntax-texts", &[], |ctx| {
         syntax_pattern(ctx, TokenKind::Text)
+    });
+
+    r("plugin", &[], |ctx| {
+        let path = ctx.args.next()?;
+        ctx.args.assert_empty()?;
+        match ctx.platform.load_plugin(path) {
+            Some(init_fn) => {
+                PluginCollection::load(ctx, init_fn);
+                Ok(())
+            }
+            None => Err(CommandError::CouldNotLoadPlugin),
+        }
     });
 
     r("find-file", &[], |ctx| {

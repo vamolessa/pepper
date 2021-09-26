@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{client::ClientHandle, editor_utils::parse_process_command, plugin::InitPluginFn, lsp};
+use crate::{client::ClientHandle, editor_utils::parse_process_command, plugin::PluginInitFn, lsp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -108,7 +108,7 @@ impl PlatformRequestCollection {
 pub struct Platform {
     pub requests: PlatformRequestCollection,
 
-    load_plugin_fn: Option<fn(&str) -> Option<InitPluginFn>>,
+    load_plugin_fn: Option<fn(&str) -> Option<PluginInitFn>>,
     read_from_clipboard_fn: Option<fn(&mut String)>,
     write_to_clipboard_fn: Option<fn(&str)>,
 
@@ -119,7 +119,7 @@ pub struct Platform {
     pub paste_command: String,
 }
 impl Platform {
-    pub fn set_plugin_api(&mut self, load_plugin_fn: fn(&str) -> Option<InitPluginFn>) {
+    pub fn set_plugin_api(&mut self, load_plugin_fn: fn(&str) -> Option<PluginInitFn>) {
         self.load_plugin_fn = Some(load_plugin_fn);
     }
 
@@ -132,7 +132,7 @@ impl Platform {
         self.write_to_clipboard_fn = Some(write_to_clipboard_fn);
     }
 
-    pub fn load_plugin(&self, path: &str) -> Option<InitPluginFn> {
+    pub fn load_plugin(&self, path: &str) -> Option<PluginInitFn> {
         let loader = self.load_plugin_fn?;
         loader(path)
     }
