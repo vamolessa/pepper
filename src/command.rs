@@ -1,8 +1,4 @@
-use std::{
-    collections::VecDeque,
-    ffi::{c_void, CStr},
-    fmt,
-};
+use std::{collections::VecDeque, ffi::CStr, fmt};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
@@ -15,7 +11,7 @@ use crate::{
     keymap::ParseKeyMapError,
     pattern::PatternError,
     platform::Platform,
-    plugin::{PluginApi, PluginHandle, PLUGIN_API, PluginUserData},
+    plugin::{get_plugin_api, PluginCommandFn, PluginHandle},
 };
 
 mod builtin;
@@ -239,11 +235,6 @@ impl<'a> Iterator for CommandTokenizer<'a> {
 }
 
 pub type BuiltinCommandFn = fn(ctx: &mut CommandContext) -> Result<(), CommandError>;
-pub type PluginCommandFn = extern "C" fn(
-    api: &PluginApi,
-    ctx: &mut CommandContext,
-    userdata: PluginUserData,
-) -> *const c_void;
 
 #[derive(Clone, Copy)]
 enum CommandFn {
@@ -480,9 +471,9 @@ impl CommandManager {
             CommandFn::PluginCommandFn(f, handle) => {
                 ctx.plugin_handle = handle;
                 let userdata = ctx.editor.plugins.get_userdata(handle);
-                let error = f(&PLUGIN_API, &mut ctx, userdata);
+                let error = f(get_plugin_api(), &mut ctx, userdata);
                 if !error.is_null() {
-                    return match unsafe { CStr::from_ptr(error as _) }.to_str() {
+                    return match unsafe { CStr::from_ptr(error) }.to_str() {
                         Ok(error) => Err(CommandError::PluginError(error)),
                         Err(_) => Err(CommandError::ErrorMessageNotUtf8),
                     };

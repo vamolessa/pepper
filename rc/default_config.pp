@@ -49,11 +49,20 @@ syntax-literals [[true|false|self|'\''|'\{!'.}|'.'|b'{(\')(\\)!'.}|%d{%d_}%.%w{%
 syntax-strings [["{(\\)(\")!".}|b"{(\\)(\")!".}]]
 syntax-comments //{.}|/*{!(*/).$}
 
+# https://ziglang.org/documentation/master/#Keyword-Reference
+syntax "**/*.zig"
+syntax-keywords align|allowzero|and|asm|async|await|break|catch|comptime|const|continue|defer|else|enum|errdefer|error|export|extern|fn|for|if|inline|noalias|nosuspend|or|orelse|packed|pub|resume|return|linksection|struct|suspend|switch|test|threadlocal|try|union|unreachable|usingnamespace|var|volatile|while
+syntax-types u%d{%d}|usize|i%d{%d}|isize|c_{%w}|f16|f32|f64|f128|bool|void|noreturn|type|anyframe|anytype|anyerror|comptime_int|comptime_float|@%u{%w}|%u{%w_}
+syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%!|~|?|&|%||@%l{%w}
+syntax-literals [[false|null|true|undefined|'\''|'\{!'.}|'.'|%d{%d_}%.%w{%w_}|%d{%w_}]]
+syntax-strings [["{(\\)(\")!".}|\\{.}]]
+syntax-comments //{.}
+
 # https://docs.microsoft.com/en-us/cpp/cpp/keywords-cpp
 syntax "**/*.{c,h,cpp,hpp}"
 syntax-keywords alignas|alignof|and_eq|and|asm|auto|bitand|bitor|bool|break|case|catch|class|compl|concept|const|const_cast|consteval|constexpr|constinit|continue|co_await|co_return|co_yield|decltype|default|delete|do|dynamic_cast|else|enum|explicit|export|extern|for|friend|goto|if|inline|mutable|namespace|new|noexcept|not_eq|not|operator|or_eq|or|override|private|protected|public|register|reinterpret_cast|requires|return|sizeof|static|static_assert|static_cast|struct|switch|template|thread_local|throw|try|typedef|typeid|typename|union|using|virtual|volatile|while|xor_eq|xor
 syntax-types char|char8_t|char16_t|char32_t|double|float|int|long|short|signed|unsigned|void|wchar_t|%u{%w_}
-syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@
+syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|~|?|&|%||@
 syntax-literals [[true|false|this|nullptr|'{(\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{ }{%a}]]
 syntax-strings [["{(\\)(\")!".}]]
 syntax-comments //{.}|/*{!(*/).$}
