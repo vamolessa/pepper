@@ -6,16 +6,6 @@ use crate::command::CommandContext;
 #[repr(transparent)]
 pub struct PluginUserData(pub *mut c_void);
 
-#[derive(Clone, Copy)]
-#[repr(transparent)]
-pub struct PluginCommandFn1(
-    pub  extern "C" fn(
-        api: &PluginApi,
-        ctx: &mut CommandContext,
-        userdata: PluginUserData,
-    ) -> *const c_char,
-);
-
 pub type PluginCommandFn = extern "C" fn(
     api: &PluginApi,
     ctx: &mut CommandContext,

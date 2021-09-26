@@ -8,5 +8,5 @@ style = "tag"
 
 [export]
 prefix = "Pepper_"
-include = ["PluginApi"]
-item_types = ["structs", "opaque", "functions"]
+include = ["PluginApi", "PluginCommandFn"]
+item_types = ["structs", "opaque", "typedefs"]
