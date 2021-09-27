@@ -15,10 +15,7 @@ use pepper::{
 };
 
 mod unix_utils;
-use unix_utils::{
-    get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
-    suspend_process, Process, RawMode,
-};
+use unix_utils::{is_pipped, read, read_from_connection, run, suspend_process, Process, Terminal};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 43;
@@ -378,24 +375,30 @@ fn run_server(args: Args, listener: UnixListener) {
 fn run_client(args: Args, mut connection: UnixStream) {
     use io::{Read, Write};
 
-    let is_pipped = is_pipped();
-    let mut application = ClientApplication::new(is_pipped);
+    let terminal = if args.quit {
+        None
+    } else {
+        Some(Terminal::new())
+    };
+
+    let mut application = ClientApplication::new(terminal.as_ref().map(Terminal::to_file));
     let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
         return;
     }
 
-    let mut raw_mode;
-
     let kqueue = Kqueue::new();
-    kqueue.add(Event::Fd(libc::STDIN_FILENO), 0);
     kqueue.add(Event::Fd(connection.as_raw_fd()), 1);
+    if is_pipped(libc::STDIN_FILENO) {
+        kqueue.add(Event::Fd(libc::STDIN_FILENO), 3);
+    }
+
     let mut kqueue_events = KqueueEvents::new();
 
-    if is_pipped {
-        raw_mode = None;
-    } else {
-        raw_mode = Some(RawMode::enter());
+    if let Some(terminal) = &terminal {
+        terminal.enter_raw_mode();
+        kqueue.add(Event::Fd(terminal.as_raw_fd()), 0);
+
         kqueue.add(Event::Resize, 2);
 
         let size = get_terminal_size();
@@ -405,10 +408,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
         }
     }
 
-    let backspace_code = match raw_mode {
-        Some(ref raw) => raw.backspace_code(),
-        None => 0,
-    };
     let mut keys = Vec::new();
     let mut buf = Vec::new();
 
@@ -422,19 +421,11 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
             match event {
                 Ok(TriggeredEvent { index: 0, data }) => {
-                    buf.resize(data as _, 0);
-                    match read(libc::STDIN_FILENO, &mut buf) {
-                        Ok(0) | Err(()) => {
-                            kqueue.remove(Event::Fd(libc::STDIN_FILENO));
-                            continue;
-                        }
-                        Ok(len) => {
-                            let bytes = &buf[..len];
-                            if is_pipped {
-                                stdin_bytes = bytes;
-                            } else {
-                                parse_terminal_keys(bytes, backspace_code, &mut keys);
-                            }
+                    if let Some(terminal) = &terminal {
+                        buf.resize(data as _, 0);
+                        match read(terminal.as_raw_fd(), &mut buf) {
+                            Ok(0) | Err(()) => break 'main_loop,
+                            Ok(len) => terminal.parse_keys(&buf[..len], &mut keys),
                         }
                     }
                 }
@@ -445,7 +436,16 @@ fn run_client(args: Args, mut connection: UnixStream) {
                         Ok(len) => server_bytes = &buf[..len],
                     }
                 }
-                Ok(TriggeredEvent { index: 2, .. }) => resize = Some(get_terminal_size()),
+                Ok(TriggeredEvent { index: 2, .. }) => {
+                    resize = terminal.as_ref().map(Terminal::get_size);
+                }
+                Ok(TriggeredEvent { index: 3, data }) => {
+                    buf.resize(data as _, 0);
+                    match read(libc::STDIN_FILENO, &mut buf) {
+                        Ok(0) | Err(()) => kqueue.remove(Event::Fd(libc::STDIN_FILENO)),
+                        Ok(len) => stdin_bytes = &buf[..len],
+                    }
+                }
                 Ok(_) => unreachable!(),
                 Err(()) => break 'main_loop,
             }
@@ -460,5 +460,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         }
     }
 
-    drop(raw_mode);
+    drop(terminal);
+    drop(application);
 }
+

@@ -340,7 +340,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         Some(Terminal::new())
     };
 
-    let mut application = ClientApplication::new(terminal.as_ref().map(Terminal::to_output_file));
+    let mut application = ClientApplication::new(terminal.as_ref().map(Terminal::to_file));
     let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
         return;
@@ -409,8 +409,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     }
                 }
                 3 => match read(libc::STDIN_FILENO, &mut buf) {
-                    Err(()) => break 'main_loop,
-                    Ok(0) => epoll.remove(libc::STDIN_FILENO),
+                    Ok(0) | Err(()) => epoll.remove(libc::STDIN_FILENO),
                     Ok(len) => stdin_bytes = &buf[..len],
                 },
                 _ => unreachable!(),

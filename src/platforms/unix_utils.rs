@@ -115,7 +115,7 @@ impl Terminal {
         }
     }
 
-    pub fn to_output_file(&self) -> fs::File {
+    pub fn to_file(&self) -> fs::File {
         unsafe { fs::File::from_raw_fd(self.fd) }
     }
 
