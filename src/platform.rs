@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{client::ClientHandle, editor_utils::parse_process_command, plugin::PluginInitFn, lsp};
+use crate::{client::ClientHandle, editor_utils::parse_process_command, lsp, plugin::PluginInitFn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -216,4 +216,3 @@ impl BufPool {
         self.pool.push(ManuallyDrop::new(buf));
     }
 }
-

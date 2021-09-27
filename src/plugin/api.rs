@@ -20,4 +20,3 @@ pub struct PluginApi {
     pub write_to_statusbar:
         extern "C" fn(ctx: &mut CommandContext, level: c_int, message: *const c_char),
 }
-

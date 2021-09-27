@@ -422,4 +422,3 @@ mod tests {
         assert_glob(&mut glob, false, "**/*.{é,ç}", "p.c");
     }
 }
-

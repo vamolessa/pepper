@@ -47,4 +47,3 @@ fn to_str<'a>(ptr: *const c_char) -> &'a str {
         Err(_) => abort("invalid c string"),
     }
 }
-

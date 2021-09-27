@@ -351,6 +351,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     if is_pipped(libc::STDIN_FILENO) {
         epoll.add(libc::STDIN_FILENO, 3);
     }
+
     let mut epoll_events = EpollEvents::new();
 
     let resize_signal;
@@ -428,4 +429,3 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
-

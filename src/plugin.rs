@@ -41,4 +41,3 @@ impl PluginCollection {
         self.plugins[handle.0 as usize].userdata
     }
 }
-

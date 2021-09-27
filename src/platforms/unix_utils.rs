@@ -109,10 +109,7 @@ impl Terminal {
             original_state
         };
 
-        Self {
-            fd,
-            original_state,
-        }
+        Self { fd, original_state }
     }
 
     pub fn to_file(&self) -> fs::File {
@@ -335,4 +332,3 @@ pub fn suspend_process(application: &mut ClientApplication, terminal: &Option<Te
     }
     application.reinit_screen();
 }
-
