@@ -1243,8 +1243,9 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
             None => console_output_mode = None,
         }
 
-        output_file =
-            output_handle.map(|h| unsafe { ManuallyDrop::new(fs::File::from_raw_handle(h.0 as _)) })
+        output_file = output_handle
+            .as_ref()
+            .map(|h| unsafe { ManuallyDrop::new(fs::File::from_raw_handle(h.0 as _)) })
     };
 
     let mut application = ClientApplication::new(output_file);
