@@ -2,7 +2,7 @@ use std::{
     env, fs, io,
     os::unix::{
         ffi::OsStrExt,
-        io::{AsRawFd, RawFd},
+        io::{AsRawFd, FromRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
     path::Path,
@@ -87,52 +87,139 @@ pub fn run(server_fn: fn(Args, UnixListener), client_fn: fn(Args, UnixStream)) {
     }
 }
 
-pub struct RawMode {
-    original: libc::termios,
+pub struct Terminal {
+    fd: RawFd,
+    original_state: libc::termios,
 }
-impl RawMode {
-    pub fn enter() -> Self {
-        let original = unsafe {
-            let mut original = std::mem::zeroed();
-            libc::tcgetattr(libc::STDIN_FILENO, &mut original);
-            let mut new = original.clone();
-            new.c_iflag &= !(libc::IGNBRK
-                | libc::BRKINT
-                | libc::PARMRK
-                | libc::ISTRIP
-                | libc::INLCR
-                | libc::IGNCR
-                | libc::ICRNL
-                | libc::IXON);
-            new.c_oflag &= !libc::OPOST;
-            new.c_cflag &= !(libc::CSIZE | libc::PARENB);
-            new.c_cflag |= libc::CS8;
-            new.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
-            new.c_lflag |= libc::NOFLSH;
-            new.c_cc[libc::VMIN] = 0;
-            new.c_cc[libc::VTIME] = 0;
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &new);
-            original
+impl Terminal {
+    pub fn new() -> Self {
+        let flags = libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC;
+        let fd = unsafe { libc::open("/dev/tty\0".as_ptr() as _, flags) };
+        if fd < 0 {
+            panic!("could not open terminal");
+        }
+
+        let original_state = unsafe {
+            let mut original_state = std::mem::zeroed();
+            libc::tcgetattr(fd, &mut original_state);
+            original_state
         };
-        Self { original }
+
+        let this = Self { fd, original_state };
+        this.enter_raw_mode();
+        this
     }
 
-    pub fn backspace_code(&self) -> u8 {
-        self.original.c_cc[libc::VERASE]
+    pub fn to_file(&self) -> fs::File {
+        unsafe { fs::File::from_raw_fd(self.fd) }
+    }
+
+    pub fn get_size(&self) -> (usize, usize) {
+        let mut size: libc::winsize = unsafe { std::mem::zeroed() };
+        let result = unsafe {
+            libc::ioctl(
+                self.fd,
+                libc::TIOCGWINSZ as _,
+                &mut size as *mut libc::winsize,
+            )
+        };
+        if result == -1 || size.ws_col == 0 || size.ws_row == 0 {
+            panic!("could not get terminal size");
+        }
+
+        (size.ws_col as _, size.ws_row as _)
+    }
+
+    pub fn parse_keys(&self, mut buf: &[u8], keys: &mut Vec<Key>) {
+        let backspace_code = self.original_state.c_cc[libc::VERASE];
+        loop {
+            let (key, rest) = match buf {
+                &[] => break,
+                &[b, ref rest @ ..] if b == backspace_code => (Key::Backspace, rest),
+                &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
+                &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
+                &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
+                &[0x1b, b'[', b'B', ref rest @ ..] => (Key::Down, rest),
+                &[0x1b, b'[', b'C', ref rest @ ..] => (Key::Right, rest),
+                &[0x1b, b'[', b'D', ref rest @ ..] => (Key::Left, rest),
+                &[0x1b, b'[', b'1', b'~', ref rest @ ..]
+                | &[0x1b, b'[', b'7', b'~', ref rest @ ..]
+                | &[0x1b, b'[', b'H', ref rest @ ..]
+                | &[0x1b, b'O', b'H', ref rest @ ..] => (Key::Home, rest),
+                &[0x1b, b'[', b'4', b'~', ref rest @ ..]
+                | &[0x1b, b'[', b'8', b'~', ref rest @ ..]
+                | &[0x1b, b'[', b'F', ref rest @ ..]
+                | &[0x1b, b'O', b'F', ref rest @ ..] => (Key::End, rest),
+                &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (Key::Delete, rest),
+                &[0x1b, ref rest @ ..] => (Key::Esc, rest),
+                &[0x8, ref rest @ ..] => (Key::Backspace, rest),
+                &[b'\r', ref rest @ ..] => (Key::Enter, rest),
+                &[b'\t', ref rest @ ..] => (Key::Tab, rest),
+                &[0x7f, ref rest @ ..] => (Key::Delete, rest),
+                &[b @ 0b0..=0b11111, ref rest @ ..] => {
+                    let byte = b | 0b01100000;
+                    (Key::Ctrl(byte as _), rest)
+                }
+                _ => match buf.iter().position(|b| b.is_ascii()).unwrap_or(buf.len()) {
+                    0 => (Key::Char(buf[0] as _), &buf[1..]),
+                    len => {
+                        let (c, rest) = buf.split_at(len);
+                        match std::str::from_utf8(c) {
+                            Ok(s) => match s.chars().next() {
+                                Some(c) => (Key::Char(c), rest),
+                                None => (Key::None, rest),
+                            },
+                            Err(_) => (Key::None, rest),
+                        }
+                    }
+                },
+            };
+            buf = rest;
+            keys.push(key);
+        }
+    }
+
+    fn enter_raw_mode(&self) {
+        let mut new = self.original_state.clone();
+        new.c_iflag &= !(libc::IGNBRK
+            | libc::BRKINT
+            | libc::PARMRK
+            | libc::ISTRIP
+            | libc::INLCR
+            | libc::IGNCR
+            | libc::ICRNL
+            | libc::IXON);
+        new.c_oflag &= !libc::OPOST;
+        new.c_cflag &= !(libc::CSIZE | libc::PARENB);
+        new.c_cflag |= libc::CS8;
+        new.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
+        new.c_lflag |= libc::NOFLSH;
+        new.c_cc[libc::VMIN] = 0;
+        new.c_cc[libc::VTIME] = 0;
+        unsafe { libc::tcsetattr(self.fd, libc::TCSANOW, &new) };
+    }
+
+    fn leave_raw_mode(&self) {
+        unsafe { libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.original_state) };
     }
 }
-impl Drop for RawMode {
+impl AsRawFd for Terminal {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
+    }
+}
+impl Drop for Terminal {
     fn drop(&mut self) {
-        unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &self.original) };
+        self.leave_raw_mode()
     }
 }
 
 pub fn is_pipped() -> bool {
-    unsafe { libc::isatty(libc::STDIN_FILENO) == 0 }
+    unsafe { libc::isatty(libc::STDOUT_FILENO) == 0 }
 }
 
 pub fn read(fd: RawFd, buf: &mut [u8]) -> Result<usize, ()> {
-    let len = unsafe { libc::read(fd, buf.as_mut_ptr() as _, buf.len() as _) };
+    let len = unsafe { libc::read(fd, buf.as_mut_ptr() as _, buf.len()) };
     if len >= 0 {
         Ok(len as _)
     } else {
@@ -234,79 +321,17 @@ impl Drop for Process {
     }
 }
 
-pub fn suspend_process(application: &mut ClientApplication, raw_mode: &mut Option<RawMode>) {
+pub fn suspend_process(application: &mut ClientApplication, terminal: &Option<Terminal>) {
     application.restore_screen();
-    let was_in_raw_mode = raw_mode.is_some();
-    *raw_mode = None;
+    if let Some(terminal) = terminal {
+        terminal.leave_raw_mode();
+    }
 
     unsafe { libc::raise(libc::SIGTSTP) };
 
-    if was_in_raw_mode {
-        *raw_mode = Some(RawMode::enter());
+    if let Some(terminal) = terminal {
+        terminal.enter_raw_mode();
     }
     application.reinit_screen();
 }
 
-pub fn get_terminal_size() -> (usize, usize) {
-    let mut size: libc::winsize = unsafe { std::mem::zeroed() };
-    let result = unsafe {
-        libc::ioctl(
-            libc::STDOUT_FILENO,
-            libc::TIOCGWINSZ as _,
-            &mut size as *mut libc::winsize,
-        )
-    };
-    if result == -1 || size.ws_col == 0 {
-        panic!("could not get terminal size");
-    }
-
-    (size.ws_col as _, size.ws_row as _)
-}
-
-pub fn parse_terminal_keys(mut buf: &[u8], backspace_code: u8, keys: &mut Vec<Key>) {
-    loop {
-        let (key, rest) = match buf {
-            &[] => break,
-            &[b, ref rest @ ..] if b == backspace_code => (Key::Backspace, rest),
-            &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
-            &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
-            &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
-            &[0x1b, b'[', b'B', ref rest @ ..] => (Key::Down, rest),
-            &[0x1b, b'[', b'C', ref rest @ ..] => (Key::Right, rest),
-            &[0x1b, b'[', b'D', ref rest @ ..] => (Key::Left, rest),
-            &[0x1b, b'[', b'1', b'~', ref rest @ ..]
-            | &[0x1b, b'[', b'7', b'~', ref rest @ ..]
-            | &[0x1b, b'[', b'H', ref rest @ ..]
-            | &[0x1b, b'O', b'H', ref rest @ ..] => (Key::Home, rest),
-            &[0x1b, b'[', b'4', b'~', ref rest @ ..]
-            | &[0x1b, b'[', b'8', b'~', ref rest @ ..]
-            | &[0x1b, b'[', b'F', ref rest @ ..]
-            | &[0x1b, b'O', b'F', ref rest @ ..] => (Key::End, rest),
-            &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (Key::Delete, rest),
-            &[0x1b, ref rest @ ..] => (Key::Esc, rest),
-            &[0x8, ref rest @ ..] => (Key::Backspace, rest),
-            &[b'\r', ref rest @ ..] => (Key::Enter, rest),
-            &[b'\t', ref rest @ ..] => (Key::Tab, rest),
-            &[0x7f, ref rest @ ..] => (Key::Delete, rest),
-            &[b @ 0b0..=0b11111, ref rest @ ..] => {
-                let byte = b | 0b01100000;
-                (Key::Ctrl(byte as _), rest)
-            }
-            _ => match buf.iter().position(|b| b.is_ascii()).unwrap_or(buf.len()) {
-                0 => (Key::Char(buf[0] as _), &buf[1..]),
-                len => {
-                    let (c, rest) = buf.split_at(len);
-                    match std::str::from_utf8(c) {
-                        Ok(s) => match s.chars().next() {
-                            Some(c) => (Key::Char(c), rest),
-                            None => (Key::None, rest),
-                        },
-                        Err(_) => (Key::None, rest),
-                    }
-                }
-            },
-        };
-        buf = rest;
-        keys.push(key);
-    }
-}

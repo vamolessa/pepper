@@ -15,10 +15,7 @@ use pepper::{
 };
 
 mod unix_utils;
-use unix_utils::{
-    get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run,
-    suspend_process, Process, RawMode,
-};
+use unix_utils::{read, read_from_connection, run, suspend_process, Process, Terminal};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 43;
@@ -337,41 +334,42 @@ fn run_server(args: Args, listener: UnixListener) {
 fn run_client(args: Args, mut connection: UnixStream) {
     use io::{Read, Write};
 
-    let is_pipped = is_pipped();
-    let mut application = ClientApplication::new(is_pipped);
+    let terminal = if args.quit {
+        None
+    } else {
+        Some(Terminal::new())
+    };
+
+    let mut application = ClientApplication::new(terminal.as_ref().map(Terminal::to_file));
     let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
+        eprintln!("ops 1");
         return;
     }
 
-    let mut raw_mode;
-    let resize_signal;
-
     let epoll = Epoll::new();
-    epoll.add(libc::STDIN_FILENO, 0);
     epoll.add(connection.as_raw_fd(), 1);
+    epoll.add(libc::STDIN_FILENO, 3);
     let mut epoll_events = EpollEvents::new();
 
-    if is_pipped {
-        raw_mode = None;
-        resize_signal = None;
-    } else {
-        raw_mode = Some(RawMode::enter());
+    let resize_signal;
+    if let Some(terminal) = &terminal {
+        epoll.add(terminal.as_raw_fd(), 0);
+
         let signal = SignalFd::new(libc::SIGWINCH);
         epoll.add(signal.as_raw_fd(), 2);
         resize_signal = Some(signal);
 
-        let size = get_terminal_size();
+        let size = terminal.get_size();
         let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
         if connection.write_all(bytes).is_err() {
+            eprintln!("ops 2");
             return;
         }
+    } else {
+        resize_signal = None;
     }
 
-    let backspace_code = match raw_mode {
-        Some(ref raw) => raw.backspace_code(),
-        None => 0,
-    };
     let mut keys = Vec::new();
 
     const BUF_LEN: usize =
@@ -391,43 +389,52 @@ fn run_client(args: Args, mut connection: UnixStream) {
             keys.clear();
 
             match event_index {
-                0 => match read(libc::STDIN_FILENO, &mut buf) {
-                    Ok(0) | Err(()) => {
-                        epoll.remove(libc::STDIN_FILENO);
-                        continue;
-                    }
-                    Ok(len) => {
-                        let bytes = &buf[..len];
-
-                        if is_pipped {
-                            stdin_bytes = bytes;
-                        } else {
-                            parse_terminal_keys(bytes, backspace_code, &mut keys);
+                0 => {
+                    if let Some(terminal) = &terminal {
+                        match read(terminal.as_raw_fd(), &mut buf) {
+                            Ok(0) | Err(()) => {
+                                eprintln!("ops 3 {}", errno());
+                                break 'main_loop;
+                            }
+                            Ok(len) => terminal.parse_keys(&buf[..len], &mut keys),
                         }
                     }
-                },
+                }
                 1 => match connection.read(&mut buf) {
-                    Ok(0) | Err(_) => break 'main_loop,
+                    Ok(0) | Err(_) => {
+                        eprintln!("ops 4");
+                        break 'main_loop;
+                    }
                     Ok(len) => server_bytes = &buf[..len],
                 },
                 2 => {
                     if let Some(ref signal) = resize_signal {
                         signal.read();
-                        resize = Some(get_terminal_size());
+                        resize = terminal.as_ref().map(Terminal::get_size);
                     }
                 }
+                3 => match read(libc::STDIN_FILENO, &mut buf) {
+                    Err(()) => {
+                        eprintln!("ops 5");
+                        break 'main_loop;
+                    }
+                    Ok(0) => epoll.remove(libc::STDIN_FILENO),
+                    Ok(len) => stdin_bytes = &buf[..len],
+                },
                 _ => unreachable!(),
             }
 
             let (suspend, bytes) = application.update(resize, &keys, stdin_bytes, server_bytes);
             if connection.write_all(bytes).is_err() {
+                eprintln!("ops 6");
                 break;
             }
             if suspend {
-                suspend_process(&mut application, &mut raw_mode);
+                suspend_process(&mut application, &terminal);
             }
         }
     }
 
-    drop(raw_mode);
+    eprintln!("cabooo");
 }
+

@@ -176,12 +176,11 @@ impl ServerApplication {
 }
 
 pub struct ClientApplication {
-    is_pipped: bool,
     target_client: TargetClient,
     stdin_read_buf: Vec<u8>, // TODO: do something with it
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
-    stdout: io::StdoutLock<'static>,
+    io: Option<fs::File>,
 }
 impl ClientApplication {
     pub const fn stdin_buffer_len() -> usize {
@@ -192,18 +191,13 @@ impl ClientApplication {
         48 * 1024
     }
 
-    pub fn new(is_pipped: bool) -> Self {
-        let stdout = Box::new(io::stdout());
-        let stdout = Box::leak(stdout);
-        let stdout = stdout.lock();
-
+    pub fn new(io: Option<fs::File>) -> Self {
         Self {
-            is_pipped,
             target_client: TargetClient::Sender,
             stdin_read_buf: Vec::new(),
             server_read_buf: Vec::new(),
             server_write_buf: Vec::new(),
-            stdout,
+            io,
         }
     }
 
@@ -212,14 +206,10 @@ impl ClientApplication {
             self.target_client = TargetClient::Focused;
         }
 
-        if args.quit {
-            self.is_pipped = true;
-        }
-
         self.server_write_buf.clear();
 
         self.reinit_screen();
-        if !self.is_pipped && !args.as_focused_client {
+        if !args.quit && !args.as_focused_client {
             ClientEvent::Key(self.target_client, Key::None).serialize(&mut self.server_write_buf);
         }
 
@@ -242,27 +232,23 @@ impl ClientApplication {
     }
 
     pub fn reinit_screen(&mut self) {
-        if self.is_pipped {
-            return;
-        }
-
         use io::Write;
-        let _ = self.stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
-        let _ = self.stdout.write_all(ui::HIDE_CURSOR_CODE);
-        let _ = self.stdout.write_all(ui::MODE_256_COLORS_CODE);
-        self.stdout.flush().unwrap();
+        if let Some(io) = &mut self.io {
+            let _ = io.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
+            let _ = io.write_all(ui::HIDE_CURSOR_CODE);
+            let _ = io.write_all(ui::MODE_256_COLORS_CODE);
+            io.flush().unwrap();
+        }
     }
 
     pub fn restore_screen(&mut self) {
-        if self.is_pipped {
-            return;
-        }
-
         use io::Write;
-        let _ = self.stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
-        let _ = self.stdout.write_all(ui::SHOW_CURSOR_CODE);
-        let _ = self.stdout.write_all(ui::RESET_STYLE_CODE);
-        let _ = self.stdout.flush();
+        if let Some(io) = &mut self.io {
+            let _ = io.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
+            let _ = io.write_all(ui::SHOW_CURSOR_CODE);
+            let _ = io.write_all(ui::RESET_STYLE_CODE);
+            let _ = io.flush();
+        }
     }
 
     pub fn update<'a>(
@@ -296,13 +282,12 @@ impl ClientApplication {
             loop {
                 let previous_slice = read_slice;
                 match ServerEvent::deserialize(&mut read_slice) {
-                    Ok(ServerEvent::Display(display)) => self.stdout.write_all(display).unwrap(),
-                    Ok(ServerEvent::Suspend) => suspend = true,
-                    Ok(ServerEvent::CommandOutput(output)) => {
-                        self.stdout.write_all(output.as_bytes()).unwrap();
-                        self.stdout.write_all(b"\0").unwrap();
+                    Ok(ServerEvent::Display(display)) => {
+                        if let Some(io) = &mut self.io {
+                            io.write_all(display).unwrap();
+                        }
                     }
-                    Ok(ServerEvent::Request(_)) => (),
+                    Ok(ServerEvent::Suspend) => suspend = true,
                     Err(DeserializeError::InsufficientData) => {
                         let read_len = self.server_read_buf.len() - previous_slice.len();
                         self.server_read_buf.drain(..read_len);
@@ -314,7 +299,9 @@ impl ClientApplication {
                 }
             }
 
-            self.stdout.flush().unwrap();
+            if let Some(io) = &mut self.io {
+                io.flush().unwrap();
+            }
         }
 
         (suspend, self.server_write_buf.as_slice())
@@ -325,3 +312,4 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
+

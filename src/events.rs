@@ -453,8 +453,6 @@ where
 pub enum ServerEvent<'a> {
     Display(&'a [u8]),
     Suspend,
-    CommandOutput(&'a str),
-    Request(&'a str),
 }
 impl<'a> ServerEvent<'a> {
     pub const fn display_header_len() -> usize {
@@ -479,14 +477,6 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 display.serialize(serializer);
             }
             Self::Suspend => 1u8.serialize(serializer),
-            Self::CommandOutput(output) => {
-                2u8.serialize(serializer);
-                output.serialize(serializer);
-            }
-            Self::Request(request) => {
-                3u8.serialize(serializer);
-                request.serialize(serializer);
-            }
         }
     }
 
@@ -501,14 +491,6 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 Ok(Self::Display(display))
             }
             1 => Ok(Self::Suspend),
-            2 => {
-                let output = Serialize::deserialize(deserializer)?;
-                Ok(Self::CommandOutput(output))
-            }
-            3 => {
-                let request = Serialize::deserialize(deserializer)?;
-                Ok(Self::Request(request))
-            }
             _ => Err(DeserializeError::InvalidData),
         }
     }
@@ -799,3 +781,4 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
+
