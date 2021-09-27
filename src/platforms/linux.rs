@@ -340,10 +340,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
         Some(Terminal::new())
     };
 
-    let mut application = ClientApplication::new(terminal.as_ref().map(Terminal::to_file));
+    let mut application = ClientApplication::new(terminal.as_ref().map(Terminal::to_output_file));
     let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
-        eprintln!("ops 1");
         return;
     }
 
@@ -354,7 +353,8 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     let resize_signal;
     if let Some(terminal) = &terminal {
-        epoll.add(terminal.as_raw_fd(), 0);
+        terminal.enter_raw_mode();
+        epoll.add(terminal.infd, 0);
 
         let signal = SignalFd::new(libc::SIGWINCH);
         epoll.add(signal.as_raw_fd(), 2);
@@ -363,7 +363,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
         let size = terminal.get_size();
         let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
         if connection.write_all(bytes).is_err() {
-            eprintln!("ops 2");
             return;
         }
     } else {
@@ -391,9 +390,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
             match event_index {
                 0 => {
                     if let Some(terminal) = &terminal {
-                        match read(terminal.as_raw_fd(), &mut buf) {
+                        match read(terminal.infd, &mut buf) {
                             Ok(0) | Err(()) => {
-                                eprintln!("ops 3 {}", errno());
+                                eprintln!("ops 3 {}", io::Error::last_os_error());
                                 break 'main_loop;
                             }
                             Ok(len) => terminal.parse_keys(&buf[..len], &mut keys),
@@ -401,10 +400,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     }
                 }
                 1 => match connection.read(&mut buf) {
-                    Ok(0) | Err(_) => {
-                        eprintln!("ops 4");
-                        break 'main_loop;
-                    }
+                    Ok(0) | Err(_) => break 'main_loop,
                     Ok(len) => server_bytes = &buf[..len],
                 },
                 2 => {
@@ -414,10 +410,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     }
                 }
                 3 => match read(libc::STDIN_FILENO, &mut buf) {
-                    Err(()) => {
-                        eprintln!("ops 5");
-                        break 'main_loop;
-                    }
+                    Err(()) => break 'main_loop,
                     Ok(0) => epoll.remove(libc::STDIN_FILENO),
                     Ok(len) => stdin_bytes = &buf[..len],
                 },
@@ -426,7 +419,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
             let (suspend, bytes) = application.update(resize, &keys, stdin_bytes, server_bytes);
             if connection.write_all(bytes).is_err() {
-                eprintln!("ops 6");
                 break;
             }
             if suspend {
@@ -435,6 +427,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         }
     }
 
-    eprintln!("cabooo");
+    drop(application);
+    drop(terminal);
 }
 

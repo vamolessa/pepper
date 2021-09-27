@@ -88,37 +88,68 @@ pub fn run(server_fn: fn(Args, UnixListener), client_fn: fn(Args, UnixStream)) {
 }
 
 pub struct Terminal {
-    fd: RawFd,
+    pub infd: RawFd,
+    pub outfd: RawFd,
     original_state: libc::termios,
 }
 impl Terminal {
     pub fn new() -> Self {
         let flags = libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC;
-        let fd = unsafe { libc::open("/dev/tty\0".as_ptr() as _, flags) };
-        if fd < 0 {
+        let infd = unsafe { libc::open("/dev/tty\0".as_ptr() as _, flags) };
+        if infd < 0 {
             panic!("could not open terminal");
+        }
+        let outfd = unsafe { libc::dup(infd) };
+        if outfd < 0 {
+            panic!("could not dup terminal fd");
         }
 
         let original_state = unsafe {
             let mut original_state = std::mem::zeroed();
-            libc::tcgetattr(fd, &mut original_state);
+            libc::tcgetattr(infd, &mut original_state);
             original_state
         };
 
-        let this = Self { fd, original_state };
-        this.enter_raw_mode();
-        this
+        Self {
+            infd,
+            outfd,
+            original_state,
+        }
     }
 
-    pub fn to_file(&self) -> fs::File {
-        unsafe { fs::File::from_raw_fd(self.fd) }
+    pub fn to_output_file(&self) -> fs::File {
+        unsafe { fs::File::from_raw_fd(self.outfd) }
+    }
+
+    pub fn enter_raw_mode(&self) {
+        let mut new = self.original_state.clone();
+        new.c_iflag &= !(libc::IGNBRK
+            | libc::BRKINT
+            | libc::PARMRK
+            | libc::ISTRIP
+            | libc::INLCR
+            | libc::IGNCR
+            | libc::ICRNL
+            | libc::IXON);
+        new.c_oflag &= !libc::OPOST;
+        new.c_cflag &= !(libc::CSIZE | libc::PARENB);
+        new.c_cflag |= libc::CS8;
+        new.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
+        new.c_lflag |= libc::NOFLSH;
+        new.c_cc[libc::VMIN] = 0;
+        new.c_cc[libc::VTIME] = 0;
+        unsafe { libc::tcsetattr(self.infd, libc::TCSANOW, &new) };
+    }
+
+    pub fn leave_raw_mode(&self) {
+        unsafe { libc::tcsetattr(self.infd, libc::TCSAFLUSH, &self.original_state) };
     }
 
     pub fn get_size(&self) -> (usize, usize) {
         let mut size: libc::winsize = unsafe { std::mem::zeroed() };
         let result = unsafe {
             libc::ioctl(
-                self.fd,
+                self.outfd,
                 libc::TIOCGWINSZ as _,
                 &mut size as *mut libc::winsize,
             )
@@ -178,44 +209,11 @@ impl Terminal {
             keys.push(key);
         }
     }
-
-    fn enter_raw_mode(&self) {
-        let mut new = self.original_state.clone();
-        new.c_iflag &= !(libc::IGNBRK
-            | libc::BRKINT
-            | libc::PARMRK
-            | libc::ISTRIP
-            | libc::INLCR
-            | libc::IGNCR
-            | libc::ICRNL
-            | libc::IXON);
-        new.c_oflag &= !libc::OPOST;
-        new.c_cflag &= !(libc::CSIZE | libc::PARENB);
-        new.c_cflag |= libc::CS8;
-        new.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
-        new.c_lflag |= libc::NOFLSH;
-        new.c_cc[libc::VMIN] = 0;
-        new.c_cc[libc::VTIME] = 0;
-        unsafe { libc::tcsetattr(self.fd, libc::TCSANOW, &new) };
-    }
-
-    fn leave_raw_mode(&self) {
-        unsafe { libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.original_state) };
-    }
-}
-impl AsRawFd for Terminal {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd
-    }
 }
 impl Drop for Terminal {
     fn drop(&mut self) {
         self.leave_raw_mode()
     }
-}
-
-pub fn is_pipped() -> bool {
-    unsafe { libc::isatty(libc::STDOUT_FILENO) == 0 }
 }
 
 pub fn read(fd: RawFd, buf: &mut [u8]) -> Result<usize, ()> {
