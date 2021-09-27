@@ -15,7 +15,7 @@ use pepper::{
 };
 
 mod unix_utils;
-use unix_utils::{read, read_from_connection, run, suspend_process, Process, Terminal};
+use unix_utils::{is_pipped, read, read_from_connection, run, suspend_process, Process, Terminal};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 43;
@@ -348,13 +348,15 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     let epoll = Epoll::new();
     epoll.add(connection.as_raw_fd(), 1);
-    epoll.add(libc::STDIN_FILENO, 3);
+    if is_pipped(libc::STDIN_FILENO) {
+        epoll.add(libc::STDIN_FILENO, 3);
+    }
     let mut epoll_events = EpollEvents::new();
 
     let resize_signal;
     if let Some(terminal) = &terminal {
         terminal.enter_raw_mode();
-        epoll.add(terminal.infd, 0);
+        epoll.add(terminal.as_raw_fd(), 0);
 
         let signal = SignalFd::new(libc::SIGWINCH);
         epoll.add(signal.as_raw_fd(), 2);
@@ -390,11 +392,8 @@ fn run_client(args: Args, mut connection: UnixStream) {
             match event_index {
                 0 => {
                     if let Some(terminal) = &terminal {
-                        match read(terminal.infd, &mut buf) {
-                            Ok(0) | Err(()) => {
-                                eprintln!("ops 3 {}", io::Error::last_os_error());
-                                break 'main_loop;
-                            }
+                        match read(terminal.as_raw_fd(), &mut buf) {
+                            Ok(0) | Err(()) => break 'main_loop,
                             Ok(len) => terminal.parse_keys(&buf[..len], &mut keys),
                         }
                     }
@@ -427,7 +426,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         }
     }
 
-    drop(application);
     drop(terminal);
+    drop(application);
 }
 
