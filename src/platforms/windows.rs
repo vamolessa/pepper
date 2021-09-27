@@ -1,6 +1,10 @@
 use std::{
-    env, io,
-    os::windows::{ffi::OsStrExt, io::IntoRawHandle},
+    env, fs, io,
+    mem::ManuallyDrop,
+    os::windows::{
+        ffi::OsStrExt,
+        io::{FromRawHandle, IntoRawHandle},
+    },
     process::Child,
     ptr::NonNull,
     time::Duration,
@@ -1122,16 +1126,12 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     }
 }
 
-enum Input {
-    Stdin(Stdin),
-    Console(Handle),
-}
-struct Stdin {
+struct StdinPipe {
     is_open: bool,
     reader: AsyncReader,
     buf: Box<[u8; ClientApplication::stdin_buffer_len()]>,
 }
-impl Stdin {
+impl StdinPipe {
     pub fn new(reader: AsyncReader) -> Self {
         Self {
             is_open: true,
@@ -1221,19 +1221,14 @@ impl ConnectionToServer {
 fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Option<Handle>) {
     let mut connection = ConnectionToServer::connect(pipe_path);
 
-    let is_pipped = is_pipped(&input_handle);
-    let mut application = ClientApplication::new(is_pipped);
-    let bytes = application.init(args);
-    if !connection.write(bytes) {
-        return;
-    }
-
     let console_input_mode;
     let console_output_mode;
+    let output_file;
 
-    if is_pipped {
+    if args.quit {
         console_input_mode = None;
         console_output_mode = None;
+        output_file = None;
     } else {
         let input_mode = ConsoleMode::new(&input_handle);
         input_mode.set(ENABLE_WINDOW_INPUT);
@@ -1244,20 +1239,34 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
                 let output_mode = ConsoleMode::new(output_handle);
                 output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
                 console_output_mode = Some(output_mode);
-
-                let size = get_console_size(output_handle);
-                let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
-                if !connection.write(bytes) {
-                    return;
-                }
             }
             None => console_output_mode = None,
+        }
+
+        output_file =
+            output_handle.map(|h| unsafe { ManuallyDrop::new(fs::File::from_raw_handle(h.0 as _)) })
+    };
+
+    let mut application = ClientApplication::new(output_file);
+    let bytes = application.init(args);
+    if !connection.write(bytes) {
+        return;
+    }
+
+    if let Some(output_handle) = &output_handle {
+        let size = get_console_size(output_handle);
+        let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
+        if !connection.write(bytes) {
+            return;
         }
     }
 
     let mut console_event_buf = [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN];
     let mut keys = Vec::with_capacity(CLIENT_EVENT_BUFFER_LEN);
 
+    let input_is_pipped = is_pipped(&input_handle);
+
+    /*
     let mut input = if is_pipped {
         Input::Stdin(Stdin::new(AsyncReader::new(input_handle)))
     } else {
@@ -1267,8 +1276,9 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         Input::Stdin(reader) => reader.event().handle(),
         Input::Console(handle) => handle.0,
     };
+    */
 
-    let wait_handles = [input_wait_handle, connection.event().handle()];
+    let wait_handles = [input_handle.0, connection.event().handle()];
 
     loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
@@ -1283,6 +1293,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         keys.clear();
 
         match wait_handle_index {
+            /*
             0 => match input {
                 Input::Stdin(ref mut stdin) => stdin_bytes = stdin.read_async(),
                 Input::Console(ref handle) => {
@@ -1290,10 +1301,19 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
                     parse_console_events(console_events, &mut keys, &mut resize);
                 }
             },
+            */
+            0 => {
+                let console_events = read_console_input(&input_handle, &mut console_event_buf);
+                parse_console_events(console_events, &mut keys, &mut resize);
+            }
             1 => match connection.read_async() {
                 Ok(bytes) => server_bytes = bytes,
                 Err(()) => break,
             },
+            2 => {
+                // TODO
+                stdin_bytes = &[];
+            }
             _ => unreachable!(),
         }
 
@@ -1383,3 +1403,4 @@ fn parse_console_events(
         }
     }
 }
+

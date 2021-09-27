@@ -80,7 +80,7 @@ fn print_help() {
 impl Args {
     pub fn parse() -> Self {
         fn error(message: std::fmt::Arguments) -> ! {
-            println!("{}", message);
+            eprintln!("{}", message);
             std::process::exit(0);
         }
 

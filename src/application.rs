@@ -1,4 +1,4 @@
-use std::{env, fs, io, panic, path::Path, time::Duration};
+use std::{env, fs, io, mem::ManuallyDrop, panic, path::Path, time::Duration};
 
 use crate::{
     client::ClientManager,
@@ -180,7 +180,7 @@ pub struct ClientApplication {
     stdin_read_buf: Vec<u8>, // TODO: do something with it
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
-    io: Option<fs::File>,
+    output: Option<ManuallyDrop<fs::File>>,
 }
 impl ClientApplication {
     pub const fn stdin_buffer_len() -> usize {
@@ -191,13 +191,13 @@ impl ClientApplication {
         48 * 1024
     }
 
-    pub fn new(io: Option<fs::File>) -> Self {
+    pub fn new(output: Option<ManuallyDrop<fs::File>>) -> Self {
         Self {
             target_client: TargetClient::Sender,
             stdin_read_buf: Vec::new(),
             server_read_buf: Vec::new(),
             server_write_buf: Vec::new(),
-            io,
+            output,
         }
     }
 
@@ -233,7 +233,7 @@ impl ClientApplication {
 
     pub fn reinit_screen(&mut self) {
         use io::Write;
-        if let Some(io) = &mut self.io {
+        if let Some(io) = &mut self.output {
             let _ = io.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
             let _ = io.write_all(ui::HIDE_CURSOR_CODE);
             let _ = io.write_all(ui::MODE_256_COLORS_CODE);
@@ -243,7 +243,7 @@ impl ClientApplication {
 
     pub fn restore_screen(&mut self) {
         use io::Write;
-        if let Some(io) = &mut self.io {
+        if let Some(io) = &mut self.output {
             let _ = io.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
             let _ = io.write_all(ui::SHOW_CURSOR_CODE);
             let _ = io.write_all(ui::RESET_STYLE_CODE);
@@ -283,7 +283,7 @@ impl ClientApplication {
                 let previous_slice = read_slice;
                 match ServerEvent::deserialize(&mut read_slice) {
                     Ok(ServerEvent::Display(display)) => {
-                        if let Some(io) = &mut self.io {
+                        if let Some(io) = &mut self.output {
                             io.write_all(display).unwrap();
                         }
                     }
@@ -299,7 +299,7 @@ impl ClientApplication {
                 }
             }
 
-            if let Some(io) = &mut self.io {
+            if let Some(io) = &mut self.output {
                 io.flush().unwrap();
             }
         }
@@ -312,3 +312,4 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
+

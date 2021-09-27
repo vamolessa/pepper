@@ -1,5 +1,6 @@
 use std::{
     env, fs, io,
+    mem::ManuallyDrop,
     os::unix::{
         ffi::OsStrExt,
         io::{AsRawFd, FromRawFd, RawFd},
@@ -112,8 +113,8 @@ impl Terminal {
         Self { fd, original_state }
     }
 
-    pub fn to_file(&self) -> fs::File {
-        unsafe { fs::File::from_raw_fd(self.fd) }
+    pub fn to_file(&self) -> ManuallyDrop<fs::File> {
+        unsafe { ManuallyDrop::new(fs::File::from_raw_fd(self.fd)) }
     }
 
     pub fn enter_raw_mode(&self) {
@@ -332,3 +333,4 @@ pub fn suspend_process(application: &mut ClientApplication, terminal: &Option<Te
     }
     application.reinit_screen();
 }
+
