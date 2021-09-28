@@ -441,7 +441,7 @@ impl Editor {
                         if new_path {
                             buffer.refresh_syntax(&self.syntaxes);
                         }
-                        // TODO: maybe send stdout output to client
+                        // TODO: maybe send stdout output to client (enqueue WriteToClient)
                     }
                     EditorEvent::BufferClose { handle } => {
                         self.buffers
