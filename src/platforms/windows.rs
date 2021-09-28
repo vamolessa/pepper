@@ -51,7 +51,10 @@ use winapi::{
             RIGHT_CTRL_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
         },
         winnls::CP_UTF8,
-        winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE, MAXIMUM_WAIT_OBJECTS},
+        winnt::{
+            FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, GENERIC_WRITE, HANDLE,
+            MAXIMUM_WAIT_OBJECTS,
+        },
         winuser::{
             CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
             CF_UNICODETEXT, VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME,
@@ -185,7 +188,6 @@ pub fn main() {
     }
 
     let input_handle = get_std_handle(STD_INPUT_HANDLE);
-    let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
     if args.server {
         if !pipe_exists(&pipe_path) {
@@ -199,7 +201,7 @@ pub fn main() {
             }
         }
 
-        run_client(args, &pipe_path, input_handle, output_handle);
+        run_client(args, &pipe_path, input_handle);
     }
 }
 
@@ -252,7 +254,10 @@ fn read_console_input<'a>(
         )
     };
     if result == FALSE {
-        panic!("could not read console events");
+        panic!(
+            "could not read console events {}",
+            io::Error::last_os_error()
+        );
     }
     &events[..(event_count as usize)]
 }
@@ -350,6 +355,24 @@ impl AsyncReader {
 
 fn is_pipped(handle: &Handle) -> bool {
     unsafe { GetFileType(handle.0) != FILE_TYPE_CHAR }
+}
+
+fn create_file(path: &[u16], share_mode: DWORD) -> Option<Handle> {
+    let handle = unsafe {
+        CreateFileW(
+            path.as_ptr(),
+            GENERIC_READ | GENERIC_WRITE,
+            share_mode,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            FILE_FLAG_OVERLAPPED,
+            NULL,
+        )
+    };
+    match handle {
+        NULL | INVALID_HANDLE_VALUE => None,
+        _ => Some(Handle(handle)),
+    }
 }
 
 fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
@@ -640,7 +663,7 @@ impl ConsoleMode {
     pub fn set(&self, mode: DWORD) {
         let result = unsafe { SetConsoleMode(self.console_handle, mode) };
         if result == FALSE {
-            panic!("could not set console mode");
+            panic!("could not set console mode {}", io::Error::last_os_error());
         }
     }
 }
@@ -1166,25 +1189,15 @@ struct ConnectionToServer {
 }
 impl ConnectionToServer {
     pub fn connect(path: &[u16]) -> Self {
-        let handle = unsafe {
-            CreateFileW(
-                path.as_ptr(),
-                GENERIC_READ | GENERIC_WRITE,
-                0,
-                std::ptr::null_mut(),
-                OPEN_EXISTING,
-                FILE_FLAG_OVERLAPPED,
-                NULL,
-            )
+        let handle = match create_file(path, 0) {
+            Some(handle) => handle,
+            None => panic!("could not establish a connection {}", get_last_error()),
         };
-        if handle == INVALID_HANDLE_VALUE {
-            panic!("could not establish a connection {}", get_last_error());
-        }
 
         let mut mode = PIPE_READMODE_BYTE;
         let result = unsafe {
             SetNamedPipeHandleState(
-                handle,
+                handle.0,
                 &mut mode,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -1195,7 +1208,7 @@ impl ConnectionToServer {
             panic!("could not establish a connection");
         }
 
-        let reader = AsyncReader::new(Handle(handle));
+        let reader = AsyncReader::new(handle);
         let buf = Box::new([0; ClientApplication::connection_buffer_len()]);
 
         Self { reader, buf }
@@ -1218,35 +1231,53 @@ impl ConnectionToServer {
     }
 }
 
-fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Option<Handle>) {
+fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
     let mut connection = ConnectionToServer::connect(pipe_path);
 
-    let console_input_mode;
-    let console_output_mode;
+    //let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
+    //drop(output_handle);
+
+    let console_input_handle;
+    let console_output_handle;
     let output_file;
 
     if args.quit {
-        console_input_mode = None;
-        console_output_mode = None;
+        console_input_handle = None;
+        console_output_handle = None;
         output_file = None;
     } else {
-        let input_mode = ConsoleMode::new(&input_handle);
-        input_mode.set(ENABLE_WINDOW_INPUT);
-        console_input_mode = Some(input_mode);
-
-        match &output_handle {
-            Some(output_handle) => {
-                let output_mode = ConsoleMode::new(output_handle);
-                output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-                console_output_mode = Some(output_mode);
+        console_input_handle = {
+            let path = b"CONIN$\0".map(|b| b as _);
+            let handle = create_file(&path, FILE_SHARE_READ);
+            if handle.is_none() {
+                panic!("could not open console input");
             }
-            None => console_output_mode = None,
-        }
+            handle
+        };
+        console_output_handle = {
+            let path = b"CONOUT$\0".map(|b| b as _);
+            let handle = create_file(&path, FILE_SHARE_WRITE);
+            if handle.is_none() {
+                panic!("could not open console output");
+            }
+            handle
+        };
 
-        output_file = output_handle
+        output_file = console_output_handle
             .as_ref()
             .map(|h| unsafe { ManuallyDrop::new(fs::File::from_raw_handle(h.0 as _)) })
     };
+
+    let console_input_mode = console_input_handle.as_ref().map(|h| {
+        let mode = ConsoleMode::new(h);
+        mode.set(ENABLE_WINDOW_INPUT);
+        mode
+    });
+    let console_output_mode = console_output_handle.as_ref().map(|h| {
+        let mode = ConsoleMode::new(h);
+        mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        mode
+    });
 
     let mut application = ClientApplication::new(output_file);
     let bytes = application.init(args);
@@ -1254,8 +1285,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         return;
     }
 
-    if let Some(output_handle) = &output_handle {
-        let size = get_console_size(output_handle);
+    if let Some(handle) = &console_output_handle {
+        let size = get_console_size(handle);
         let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
         if !connection.write(bytes) {
             return;
@@ -1265,25 +1296,37 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
     let mut console_event_buf = [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN];
     let mut keys = Vec::with_capacity(CLIENT_EVENT_BUFFER_LEN);
 
-    let input_is_pipped = is_pipped(&input_handle);
-
-    /*
-    let mut input = if is_pipped {
-        Input::Stdin(Stdin::new(AsyncReader::new(input_handle)))
+    let mut stdin_pipe: Option<StdinPipe> = if is_pipped(&input_handle) {
+        Some(StdinPipe::new(AsyncReader::new(input_handle)))
     } else {
-        Input::Console(input_handle)
+        None
     };
-    let input_wait_handle = match &input {
-        Input::Stdin(reader) => reader.event().handle(),
-        Input::Console(handle) => handle.0,
-    };
-    */
 
-    let wait_handles = [input_handle.0, connection.event().handle()];
+    let mut wait_handles = [NULL; 3];
+    let mut wait_handles_index_map = [0; 3];
+    let mut wait_handles_len = 0;
+
+    if let Some(handle) = &console_input_handle {
+        wait_handles[wait_handles_len] = handle.0;
+        wait_handles_index_map[wait_handles_len] = 0;
+        wait_handles_len += 1;
+    }
+
+    wait_handles[wait_handles_len] = connection.event().handle();
+    wait_handles_index_map[wait_handles_len] = 1;
+    wait_handles_len += 1;
+
+    if let Some(pipe) = &stdin_pipe {
+        wait_handles[wait_handles_len] = pipe.event().handle();
+        wait_handles_index_map[wait_handles_len] = 2;
+        wait_handles_len += 1;
+    }
+
+    let wait_handles = &wait_handles[..wait_handles_len];
 
     loop {
-        let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
-            Some(i) => i,
+        let wait_handle_index = match wait_for_multiple_objects(wait_handles, None) {
+            Some(i) => wait_handles_index_map[i],
             _ => continue,
         };
 
@@ -1294,26 +1337,20 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         keys.clear();
 
         match wait_handle_index {
-            /*
-            0 => match input {
-                Input::Stdin(ref mut stdin) => stdin_bytes = stdin.read_async(),
-                Input::Console(ref handle) => {
+            0 => {
+                if let Some(handle) = &console_input_handle {
                     let console_events = read_console_input(handle, &mut console_event_buf);
                     parse_console_events(console_events, &mut keys, &mut resize);
                 }
-            },
-            */
-            0 => {
-                let console_events = read_console_input(&input_handle, &mut console_event_buf);
-                parse_console_events(console_events, &mut keys, &mut resize);
             }
             1 => match connection.read_async() {
                 Ok(bytes) => server_bytes = bytes,
                 Err(()) => break,
             },
             2 => {
-                // TODO
-                stdin_bytes = &[];
+                if let Some(pipe) = &mut stdin_pipe {
+                    stdin_bytes = pipe.read_async();
+                }
             }
             _ => unreachable!(),
         }
@@ -1326,6 +1363,10 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
 
     drop(console_input_mode);
     drop(console_output_mode);
+
+    drop(console_input_handle);
+    drop(console_output_handle);
+    drop(application);
 }
 
 fn parse_console_events(

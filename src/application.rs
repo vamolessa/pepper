@@ -233,21 +233,21 @@ impl ClientApplication {
 
     pub fn reinit_screen(&mut self) {
         use io::Write;
-        if let Some(io) = &mut self.output {
-            let _ = io.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
-            let _ = io.write_all(ui::HIDE_CURSOR_CODE);
-            let _ = io.write_all(ui::MODE_256_COLORS_CODE);
-            io.flush().unwrap();
+        if let Some(output) = &mut self.output {
+            let _ = output.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
+            let _ = output.write_all(ui::HIDE_CURSOR_CODE);
+            let _ = output.write_all(ui::MODE_256_COLORS_CODE);
+            output.flush().unwrap();
         }
     }
 
     pub fn restore_screen(&mut self) {
         use io::Write;
-        if let Some(io) = &mut self.output {
-            let _ = io.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
-            let _ = io.write_all(ui::SHOW_CURSOR_CODE);
-            let _ = io.write_all(ui::RESET_STYLE_CODE);
-            let _ = io.flush();
+        if let Some(output) = &mut self.output {
+            let _ = output.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
+            let _ = output.write_all(ui::SHOW_CURSOR_CODE);
+            let _ = output.write_all(ui::RESET_STYLE_CODE);
+            let _ = output.flush();
         }
     }
 
@@ -283,8 +283,8 @@ impl ClientApplication {
                 let previous_slice = read_slice;
                 match ServerEvent::deserialize(&mut read_slice) {
                     Ok(ServerEvent::Display(display)) => {
-                        if let Some(io) = &mut self.output {
-                            io.write_all(display).unwrap();
+                        if let Some(output) = &mut self.output {
+                            output.write_all(display).unwrap();
                         }
                     }
                     Ok(ServerEvent::Suspend) => suspend = true,
@@ -299,8 +299,8 @@ impl ClientApplication {
                 }
             }
 
-            if let Some(io) = &mut self.output {
-                io.flush().unwrap();
+            if let Some(output) = &mut self.output {
+                output.flush().unwrap();
             }
         }
 
