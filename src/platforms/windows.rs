@@ -357,7 +357,7 @@ fn is_pipped(handle: &Handle) -> bool {
     unsafe { GetFileType(handle.0) != FILE_TYPE_CHAR }
 }
 
-fn create_file(path: &[u16], share_mode: DWORD) -> Option<Handle> {
+fn create_file(path: &[u16], share_mode: DWORD, flags: DWORD) -> Option<Handle> {
     let handle = unsafe {
         CreateFileW(
             path.as_ptr(),
@@ -365,7 +365,7 @@ fn create_file(path: &[u16], share_mode: DWORD) -> Option<Handle> {
             share_mode,
             std::ptr::null_mut(),
             OPEN_EXISTING,
-            FILE_FLAG_OVERLAPPED,
+            flags,
             NULL,
         )
     };
@@ -1189,7 +1189,7 @@ struct ConnectionToServer {
 }
 impl ConnectionToServer {
     pub fn connect(path: &[u16]) -> Self {
-        let handle = match create_file(path, 0) {
+        let handle = match create_file(path, 0, FILE_FLAG_OVERLAPPED) {
             Some(handle) => handle,
             None => panic!("could not establish a connection {}", get_last_error()),
         };
@@ -1234,9 +1234,6 @@ impl ConnectionToServer {
 fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
     let mut connection = ConnectionToServer::connect(pipe_path);
 
-    //let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
-    //drop(output_handle);
-
     let console_input_handle;
     let console_output_handle;
     let output_file;
@@ -1248,7 +1245,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
     } else {
         console_input_handle = {
             let path = b"CONIN$\0".map(|b| b as _);
-            let handle = create_file(&path, FILE_SHARE_READ);
+            let handle = create_file(&path, FILE_SHARE_READ, 0);
             if handle.is_none() {
                 panic!("could not open console input");
             }
@@ -1256,7 +1253,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
         };
         console_output_handle = {
             let path = b"CONOUT$\0".map(|b| b as _);
-            let handle = create_file(&path, FILE_SHARE_WRITE);
+            let handle = create_file(&path, FILE_SHARE_WRITE, 0);
             if handle.is_none() {
                 panic!("could not open console output");
             }
@@ -1301,6 +1298,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
     } else {
         None
     };
+    let _output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
     let mut wait_handles = [NULL; 3];
     let mut wait_handles_index_map = [0; 3];
@@ -1364,9 +1362,9 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
     drop(console_input_mode);
     drop(console_output_mode);
 
+    drop(application);
     drop(console_input_handle);
     drop(console_output_handle);
-    drop(application);
 }
 
 fn parse_console_events(
