@@ -311,6 +311,10 @@ impl ClientApplication {
 
         (suspend, self.server_write_buf.as_slice())
     }
+
+    pub fn get_stdout_bytes(&self) -> &[u8] {
+        &self.stdout_buf
+    }
 }
 impl Drop for ClientApplication {
     fn drop(&mut self) {

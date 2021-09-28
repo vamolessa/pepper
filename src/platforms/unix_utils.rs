@@ -226,6 +226,19 @@ pub fn read(fd: RawFd, buf: &mut [u8]) -> Result<usize, ()> {
     }
 }
 
+pub fn write_all_bytes(fd: RawFd, mut buf: &[u8]) -> bool {
+    while !buf.is_empty() {
+        let len = unsafe { libc::write(fd, buf.as_ptr() as _, buf.len()) };
+        if len > 0 {
+            buf = &buf[len as usize..];
+        } else {
+            return false;
+        }
+    }
+
+    true
+}
+
 pub fn read_from_connection(
     connection: &mut UnixStream,
     buf_pool: &mut BufPool,

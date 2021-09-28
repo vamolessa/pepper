@@ -15,7 +15,9 @@ use pepper::{
 };
 
 mod unix_utils;
-use unix_utils::{is_pipped, read, read_from_connection, run, suspend_process, Process, Terminal};
+use unix_utils::{
+    is_pipped, read, read_from_connection, run, suspend_process, write_all_bytes, Process, Terminal,
+};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 43;
@@ -426,6 +428,12 @@ fn run_client(args: Args, mut connection: UnixStream) {
         }
     }
 
+    if is_pipped(libc::STDOUT_FILENO) {
+        let bytes = application.get_stdout_bytes();
+        write_all_bytes(libc::STDOUT_FILENO, bytes);
+    }
+
     drop(terminal);
     drop(application);
 }
+

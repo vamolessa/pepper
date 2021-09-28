@@ -1298,7 +1298,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
     } else {
         None
     };
-    let _output_handle = get_std_handle(STD_OUTPUT_HANDLE);
+    let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
     let mut wait_handles = [NULL; 3];
     let mut wait_handles_index_map = [0; 3];
@@ -1356,6 +1356,13 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
         let (_, bytes) = application.update(resize, &keys, stdin_bytes, server_bytes);
         if !connection.write(bytes) {
             break;
+        }
+    }
+
+    if let Some(handle) = output_handle {
+        if is_pipped(&handle) {
+            let bytes = application.get_stdout_bytes();
+            write_all_bytes(&handle, bytes);
         }
     }
 

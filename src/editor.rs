@@ -437,9 +437,11 @@ impl Editor {
                         self.buffer_views.on_buffer_delete_text(handle, range);
                     }
                     EditorEvent::BufferWrite { handle, new_path } => {
+                        let buffer = self.buffers.get_mut(handle);
                         if new_path {
-                            self.buffers.get_mut(handle).refresh_syntax(&self.syntaxes);
+                            buffer.refresh_syntax(&self.syntaxes);
                         }
+                        // TODO: maybe send stdout output to client
                     }
                     EditorEvent::BufferClose { handle } => {
                         self.buffers
