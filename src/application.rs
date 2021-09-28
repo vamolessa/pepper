@@ -155,7 +155,7 @@ impl ServerApplication {
             }
 
             let mut buf = self.platform.buf_pool.acquire();
-            let write = buf.write_with_len(ServerEvent::display_header_len());
+            let write = buf.write_with_len(ServerEvent::bytes_variant_header_len());
             let ctx = ui::RenderContext {
                 editor: &self.editor,
                 clients: &self.clients,
@@ -165,7 +165,7 @@ impl ServerApplication {
                 has_focus: focused_client_handle == Some(c.handle()),
             };
             ui::render(&ctx, c.buffer_view_handle(), write);
-            ServerEvent::serialize_display_header(write);
+            ServerEvent::Display(&[]).serialize_bytes_variant_header(write);
 
             let handle = c.handle();
             self.platform
@@ -255,7 +255,7 @@ impl ClientApplication {
         &'a mut self,
         resize: Option<(usize, usize)>,
         keys: &[Key],
-        stdin_bytes: &[u8],
+        stdin_bytes: Option<&[u8]>,
         server_bytes: &[u8],
     ) -> (bool, &'a [u8]) {
         use io::Write;
@@ -270,8 +270,8 @@ impl ClientApplication {
             ClientEvent::Key(self.target_client, *key).serialize(&mut self.server_write_buf);
         }
 
-        if !stdin_bytes.is_empty() {
-            ClientEvent::StdinInput(self.target_client, stdin_bytes)
+        if let Some(bytes) = stdin_bytes {
+            ClientEvent::StdinInput(self.target_client, bytes)
                 .serialize(&mut self.server_write_buf);
         }
 
@@ -321,4 +321,3 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
-

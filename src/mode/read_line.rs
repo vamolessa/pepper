@@ -607,14 +607,13 @@ pub mod process {
             for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
                 let range = cursor.to_range();
 
-                let mut text = ctx.editor.string_pool.acquire();
-                content.append_range_text_to_string(range, &mut text);
-
                 let mut buf = ctx.platform.buf_pool.acquire();
-                buf.write().extend_from_slice(text.as_bytes());
-                stdins[i] = Some(buf);
+                let write = buf.write();
+                for text in content.text_range(range) {
+                    write.extend_from_slice(text.as_bytes());
+                }
 
-                ctx.editor.string_pool.release(text);
+                stdins[i] = Some(buf);
             }
         }
 

@@ -1,10 +1,11 @@
 use std::{fmt, str::FromStr};
 
 use crate::{
-    buffer::{BufferHandle, CharDisplayDistances},
+    buffer::{BufferCapabilities, BufferHandle, CharDisplayDistances},
     buffer_position::BufferPositionIndex,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
+    editor_utils::ResidualStrBytes,
     events::{EditorEvent, EditorEventQueue},
     navigation_history::{NavigationHistory, NavigationMovement},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
@@ -71,6 +72,8 @@ pub struct Client {
     pub navigation_history: NavigationHistory,
 
     buffer_view_handle: Option<BufferViewHandle>,
+    stdin_buffer_handle: Option<BufferHandle>,
+    stdin_residual_bytes: ResidualStrBytes,
 }
 
 impl Client {
@@ -93,6 +96,66 @@ impl Client {
         self.buffer_view_handle
     }
 
+    pub fn stdin_buffer_handle(&self) -> Option<BufferHandle> {
+        self.stdin_buffer_handle
+    }
+
+    pub fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
+        /*
+        let mut buf = Default::default();
+        let (pending_text, text) = self
+            .stdin_residual_bytes
+            .receive_bytes(&mut buf, bytes);
+        */
+        let pending_text = "";
+        let text = std::str::from_utf8(bytes).unwrap_or("");
+
+        let buffer_handle = match self.stdin_buffer_handle() {
+            Some(handle) => handle,
+            None => {
+                use fmt::Write;
+
+                let buffer = editor.buffers.add_new();
+
+                let mut path = editor.string_pool.acquire_with("stdin.");
+                let _ = write!(path, "{}", self.handle().into_index());
+                buffer.path.clear();
+                buffer.path.push(&path);
+                editor.string_pool.release(path);
+
+                buffer.capabilities = BufferCapabilities::text();
+                buffer.capabilities.is_file = false;
+
+                let buffer_view_handle =
+                    editor.buffer_views.add_new(self.handle(), buffer.handle());
+                self.set_buffer_view_handle(
+                    Some(buffer_view_handle),
+                    &editor.buffer_views,
+                    &mut editor.events,
+                );
+
+                self.stdin_buffer_handle = Some(buffer.handle());
+                buffer.handle()
+            }
+        };
+
+        let buffer = editor.buffers.get_mut(buffer_handle);
+        let position = buffer.content().end();
+        buffer.insert_text(
+            &mut editor.word_database,
+            position,
+            pending_text,
+            &mut editor.events,
+        );
+        let position = buffer.content().end();
+        buffer.insert_text(
+            &mut editor.word_database,
+            position,
+            text,
+            &mut editor.events,
+        );
+    }
+
     pub fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
         self.navigation_history
             .remove_snapshots_with_buffer_handle(buffer_handle);
@@ -104,6 +167,10 @@ impl Client {
                 NavigationHistory::move_in_history(self, editor, NavigationMovement::Backward);
                 NavigationHistory::move_in_history(self, editor, NavigationMovement::Forward);
             }
+        }
+
+        if self.stdin_buffer_handle == Some(buffer_handle) {
+            self.stdin_buffer_handle = None;
         }
     }
 

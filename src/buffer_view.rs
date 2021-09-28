@@ -339,7 +339,9 @@ impl BufferView {
         if let Some(cursor) = iter.next() {
             let mut last_range = cursor.to_range();
             let from = text.len() as _;
-            buffer.append_range_text_to_string(last_range, text);
+            for t in buffer.text_range(last_range) {
+                text.push_str(t);
+            }
             ranges[ranges_index] = (from, text.len() as _);
             ranges_index += 1;
 
@@ -349,7 +351,9 @@ impl BufferView {
                     text.push('\n');
                 }
                 let from = text.len() as _;
-                buffer.append_range_text_to_string(range, text);
+                for t in buffer.text_range(range) {
+                    text.push_str(t);
+                }
                 ranges[ranges_index] = (from, text.len() as _);
                 ranges_index += 1;
 

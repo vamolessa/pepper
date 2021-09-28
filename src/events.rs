@@ -456,15 +456,19 @@ pub enum ServerEvent<'a> {
     StdoutOutput(&'a [u8]),
 }
 impl<'a> ServerEvent<'a> {
-    pub const fn display_header_len() -> usize {
+    pub const fn bytes_variant_header_len() -> usize {
         1 + std::mem::size_of::<u32>()
     }
 
-    pub fn serialize_display_header(buf: &mut [u8]) {
-        buf[0] = 0;
-        let len = buf.len() as u32 - Self::display_header_len() as u32;
+    pub fn serialize_bytes_variant_header(&self, buf: &mut [u8]) {
+        buf[0] = match self {
+            Self::Display(_) => 0,
+            Self::Suspend => unreachable!(),
+            Self::StdoutOutput(_) => 2,
+        };
+        let len = buf.len() as u32 - Self::bytes_variant_header_len() as u32;
         let len_buf = len.to_le_bytes();
-        buf[1..Self::display_header_len()].copy_from_slice(&len_buf);
+        buf[1..Self::bytes_variant_header_len()].copy_from_slice(&len_buf);
     }
 }
 impl<'de> Serialize<'de> for ServerEvent<'de> {
@@ -801,4 +805,3 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
-

@@ -366,7 +366,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         resize_signal = Some(signal);
 
         let size = terminal.get_size();
-        let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
+        let (_, bytes) = application.update(Some(size), &[Key::None], None, &[]);
         if connection.write_all(bytes).is_err() {
             return;
         }
@@ -387,7 +387,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     'main_loop: loop {
         for event_index in epoll.wait(&mut epoll_events, None) {
             let mut resize = None;
-            let mut stdin_bytes = &[][..];
+            let mut stdin_bytes = None;
             let mut server_bytes = &[][..];
 
             keys.clear();
@@ -412,8 +412,11 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     }
                 }
                 3 => match read(libc::STDIN_FILENO, &mut buf) {
-                    Ok(0) | Err(()) => epoll.remove(libc::STDIN_FILENO),
-                    Ok(len) => stdin_bytes = &buf[..len],
+                    Ok(0) | Err(()) => {
+                        epoll.remove(libc::STDIN_FILENO);
+                        stdin_bytes = Some(&[][..]);
+                    }
+                    Ok(len) => stdin_bytes = Some(&buf[..len]),
                 },
                 _ => unreachable!(),
             }
@@ -436,4 +439,3 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
-

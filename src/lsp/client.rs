@@ -1735,9 +1735,9 @@ impl Client {
                         .find_with_path(&editor.current_directory, path)
                         .map(|h| editor.buffers.get(h))
                     {
-                        buffer
-                            .content()
-                            .append_range_text_to_string(location.range.into(), &mut buffer_name);
+                        for text in buffer.content().text_range(location.range.into()) {
+                            buffer_name.push_str(text);
+                        }
                         break;
                     }
                 }
@@ -1924,9 +1924,11 @@ impl Client {
                 let mut input = editor.string_pool.acquire();
                 match placeholder {
                     Some(text) => input.push_str(text.as_str(&self.json)),
-                    None => buffer
-                        .content()
-                        .append_range_text_to_string(range, &mut input),
+                    None => {
+                        for text in buffer.content().text_range(range) {
+                            input.push_str(text);
+                        }
+                    }
                 }
 
                 let mut ctx = ModeContext {

@@ -5,6 +5,7 @@ use std::{
 
 use crate::{
     buffer::{BufferCapabilities, BufferCollection, BufferReadError},
+    buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{Client, ClientHandle, ClientManager},
     command::CommandManager,
@@ -12,14 +13,14 @@ use crate::{
     editor_utils::{ReadLine, StatusBar, StringPool},
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
-        TargetClient,
+        ServerEvent, TargetClient,
     },
     keymap::{KeyMapCollection, MatchResult},
     lsp,
     mode::{Mode, ModeContext, ModeKind},
     pattern::Pattern,
     picker::Picker,
-    platform::{Key, Platform, ProcessHandle, ProcessTag},
+    platform::{Key, Platform, PlatformRequest, ProcessHandle, ProcessTag},
     plugin::PluginCollection,
     register::{RegisterCollection, RegisterKey},
     syntax::{HighlightResult, SyntaxCollection},
@@ -333,9 +334,8 @@ impl Editor {
                     },
                 };
 
-                // TODO: append to stdin buffer
-                let _ = client_handle;
-                let _ = bytes;
+                clients.get_mut(client_handle).on_stdin_input(self, bytes);
+                self.trigger_event_handlers(platform, clients);
                 EditorControlFlow::Continue
             }
         }
@@ -413,6 +413,7 @@ impl Editor {
 
     pub fn trigger_event_handlers(&mut self, platform: &mut Platform, clients: &mut ClientManager) {
         loop {
+            //eprintln!("trigger_event_handlers");
             self.events.flip();
             let mut events = EditorEventIter::new();
             if events.next(&self.events).is_none() {
@@ -441,7 +442,28 @@ impl Editor {
                         if new_path {
                             buffer.refresh_syntax(&self.syntaxes);
                         }
-                        // TODO: maybe send stdout output to client (enqueue WriteToClient)
+
+                        for client in clients.iter() {
+                            if client.stdin_buffer_handle() == Some(buffer.handle()) {
+                                let mut buf = platform.buf_pool.acquire();
+                                let write =
+                                    buf.write_with_len(ServerEvent::bytes_variant_header_len());
+                                let content = buffer.content();
+                                let range =
+                                    BufferRange::between(BufferPosition::zero(), content.end());
+                                for text in content.text_range(range) {
+                                    write.extend_from_slice(text.as_bytes());
+                                }
+                                ServerEvent::StdoutOutput(&[])
+                                    .serialize_bytes_variant_header(write);
+
+                                let handle = client.handle();
+                                platform
+                                    .requests
+                                    .enqueue(PlatformRequest::WriteToClient { handle, buf });
+                                break;
+                            }
+                        }
                     }
                     EditorEvent::BufferClose { handle } => {
                         self.buffers

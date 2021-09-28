@@ -167,6 +167,73 @@ pub const fn hash_bytes(mut bytes: &[u8]) -> u64 {
     hash
 }
 
+// extracted from str::is_char_boundary(&self, index: usize) -> bool
+// https://doc.rust-lang.org/src/core/str/mod.rs.html#193
+pub const fn is_char_boundary(b: u8) -> bool {
+    (b as i8) >= -0x40
+}
+
+#[derive(Default)]
+pub struct ResidualStrBytes {
+    bytes: [u8; std::mem::size_of::<char>()],
+    len: u8,
+}
+impl ResidualStrBytes {
+    pub fn receive_bytes<'a>(
+        &mut self,
+        buf: &'a mut [u8; std::mem::size_of::<char>()],
+        mut bytes: &'a [u8],
+    ) -> (&'a str, &'a str) {
+        loop {
+            if bytes.is_empty() {
+                break;
+            }
+
+            let b = bytes[0];
+            if is_char_boundary(b) {
+                break;
+            }
+
+            if self.len == self.bytes.len() as _ {
+                self.len = 0;
+                break;
+            }
+
+            self.bytes[self.len as usize] = bytes[0];
+            self.len += 1;
+            bytes = &bytes[1..];
+        }
+
+        *buf = self.bytes;
+        let before = &buf[..self.len as usize];
+        self.len = 0;
+
+        let mut len = bytes.len();
+        loop {
+            if len == 0 {
+                break;
+            }
+            len -= 1;
+            if is_char_boundary(bytes[len]) {
+                break;
+            }
+        }
+
+        let (after, rest) = bytes.split_at(len);
+        if self.bytes.len() < rest.len() {
+            return ("", "");
+        }
+
+        self.len = rest.len() as _;
+        self.bytes[..self.len as usize].copy_from_slice(rest);
+
+        let before = std::str::from_utf8(before).unwrap_or("");
+        let after = std::str::from_utf8(after).unwrap_or("");
+
+        (before, after)
+    }
+}
+
 pub fn parse_process_command(command: &str) -> Option<Command> {
     let mut tokenizer = CommandTokenizer(command);
     let name = tokenizer.next()?;
@@ -215,4 +282,63 @@ pub fn load_config(
     }
 
     EditorControlFlow::Continue
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_char_boundary_test() {
+        let bytes = "áé".as_bytes();
+        assert_eq!(4, bytes.len());
+        assert!(is_char_boundary(bytes[0]));
+        assert!(!is_char_boundary(bytes[1]));
+        assert!(is_char_boundary(bytes[2]));
+        assert!(!is_char_boundary(bytes[3]));
+    }
+
+    #[test]
+    fn residual_str_bytes() {
+        let message = "abcdef".as_bytes();
+        let mut residue = ResidualStrBytes::default();
+        assert_eq!(
+            ("", "ab"),
+            residue.receive_bytes(&mut Default::default(), &message[..3])
+        );
+        assert_eq!(
+            ("c", "de"),
+            residue.receive_bytes(&mut Default::default(), &message[3..])
+        );
+        assert_eq!(
+            ("f", ""),
+            residue.receive_bytes(&mut Default::default(), &message[6..])
+        );
+        assert_eq!(("", ""), residue.receive_bytes(&mut Default::default(), &[]));
+
+        let message = "áéíóú".as_bytes();
+        assert_eq!(10, message.len());
+        let mut residue = ResidualStrBytes::default();
+        assert_eq!(
+            ("", "á"),
+            residue.receive_bytes(&mut Default::default(), &message[..3])
+        );
+        assert_eq!(
+            ("é", ""),
+            residue.receive_bytes(&mut Default::default(), &message[3..5])
+        );
+        assert_eq!(
+            ("í", ""),
+            residue.receive_bytes(&mut Default::default(), &message[5..8])
+        );
+        assert_eq!(
+            ("ó", ""),
+            residue.receive_bytes(&mut Default::default(), &message[8..])
+        );
+        assert_eq!(
+            ("ú", ""),
+            residue.receive_bytes(&mut Default::default(), &message[10..])
+        );
+        assert_eq!(("", ""), residue.receive_bytes(&mut Default::default(), &[]));
+    }
 }

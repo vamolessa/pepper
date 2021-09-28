@@ -307,6 +307,37 @@ impl BufferLine {
     }
 }
 
+pub struct TextRangeIter<'a> {
+    content: &'a BufferContent,
+    from: BufferPosition,
+    to: BufferPosition,
+}
+impl<'a> Iterator for TextRangeIter<'a> {
+    type Item = &'a str;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.from == self.to {
+            return None;
+        }
+
+        let line = self.content.lines[self.from.line_index as usize].as_str();
+
+        if self.from.column_byte_index == line.len() as _ {
+            self.from.line_index += 1;
+            self.from.column_byte_index = 0;
+            Some("\n")
+        } else if self.from.line_index == self.to.line_index {
+            let text =
+                &line[self.from.column_byte_index as usize..self.to.column_byte_index as usize];
+            self.from = self.to;
+            Some(text)
+        } else {
+            let text = &line[self.from.column_byte_index as usize..];
+            self.from.column_byte_index = line.len() as _;
+            Some(text)
+        }
+    }
+}
+
 pub struct BufferContent {
     lines: Vec<BufferLine>,
     line_pool: BufferLinePool,
@@ -405,28 +436,13 @@ impl BufferContent {
         position
     }
 
-    pub fn append_range_text_to_string(&self, range: BufferRange, text: &mut String) {
+    pub fn text_range(&self, range: BufferRange) -> TextRangeIter {
         let from = self.saturate_position(range.from);
         let to = self.saturate_position(range.to);
-
-        let first_line = self.lines[from.line_index as usize].as_str();
-        if from.line_index == to.line_index {
-            let range_text =
-                &first_line[from.column_byte_index as usize..to.column_byte_index as usize];
-            text.push_str(range_text);
-        } else {
-            text.push_str(&first_line[from.column_byte_index as usize..]);
-            let lines_range = (from.line_index as usize + 1)..to.line_index as usize;
-            if lines_range.start < lines_range.end {
-                for line in &self.lines[lines_range] {
-                    text.push('\n');
-                    text.push_str(line.as_str());
-                }
-            }
-
-            let to_line = &self.lines[to.line_index as usize];
-            text.push('\n');
-            text.push_str(&to_line.as_str()[..to.column_byte_index as usize]);
+        TextRangeIter {
+            content: self,
+            from,
+            to,
         }
     }
 
@@ -733,6 +749,7 @@ pub struct BufferCapabilities {
     pub can_save: bool,
     pub uses_word_database: bool,
     pub auto_close: bool,
+    pub is_file: bool,
 }
 impl BufferCapabilities {
     pub fn text() -> Self {
@@ -741,6 +758,7 @@ impl BufferCapabilities {
             can_save: true,
             auto_close: false,
             uses_word_database: true,
+            is_file: true,
         }
     }
 
@@ -750,6 +768,7 @@ impl BufferCapabilities {
             can_save: false,
             auto_close: false,
             uses_word_database: false,
+            is_file: false,
         }
     }
 }
@@ -1164,10 +1183,11 @@ impl Buffer {
             return Ok(());
         }
 
-        let file = File::create(&self.path)?;
-        self.content.write(&mut io::BufWriter::new(file))?;
+        if self.capabilities.is_file {
+            let file = File::create(&self.path)?;
+            self.content.write(&mut io::BufWriter::new(file))?;
+        }
 
-        self.capabilities.can_save = true;
         self.needs_save = false;
 
         events.enqueue(EditorEvent::BufferWrite {
@@ -1186,7 +1206,7 @@ pub struct InsertProcess {
     pub buffer_handle: BufferHandle,
     pub position: BufferPosition,
     pub input: Option<PooledBuf>,
-    pub output: Vec<u8>,
+    pub output: Vec<u8>, // TODO: change to ResidualStrBytes
 }
 
 #[derive(Default)]
@@ -1782,17 +1802,20 @@ mod tests {
     }
 
     #[test]
-    fn buffer_content_range_text() {
+    fn buffer_content_text_range() {
         let buffer = buffer_from_str("abc\ndef\nghi");
-        let mut text = String::new();
-        buffer.append_range_text_to_string(
-            BufferRange::between(
-                BufferPosition::line_col(0, 2),
-                BufferPosition::line_col(2, 1),
-            ),
-            &mut text,
+        let range = BufferRange::between(
+            BufferPosition::line_col(0, 2),
+            BufferPosition::line_col(2, 1),
         );
-        assert_eq!("c\ndef\ng", &text);
+
+        let mut text_range = buffer.text_range(range);
+        assert_eq!(Some("c"), text_range.next());
+        assert_eq!(Some("\n"), text_range.next());
+        assert_eq!(Some("def"), text_range.next());
+        assert_eq!(Some("\n"), text_range.next());
+        assert_eq!(Some("g"), text_range.next());
+        assert_eq!(None, text_range.next());
     }
 
     #[test]

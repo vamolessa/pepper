@@ -346,4 +346,3 @@ pub fn suspend_process(application: &mut ClientApplication, terminal: &Option<Te
     }
     application.reinit_screen();
 }
-

@@ -1284,7 +1284,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
 
     if let Some(handle) = &console_output_handle {
         let size = get_console_size(handle);
-        let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
+        let (_, bytes) = application.update(Some(size), &[Key::None], None, &[]);
         if !connection.write(bytes) {
             return;
         }
@@ -1329,7 +1329,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
         };
 
         let mut resize = None;
-        let mut stdin_bytes = &[][..];
+        let mut stdin_bytes = None;
         let mut server_bytes = &[][..];
 
         keys.clear();
@@ -1347,7 +1347,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
             },
             2 => {
                 if let Some(pipe) = &mut stdin_pipe {
-                    stdin_bytes = pipe.read_async();
+                    stdin_bytes = Some(pipe.read_async());
                 }
             }
             _ => unreachable!(),
@@ -1450,4 +1450,3 @@ fn parse_console_events(
         }
     }
 }
-
