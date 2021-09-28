@@ -453,6 +453,7 @@ where
 pub enum ServerEvent<'a> {
     Display(&'a [u8]),
     Suspend,
+    StdoutOutput(&'a [u8]),
 }
 impl<'a> ServerEvent<'a> {
     pub const fn display_header_len() -> usize {
@@ -477,6 +478,10 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 display.serialize(serializer);
             }
             Self::Suspend => 1u8.serialize(serializer),
+            Self::StdoutOutput(bytes) => {
+                2u8.serialize(serializer);
+                bytes.serialize(serializer);
+            }
         }
     }
 
@@ -491,6 +496,10 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 Ok(Self::Display(display))
             }
             1 => Ok(Self::Suspend),
+            2 => {
+                let bytes = Serialize::deserialize(deserializer)?;
+                Ok(Self::StdoutOutput(bytes))
+            }
             _ => Err(DeserializeError::InvalidData),
         }
     }
@@ -529,6 +538,7 @@ pub enum ClientEvent<'a> {
     Key(TargetClient, Key),
     Resize(u16, u16),
     Command(TargetClient, &'a str),
+    StdinInput(TargetClient, &'a [u8]),
 }
 impl<'de> Serialize<'de> for ClientEvent<'de> {
     fn serialize<S>(&self, serializer: &mut S)
@@ -550,6 +560,11 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 2u8.serialize(serializer);
                 target.serialize(serializer);
                 command.serialize(serializer);
+            }
+            Self::StdinInput(target, bytes) => {
+                3u8.serialize(serializer);
+                target.serialize(serializer);
+                bytes.serialize(serializer);
             }
         }
     }
@@ -574,6 +589,11 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 let target = Serialize::deserialize(deserializer)?;
                 let command = Serialize::deserialize(deserializer)?;
                 Ok(Self::Command(target, command))
+            }
+            3 => {
+                let target = Serialize::deserialize(deserializer)?;
+                let bytes = Serialize::deserialize(deserializer)?;
+                Ok(Self::StdinInput(target, bytes))
             }
             _ => Err(DeserializeError::InvalidData),
         }
@@ -781,3 +801,4 @@ mod tests {
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
+

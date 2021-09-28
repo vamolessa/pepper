@@ -324,6 +324,20 @@ impl Editor {
                 self.string_pool.release(command);
                 flow
             }
+            ClientEvent::StdinInput(target, bytes) => {
+                let client_handle = match target {
+                    TargetClient::Sender => client_handle,
+                    TargetClient::Focused => match clients.focused_client() {
+                        Some(handle) => handle,
+                        None => return EditorControlFlow::Continue,
+                    },
+                };
+
+                // TODO: append to stdin buffer
+                let _ = client_handle;
+                let _ = bytes;
+                EditorControlFlow::Continue
+            }
         }
     }
 
@@ -463,3 +477,4 @@ impl Editor {
         }
     }
 }
+

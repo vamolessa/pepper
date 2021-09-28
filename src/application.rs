@@ -177,10 +177,10 @@ impl ServerApplication {
 
 pub struct ClientApplication {
     target_client: TargetClient,
-    stdin_read_buf: Vec<u8>, // TODO: do something with it
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
     output: Option<ManuallyDrop<fs::File>>,
+    stdout_buf: Vec<u8>,
 }
 impl ClientApplication {
     pub const fn stdin_buffer_len() -> usize {
@@ -194,10 +194,10 @@ impl ClientApplication {
     pub fn new(output: Option<ManuallyDrop<fs::File>>) -> Self {
         Self {
             target_client: TargetClient::Sender,
-            stdin_read_buf: Vec::new(),
             server_read_buf: Vec::new(),
             server_write_buf: Vec::new(),
             output,
+            stdout_buf: Vec::new(),
         }
     }
 
@@ -271,7 +271,8 @@ impl ClientApplication {
         }
 
         if !stdin_bytes.is_empty() {
-            self.stdin_read_buf.extend_from_slice(stdin_bytes);
+            ClientEvent::StdinInput(self.target_client, stdin_bytes)
+                .serialize(&mut self.server_write_buf);
         }
 
         let mut suspend = false;
@@ -288,6 +289,10 @@ impl ClientApplication {
                         }
                     }
                     Ok(ServerEvent::Suspend) => suspend = true,
+                    Ok(ServerEvent::StdoutOutput(bytes)) => {
+                        self.stdout_buf.clear();
+                        self.stdout_buf.extend_from_slice(bytes);
+                    }
                     Err(DeserializeError::InsufficientData) => {
                         let read_len = self.server_read_buf.len() - previous_slice.len();
                         self.server_read_buf.drain(..read_len);
