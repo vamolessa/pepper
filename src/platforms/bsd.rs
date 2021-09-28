@@ -10,7 +10,7 @@ use std::{
 use pepper::{
     application::{ClientApplication, ServerApplication},
     client::ClientHandle,
-    platform::{BufPool, Key, Platform, PlatformEvent, PlatformRequest, ProcessHandle},
+    platform::{Key, PlatformEvent, PlatformRequest, ProcessHandle},
     Args,
 };
 
@@ -401,7 +401,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
         kqueue.add(Event::Resize, 2);
 
-        let size = get_terminal_size();
+        let size = terminal.get_size();
         let (_, bytes) = application.update(Some(size), &[Key::None], &[], &[]);
         if connection.write_all(bytes).is_err() {
             return;
@@ -455,7 +455,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 break;
             }
             if suspend {
-                suspend_process(&mut application, &mut raw_mode);
+                suspend_process(&mut application, &terminal);
             }
         }
     }
