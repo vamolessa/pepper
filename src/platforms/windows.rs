@@ -38,9 +38,10 @@ use winapi::{
         sysinfoapi::GetSystemDirectoryW,
         winbase::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED,
-            FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX,
-            PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES,
-            STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
+            FILE_TYPE_CHAR, FILE_TYPE_DISK, FILE_TYPE_PIPE, GMEM_MOVEABLE, INFINITE,
+            NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
+            PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
+            STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
             GetConsoleScreenBufferInfo, ENABLE_PROCESSED_OUTPUT,
@@ -187,13 +188,11 @@ pub fn main() {
         return;
     }
 
-    let input_handle = get_std_handle(STD_INPUT_HANDLE);
-
     if args.server {
         if !pipe_exists(&pipe_path) {
             let _ = run_server(args, &pipe_path);
         }
-    } else if let Some(input_handle) = input_handle {
+    } else {
         if !pipe_exists(&pipe_path) {
             fork();
             while !pipe_exists(&pipe_path) {
@@ -201,7 +200,7 @@ pub fn main() {
             }
         }
 
-        run_client(args, &pipe_path, input_handle);
+        run_client(args, &pipe_path);
     }
 }
 
@@ -260,12 +259,6 @@ fn read_console_input<'a>(
         );
     }
     &events[..(event_count as usize)]
-}
-
-enum ReadResult {
-    Waiting,
-    Ok(usize),
-    Err,
 }
 
 struct AsyncReader {
@@ -353,8 +346,20 @@ impl AsyncReader {
     }
 }
 
-fn is_pipped(handle: &Handle) -> bool {
-    unsafe { GetFileType(handle.0) != FILE_TYPE_CHAR }
+enum FileType {
+    Console,
+    DiskFile,
+    Pipe,
+}
+impl FileType {
+    pub fn of(handle: &Handle) -> Self {
+        match unsafe { GetFileType(handle.0) } {
+            FILE_TYPE_CHAR => Self::Console,
+            FILE_TYPE_DISK => Self::DiskFile,
+            FILE_TYPE_PIPE => Self::Pipe,
+            _ => unreachable!(),
+        }
+    }
 }
 
 fn create_file(path: &[u16], share_mode: DWORD, flags: DWORD) -> Option<Handle> {
@@ -372,6 +377,38 @@ fn create_file(path: &[u16], share_mode: DWORD, flags: DWORD) -> Option<Handle> 
     match handle {
         NULL | INVALID_HANDLE_VALUE => None,
         _ => Some(Handle(handle)),
+    }
+}
+
+enum ReadResult {
+    Waiting,
+    Ok(usize),
+    Err,
+}
+
+fn read(handle: &Handle, buf: &mut [u8], overlapped: Option<&mut Overlapped>) -> ReadResult {
+    let mut read_len = 0;
+    let overlapped = overlapped
+        .map(Overlapped::as_mut_ptr)
+        .unwrap_or(std::ptr::null_mut());
+
+    let result = unsafe {
+        ReadFile(
+            handle.0,
+            buf.as_mut_ptr() as _,
+            buf.len() as _,
+            &mut read_len,
+            overlapped,
+        )
+    };
+
+    if result == FALSE {
+        match get_last_error() {
+            ERROR_IO_PENDING => ReadResult::Waiting,
+            _ => ReadResult::Err,
+        }
+    } else {
+        ReadResult::Ok(read_len as _)
     }
 }
 
@@ -427,7 +464,7 @@ fn fork() {
             command_line.push(short);
         }
     }
-    command_line.extend_from_slice(&b" --server".map(|b| b as u16));
+    command_line.extend_from_slice(&b" --server".map(|b| b as _));
     command_line.push(0);
 
     let result = unsafe {
@@ -649,7 +686,7 @@ struct ConsoleMode {
 impl ConsoleMode {
     pub fn new(console_handle: &Handle) -> Self {
         let console_handle = console_handle.0;
-        let mut original_mode = DWORD::default();
+        let mut original_mode = 0;
         let result = unsafe { GetConsoleMode(console_handle, &mut original_mode) };
         if result == FALSE {
             panic!("could not get console mode");
@@ -1150,36 +1187,62 @@ fn run_server(args: Args, pipe_path: &[u16]) {
 }
 
 struct StdinPipe {
-    is_open: bool,
     reader: AsyncReader,
+    //handle: Handle,
     buf: Box<[u8; ClientApplication::stdin_buffer_len()]>,
 }
 impl StdinPipe {
-    pub fn new(reader: AsyncReader) -> Self {
-        Self {
-            is_open: true,
-            reader,
+    pub fn new(handle: Handle) -> Option<Self> {
+        match FileType::of(&handle) {
+            FileType::Console => return None,
+            FileType::DiskFile => (),
+            FileType::Pipe => (),
+        }
+
+        /*
+        handle.0 = unsafe {
+            ReOpenFile(
+                handle.0,
+                GENERIC_READ | GENERIC_WRITE,
+                FILE_SHARE_READ,
+                FILE_FLAG_OVERLAPPED,
+            )
+        };
+        if handle.0 == INVALID_HANDLE_VALUE {
+            panic!("could not set stdin to overlapped");
+        }
+        */
+
+        return None;
+
+        Some(Self {
+            reader: AsyncReader::new(handle),
+            //handle,
             buf: Box::new([0; ClientApplication::stdin_buffer_len()]),
-        }
+        })
     }
 
-    pub fn event(&self) -> &Event {
-        self.reader.event()
+    pub fn wait_handle(&self) -> HANDLE {
+        self.reader.event().handle()
+        //self.handle.0
     }
 
-    pub fn read_async(&mut self) -> &[u8] {
-        if !self.is_open {
-            return &[];
+    pub fn read(&mut self) -> Option<&[u8]> {
+        /*
+        match read(&self.handle, &mut self.buf[..], None) {
+            ReadResult::Waiting => None,
+            ReadResult::Ok(len) => Some(&self.buf[..len]),
+            ReadResult::Err => Some(&[]),
         }
+        // */
 
+        //*
         match self.reader.read_async(&mut self.buf[..]) {
-            ReadResult::Waiting => &[],
-            ReadResult::Ok(0) | ReadResult::Err => {
-                self.is_open = false;
-                &[]
-            }
-            ReadResult::Ok(len) => &self.buf[..len],
+            ReadResult::Waiting => None,
+            ReadResult::Err => Some(&[]),
+            ReadResult::Ok(len) => Some(&self.buf[..len]),
         }
+        // */
     }
 }
 
@@ -1231,7 +1294,7 @@ impl ConnectionToServer {
     }
 }
 
-fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
+fn run_client(args: Args, pipe_path: &[u16]) {
     let mut connection = ConnectionToServer::connect(pipe_path);
 
     let console_input_handle;
@@ -1293,38 +1356,33 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
     let mut console_event_buf = [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN];
     let mut keys = Vec::with_capacity(CLIENT_EVENT_BUFFER_LEN);
 
-    let mut stdin_pipe: Option<StdinPipe> = if is_pipped(&input_handle) {
-        Some(StdinPipe::new(AsyncReader::new(input_handle)))
-    } else {
-        None
-    };
-    let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
+    let mut stdin_pipe = get_std_handle(STD_INPUT_HANDLE).and_then(StdinPipe::new);
 
     let mut wait_handles = [NULL; 3];
-    let mut wait_handles_index_map = [0; 3];
+    let mut wait_source_map = [0; 3];
     let mut wait_handles_len = 0;
 
     if let Some(handle) = &console_input_handle {
         wait_handles[wait_handles_len] = handle.0;
-        wait_handles_index_map[wait_handles_len] = 0;
+        wait_source_map[wait_handles_len] = 0;
         wait_handles_len += 1;
     }
 
     wait_handles[wait_handles_len] = connection.event().handle();
-    wait_handles_index_map[wait_handles_len] = 1;
+    wait_source_map[wait_handles_len] = 1;
     wait_handles_len += 1;
 
     if let Some(pipe) = &stdin_pipe {
-        wait_handles[wait_handles_len] = pipe.event().handle();
-        wait_handles_index_map[wait_handles_len] = 2;
+        wait_handles[wait_handles_len] = pipe.wait_handle();
+        wait_source_map[wait_handles_len] = 2;
         wait_handles_len += 1;
     }
 
-    let wait_handles = &wait_handles[..wait_handles_len];
+    let mut wait_handles = &wait_handles[..wait_handles_len];
 
     loop {
-        let wait_handle_index = match wait_for_multiple_objects(wait_handles, None) {
-            Some(i) => wait_handles_index_map[i],
+        let wait_source = match wait_for_multiple_objects(wait_handles, None) {
+            Some(i) => wait_source_map[i],
             _ => continue,
         };
 
@@ -1334,7 +1392,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
 
         keys.clear();
 
-        match wait_handle_index {
+        match wait_source {
             0 => {
                 if let Some(handle) = &console_input_handle {
                     let console_events = read_console_input(handle, &mut console_event_buf);
@@ -1345,11 +1403,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
                 Ok(bytes) => server_bytes = bytes,
                 Err(()) => break,
             },
-            2 => {
-                if let Some(pipe) = &mut stdin_pipe {
-                    stdin_bytes = Some(pipe.read_async());
-                }
-            }
+            2 => stdin_bytes = stdin_pipe.as_mut().and_then(StdinPipe::read),
             _ => unreachable!(),
         }
 
@@ -1357,10 +1411,14 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle) {
         if !connection.write(bytes) {
             break;
         }
+        if let Some(&[]) = stdin_bytes {
+            stdin_pipe = None;
+            wait_handles = &wait_handles[..wait_handles.len() - 1];
+        }
     }
 
-    if let Some(handle) = output_handle {
-        if is_pipped(&handle) {
+    if let Some(handle) = get_std_handle(STD_OUTPUT_HANDLE) {
+        if !matches!(FileType::of(&handle), FileType::Console) {
             let bytes = application.get_stdout_bytes();
             write_all_bytes(&handle, bytes);
         }
@@ -1450,3 +1508,4 @@ fn parse_console_events(
         }
     }
 }
+
