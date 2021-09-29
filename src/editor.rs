@@ -413,7 +413,6 @@ impl Editor {
 
     pub fn trigger_event_handlers(&mut self, platform: &mut Platform, clients: &mut ClientManager) {
         loop {
-            //eprintln!("trigger_event_handlers");
             self.events.flip();
             let mut events = EditorEventIter::new();
             if events.next(&self.events).is_none() {
