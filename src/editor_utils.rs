@@ -183,7 +183,7 @@ impl ResidualStrBytes {
         &mut self,
         buf: &'a mut [u8; std::mem::size_of::<char>()],
         mut bytes: &'a [u8],
-    ) -> (&'a str, &'a str) {
+    ) -> [&'a str; 2] {
         loop {
             if bytes.is_empty() {
                 break;
@@ -221,7 +221,7 @@ impl ResidualStrBytes {
 
         let (after, rest) = bytes.split_at(len);
         if self.bytes.len() < rest.len() {
-            return ("", "");
+            return ["", ""];
         }
 
         self.len = rest.len() as _;
@@ -230,7 +230,7 @@ impl ResidualStrBytes {
         let before = std::str::from_utf8(before).unwrap_or("");
         let after = std::str::from_utf8(after).unwrap_or("");
 
-        (before, after)
+        [before, after]
     }
 }
 
@@ -303,19 +303,19 @@ mod tests {
         let message = "abcdef".as_bytes();
         let mut residue = ResidualStrBytes::default();
         assert_eq!(
-            ("", "ab"),
+            ["", "ab"],
             residue.receive_bytes(&mut Default::default(), &message[..3])
         );
         assert_eq!(
-            ("c", "de"),
+            ["c", "de"],
             residue.receive_bytes(&mut Default::default(), &message[3..])
         );
         assert_eq!(
-            ("f", ""),
+            ["f", ""],
             residue.receive_bytes(&mut Default::default(), &message[6..])
         );
         assert_eq!(
-            ("", ""),
+            ["", ""],
             residue.receive_bytes(&mut Default::default(), &[])
         );
 
@@ -323,27 +323,27 @@ mod tests {
         assert_eq!(10, message.len());
         let mut residue = ResidualStrBytes::default();
         assert_eq!(
-            ("", "á"),
+            ["", "á"],
             residue.receive_bytes(&mut Default::default(), &message[..3])
         );
         assert_eq!(
-            ("é", ""),
+            ["é", ""],
             residue.receive_bytes(&mut Default::default(), &message[3..5])
         );
         assert_eq!(
-            ("í", ""),
+            ["í", ""],
             residue.receive_bytes(&mut Default::default(), &message[5..8])
         );
         assert_eq!(
-            ("ó", ""),
+            ["ó", ""],
             residue.receive_bytes(&mut Default::default(), &message[8..])
         );
         assert_eq!(
-            ("ú", ""),
+            ["ú", ""],
             residue.receive_bytes(&mut Default::default(), &message[10..])
         );
         assert_eq!(
-            ("", ""),
+            ["", ""],
             residue.receive_bytes(&mut Default::default(), &[])
         );
     }

@@ -11,6 +11,7 @@ use std::{
 
 use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
+    editor_utils::ResidualStrBytes,
     events::{EditorEvent, EditorEventQueue},
     help,
     history::{Edit, EditKind, History},
@@ -1206,7 +1207,7 @@ pub struct InsertProcess {
     pub buffer_handle: BufferHandle,
     pub position: BufferPosition,
     pub input: Option<PooledBuf>,
-    pub output: Vec<u8>, // TODO: change to ResidualStrBytes
+    pub output_residual_bytes: ResidualStrBytes,
 }
 
 #[derive(Default)]
@@ -1315,7 +1316,7 @@ impl BufferCollection {
                     buffer_handle,
                     position,
                     input: None,
-                    output: Vec::new(),
+                    output_residual_bytes: ResidualStrBytes::default(),
                 });
                 index
             }
@@ -1326,7 +1327,7 @@ impl BufferCollection {
         process.buffer_handle = buffer_handle;
         process.position = position;
         process.input = stdin;
-        process.output.clear();
+        process.output_residual_bytes = ResidualStrBytes::default();
 
         let stdin = match process.input {
             Some(_) => Stdio::piped(),
@@ -1339,7 +1340,8 @@ impl BufferCollection {
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Buffer(index),
             command,
-            buf_len: 4 * 1024,
+            //buf_len: 4 * 1024,
+            buf_len: 256,
         });
     }
 
@@ -1367,28 +1369,21 @@ impl BufferCollection {
         events: &mut EditorEventQueue,
     ) {
         let process = &mut self.insert_processes[index];
-        process.output.extend_from_slice(bytes);
 
-        let len = match process.output.iter().rposition(|&b| b == b'\n') {
-            Some(i) => i + 1,
-            None => return,
-        };
+        let mut buf = Default::default();
+        let texts = process.output_residual_bytes.receive_bytes(&mut buf, bytes);
 
         let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
         if buffer.alive {
-            let text = &process.output[..len];
-            let insert_range = match std::str::from_utf8(text) {
-                Ok(text) => {
-                    process.position = buffer.content().saturate_position(process.position);
-                    buffer.insert_text(word_database, process.position, text, events)
-                }
-                Err(_) => BufferRange::zero(),
-            };
-            process.output.drain(..len);
+            process.position = buffer.content().saturate_position(process.position);
+            let position = process.position;
 
-            for process in &mut self.insert_processes {
-                if process.buffer_handle == buffer.handle() {
-                    process.position = process.position.insert(insert_range);
+            for text in texts {
+                let insert_range = buffer.insert_text(word_database, position, text, events);
+                for process in &mut self.insert_processes {
+                    if process.buffer_handle == buffer.handle() {
+                        process.position = process.position.insert(insert_range);
+                    }
                 }
             }
         }
@@ -1403,10 +1398,21 @@ impl BufferCollection {
         let process = &mut self.insert_processes[index];
         process.alive = false;
 
+        let mut buf = Default::default();
+        let texts = process.output_residual_bytes.receive_bytes(&mut buf, &[]);
+
         let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
         if buffer.alive {
-            if let Ok(text) = std::str::from_utf8(&process.output) {
-                buffer.insert_text(word_database, process.position, text, events);
+            process.position = buffer.content().saturate_position(process.position);
+            let position = process.position;
+
+            for text in texts {
+                let insert_range = buffer.insert_text(word_database, position, text, events);
+                for process in &mut self.insert_processes {
+                    if process.buffer_handle == buffer.handle() {
+                        process.position = process.position.insert(insert_range);
+                    }
+                }
             }
         }
     }
@@ -1930,3 +1936,4 @@ mod tests {
         );
     }
 }
+

@@ -102,7 +102,7 @@ impl Client {
 
     pub fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
         let mut buf = Default::default();
-        let (pending_text, text) = self.stdin_residual_bytes.receive_bytes(&mut buf, bytes);
+        let texts = self.stdin_residual_bytes.receive_bytes(&mut buf, bytes);
 
         let buffer_handle = match self.stdin_buffer_handle() {
             Some(handle) => handle,
@@ -134,20 +134,15 @@ impl Client {
         };
 
         let buffer = editor.buffers.get_mut(buffer_handle);
-        let position = buffer.content().end();
-        buffer.insert_text(
-            &mut editor.word_database,
-            position,
-            pending_text,
-            &mut editor.events,
-        );
-        let position = buffer.content().end();
-        buffer.insert_text(
-            &mut editor.word_database,
-            position,
-            text,
-            &mut editor.events,
-        );
+        for text in texts {
+            let position = buffer.content().end();
+            buffer.insert_text(
+                &mut editor.word_database,
+                position,
+                text,
+                &mut editor.events,
+            );
+        }
     }
 
     pub fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
@@ -321,3 +316,4 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
+
