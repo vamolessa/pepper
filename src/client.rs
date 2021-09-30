@@ -111,7 +111,7 @@ impl Client {
 
                 let buffer = editor.buffers.add_new();
 
-                let mut path = editor.string_pool.acquire_with("stdin.");
+                let mut path = editor.string_pool.acquire_with("pipe.");
                 let _ = write!(path, "{}", self.handle().into_index());
                 buffer.path.clear();
                 buffer.path.push(&path);

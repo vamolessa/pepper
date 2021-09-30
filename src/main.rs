@@ -29,7 +29,7 @@ fn main() {
             let _ = writeln!(file, "{}", info);
         }
 
-        //sys::try_launching_debugger();
+        sys::try_launching_debugger();
 
         let hook = ORIGINAL_PANIC_HOOK.assume_init_ref();
         hook(info);

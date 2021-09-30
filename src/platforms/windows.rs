@@ -1360,6 +1360,13 @@ fn run_client(args: Args, pipe_path: &[u16]) {
     let mut keys = Vec::with_capacity(CLIENT_EVENT_BUFFER_LEN);
 
     let mut stdin_pipe = get_std_handle(STD_INPUT_HANDLE).and_then(StdinPipe::new);
+    let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
+    if output_handle.is_some() {
+        let (_, bytes) = application.update(None, &[], Some(&[]), &[]);
+        if !connection.write(bytes) {
+            return;
+        }
+    }
 
     let mut wait_handles = [NULL; 4];
     let mut wait_source_map = [0; 4];
@@ -1425,7 +1432,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
         }
     }
 
-    if let Some(handle) = get_std_handle(STD_OUTPUT_HANDLE) {
+    if let Some(handle) = output_handle {
         if !matches!(FileType::of(&handle), FileType::Console) {
             let bytes = application.get_stdout_bytes();
             write_all_bytes(&handle, bytes);
