@@ -373,14 +373,13 @@ fn run_client(args: Args, mut connection: UnixStream) {
     } else {
         resize_signal = None;
     }
-    
+
     if is_pipped(libc::STDOUT_FILENO) {
         let (_, bytes) = application.update(None, &[], Some(&[]), &[]);
         if connection.write_all(bytes).is_err() {
             return;
         }
     }
-
 
     let mut keys = Vec::new();
 
