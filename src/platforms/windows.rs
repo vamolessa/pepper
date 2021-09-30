@@ -7,17 +7,19 @@ use std::{
     },
     process::Child,
     ptr::NonNull,
+    sync::atomic::{AtomicPtr, Ordering},
     time::Duration,
 };
 
 use winapi::{
+    ctypes::c_void,
     shared::{
-        minwindef::{DWORD, FALSE, MAX_PATH, TRUE},
+        minwindef::{BOOL, DWORD, FALSE, MAX_PATH, TRUE},
         ntdef::NULL,
         winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
-        consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleMode},
+        consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         debugapi::{DebugBreak, IsDebuggerPresent},
         errhandlingapi::GetLastError,
         fileapi::{
@@ -44,7 +46,7 @@ use winapi::{
             STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
-            GetConsoleScreenBufferInfo, ENABLE_PROCESSED_OUTPUT,
+            GetConsoleScreenBufferInfo, CTRL_C_EVENT, ENABLE_PROCESSED_OUTPUT,
             ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
         },
         wincontypes::{
@@ -150,6 +152,7 @@ pub fn try_launching_debugger() {
 }
 
 pub fn main() {
+    CtrlCEvent::set_ctrl_handler();
     let args = Args::parse();
 
     let mut pipe_path = Vec::new();
@@ -386,32 +389,6 @@ enum ReadResult {
     Err,
 }
 
-fn read(handle: &Handle, buf: &mut [u8], overlapped: Option<&mut Overlapped>) -> ReadResult {
-    let mut read_len = 0;
-    let overlapped = overlapped
-        .map(Overlapped::as_mut_ptr)
-        .unwrap_or(std::ptr::null_mut());
-
-    let result = unsafe {
-        ReadFile(
-            handle.0,
-            buf.as_mut_ptr() as _,
-            buf.len() as _,
-            &mut read_len,
-            overlapped,
-        )
-    };
-
-    if result == FALSE {
-        match get_last_error() {
-            ERROR_IO_PENDING => ReadResult::Waiting,
-            _ => ReadResult::Err,
-        }
-    } else {
-        ReadResult::Ok(read_len as _)
-    }
-}
-
 fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
     while !buf.is_empty() {
         let mut write_len = 0;
@@ -621,14 +598,16 @@ fn create_event(manual_reset: bool, initial_state: bool) -> HANDLE {
     handle
 }
 
-fn set_event(handle: HANDLE) {
-    if unsafe { SetEvent(handle) } == FALSE {
-        panic!("could not set event");
-    }
+fn set_event(handle: HANDLE) -> bool {
+    unsafe { SetEvent(handle) != FALSE }
 }
 
 struct Event(HANDLE);
 impl Event {
+    pub fn automatic() -> Self {
+        Self(create_event(false, false))
+    }
+
     pub fn manual() -> Self {
         Self(create_event(true, false))
     }
@@ -638,12 +617,49 @@ impl Event {
     }
 
     pub fn notify(&self) {
-        set_event(self.0);
+        if !set_event(self.0) {
+            panic!("could not notify event");
+        }
     }
 }
 impl Drop for Event {
     fn drop(&mut self) {
         unsafe { CloseHandle(self.0) };
+    }
+}
+
+static CTRLC_EVENT_HANDLE: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+struct CtrlCEvent(Event);
+impl CtrlCEvent {
+    pub fn set_ctrl_handler() {
+        unsafe extern "system" fn ctrl_handler(ctrl_type: DWORD) -> BOOL {
+            match ctrl_type {
+                CTRL_C_EVENT => {
+                    let handle = CTRLC_EVENT_HANDLE.load(Ordering::Relaxed);
+                    if !handle.is_null() {
+                        set_event(handle);
+                    }
+                    TRUE
+                }
+                _ => FALSE,
+            }
+        }
+        unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) };
+    }
+
+    pub fn new() -> Self {
+        let event = Event::automatic();
+        CTRLC_EVENT_HANDLE.store(event.handle(), Ordering::Relaxed);
+        Self(event)
+    }
+
+    pub fn event(&self) -> &Event {
+        &self.0
+    }
+}
+impl Drop for CtrlCEvent {
+    fn drop(&mut self) {
+        CTRLC_EVENT_HANDLE.store(std::ptr::null_mut(), Ordering::Relaxed);
     }
 }
 
@@ -1187,8 +1203,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
 }
 
 struct StdinPipe {
-    reader: AsyncReader,
-    //handle: Handle,
+    handle: Handle,
     buf: Box<[u8; ClientApplication::stdin_buffer_len()]>,
 }
 impl StdinPipe {
@@ -1199,50 +1214,36 @@ impl StdinPipe {
             FileType::Pipe => (),
         }
 
-        /*
-        handle.0 = unsafe {
-            ReOpenFile(
-                handle.0,
-                GENERIC_READ | GENERIC_WRITE,
-                FILE_SHARE_READ,
-                FILE_FLAG_OVERLAPPED,
-            )
-        };
-        if handle.0 == INVALID_HANDLE_VALUE {
-            panic!("could not set stdin to overlapped");
-        }
-        */
-
-        return None;
-
         Some(Self {
-            reader: AsyncReader::new(handle),
-            //handle,
+            handle,
             buf: Box::new([0; ClientApplication::stdin_buffer_len()]),
         })
     }
 
     pub fn wait_handle(&self) -> HANDLE {
-        self.reader.event().handle()
-        //self.handle.0
+        self.handle.0
     }
 
     pub fn read(&mut self) -> Option<&[u8]> {
-        /*
-        match read(&self.handle, &mut self.buf[..], None) {
-            ReadResult::Waiting => None,
-            ReadResult::Ok(len) => Some(&self.buf[..len]),
-            ReadResult::Err => Some(&[]),
-        }
-        // */
+        let mut read_len = 0;
+        let result = unsafe {
+            ReadFile(
+                self.handle.0,
+                self.buf.as_mut_ptr() as _,
+                self.buf.len() as _,
+                &mut read_len,
+                std::ptr::null_mut(),
+            )
+        };
 
-        //*
-        match self.reader.read_async(&mut self.buf[..]) {
-            ReadResult::Waiting => None,
-            ReadResult::Err => Some(&[]),
-            ReadResult::Ok(len) => Some(&self.buf[..len]),
+        if result == FALSE {
+            match get_last_error() {
+                ERROR_IO_PENDING => None,
+                _ => Some(&[]),
+            }
+        } else {
+            Some(&self.buf[..read_len as usize])
         }
-        // */
     }
 }
 
@@ -1353,13 +1354,15 @@ fn run_client(args: Args, pipe_path: &[u16]) {
         }
     }
 
+    let ctrlc_event = CtrlCEvent::new();
+
     let mut console_event_buf = [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN];
     let mut keys = Vec::with_capacity(CLIENT_EVENT_BUFFER_LEN);
 
     let mut stdin_pipe = get_std_handle(STD_INPUT_HANDLE).and_then(StdinPipe::new);
 
-    let mut wait_handles = [NULL; 3];
-    let mut wait_source_map = [0; 3];
+    let mut wait_handles = [NULL; 4];
+    let mut wait_source_map = [0; 4];
     let mut wait_handles_len = 0;
 
     if let Some(handle) = &console_input_handle {
@@ -1368,13 +1371,17 @@ fn run_client(args: Args, pipe_path: &[u16]) {
         wait_handles_len += 1;
     }
 
-    wait_handles[wait_handles_len] = connection.event().handle();
+    wait_handles[wait_handles_len] = ctrlc_event.event().handle();
     wait_source_map[wait_handles_len] = 1;
+    wait_handles_len += 1;
+
+    wait_handles[wait_handles_len] = connection.event().handle();
+    wait_source_map[wait_handles_len] = 2;
     wait_handles_len += 1;
 
     if let Some(pipe) = &stdin_pipe {
         wait_handles[wait_handles_len] = pipe.wait_handle();
-        wait_source_map[wait_handles_len] = 2;
+        wait_source_map[wait_handles_len] = 3;
         wait_handles_len += 1;
     }
 
@@ -1399,11 +1406,12 @@ fn run_client(args: Args, pipe_path: &[u16]) {
                     parse_console_events(console_events, &mut keys, &mut resize);
                 }
             }
-            1 => match connection.read_async() {
+            1 => keys.push(Key::Ctrl('c')),
+            2 => match connection.read_async() {
                 Ok(bytes) => server_bytes = bytes,
                 Err(()) => break,
             },
-            2 => stdin_bytes = stdin_pipe.as_mut().and_then(StdinPipe::read),
+            3 => stdin_bytes = stdin_pipe.as_mut().and_then(StdinPipe::read),
             _ => unreachable!(),
         }
 

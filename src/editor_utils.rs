@@ -314,7 +314,10 @@ mod tests {
             ("f", ""),
             residue.receive_bytes(&mut Default::default(), &message[6..])
         );
-        assert_eq!(("", ""), residue.receive_bytes(&mut Default::default(), &[]));
+        assert_eq!(
+            ("", ""),
+            residue.receive_bytes(&mut Default::default(), &[])
+        );
 
         let message = "áéíóú".as_bytes();
         assert_eq!(10, message.len());
@@ -339,6 +342,9 @@ mod tests {
             ("ú", ""),
             residue.receive_bytes(&mut Default::default(), &message[10..])
         );
-        assert_eq!(("", ""), residue.receive_bytes(&mut Default::default(), &[]));
+        assert_eq!(
+            ("", ""),
+            residue.receive_bytes(&mut Default::default(), &[])
+        );
     }
 }

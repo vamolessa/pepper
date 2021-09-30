@@ -101,14 +101,8 @@ impl Client {
     }
 
     pub fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
-        /*
         let mut buf = Default::default();
-        let (pending_text, text) = self
-            .stdin_residual_bytes
-            .receive_bytes(&mut buf, bytes);
-        */
-        let pending_text = "";
-        let text = std::str::from_utf8(bytes).unwrap_or("");
+        let (pending_text, text) = self.stdin_residual_bytes.receive_bytes(&mut buf, bytes);
 
         let buffer_handle = match self.stdin_buffer_handle() {
             Some(handle) => handle,
@@ -327,3 +321,4 @@ impl ClientManager {
         self.clients.iter_mut().filter(|c| c.active)
     }
 }
+
