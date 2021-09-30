@@ -40,10 +40,9 @@ use winapi::{
         sysinfoapi::GetSystemDirectoryW,
         winbase::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED,
-            FILE_TYPE_CHAR, FILE_TYPE_DISK, FILE_TYPE_PIPE, GMEM_MOVEABLE, INFINITE,
-            NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
-            PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
-            STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
+            FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX,
+            PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES,
+            STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
             GetConsoleScreenBufferInfo, CTRL_C_EVENT, ENABLE_PROCESSED_OUTPUT,
@@ -349,20 +348,9 @@ impl AsyncReader {
     }
 }
 
-enum FileType {
-    Console,
-    DiskFile,
-    Pipe,
-}
-impl FileType {
-    pub fn of(handle: &Handle) -> Self {
-        match unsafe { GetFileType(handle.0) } {
-            FILE_TYPE_CHAR => Self::Console,
-            FILE_TYPE_DISK => Self::DiskFile,
-            FILE_TYPE_PIPE => Self::Pipe,
-            _ => unreachable!(),
-        }
-    }
+fn is_pipped(handle: &Handle) -> bool {
+    let result = unsafe { GetFileType(handle.0) };
+    result != FILE_TYPE_CHAR
 }
 
 fn create_file(path: &[u16], share_mode: DWORD, flags: DWORD) -> Option<Handle> {
@@ -1208,10 +1196,8 @@ struct StdinPipe {
 }
 impl StdinPipe {
     pub fn new(handle: Handle) -> Option<Self> {
-        match FileType::of(&handle) {
-            FileType::Console => return None,
-            FileType::DiskFile => (),
-            FileType::Pipe => (),
+        if !is_pipped(&handle) {
+            return None;
         }
 
         Some(Self {
@@ -1361,10 +1347,12 @@ fn run_client(args: Args, pipe_path: &[u16]) {
 
     let mut stdin_pipe = get_std_handle(STD_INPUT_HANDLE).and_then(StdinPipe::new);
     let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
-    if output_handle.is_some() {
-        let (_, bytes) = application.update(None, &[], Some(&[]), &[]);
-        if !connection.write(bytes) {
-            return;
+    if let Some(handle) = &output_handle {
+        if is_pipped(&handle) {
+            let (_, bytes) = application.update(None, &[], Some(&[]), &[]);
+            if !connection.write(bytes) {
+                return;
+            }
         }
     }
 
@@ -1433,7 +1421,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
     }
 
     if let Some(handle) = output_handle {
-        if !matches!(FileType::of(&handle), FileType::Console) {
+        if is_pipped(&handle) {
             let bytes = application.get_stdout_bytes();
             write_all_bytes(&handle, bytes);
         }
