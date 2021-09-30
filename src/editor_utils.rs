@@ -319,6 +319,26 @@ mod tests {
             residue.receive_bytes(&mut Default::default(), &[])
         );
 
+        let message1 = "abcdef".as_bytes();
+        let message2 = "123456".as_bytes();
+        let mut residue = ResidualStrBytes::default();
+        assert_eq!(
+            ["", "abcde"],
+            residue.receive_bytes(&mut Default::default(), &message1)
+        );
+        assert_eq!(
+            ["f", "12345"],
+            residue.receive_bytes(&mut Default::default(), &message2)
+        );
+        assert_eq!(
+            ["6", ""],
+            residue.receive_bytes(&mut Default::default(), &[])
+        );
+        assert_eq!(
+            ["", ""],
+            residue.receive_bytes(&mut Default::default(), &[])
+        );
+
         let message = "áéíóú".as_bytes();
         assert_eq!(10, message.len());
         let mut residue = ResidualStrBytes::default();
