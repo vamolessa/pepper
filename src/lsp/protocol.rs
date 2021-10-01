@@ -252,24 +252,34 @@ pub struct DocumentPosition {
     pub character: u32,
 }
 impl DocumentPosition {
-    // TODO: implement
     pub fn from_buffer_position(position: BufferPosition, buffer: &BufferContent) -> Self {
         let line = buffer.line_at(position.line_index as _).as_str();
-        //line.encode_utf16().enumerate().position(|(i, _)| );
+        let column = line[..position.column_byte_index as usize]
+            .encode_utf16()
+            .count();
 
         Self {
             line: position.line_index as _,
-            character: position.column_byte_index as _,
+            character: column as _,
         }
     }
 
     // TODO: implement
     pub fn into_buffer_position(self, buffer: &BufferContent) -> BufferPosition {
         let line = buffer.line_at(self.line as _).as_str();
-    
+        let mut utf8_column = 0;
+        let mut utf16_column = 0;
+        for c in line.chars() {
+            if utf16_column == self.character as _ {
+                break;
+            }
+            utf8_column += c.len_utf8();
+            utf16_column += c.len_utf16();
+        }
+
         BufferPosition {
             line_index: self.line as _,
-            column_byte_index: self.character as _,
+            column_byte_index: utf8_column as _,
         }
     }
 
