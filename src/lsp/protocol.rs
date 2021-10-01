@@ -264,7 +264,6 @@ impl DocumentPosition {
         }
     }
 
-    // TODO: implement
     pub fn into_buffer_position(self, buffer: &BufferContent) -> BufferPosition {
         let line = buffer.line_at(self.line as _).as_str();
         let mut utf8_column = 0;
