@@ -307,7 +307,8 @@ impl DiagnosticRange {
     }
 
     pub fn compare(&self, other: &Self) -> Ordering {
-        self.diagnostic_position_from().compare(&other.diagnostic_position_from())
+        self.diagnostic_position_from()
+            .compare(&other.diagnostic_position_from())
     }
 }
 
@@ -3021,4 +3022,3 @@ impl ClientManager {
         }
     }
 }
-

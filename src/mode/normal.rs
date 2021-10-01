@@ -1747,7 +1747,9 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         if forward {
             diagnostics[0].range.diagnostic_position_from()
         } else {
-            diagnostics[diagnostics.len() - 1].range.diagnostic_position_from()
+            diagnostics[diagnostics.len() - 1]
+                .range
+                .diagnostic_position_from()
         }
     }
 
@@ -1823,4 +1825,3 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         position,
     });
 }
-

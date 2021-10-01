@@ -253,31 +253,35 @@ pub struct DocumentPosition {
 }
 impl DocumentPosition {
     pub fn from_buffer_position(position: BufferPosition, buffer: &BufferContent) -> Self {
-        let line = buffer.line_at(position.line_index as _).as_str();
-        let column = line[..position.column_byte_index as usize]
-            .encode_utf16()
-            .count();
+        let line_index = position.line_index.min((buffer.line_count() - 1) as _);
+        let line = buffer.line_at(line_index as _).as_str();
+        let mut i = line.len().min(position.column_byte_index as _);
+        while !line.is_char_boundary(i) {
+            i += 1;
+        }
+        let column = line[..i].encode_utf16().count();
 
         Self {
-            line: position.line_index as _,
+            line: line_index,
             character: column as _,
         }
     }
 
     pub fn into_buffer_position(self, buffer: &BufferContent) -> BufferPosition {
-        let line = buffer.line_at(self.line as _).as_str();
-        let mut utf8_column = 0;
+        let line_index = self.line.min((buffer.line_count() - 1) as _);
+        let line = buffer.line_at(line_index as _).as_str();
         let mut utf16_column = 0;
-        for c in line.chars() {
-            if utf16_column == self.character as _ {
+        let mut chars = line.chars();
+        while let Some(c) = chars.next() {
+            if utf16_column >= self.character as _ {
                 break;
             }
-            utf8_column += c.len_utf8();
             utf16_column += c.len_utf16();
         }
+        let utf8_column = line.len() - chars.as_str().len();
 
         BufferPosition {
-            line_index: self.line as _,
+            line_index,
             column_byte_index: utf8_column as _,
         }
     }
@@ -1115,4 +1119,3 @@ impl PendingRequestColection {
         None
     }
 }
-
