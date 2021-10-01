@@ -1340,8 +1340,7 @@ impl BufferCollection {
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Buffer(index),
             command,
-            //buf_len: 4 * 1024,
-            buf_len: 256,
+            buf_len: 4 * 1024,
         });
     }
 
@@ -1376,10 +1375,11 @@ impl BufferCollection {
         let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
         if buffer.alive {
             process.position = buffer.content().saturate_position(process.position);
-            let position = process.position;
+            let mut position = process.position;
 
             for text in texts {
                 let insert_range = buffer.insert_text(word_database, position, text, events);
+                position = position.insert(insert_range);
                 for process in &mut self.insert_processes {
                     if process.buffer_handle == buffer.handle() {
                         process.position = process.position.insert(insert_range);
@@ -1404,10 +1404,11 @@ impl BufferCollection {
         let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
         if buffer.alive {
             process.position = buffer.content().saturate_position(process.position);
-            let position = process.position;
+            let mut position = process.position;
 
             for text in texts {
                 let insert_range = buffer.insert_text(word_database, position, text, events);
+                position = position.insert(insert_range);
                 for process in &mut self.insert_processes {
                     if process.buffer_handle == buffer.handle() {
                         process.position = process.position.insert(insert_range);
