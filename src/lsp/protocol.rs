@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCapabilities, BufferHandle},
+    buffer::{BufferCapabilities, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
     editor_utils::MessageKind,
@@ -252,6 +252,27 @@ pub struct DocumentPosition {
     pub character: u32,
 }
 impl DocumentPosition {
+    // TODO: implement
+    pub fn from_buffer_position(position: BufferPosition, buffer: &BufferContent) -> Self {
+        let line = buffer.line_at(position.line_index as _).as_str();
+        //line.encode_utf16().enumerate().position(|(i, _)| );
+
+        Self {
+            line: position.line_index as _,
+            character: position.column_byte_index as _,
+        }
+    }
+
+    // TODO: implement
+    pub fn into_buffer_position(self, buffer: &BufferContent) -> BufferPosition {
+        let line = buffer.line_at(self.line as _).as_str();
+    
+        BufferPosition {
+            line_index: self.line as _,
+            column_byte_index: self.character as _,
+        }
+    }
+
     pub fn to_json_value(self, json: &mut Json) -> JsonValue {
         let mut value = JsonObject::default();
         value.set("line".into(), JsonValue::Integer(self.line as _), json);
@@ -261,24 +282,6 @@ impl DocumentPosition {
             json,
         );
         value.into()
-    }
-}
-// TODO: handle utf8 to utf16
-impl From<BufferPosition> for DocumentPosition {
-    fn from(position: BufferPosition) -> Self {
-        Self {
-            line: position.line_index as _,
-            character: position.column_byte_index as _,
-        }
-    }
-}
-// TODO: handle utf16 to utf8
-impl From<DocumentPosition> for BufferPosition {
-    fn from(position: DocumentPosition) -> Self {
-        Self {
-            line_index: position.line as _,
-            column_byte_index: position.character as _,
-        }
     }
 }
 impl<'json> FromJson<'json> for DocumentPosition {
@@ -305,24 +308,25 @@ pub struct DocumentRange {
     pub end: DocumentPosition,
 }
 impl DocumentRange {
+    pub fn from_buffer_range(range: BufferRange, buffer: &BufferContent) -> Self {
+        Self {
+            start: DocumentPosition::from_buffer_position(range.from, buffer),
+            end: DocumentPosition::from_buffer_position(range.to, buffer),
+        }
+    }
+
+    pub fn into_buffer_range(self, buffer: &BufferContent) -> BufferRange {
+        BufferRange::between(
+            self.start.into_buffer_position(buffer),
+            self.end.into_buffer_position(buffer),
+        )
+    }
+
     pub fn to_json_value(self, json: &mut Json) -> JsonValue {
         let mut value = JsonObject::default();
         value.set("start".into(), self.start.to_json_value(json), json);
         value.set("end".into(), self.end.to_json_value(json), json);
         value.into()
-    }
-}
-impl From<BufferRange> for DocumentRange {
-    fn from(range: BufferRange) -> Self {
-        Self {
-            start: range.from.into(),
-            end: range.to.into(),
-        }
-    }
-}
-impl From<DocumentRange> for BufferRange {
-    fn from(range: DocumentRange) -> Self {
-        BufferRange::between(range.start.into(), range.end.into())
     }
 }
 impl<'json> FromJson<'json> for DocumentRange {
@@ -390,7 +394,7 @@ impl TextEdit {
                 Err(_) => continue,
             };
 
-            let mut delete_range: BufferRange = edit.range.into();
+            let mut delete_range: BufferRange = edit.range.into_buffer_range(buffer.content());
             let text = edit.new_text.as_str(&json);
 
             for (d, i) in temp_edits.iter() {
@@ -1102,3 +1106,4 @@ impl PendingRequestColection {
         None
     }
 }
+

@@ -1,4 +1,5 @@
 use std::{
+    cmp::{Ord, Ordering},
     fmt,
     fs::File,
     io,
@@ -253,21 +254,86 @@ impl<'json> FromJson<'json> for ServerCapabilities {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum DiagnosticPosition {
+    BufferPosition(BufferPosition),
+    DocumentPosition(DocumentPosition),
+}
+impl DiagnosticPosition {
+    pub fn to_buffer_position(&self, buffer: &BufferContent) -> BufferPosition {
+        match self {
+            &Self::BufferPosition(position) => position,
+            &Self::DocumentPosition(position) => position.into_buffer_position(buffer),
+        }
+    }
+
+    pub fn compare(&self, other: &Self) -> Ordering {
+        let position = match self {
+            &Self::BufferPosition(position) => position,
+            Self::DocumentPosition(position) => BufferPosition {
+                line_index: position.line,
+                column_byte_index: position.character,
+            },
+        };
+        let other = match other {
+            &Self::BufferPosition(position) => position,
+            Self::DocumentPosition(position) => BufferPosition {
+                line_index: position.line,
+                column_byte_index: position.character,
+            },
+        };
+        position.cmp(&other)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum DiagnosticRange {
+    BufferRange(BufferRange),
+    DocumentRange(DocumentRange),
+}
+impl DiagnosticRange {
+    pub fn diagnostic_position_from(&self) -> DiagnosticPosition {
+        match self {
+            Self::BufferRange(range) => DiagnosticPosition::BufferPosition(range.from),
+            Self::DocumentRange(range) => DiagnosticPosition::DocumentPosition(range.start),
+        }
+    }
+
+    pub fn to_buffer_range(&self, buffer: &BufferContent) -> BufferRange {
+        match self {
+            &Self::BufferRange(range) => range,
+            Self::DocumentRange(range) => range.into_buffer_range(buffer),
+        }
+    }
+
+    pub fn compare(&self, other: &Self) -> Ordering {
+        self.diagnostic_position_from().compare(&other.diagnostic_position_from())
+    }
+}
+
 pub struct Diagnostic {
     pub message: String,
-    pub range: BufferRange,
-    pub data: Vec<u8>,
+    pub range: DiagnosticRange,
+    data: Vec<u8>,
 }
 impl Diagnostic {
-    pub fn as_document_diagnostic(&self, json: &mut Json) -> DocumentDiagnostic {
+    pub fn as_document_diagnostic(
+        &self,
+        buffer: &BufferContent,
+        json: &mut Json,
+    ) -> DocumentDiagnostic {
         let mut reader = io::Cursor::new(&self.data);
         let data = match json.read(&mut reader) {
             Ok(value) => value,
             Err(_) => JsonValue::Null,
         };
+        let range = match self.range {
+            DiagnosticRange::BufferRange(range) => DocumentRange::from_buffer_range(range, buffer),
+            DiagnosticRange::DocumentRange(range) => range,
+        };
         DocumentDiagnostic {
             message: json.create_string(&self.message),
-            range: self.range.into(),
+            range,
             data,
         }
     }
@@ -280,9 +346,19 @@ struct BufferDiagnosticCollection {
     len: usize,
 }
 impl BufferDiagnosticCollection {
-    pub fn add(&mut self, diagnostic: DocumentDiagnostic, json: &Json) {
+    pub fn add(
+        &mut self,
+        diagnostic: DocumentDiagnostic,
+        buffer: Option<&BufferContent>,
+        json: &Json,
+    ) {
         let message = diagnostic.message.as_str(json);
-        let range = diagnostic.range.into();
+        let range = match buffer {
+            Some(buffer) => {
+                DiagnosticRange::BufferRange(diagnostic.range.into_buffer_range(buffer))
+            }
+            None => DiagnosticRange::DocumentRange(diagnostic.range),
+        };
 
         if self.len < self.diagnostics.len() {
             let diagnostic = &mut self.diagnostics[self.len];
@@ -303,7 +379,8 @@ impl BufferDiagnosticCollection {
     }
 
     pub fn sort(&mut self) {
-        self.diagnostics.sort_unstable_by_key(|d| d.range.from);
+        self.diagnostics
+            .sort_unstable_by(|a, b| a.range.compare(&b.range));
     }
 }
 
@@ -676,9 +753,9 @@ impl Client {
 
         helper::send_pending_did_change(self, editor, platform);
 
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(buffer_position);
+        let buffer = editor.buffers.get(buffer_handle);
+        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let position = DocumentPosition::from_buffer_position(buffer_position, buffer.content());
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -704,9 +781,9 @@ impl Client {
 
         helper::send_pending_did_change(self, editor, platform);
 
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(buffer_position);
+        let buffer = editor.buffers.get(buffer_handle);
+        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let position = DocumentPosition::from_buffer_position(buffer_position, buffer.content());
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -728,9 +805,9 @@ impl Client {
     ) -> JsonObject {
         helper::send_pending_did_change(self, editor, platform);
 
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(buffer_position);
+        let buffer = editor.buffers.get(buffer_handle);
+        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let position = DocumentPosition::from_buffer_position(buffer_position, buffer.content());
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -810,9 +887,9 @@ impl Client {
 
         helper::send_pending_did_change(self, editor, platform);
 
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(buffer_position);
+        let buffer = editor.buffers.get(buffer_handle);
+        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let position = DocumentPosition::from_buffer_position(buffer_position, buffer.content());
 
         let mut context = JsonObject::default();
         context.set("includeDeclaration".into(), true.into(), &mut self.json);
@@ -849,9 +926,9 @@ impl Client {
 
         helper::send_pending_did_change(self, editor, platform);
 
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(buffer_position);
+        let buffer = editor.buffers.get(buffer_handle);
+        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let position = DocumentPosition::from_buffer_position(buffer_position, buffer.content());
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -898,9 +975,9 @@ impl Client {
 
         helper::send_pending_did_change(self, editor, platform);
 
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(buffer_position);
+        let buffer = editor.buffers.get(buffer_handle);
+        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let position = DocumentPosition::from_buffer_position(buffer_position, buffer.content());
         let new_name = self.json.create_string(editor.read_line.input());
 
         let mut params = JsonObject::default();
@@ -929,15 +1006,17 @@ impl Client {
 
         helper::send_pending_did_change(self, editor, platform);
 
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
+        let buffer = editor.buffers.get(buffer_handle);
+        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
 
         let mut diagnostics = JsonArray::default();
         for diagnostic in self.diagnostics.buffer_diagnostics(buffer_handle) {
-            if diagnostic.range.from <= range.from && range.from < diagnostic.range.to
-                || diagnostic.range.from <= range.to && range.to < diagnostic.range.to
+            let diagnostic_range = diagnostic.range.to_buffer_range(buffer.content());
+            if diagnostic_range.from <= range.from && range.from < diagnostic_range.to
+                || diagnostic_range.from <= range.to && range.to < diagnostic_range.to
             {
-                let diagnostic = diagnostic.as_document_diagnostic(&mut self.json);
+                let diagnostic =
+                    diagnostic.as_document_diagnostic(buffer.content(), &mut self.json);
                 diagnostics.push(diagnostic.to_json_value(&mut self.json), &mut self.json);
             }
         }
@@ -949,7 +1028,7 @@ impl Client {
         params.set("textDocument".into(), text_document.into(), &mut self.json);
         params.set(
             "range".into(),
-            DocumentRange::from(range).to_json_value(&mut self.json),
+            DocumentRange::from_buffer_range(range, buffer.content()).to_json_value(&mut self.json),
             &mut self.json,
         );
         params.set("context".into(), context.into(), &mut self.json);
@@ -1060,12 +1139,10 @@ impl Client {
         if let Ok(position) = find_symbol_position(symbols, &self.json, index) {
             NavigationHistory::save_snapshot(clients.get_mut(client_handle), &editor.buffer_views);
 
-            let position = position.into();
-            let mut cursors = editor
-                .buffer_views
-                .get_mut(buffer_view_handle)
-                .cursors
-                .mut_guard();
+            let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
+            let buffer = editor.buffers.get(buffer_view.buffer_handle);
+            let position = position.into_buffer_position(buffer.content());
+            let mut cursors = buffer_view.cursors.mut_guard();
             cursors.clear();
             cursors.add(Cursor {
                 anchor: position,
@@ -1135,12 +1212,10 @@ impl Client {
                         &mut editor.events,
                     );
 
-                    let position = symbol.range.start.into();
-                    let mut cursors = editor
-                        .buffer_views
-                        .get_mut(buffer_view_handle)
-                        .cursors
-                        .mut_guard();
+                    let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
+                    let buffer = editor.buffers.get(buffer_view.buffer_handle);
+                    let position = symbol.range.start.into_buffer_position(buffer.content());
+                    let mut cursors = buffer_view.cursors.mut_guard();
                     cursors.clear();
                     cursors.add(Cursor {
                         anchor: position,
@@ -1206,9 +1281,9 @@ impl Client {
 
         helper::send_pending_did_change(self, editor, platform);
 
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(buffer_position);
+        let buffer = editor.buffers.get(buffer_handle);
+        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let position = DocumentPosition::from_buffer_position(buffer_position, buffer.content());
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -1412,11 +1487,12 @@ impl Client {
                             }
                             if let Some(range) = params.selection {
                                 let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
+                                let buffer = editor.buffers.get(buffer_view.buffer_handle);
                                 let mut cursors = buffer_view.cursors.mut_guard();
                                 cursors.clear();
                                 cursors.add(Cursor {
-                                    anchor: range.start.into(),
-                                    position: range.end.into(),
+                                    anchor: range.start.into_buffer_position(buffer.content()),
+                                    position: range.end.into_buffer_position(buffer.content()),
                                 });
                             }
                             true
@@ -1515,9 +1591,12 @@ impl Client {
                 let diagnostics = self
                     .diagnostics
                     .diagnostics_at_path(editor, &self.root, path);
+                let buffer = diagnostics
+                    .buffer_handle
+                    .map(|h| editor.buffers.get(h).content());
                 for diagnostic in params.diagnostics.elements(&self.json) {
                     let diagnostic = DocumentDiagnostic::from_json(diagnostic, &self.json)?;
-                    diagnostics.add(diagnostic, &self.json);
+                    diagnostics.add(diagnostic, buffer, &self.json);
                 }
                 diagnostics.sort();
                 self.diagnostics.clear_empty();
@@ -1735,7 +1814,8 @@ impl Client {
                         .find_with_path(&editor.current_directory, path)
                         .map(|h| editor.buffers.get(h))
                     {
-                        for text in buffer.content().text_range(location.range.into()) {
+                        let range = location.range.into_buffer_range(buffer.content());
+                        for text in buffer.content().text_range(range) {
                             buffer_name.push_str(text);
                         }
                         break;
@@ -1791,8 +1871,17 @@ impl Client {
                         None => continue,
                     };
 
+                    if last_path != path {
+                        context_buffer.clear();
+                        if let Ok(file) = File::open(path) {
+                            let mut reader = io::BufReader::new(file);
+                            let _ = context_buffer.read(&mut reader);
+                        }
+                        last_path = path;
+                    }
+
                     use fmt::Write;
-                    let position: BufferPosition = location.range.start.into();
+                    let position = location.range.start.into_buffer_position(&context_buffer);
                     let _ = writeln!(
                         text,
                         "{}:{},{}",
@@ -1802,14 +1891,6 @@ impl Client {
                     );
 
                     if context_len > 0 {
-                        if last_path != path {
-                            context_buffer.clear();
-                            if let Ok(file) = File::open(path) {
-                                let mut reader = io::BufReader::new(file);
-                                let _ = context_buffer.read(&mut reader);
-                            }
-                        }
-
                         let surrounding_len = context_len - 1;
                         let start =
                             (location.range.start.line as usize).saturating_sub(surrounding_len);
@@ -1837,7 +1918,6 @@ impl Client {
                     );
                     text.clear();
 
-                    last_path = path;
                     count += 1;
                 }
 
@@ -1915,7 +1995,7 @@ impl Client {
 
                 let buffer = editor.buffers.get(buffer_handle);
 
-                let mut range = range.into();
+                let mut range = range.into_buffer_range(buffer.content());
                 if let Some(true) = default_behaviour {
                     let word = buffer.content().word_at(buffer_position);
                     range = BufferRange::between(word.position, word.end_position());
@@ -2364,12 +2444,10 @@ impl Client {
                             &mut editor.events,
                         );
 
-                        let position = location.range.start.into();
-                        let mut cursors = editor
-                            .buffer_views
-                            .get_mut(buffer_view_handle)
-                            .cursors
-                            .mut_guard();
+                        let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
+                        let buffer = editor.buffers.get(buffer_view.buffer_handle);
+                        let position = location.range.start.into_buffer_position(buffer.content());
+                        let mut cursors = buffer_view.cursors.mut_guard();
                         cursors.clear();
                         cursors.add(Cursor {
                             anchor: position,
@@ -2383,6 +2461,9 @@ impl Client {
                 }
             }
             DefinitionLocation::Many(locations) => {
+                let mut document_buffer = BufferContent::new();
+                let mut last_path = "";
+
                 editor.picker.clear();
                 for location in locations
                     .elements(&self.json)
@@ -2397,7 +2478,16 @@ impl Client {
                         None => continue,
                     };
 
-                    let position: BufferPosition = location.range.start.into();
+                    if last_path != path {
+                        document_buffer.clear();
+                        if let Ok(file) = File::open(path) {
+                            let mut reader = io::BufReader::new(file);
+                            let _ = document_buffer.read(&mut reader);
+                        }
+                        last_path = path;
+                    }
+
+                    let position = location.range.start.into_buffer_position(&document_buffer);
                     editor.picker.add_custom_entry_fmt(format_args!(
                         "{}:{},{}",
                         path,
@@ -2529,7 +2619,8 @@ mod helper {
                         let mut change_event = JsonObject::default();
 
                         let edit_range =
-                            DocumentRange::from(edit.buffer_range).to_json_value(&mut client.json);
+                            DocumentRange::from_buffer_range(edit.buffer_range, buffer.content())
+                                .to_json_value(&mut client.json);
                         change_event.set("range".into(), edit_range, &mut client.json);
 
                         let edit_text_range =
@@ -2930,3 +3021,4 @@ impl ClientManager {
         }
     }
 }
+
