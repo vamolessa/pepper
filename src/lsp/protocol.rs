@@ -272,11 +272,14 @@ impl DocumentPosition {
         let line = buffer.line_at(line_index as _).as_str();
         let mut utf16_column = 0;
         let mut chars = line.chars();
-        while let Some(c) = chars.next() {
+        loop {
             if utf16_column >= self.character as _ {
                 break;
             }
-            utf16_column += c.len_utf16();
+            match chars.next() {
+                Some(c) => utf16_column += c.len_utf16(),
+                None => break,
+            }
         }
         let utf8_column = line.len() - chars.as_str().len();
 
@@ -1119,3 +1122,4 @@ impl PendingRequestColection {
         None
     }
 }
+

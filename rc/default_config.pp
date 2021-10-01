@@ -30,15 +30,15 @@ alias c close
 alias ca close-all
 
 syntax "**/*.refs"
-syntax-keywords "^%w:{%a/%._-!:}|{%a/%._-!:}"
+syntax-keywords "^{%w/%._-!:}"
 syntax-symbols ","
-syntax-literals "%d"
-syntax-texts "{%w-_}"
+syntax-literals %d{%d}
+syntax-texts {%w-_}
 
 syntax "**/*.pp"
 syntax-keywords ""
 syntax-strings [["{!".}|'{!'.}|%[%[{!(%]%]).}]]
-syntax-comments "#{.}"
+syntax-comments ^#{.}
 
 # https://doc.rust-lang.org/reference/keywords.html
 syntax "**/*.rs"

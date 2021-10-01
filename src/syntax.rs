@@ -518,6 +518,21 @@ mod tests {
     }
 
     #[test]
+    fn beginning_anchor_syntax() {
+        let mut syntax = Syntax::new();
+        syntax.set_rule(TokenKind::Keyword, "^{%w}").unwrap();
+        
+        let mut tokens = Vec::new();
+        let line = "first second";
+        let parse_state = syntax.parse_line(line, LineParseState::Finished, &mut tokens);
+        
+        assert_eq!(LineParseState::Finished, parse_state);
+        assert_eq!(2, tokens.len());
+        assert_token("first", TokenKind::Keyword, line, &tokens[0]);
+        assert_token(" second", TokenKind::Text, line, &tokens[1]);
+    }
+
+    #[test]
     fn multiline_syntax() {
         let mut syntax = Syntax::new();
         syntax.set_rule(TokenKind::Comment, "/*{!(*/).$}").unwrap();
