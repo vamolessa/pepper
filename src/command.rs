@@ -11,7 +11,7 @@ use crate::{
     keymap::ParseKeyMapError,
     pattern::PatternError,
     platform::Platform,
-    plugin::{get_plugin_api, PluginCommandFn, PluginHandle},
+    plugin,
 };
 
 mod builtin;
@@ -99,7 +99,7 @@ pub struct CommandContext<'state, 'command> {
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
-    pub plugin_handle: PluginHandle,
+    pub plugin_handle: plugin::PluginHandle,
 
     pub args: CommandArgs<'command>,
     pub bang: bool,
@@ -239,7 +239,7 @@ pub type BuiltinCommandFn = fn(ctx: &mut CommandContext) -> Result<(), CommandEr
 #[derive(Clone, Copy)]
 enum CommandFn {
     BuiltinCommandFn(BuiltinCommandFn),
-    PluginCommandFn(PluginCommandFn, PluginHandle),
+    PluginCommandFn(plugin::api::PluginCommandFn, plugin::PluginHandle),
 }
 
 pub struct Command {
@@ -345,10 +345,10 @@ impl CommandManager {
 
     pub fn register_plugin_command(
         &mut self,
-        handle: PluginHandle,
+        handle: plugin::PluginHandle,
         name: &'static str,
         completions: &'static [CompletionSource],
-        command_fn: PluginCommandFn,
+        command_fn: plugin::api::PluginCommandFn,
     ) {
         self.commands.push(Command {
             name,
@@ -461,7 +461,7 @@ impl CommandManager {
             platform,
             clients,
             client_handle,
-            plugin_handle: PluginHandle::default(),
+            plugin_handle: plugin::PluginHandle::default(),
             args: CommandArgs(tokenizer),
             bang,
             flow: EditorControlFlow::Continue,
@@ -471,7 +471,7 @@ impl CommandManager {
             CommandFn::PluginCommandFn(f, handle) => {
                 ctx.plugin_handle = handle;
                 let userdata = ctx.editor.plugins.get_userdata(handle);
-                let error = f(get_plugin_api(), &mut ctx, userdata);
+                let error = f(plugin::api(), &mut ctx, userdata);
                 if !error.is_null() {
                     return match unsafe { CStr::from_ptr(error) }.to_str() {
                         Ok(error) => Err(CommandError::PluginError(error)),

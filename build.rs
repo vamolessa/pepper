@@ -12,7 +12,7 @@ fn main() {
         .with_include_guard("PEPPER_PLUGIN_API_H")
         .with_no_includes()
         .with_documentation(true)
-        .with_style(cbindgen::Style::Tag)
+        .with_style(cbindgen::Style::Both)
         .with_item_prefix("Pepper")
         .include_item("PluginApi")
         .include_item("PluginCommandFn")

@@ -1,16 +1,14 @@
 use crate::command::CommandContext;
 
-mod api;
+pub mod api;
 mod api_impl;
 
-pub use api::{PluginApi, PluginCommandFn, PluginUserData};
+pub type PluginInitFn = extern "C" fn(api: &api::PluginApi, ctx: &mut CommandContext) -> Plugin;
+pub type PluginDeinitFn = extern "C" fn(userdata: api::PluginUserData);
 
-pub type PluginInitFn = extern "C" fn(api: &PluginApi, ctx: &mut CommandContext) -> Plugin;
-pub type PluginDeinitFn = extern "C" fn(userdata: PluginUserData);
-
-pub fn get_plugin_api() -> &'static PluginApi {
+pub fn api() -> &'static api::PluginApi {
     use api_impl::*;
-    static PLUGIN_API: PluginApi = PluginApi {
+    static PLUGIN_API: api::PluginApi = api::PluginApi {
         register_command,
         write_to_statusbar,
     };
@@ -21,7 +19,7 @@ pub fn get_plugin_api() -> &'static PluginApi {
 pub struct PluginHandle(u32);
 
 pub struct Plugin {
-    pub userdata: PluginUserData,
+    pub userdata: api::PluginUserData,
     pub deinit_fn: Option<PluginDeinitFn>,
 }
 
@@ -33,11 +31,12 @@ impl PluginCollection {
     pub fn load(ctx: &mut CommandContext, init_fn: PluginInitFn) {
         let handle = PluginHandle(ctx.editor.plugins.plugins.len() as _);
         ctx.plugin_handle = handle;
-        let plugin = init_fn(get_plugin_api(), ctx);
+        let plugin = init_fn(api(), ctx);
         ctx.editor.plugins.plugins.push(plugin);
     }
 
-    pub fn get_userdata(&self, handle: PluginHandle) -> PluginUserData {
+    pub fn get_userdata(&self, handle: PluginHandle) -> api::PluginUserData {
         self.plugins[handle.0 as usize].userdata
     }
 }
+

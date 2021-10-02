@@ -1,10 +1,10 @@
-use std::os::raw::{c_char, c_int};
+use std::os::raw::{c_uint};
 
-use crate::{command::CommandContext, editor_utils::MessageKind, plugin::PluginCommandFn};
+use crate::{command::CommandContext, editor_utils::MessageKind, plugin::api::{StringSlice, PluginCommandFn}};
 
 pub extern "C" fn register_command(
     ctx: &mut CommandContext,
-    name: *const c_char,
+    name: StringSlice,
     command_fn: PluginCommandFn,
 ) {
     let name = helper::to_str(name);
@@ -15,8 +15,8 @@ pub extern "C" fn register_command(
 
 pub extern "C" fn write_to_statusbar(
     ctx: &mut CommandContext,
-    level: c_int,
-    message: *const c_char,
+    level: c_uint,
+    message: StringSlice,
 ) {
     let kind = match level {
         0 => MessageKind::Info,
@@ -28,22 +28,23 @@ pub extern "C" fn write_to_statusbar(
 }
 
 mod helper {
-    use std::{ffi::CStr, os::raw::c_char, process};
+    use super::*;
 
     pub fn abort(message: &str) -> ! {
         eprintln!("{}", message);
-        process::abort();
+        std::process::abort();
     }
 
-    pub fn to_str<'a>(ptr: *const c_char) -> &'a str {
-        if ptr.is_null() {
+    pub fn to_str<'a>(s: StringSlice) -> &'a str {
+        if s.bytes.is_null() {
             abort("tried to dereference null ptr as &str");
         }
 
-        let cstr = unsafe { CStr::from_ptr(ptr) };
-        match cstr.to_str() {
+        let bytes = unsafe { std::slice::from_raw_parts(s.bytes as _, s.len as _) };
+        match std::str::from_utf8(bytes) {
             Ok(s) => s,
             Err(_) => abort("invalid c string"),
         }
     }
 }
+
