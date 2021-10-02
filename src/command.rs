@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ffi::CStr, fmt};
+use std::{collections::VecDeque, fmt};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
@@ -99,7 +99,6 @@ pub struct CommandContext<'state, 'command> {
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
-    pub plugin_handle: plugin::PluginHandle,
 
     pub args: CommandArgs<'command>,
     pub bang: bool,
@@ -239,7 +238,7 @@ pub type BuiltinCommandFn = fn(ctx: &mut CommandContext) -> Result<(), CommandEr
 #[derive(Clone, Copy)]
 enum CommandFn {
     BuiltinCommandFn(BuiltinCommandFn),
-    PluginCommandFn(plugin::api::PluginCommandFn, plugin::PluginHandle),
+    PluginCommandFn(plugin::PluginHandle, plugin::api::PluginCommandFn),
 }
 
 pub struct Command {
@@ -353,7 +352,7 @@ impl CommandManager {
         self.commands.push(Command {
             name,
             completions,
-            command_fn: CommandFn::PluginCommandFn(command_fn, handle),
+            command_fn: CommandFn::PluginCommandFn(handle, command_fn),
         });
     }
 
@@ -461,23 +460,14 @@ impl CommandManager {
             platform,
             clients,
             client_handle,
-            plugin_handle: plugin::PluginHandle::default(),
             args: CommandArgs(tokenizer),
             bang,
             flow: EditorControlFlow::Continue,
         };
         match command_fn {
             CommandFn::BuiltinCommandFn(f) => f(&mut ctx)?,
-            CommandFn::PluginCommandFn(f, handle) => {
-                ctx.plugin_handle = handle;
-                let userdata = ctx.editor.plugins.get_userdata(handle);
-                let error = f(plugin::api(), &mut ctx, userdata);
-                if !error.is_null() {
-                    return match unsafe { CStr::from_ptr(error) }.to_str() {
-                        Ok(error) => Err(CommandError::PluginError(error)),
-                        Err(_) => Err(CommandError::ErrorMessageNotUtf8),
-                    };
-                }
+            CommandFn::PluginCommandFn(handle, f) => {
+                plugin::PluginCollection::call_command_fn(&mut ctx, handle, f)?
             }
         }
         Ok(ctx.flow)

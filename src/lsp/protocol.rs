@@ -1120,3 +1120,58 @@ impl PendingRequestColection {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn buffer_and_document_position_conversion() {
+        fn bpos(col: usize) -> BufferPosition {
+            BufferPosition::line_col(0, col as _)
+        }
+
+        fn dpos(col: usize) -> DocumentPosition {
+            DocumentPosition {
+                line: 0,
+                character: col as _,
+            }
+        }
+
+        let mut buffer = BufferContent::new();
+        buffer.insert_text(BufferPosition::zero(), "aéiou");
+
+        assert_eq!(
+            dpos(0).character,
+            DocumentPosition::from_buffer_position(bpos(0), &buffer).character
+        );
+        assert_eq!(
+            dpos(1).character,
+            DocumentPosition::from_buffer_position(bpos(1), &buffer).character
+        );
+        assert_eq!(
+            dpos(2).character,
+            DocumentPosition::from_buffer_position(bpos(3), &buffer).character
+        );
+        assert_eq!(
+            dpos(5).character,
+            DocumentPosition::from_buffer_position(bpos(6), &buffer).character
+        );
+
+        assert_eq!(
+            bpos(0).column_byte_index,
+            dpos(0).into_buffer_position(&buffer).column_byte_index
+        );
+        assert_eq!(
+            bpos(1).column_byte_index,
+            dpos(1).into_buffer_position(&buffer).column_byte_index
+        );
+        assert_eq!(
+            bpos(3).column_byte_index,
+            dpos(2).into_buffer_position(&buffer).column_byte_index
+        );
+        assert_eq!(
+            bpos(6).column_byte_index,
+            dpos(5).into_buffer_position(&buffer).column_byte_index
+        );
+    }
+}

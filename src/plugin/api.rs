@@ -1,6 +1,4 @@
-use std::os::raw::{c_char, c_void, c_uint};
-
-use crate::command::CommandContext;
+use std::os::raw::{c_char, c_uint, c_void};
 
 #[repr(C)]
 pub struct StringSlice {
@@ -12,16 +10,14 @@ pub struct StringSlice {
 #[repr(transparent)]
 pub struct PluginUserData(pub *mut c_void);
 
-pub type PluginCommandFn = extern "C" fn(
-    api: &PluginApi,
-    ctx: &mut CommandContext,
-    userdata: PluginUserData,
-) -> *const c_char;
+pub type PluginDeinitFn = extern "C" fn(PluginUserData);
+
+pub type PluginCommandFn =
+    extern "C" fn(api: &PluginApi, userdata: PluginUserData) -> *const c_char;
 
 #[repr(C)]
 pub struct PluginApi {
-    pub register_command:
-        extern "C" fn(ctx: &mut CommandContext, name: StringSlice, command_fn: PluginCommandFn),
-    pub write_to_statusbar:
-        extern "C" fn(ctx: &mut CommandContext, level: c_uint, message: StringSlice),
+    pub set_deinit_fn: extern "C" fn(deinit_fn: PluginDeinitFn),
+    pub register_command: extern "C" fn(name: StringSlice, command_fn: PluginCommandFn),
+    pub write_to_statusbar: extern "C" fn(level: c_uint, message: StringSlice),
 }

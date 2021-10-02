@@ -1,23 +1,25 @@
-use std::os::raw::{c_uint};
+use std::os::raw::c_uint;
 
-use crate::{command::CommandContext, editor_utils::MessageKind, plugin::api::{StringSlice, PluginCommandFn}};
+use crate::{
+    editor_utils::MessageKind,
+    plugin::{ctx, api::{PluginCommandFn, PluginDeinitFn, StringSlice}},
+};
 
-pub extern "C" fn register_command(
-    ctx: &mut CommandContext,
-    name: StringSlice,
-    command_fn: PluginCommandFn,
-) {
+pub extern "C" fn set_deinit_fn(deinit_fn: PluginDeinitFn) {
+    let (ctx, handle) = ctx();
+    ctx.editor.plugins.get_mut(handle).deinit_fn = Some(deinit_fn);
+}
+
+pub extern "C" fn register_command(name: StringSlice, command_fn: PluginCommandFn) {
+    let (ctx, handle) = ctx();
     let name = helper::to_str(name);
     ctx.editor
         .commands
-        .register_plugin_command(ctx.plugin_handle, name, &[], command_fn);
+        .register_plugin_command(handle, name, &[], command_fn);
 }
 
-pub extern "C" fn write_to_statusbar(
-    ctx: &mut CommandContext,
-    level: c_uint,
-    message: StringSlice,
-) {
+pub extern "C" fn write_to_statusbar(level: c_uint, message: StringSlice) {
+    let (ctx, _) = ctx();
     let kind = match level {
         0 => MessageKind::Info,
         1 => MessageKind::Error,
@@ -47,4 +49,3 @@ mod helper {
         }
     }
 }
-
