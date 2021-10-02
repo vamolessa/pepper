@@ -2,7 +2,10 @@ use std::os::raw::c_uint;
 
 use crate::{
     editor_utils::MessageKind,
-    plugin::{ctx, api::{PluginCommandFn, PluginDeinitFn, StringSlice}},
+    plugin::{
+        api::{PluginCommandFn, PluginDeinitFn, StringSlice},
+        ctx,
+    },
 };
 
 pub extern "C" fn set_deinit_fn(deinit_fn: PluginDeinitFn) {
