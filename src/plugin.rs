@@ -46,13 +46,7 @@ where
     let ctx = ctx as *mut _ as *mut _;
     CURRENT_COMMAND_CONTEXT_PTR.store(ctx, Ordering::Relaxed);
     CURRENT_PLUGIN_HANDLE.store(handle.0, Ordering::Relaxed);
-
-    let result = f();
-
-    CURRENT_COMMAND_CONTEXT_PTR.store(std::ptr::null_mut(), Ordering::Relaxed);
-    CURRENT_PLUGIN_HANDLE.store(0, Ordering::Relaxed);
-
-    result
+    f()
 }
 
 #[derive(Default)]
