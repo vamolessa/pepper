@@ -16,7 +16,6 @@ pub type PluginCommandFn = extern "C" fn(
 pub struct PluginApi {
     pub register_command:
         extern "C" fn(ctx: &mut CommandContext, name: *const c_char, command_fn: PluginCommandFn),
-
     pub write_to_statusbar:
         extern "C" fn(ctx: &mut CommandContext, level: c_int, message: *const c_char),
 }

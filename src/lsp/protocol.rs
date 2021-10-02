@@ -18,8 +18,6 @@ use crate::{
     platform::{Platform, PlatformRequest, ProcessHandle},
 };
 
-pub const BUFFER_LEN: usize = 4 * 1024;
-
 pub struct UriParseError;
 pub enum Uri<'a> {
     Path(&'a Path),

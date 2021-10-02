@@ -16,7 +16,7 @@ use crate::{
 
 mod builtin;
 
-pub const HISTORY_CAPACITY: usize = 10;
+const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandError {
     NoSuchCommand,

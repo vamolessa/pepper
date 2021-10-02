@@ -38,6 +38,8 @@ use crate::{
     word_database::{WordIndicesIter, WordKind},
 };
 
+const SERVER_PROCESS_BUFFER_LEN: usize = 4 * 1024;
+
 #[derive(Default)]
 struct GenericCapability(pub bool);
 impl<'json> FromJson<'json> for GenericCapability {
@@ -2830,7 +2832,7 @@ impl ClientManager {
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Lsp(handle),
             command,
-            buf_len: protocol::BUFFER_LEN,
+            buf_len: SERVER_PROCESS_BUFFER_LEN,
         });
 
         let client = Client::new(handle, root, log_file_path);
@@ -3022,3 +3024,4 @@ impl ClientManager {
         }
     }
 }
+
