@@ -1,8 +1,4 @@
-use std::{
-    ffi::CStr,
-    os::raw::{c_char, c_int},
-    process,
-};
+use std::os::raw::{c_char, c_int};
 
 use crate::{command::CommandContext, editor_utils::MessageKind, plugin::PluginCommandFn};
 
@@ -11,7 +7,7 @@ pub extern "C" fn register_command(
     name: *const c_char,
     command_fn: PluginCommandFn,
 ) {
-    let name = to_str(name);
+    let name = helper::to_str(name);
     ctx.editor
         .commands
         .register_plugin_command(ctx.plugin_handle, name, &[], command_fn);
@@ -27,23 +23,27 @@ pub extern "C" fn write_to_statusbar(
         1 => MessageKind::Error,
         _ => return,
     };
-    let message = to_str(message);
+    let message = helper::to_str(message);
     ctx.editor.status_bar.write(kind).str(message);
 }
 
-fn abort(message: &str) -> ! {
-    eprintln!("{}", message);
-    process::abort();
-}
+mod helper {
+    use std::{ffi::CStr, os::raw::c_char, process};
 
-fn to_str<'a>(ptr: *const c_char) -> &'a str {
-    if ptr.is_null() {
-        abort("tried to dereference null ptr as &str");
+    pub fn abort(message: &str) -> ! {
+        eprintln!("{}", message);
+        process::abort();
     }
 
-    let cstr = unsafe { CStr::from_ptr(ptr) };
-    match cstr.to_str() {
-        Ok(s) => s,
-        Err(_) => abort("invalid c string"),
+    pub fn to_str<'a>(ptr: *const c_char) -> &'a str {
+        if ptr.is_null() {
+            abort("tried to dereference null ptr as &str");
+        }
+
+        let cstr = unsafe { CStr::from_ptr(ptr) };
+        match cstr.to_str() {
+            Ok(s) => s,
+            Err(_) => abort("invalid c string"),
+        }
     }
 }
