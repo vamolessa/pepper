@@ -4,7 +4,12 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{client::ClientHandle, editor_utils::parse_process_command, lsp, plugin::PluginInitFn};
+use crate::{
+    client::ClientHandle,
+    editor_utils::parse_process_command,
+    lsp,
+    plugin::{PluginHandle, PluginInitFn},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -84,6 +89,10 @@ pub enum PlatformRequest {
 pub enum ProcessTag {
     Buffer(usize),
     FindFiles,
+    Plugin {
+        plugin_handle: PluginHandle,
+        id: u32,
+    },
     Lsp(lsp::ClientHandle),
 }
 
@@ -216,3 +225,4 @@ impl BufPool {
         self.pool.push(ManuallyDrop::new(buf));
     }
 }
+

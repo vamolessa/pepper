@@ -3,7 +3,7 @@ use std::os::raw::c_uint;
 use crate::{
     editor_utils::MessageKind,
     plugin::{
-        api::{PluginCommandFn, PluginDeinitFn, StringSlice},
+        api::{ByteSlice, PluginCommandFn, PluginDeinitFn, PluginEventHandlerFn},
         ctx,
     },
 };
@@ -13,7 +13,12 @@ pub extern "C" fn set_deinit_fn(deinit_fn: PluginDeinitFn) {
     ctx.editor.plugins.get_mut(handle).deinit_fn = Some(deinit_fn);
 }
 
-pub extern "C" fn register_command(name: StringSlice, command_fn: PluginCommandFn) {
+pub extern "C" fn set_event_handler_fn(event_handler_fn: PluginEventHandlerFn) {
+    let (ctx, handle) = ctx();
+    ctx.editor.plugins.get_mut(handle).event_handler_fn = Some(event_handler_fn);
+}
+
+pub extern "C" fn register_command(name: ByteSlice, command_fn: PluginCommandFn) {
     let (ctx, handle) = ctx();
     let name = helper::to_str(name);
     ctx.editor
@@ -21,7 +26,7 @@ pub extern "C" fn register_command(name: StringSlice, command_fn: PluginCommandF
         .register_plugin_command(handle, name, &[], command_fn);
 }
 
-pub extern "C" fn write_to_statusbar(level: c_uint, message: StringSlice) {
+pub extern "C" fn write_to_statusbar(level: c_uint, message: ByteSlice) {
     let (ctx, _) = ctx();
     let kind = match level {
         0 => MessageKind::Info,
@@ -40,7 +45,7 @@ mod helper {
         std::process::abort();
     }
 
-    pub fn to_str<'a>(s: StringSlice) -> &'a str {
+    pub fn to_str<'a>(s: ByteSlice) -> &'a str {
         if s.bytes.is_null() {
             abort("tried to dereference null ptr as &str");
         }
@@ -52,3 +57,4 @@ mod helper {
         }
     }
 }
+

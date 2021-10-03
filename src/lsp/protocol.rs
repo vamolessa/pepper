@@ -250,41 +250,15 @@ pub struct DocumentPosition {
     pub character: u32,
 }
 impl DocumentPosition {
-    pub fn from_buffer_position(position: BufferPosition, buffer: &BufferContent) -> Self {
-        let line_index = position.line_index.min((buffer.line_count() - 1) as _);
-        let line = buffer.line_at(line_index as _).as_str();
-        let mut i = line.len().min(position.column_byte_index as _);
-        while !line.is_char_boundary(i) {
-            i += 1;
-        }
-        let column = line[..i].encode_utf16().count();
-
+    pub fn from_buffer_position(position: BufferPosition, _: &BufferContent) -> Self {
         Self {
-            line: line_index,
-            character: column as _,
+            line: position.line_index as _,
+            character: position.column_byte_index as _,
         }
     }
 
-    pub fn into_buffer_position(self, buffer: &BufferContent) -> BufferPosition {
-        let line_index = self.line.min((buffer.line_count() - 1) as _);
-        let line = buffer.line_at(line_index as _).as_str();
-        let mut utf16_column = 0;
-        let mut chars = line.chars();
-        loop {
-            if utf16_column >= self.character as _ {
-                break;
-            }
-            match chars.next() {
-                Some(c) => utf16_column += c.len_utf16(),
-                None => break,
-            }
-        }
-        let utf8_column = line.len() - chars.as_str().len();
-
-        BufferPosition {
-            line_index,
-            column_byte_index: utf8_column as _,
-        }
+    pub fn into_buffer_position(self, _: &BufferContent) -> BufferPosition {
+        BufferPosition::line_col(self.line as _, self.character as _)
     }
 
     pub fn to_json_value(self, json: &mut Json) -> JsonValue {
@@ -1121,57 +1095,3 @@ impl PendingRequestColection {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn buffer_and_document_position_conversion() {
-        fn bpos(col: usize) -> BufferPosition {
-            BufferPosition::line_col(0, col as _)
-        }
-
-        fn dpos(col: usize) -> DocumentPosition {
-            DocumentPosition {
-                line: 0,
-                character: col as _,
-            }
-        }
-
-        let mut buffer = BufferContent::new();
-        buffer.insert_text(BufferPosition::zero(), "aéiou");
-
-        assert_eq!(
-            dpos(0).character,
-            DocumentPosition::from_buffer_position(bpos(0), &buffer).character
-        );
-        assert_eq!(
-            dpos(1).character,
-            DocumentPosition::from_buffer_position(bpos(1), &buffer).character
-        );
-        assert_eq!(
-            dpos(2).character,
-            DocumentPosition::from_buffer_position(bpos(3), &buffer).character
-        );
-        assert_eq!(
-            dpos(5).character,
-            DocumentPosition::from_buffer_position(bpos(6), &buffer).character
-        );
-
-        assert_eq!(
-            bpos(0).column_byte_index,
-            dpos(0).into_buffer_position(&buffer).column_byte_index
-        );
-        assert_eq!(
-            bpos(1).column_byte_index,
-            dpos(1).into_buffer_position(&buffer).column_byte_index
-        );
-        assert_eq!(
-            bpos(3).column_byte_index,
-            dpos(2).into_buffer_position(&buffer).column_byte_index
-        );
-        assert_eq!(
-            bpos(6).column_byte_index,
-            dpos(5).into_buffer_position(&buffer).column_byte_index
-        );
-    }
-}

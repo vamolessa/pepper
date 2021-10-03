@@ -317,5 +317,14 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
         capabilities.set("window".into(), window_capabilities.into(), json);
     }
 
+    {
+        // proposed extension for utf-8 offsets
+        // https://clangd.llvm.org/extensions.html#utf-8-offsets
+        let mut offset_encodings = JsonArray::default();
+        offset_encodings.push("utf-8".into(), json);
+        capabilities.set("offsetEncoding".into(), offset_encodings.into(), json);
+    }
+
     capabilities.into()
 }
+

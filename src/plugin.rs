@@ -3,7 +3,12 @@ use std::{
     sync::atomic::{AtomicPtr, AtomicU32, Ordering},
 };
 
-use crate::command::{CommandContext, CommandError};
+use crate::{
+    client::ClientManager,
+    command::{CommandContext, CommandError},
+    editor::Editor,
+    platform::{Platform, ProcessHandle},
+};
 
 pub mod api;
 mod api_impl;
@@ -14,6 +19,7 @@ pub fn api() -> &'static api::PluginApi {
     use api_impl::*;
     static PLUGIN_API: api::PluginApi = api::PluginApi {
         set_deinit_fn,
+        set_event_handler_fn,
         register_command,
         write_to_statusbar,
     };
@@ -26,6 +32,7 @@ pub struct PluginHandle(u32);
 pub struct Plugin {
     pub userdata: api::PluginUserData,
     pub deinit_fn: Option<api::PluginDeinitFn>,
+    pub event_handler_fn: Option<api::PluginEventHandlerFn>,
 }
 
 static CURRENT_COMMAND_CONTEXT_PTR: AtomicPtr<usize> = AtomicPtr::new(std::ptr::null_mut());
@@ -60,6 +67,7 @@ impl PluginCollection {
         ctx.editor.plugins.plugins.push(Plugin {
             userdata,
             deinit_fn: None,
+            event_handler_fn: None,
         });
     }
 
@@ -87,6 +95,38 @@ impl PluginCollection {
     pub fn get_mut(&mut self, handle: PluginHandle) -> &mut Plugin {
         &mut self.plugins[handle.0 as usize]
     }
+
+    pub fn on_process_spawned(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        plugin_handle: PluginHandle,
+        process_id: u32,
+        process_handle: ProcessHandle,
+    ) {
+        //
+    }
+
+    pub fn on_process_output(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        plugin_handle: PluginHandle,
+        process_id: u32,
+        bytes: &[u8],
+    ) {
+        //
+    }
+
+    pub fn on_process_exit(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        plugin_handle: PluginHandle,
+        process_id: u32,
+    ) {
+        //
+    }
 }
 impl Drop for PluginCollection {
     fn drop(&mut self) {
@@ -97,3 +137,4 @@ impl Drop for PluginCollection {
         }
     }
 }
+

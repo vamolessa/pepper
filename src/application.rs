@@ -123,10 +123,12 @@ impl ServerApplication {
                     }
                     events.finish(&mut self.client_event_receiver);
                 }
-                PlatformEvent::ProcessSpawned { tag, handle } => {
-                    self.editor
-                        .on_process_spawned(&mut self.platform, tag, handle)
-                }
+                PlatformEvent::ProcessSpawned { tag, handle } => self.editor.on_process_spawned(
+                    &mut self.platform,
+                    &mut self.clients,
+                    tag,
+                    handle,
+                ),
                 PlatformEvent::ProcessOutput { tag, buf } => {
                     self.editor.on_process_output(
                         &mut self.platform,
@@ -321,3 +323,4 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
+
