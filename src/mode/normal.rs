@@ -1226,17 +1226,15 @@ impl ModeState for State {
                 return;
             }
             let buffer_view = ctx.editor.buffer_views.get(handle);
-            let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
             let main_position = buffer_view.cursors.main_cursor().position;
 
             for client in ctx.editor.lsp.clients() {
-                let diagnostics = client.diagnostics().buffer_diagnostics(buffer.handle());
+                let diagnostics = client.diagnostics().buffer_diagnostics(buffer_view.buffer_handle);
 
                 if let Ok(index) = diagnostics.binary_search_by(|d| {
-                    let range = d.range.to_buffer_range(buffer.content());
-                    if range.to < main_position {
+                    if d.range.to < main_position {
                         Ordering::Less
-                    } else if range.from > main_position {
+                    } else if d.range.from > main_position {
                         Ordering::Greater
                     } else {
                         Ordering::Equal
@@ -1720,19 +1718,17 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
 
         if forward {
             for d in diagnostics.iter() {
-                let from = d.range.to_buffer_range(buffer.content()).from;
+                let from = d.range.from;
                 if from > main_position {
-                    let position = lsp::DiagnosticPosition::BufferPosition(from);
-                    next_diagnostic = Some((path, buffer_handle, position));
+                    next_diagnostic = Some((path, buffer_handle, from));
                     break;
                 }
             }
         } else {
             for d in diagnostics.iter().rev() {
-                let from = d.range.to_buffer_range(buffer.content()).from;
+                let from = d.range.from;
                 if from < main_position {
-                    let position = lsp::DiagnosticPosition::BufferPosition(from);
-                    next_diagnostic = Some((path, buffer_handle, position));
+                    next_diagnostic = Some((path, buffer_handle, from));
                     break;
                 }
             }
@@ -1743,13 +1739,11 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     fn select_diagnostic_position(
         diagnostics: &[lsp::Diagnostic],
         forward: bool,
-    ) -> lsp::DiagnosticPosition {
+    ) -> BufferPosition {
         if forward {
-            diagnostics[0].range.diagnostic_position_from()
+            diagnostics[0].range.from
         } else {
-            diagnostics[diagnostics.len() - 1]
-                .range
-                .diagnostic_position_from()
+            diagnostics[diagnostics.len() - 1].range.from
         }
     }
 
@@ -1815,7 +1809,6 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
 
     let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
-    let position = position.to_buffer_position(buffer.content());
     let position = buffer.content().saturate_position(position);
 
     let mut cursors = buffer_view.cursors.mut_guard();
@@ -1825,3 +1818,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         position,
     });
 }
+

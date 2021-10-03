@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCapabilities, BufferContent, BufferHandle},
+    buffer::{BufferCapabilities, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
     editor_utils::MessageKind,
@@ -250,14 +250,14 @@ pub struct DocumentPosition {
     pub character: u32,
 }
 impl DocumentPosition {
-    pub fn from_buffer_position(position: BufferPosition, _: &BufferContent) -> Self {
+    pub fn from_buffer_position(position: BufferPosition) -> Self {
         Self {
             line: position.line_index as _,
             character: position.column_byte_index as _,
         }
     }
 
-    pub fn into_buffer_position(self, _: &BufferContent) -> BufferPosition {
+    pub fn into_buffer_position(self) -> BufferPosition {
         BufferPosition::line_col(self.line as _, self.character as _)
     }
 
@@ -296,17 +296,17 @@ pub struct DocumentRange {
     pub end: DocumentPosition,
 }
 impl DocumentRange {
-    pub fn from_buffer_range(range: BufferRange, buffer: &BufferContent) -> Self {
+    pub fn from_buffer_range(range: BufferRange) -> Self {
         Self {
-            start: DocumentPosition::from_buffer_position(range.from, buffer),
-            end: DocumentPosition::from_buffer_position(range.to, buffer),
+            start: DocumentPosition::from_buffer_position(range.from),
+            end: DocumentPosition::from_buffer_position(range.to),
         }
     }
 
-    pub fn into_buffer_range(self, buffer: &BufferContent) -> BufferRange {
+    pub fn into_buffer_range(self) -> BufferRange {
         BufferRange::between(
-            self.start.into_buffer_position(buffer),
-            self.end.into_buffer_position(buffer),
+            self.start.into_buffer_position(),
+            self.end.into_buffer_position(),
         )
     }
 
@@ -382,7 +382,7 @@ impl TextEdit {
                 Err(_) => continue,
             };
 
-            let mut delete_range: BufferRange = edit.range.into_buffer_range(buffer.content());
+            let mut delete_range: BufferRange = edit.range.into_buffer_range();
             let text = edit.new_text.as_str(&json);
 
             for (d, i) in temp_edits.iter() {

@@ -209,10 +209,9 @@ fn draw_buffer_view(
     let mut current_diagnostic_index = diagnostics.len();
     let mut current_diagnostic_range = BufferRange::zero();
     for (i, diagnostic) in diagnostics.iter().enumerate() {
-        let diagnostic_range = diagnostic.range.to_buffer_range(buffer_content);
-        if display_position_offset < diagnostic_range.to {
+        if display_position_offset < diagnostic.range.to {
             current_diagnostic_index = i;
-            current_diagnostic_range = diagnostic_range;
+            current_diagnostic_range = diagnostic.range;
             break;
         }
     }
@@ -345,9 +344,7 @@ fn draw_buffer_view(
                 && current_diagnostic_index < diagnostics_end_index
             {
                 current_diagnostic_index += 1;
-                current_diagnostic_range = diagnostics[current_diagnostic_index]
-                    .range
-                    .to_buffer_range(buffer_content);
+                current_diagnostic_range = diagnostics[current_diagnostic_index].range;
             }
             let inside_diagnostic_range = current_diagnostic_range.from <= char_position
                 && char_position < current_diagnostic_range.to;
@@ -745,3 +742,4 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
+
