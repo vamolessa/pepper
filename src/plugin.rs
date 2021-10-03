@@ -100,32 +100,41 @@ impl PluginCollection {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        plugin_handle: PluginHandle,
+        handle: PluginHandle,
         process_id: u32,
         process_handle: ProcessHandle,
     ) {
-        //
+        let plugin = editor.plugins.get(handle);
+        if let Some(f) = plugin.event_handler_fn {
+            let userdata = plugin.userdata;
+        }
     }
 
     pub fn on_process_output(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        plugin_handle: PluginHandle,
+        handle: PluginHandle,
         process_id: u32,
         bytes: &[u8],
     ) {
-        //
+        let plugin = editor.plugins.get(handle);
+        if let Some(f) = plugin.event_handler_fn {
+            let userdata = plugin.userdata;
+        }
     }
 
     pub fn on_process_exit(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        plugin_handle: PluginHandle,
+        handle: PluginHandle,
         process_id: u32,
     ) {
-        //
+        let plugin = editor.plugins.get(handle);
+        if let Some(f) = plugin.event_handler_fn {
+            let userdata = plugin.userdata;
+        }
     }
 }
 impl Drop for PluginCollection {
