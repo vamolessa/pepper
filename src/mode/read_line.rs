@@ -43,8 +43,8 @@ impl ModeState for State {
             &ctx.editor.buffered_keys,
             keys,
         );
-        let func = ctx.editor.mode.read_line_state.on_client_keys;
-        func(ctx, keys, poll)
+        let f = ctx.editor.mode.read_line_state.on_client_keys;
+        f(ctx, keys, poll)
     }
 }
 

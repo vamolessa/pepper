@@ -146,7 +146,8 @@ impl ModeState for State {
             }
         }
 
-        (this.on_client_keys)(ctx, keys, poll)
+        let f = this.on_client_keys;
+        f(ctx, keys, poll)
     }
 }
 

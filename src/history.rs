@@ -104,7 +104,7 @@ impl History {
             group_edits: &mut [EditInternal],
             current_index: usize,
             edit_range: BufferRange,
-            fix_position_func: fn(BufferPosition, BufferRange) -> BufferPosition,
+            fix_position_fn: fn(BufferPosition, BufferRange) -> BufferPosition,
             fix_text_start: usize,
             fix_text_len: isize,
         ) {
@@ -127,8 +127,8 @@ impl History {
             }
             for edit in &mut group_edits[current_index + 1..] {
                 if edit_range.from < edit.buffer_range.from {
-                    edit.buffer_range.from = fix_position_func(edit.buffer_range.from, edit_range);
-                    edit.buffer_range.to = fix_position_func(edit.buffer_range.to, edit_range);
+                    edit.buffer_range.from = fix_position_fn(edit.buffer_range.from, edit_range);
+                    edit.buffer_range.to = fix_position_fn(edit.buffer_range.to, edit_range);
                 }
                 fix_text_range(edit, fix_text_start, fix_text_len);
             }
