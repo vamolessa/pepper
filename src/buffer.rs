@@ -16,7 +16,7 @@ use crate::{
     help,
     history::{Edit, EditKind, History},
     pattern::Pattern,
-    platform::{Platform, PlatformRequest, PooledBuf, ProcessHandle, ProcessTag},
+    platform::{Platform, PlatformRequest, PooledBuf, ProcessHandle, ProcessIndex, ProcessTag},
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
@@ -1298,10 +1298,10 @@ impl BufferCollection {
         mut command: Command,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-        stdin: Option<PooledBuf>,
+        input: Option<PooledBuf>,
     ) {
         let mut index = None;
-        for (i, process) in self.insert_processes.iter().enumerate() {
+        for (i, process) in self.insert_processes.iter_mut().enumerate() {
             if !process.alive {
                 index = Some(i);
                 break;
@@ -1326,17 +1326,19 @@ impl BufferCollection {
         process.alive = true;
         process.buffer_handle = buffer_handle;
         process.position = position;
-        process.input = stdin;
+        process.input = input;
         process.output_residual_bytes = ResidualStrBytes::default();
 
-        let stdin = match process.input {
+        let stdin = match &process.input {
             Some(_) => Stdio::piped(),
             None => Stdio::null(),
         };
+
         command.stdin(stdin);
         command.stdout(Stdio::piped());
         command.stderr(Stdio::null());
 
+        let index = ProcessIndex(index as _);
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Buffer(index),
             command,
@@ -1347,10 +1349,10 @@ impl BufferCollection {
     pub fn on_process_spawned(
         &mut self,
         platform: &mut Platform,
-        index: usize,
+        index: ProcessIndex,
         handle: ProcessHandle,
     ) {
-        if let Some(buf) = self.insert_processes[index].input.take() {
+        if let Some(buf) = self.insert_processes[index.0 as usize].input.take() {
             platform
                 .requests
                 .enqueue(PlatformRequest::WriteToProcess { handle, buf });
@@ -1363,11 +1365,11 @@ impl BufferCollection {
     pub fn on_process_output(
         &mut self,
         word_database: &mut WordDatabase,
-        index: usize,
+        index: ProcessIndex,
         bytes: &[u8],
         events: &mut EditorEventQueue,
     ) {
-        let process = &mut self.insert_processes[index];
+        let process = &mut self.insert_processes[index.0 as usize];
 
         let mut buf = Default::default();
         let texts = process.output_residual_bytes.receive_bytes(&mut buf, bytes);
@@ -1392,10 +1394,10 @@ impl BufferCollection {
     pub fn on_process_exit(
         &mut self,
         word_database: &mut WordDatabase,
-        index: usize,
+        index: ProcessIndex,
         events: &mut EditorEventQueue,
     ) {
-        let process = &mut self.insert_processes[index];
+        let process = &mut self.insert_processes[index.0 as usize];
         process.alive = false;
 
         let mut buf = Default::default();
@@ -1937,3 +1939,4 @@ mod tests {
         );
     }
 }
+

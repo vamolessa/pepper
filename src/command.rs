@@ -11,6 +11,7 @@ use crate::{
     keymap::ParseKeyMapError,
     pattern::PatternError,
     platform::Platform,
+    plugin::PluginHandle,
 };
 
 mod builtin;
@@ -96,6 +97,7 @@ pub struct CommandContext<'state, 'command> {
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
+    pub plugin_handle: Option<PluginHandle>,
 
     pub args: CommandArgs<'command>,
     pub bang: bool,
@@ -233,6 +235,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
 pub type CommandFn = fn(ctx: &mut CommandContext) -> Result<(), CommandError>;
 
 pub struct Command {
+    plugin_handle: Option<PluginHandle>,
     pub name: &'static str,
     pub completions: &'static [CompletionSource],
     command_fn: CommandFn,
@@ -322,11 +325,13 @@ impl CommandManager {
 
     pub fn register_command(
         &mut self,
+        plugin_handle: Option<PluginHandle>,
         name: &'static str,
         completions: &'static [CompletionSource],
         command_fn: CommandFn,
     ) {
         self.commands.push(Command {
+            plugin_handle,
             name,
             completions,
             command_fn,
@@ -427,8 +432,8 @@ impl CommandManager {
             Some(command) => (command, true),
             None => (command, false),
         };
-        let command_fn = match editor.commands.find_command(command) {
-            Some(command) => command.command_fn,
+        let (plugin_handle, command_fn) = match editor.commands.find_command(command) {
+            Some(command) => (command.plugin_handle, command.command_fn),
             None => return Err(CommandError::NoSuchCommand),
         };
 
@@ -437,6 +442,7 @@ impl CommandManager {
             platform,
             clients,
             client_handle,
+            plugin_handle,
             args: CommandArgs(tokenizer),
             bang,
             flow: EditorControlFlow::Continue,

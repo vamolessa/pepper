@@ -81,12 +81,15 @@ pub enum PlatformRequest {
 }
 
 #[derive(Clone, Copy)]
+pub struct ProcessIndex(pub u32);
+
+#[derive(Clone, Copy)]
 pub enum ProcessTag {
-    Buffer(usize),
+    Buffer(ProcessIndex),
     FindFiles,
     Plugin {
         plugin_handle: PluginHandle,
-        id: u32,
+        index: ProcessIndex,
     },
     Lsp(lsp::ClientHandle),
 }
