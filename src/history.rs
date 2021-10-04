@@ -42,8 +42,8 @@ enum HistoryState {
 }
 
 pub struct History {
-    pub texts: String,
-    pub edits: Vec<EditInternal>,
+    texts: String,
+    edits: Vec<EditInternal>,
     group_ranges: Vec<Range<usize>>,
     state: HistoryState,
 }
