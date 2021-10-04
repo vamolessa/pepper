@@ -22,7 +22,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn on_process_output(&mut self, picker: &mut Picker, read_line: &ReadLine, bytes: &[u8]) {
+    pub(crate) fn on_process_output(&mut self, picker: &mut Picker, read_line: &ReadLine, bytes: &[u8]) {
         if !self.find_file_waiting_for_process {
             return;
         }
@@ -51,7 +51,7 @@ impl State {
         picker.move_cursor(0);
     }
 
-    pub fn on_process_exit(&mut self, picker: &mut Picker, read_line: &ReadLine) {
+    pub(crate) fn on_process_exit(&mut self, picker: &mut Picker, read_line: &ReadLine) {
         if !self.find_file_waiting_for_process {
             return;
         }

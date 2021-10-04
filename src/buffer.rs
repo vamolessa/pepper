@@ -851,7 +851,7 @@ impl Buffer {
         if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
             self.highlighted.clear();
-            self.highlighted.on_insert(BufferRange::between(
+            self.highlighted.insert_range(BufferRange::between(
                 BufferPosition::zero(),
                 BufferPosition::line_col((self.content.line_count() - 1) as _, 0),
             ));
@@ -920,7 +920,7 @@ impl Buffer {
         }
 
         let range = content.insert_text(position, text);
-        highlighted.on_insert(range);
+        highlighted.insert_range(range);
 
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
@@ -1042,7 +1042,7 @@ impl Buffer {
             content.delete_range(range);
         }
 
-        highlighted.on_delete(range);
+        highlighted.delete_range(range);
     }
 
     pub fn commit_edits(&mut self) {
@@ -1149,7 +1149,7 @@ impl Buffer {
             self.content.read(&mut reader)?;
         }
 
-        self.highlighted.on_insert(BufferRange::between(
+        self.highlighted.insert_range(BufferRange::between(
             BufferPosition::zero(),
             BufferPosition::line_col((self.content.line_count() - 1) as _, 0),
         ));
@@ -1346,7 +1346,7 @@ impl BufferCollection {
         });
     }
 
-    pub fn on_process_spawned(
+    pub(crate) fn on_process_spawned(
         &mut self,
         platform: &mut Platform,
         index: ProcessIndex,
@@ -1362,7 +1362,7 @@ impl BufferCollection {
         }
     }
 
-    pub fn on_process_output(
+    pub(crate) fn on_process_output(
         &mut self,
         word_database: &mut WordDatabase,
         index: ProcessIndex,
@@ -1391,7 +1391,7 @@ impl BufferCollection {
         }
     }
 
-    pub fn on_process_exit(
+    pub(crate) fn on_process_exit(
         &mut self,
         word_database: &mut WordDatabase,
         index: ProcessIndex,

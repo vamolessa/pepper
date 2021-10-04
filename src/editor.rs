@@ -233,204 +233,6 @@ impl Editor {
         EditorControlFlow::Continue
     }
 
-    pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
-        let picker_height = self
-            .picker
-            .update_scroll(self.config.picker_max_height as _);
-
-        let mut needs_redraw = false;
-        let focused_handle = clients.focused_client();
-
-        for c in clients.iter_mut() {
-            let picker_height = if focused_handle == Some(c.handle()) {
-                picker_height as _
-            } else {
-                0
-            };
-
-            if let Some(handle) = c.buffer_view_handle() {
-                let buffer_view = self.buffer_views.get(handle);
-                let buffer = self.buffers.get_mut(buffer_view.buffer_handle);
-                if let HighlightResult::Pending = buffer.update_highlighting(&self.syntaxes) {
-                    needs_redraw = true;
-                }
-            }
-
-            c.update_view(self, picker_height);
-        }
-
-        needs_redraw
-    }
-
-    pub fn on_client_event(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        client_handle: ClientHandle,
-        event: ClientEvent,
-    ) -> EditorControlFlow {
-        match event {
-            ClientEvent::Key(target, key) => {
-                let client_handle = match target {
-                    TargetClient::Sender => client_handle,
-                    TargetClient::Focused => match clients.focused_client() {
-                        Some(handle) => handle,
-                        None => return EditorControlFlow::Continue,
-                    },
-                };
-
-                if clients.focus_client(client_handle) {
-                    self.recording_macro = None;
-                    self.buffered_keys.0.clear();
-
-                    if self.mode.kind() == ModeKind::Insert {
-                        let mut ctx = ModeContext {
-                            editor: self,
-                            platform,
-                            clients,
-                            client_handle,
-                        };
-                        Mode::change_to(&mut ctx, ModeKind::default());
-                    }
-                }
-
-                if key != Key::None {
-                    self.status_bar.clear();
-                }
-                self.buffered_keys.0.push(key);
-                self.execute_keys(platform, clients, client_handle, KeysIterator { index: 0 })
-            }
-            ClientEvent::Resize(width, height) => {
-                let client = clients.get_mut(client_handle);
-                client.viewport_size = (width, height);
-                EditorControlFlow::Continue
-            }
-            ClientEvent::Command(target, command) => {
-                let client_handle = match target {
-                    TargetClient::Sender => client_handle,
-                    TargetClient::Focused => match clients.focused_client() {
-                        Some(handle) => handle,
-                        None => return EditorControlFlow::Continue,
-                    },
-                };
-
-                let mut command = self.string_pool.acquire_with(command);
-                let flow = CommandManager::eval_and_write_error(
-                    self,
-                    platform,
-                    clients,
-                    Some(client_handle),
-                    &mut command,
-                );
-                self.string_pool.release(command);
-                flow
-            }
-            ClientEvent::StdinInput(target, bytes) => {
-                let client_handle = match target {
-                    TargetClient::Sender => client_handle,
-                    TargetClient::Focused => match clients.focused_client() {
-                        Some(handle) => handle,
-                        None => return EditorControlFlow::Continue,
-                    },
-                };
-
-                clients.get_mut(client_handle).on_stdin_input(self, bytes);
-                self.trigger_event_handlers(platform, clients);
-                EditorControlFlow::Continue
-            }
-        }
-    }
-
-    pub fn on_idle(&mut self, clients: &mut ClientManager, platform: &mut Platform) {
-        self.events.enqueue(EditorEvent::Idle);
-        self.trigger_event_handlers(platform, clients);
-    }
-
-    pub fn on_process_spawned(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        tag: ProcessTag,
-        handle: ProcessHandle,
-    ) {
-        match tag {
-            ProcessTag::Buffer(index) => self.buffers.on_process_spawned(platform, index, handle),
-            ProcessTag::FindFiles => (),
-            ProcessTag::Plugin { plugin_handle, index } => PluginCollection::on_process_spawned(
-                self,
-                platform,
-                clients,
-                plugin_handle,
-                index,
-                handle,
-            ),
-            ProcessTag::Lsp(client_handle) => {
-                lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
-            }
-        }
-    }
-
-    pub fn on_process_output(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        tag: ProcessTag,
-        bytes: &[u8],
-    ) {
-        match tag {
-            ProcessTag::Buffer(index) => self.buffers.on_process_output(
-                &mut self.word_database,
-                index,
-                bytes,
-                &mut self.events,
-            ),
-            ProcessTag::FindFiles => {
-                self.mode
-                    .picker_state
-                    .on_process_output(&mut self.picker, &self.read_line, bytes)
-            }
-            ProcessTag::Plugin { plugin_handle, index } => PluginCollection::on_process_output(
-                self,
-                platform,
-                clients,
-                plugin_handle,
-                index,
-                bytes,
-            ),
-            ProcessTag::Lsp(client_handle) => {
-                lsp::ClientManager::on_process_output(self, platform, clients, client_handle, bytes)
-            }
-        }
-
-        self.trigger_event_handlers(platform, clients);
-    }
-
-    pub fn on_process_exit(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        tag: ProcessTag,
-    ) {
-        match tag {
-            ProcessTag::Buffer(index) => {
-                self.buffers
-                    .on_process_exit(&mut self.word_database, index, &mut self.events)
-            }
-            ProcessTag::FindFiles => self
-                .mode
-                .picker_state
-                .on_process_exit(&mut self.picker, &self.read_line),
-            ProcessTag::Plugin { plugin_handle, index } => {
-                PluginCollection::on_process_exit(self, platform, clients, plugin_handle, index)
-            }
-            ProcessTag::Lsp(client_handle) => {
-                lsp::ClientManager::on_process_exit(self, client_handle)
-            }
-        }
-
-        self.trigger_event_handlers(platform, clients);
-    }
-
     pub fn trigger_event_handlers(&mut self, platform: &mut Platform, clients: &mut ClientManager) {
         loop {
             self.events.flip();
@@ -439,6 +241,7 @@ impl Editor {
                 return;
             }
 
+            PluginCollection::on_editor_events(self, platform, clients);
             lsp::ClientManager::on_editor_events(self, platform);
 
             let mut events = EditorEventIter::new();
@@ -518,6 +321,211 @@ impl Editor {
                 }
             }
         }
+    }
+
+    pub(crate) fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
+        let picker_height = self
+            .picker
+            .update_scroll(self.config.picker_max_height as _);
+
+        let mut needs_redraw = false;
+        let focused_handle = clients.focused_client();
+
+        for c in clients.iter_mut() {
+            let picker_height = if focused_handle == Some(c.handle()) {
+                picker_height as _
+            } else {
+                0
+            };
+
+            if let Some(handle) = c.buffer_view_handle() {
+                let buffer_view = self.buffer_views.get(handle);
+                let buffer = self.buffers.get_mut(buffer_view.buffer_handle);
+                if let HighlightResult::Pending = buffer.update_highlighting(&self.syntaxes) {
+                    needs_redraw = true;
+                }
+            }
+
+            c.update_view(self, picker_height);
+        }
+
+        needs_redraw
+    }
+
+    pub(crate) fn on_client_event(
+        &mut self,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: ClientHandle,
+        event: ClientEvent,
+    ) -> EditorControlFlow {
+        match event {
+            ClientEvent::Key(target, key) => {
+                let client_handle = match target {
+                    TargetClient::Sender => client_handle,
+                    TargetClient::Focused => match clients.focused_client() {
+                        Some(handle) => handle,
+                        None => return EditorControlFlow::Continue,
+                    },
+                };
+
+                if clients.focus_client(client_handle) {
+                    self.recording_macro = None;
+                    self.buffered_keys.0.clear();
+
+                    if self.mode.kind() == ModeKind::Insert {
+                        let mut ctx = ModeContext {
+                            editor: self,
+                            platform,
+                            clients,
+                            client_handle,
+                        };
+                        Mode::change_to(&mut ctx, ModeKind::default());
+                    }
+                }
+
+                if key != Key::None {
+                    self.status_bar.clear();
+                }
+                self.buffered_keys.0.push(key);
+                self.execute_keys(platform, clients, client_handle, KeysIterator { index: 0 })
+            }
+            ClientEvent::Resize(width, height) => {
+                let client = clients.get_mut(client_handle);
+                client.viewport_size = (width, height);
+                EditorControlFlow::Continue
+            }
+            ClientEvent::Command(target, command) => {
+                let client_handle = match target {
+                    TargetClient::Sender => client_handle,
+                    TargetClient::Focused => match clients.focused_client() {
+                        Some(handle) => handle,
+                        None => return EditorControlFlow::Continue,
+                    },
+                };
+
+                let mut command = self.string_pool.acquire_with(command);
+                let flow = CommandManager::eval_and_write_error(
+                    self,
+                    platform,
+                    clients,
+                    Some(client_handle),
+                    &mut command,
+                );
+                self.string_pool.release(command);
+                flow
+            }
+            ClientEvent::StdinInput(target, bytes) => {
+                let client_handle = match target {
+                    TargetClient::Sender => client_handle,
+                    TargetClient::Focused => match clients.focused_client() {
+                        Some(handle) => handle,
+                        None => return EditorControlFlow::Continue,
+                    },
+                };
+
+                clients.get_mut(client_handle).on_stdin_input(self, bytes);
+                self.trigger_event_handlers(platform, clients);
+                EditorControlFlow::Continue
+            }
+        }
+    }
+
+    pub(crate) fn on_idle(&mut self, clients: &mut ClientManager, platform: &mut Platform) {
+        self.events.enqueue(EditorEvent::Idle);
+        self.trigger_event_handlers(platform, clients);
+    }
+
+    pub(crate) fn on_process_spawned(
+        &mut self,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        tag: ProcessTag,
+        handle: ProcessHandle,
+    ) {
+        match tag {
+            ProcessTag::Buffer(index) => self.buffers.on_process_spawned(platform, index, handle),
+            ProcessTag::FindFiles => (),
+            ProcessTag::Plugin {
+                plugin_handle,
+                index,
+            } => PluginCollection::on_process_spawned(
+                self,
+                platform,
+                clients,
+                plugin_handle,
+                index,
+                handle,
+            ),
+            ProcessTag::Lsp(client_handle) => {
+                lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
+            }
+        }
+    }
+
+    pub(crate) fn on_process_output(
+        &mut self,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        tag: ProcessTag,
+        bytes: &[u8],
+    ) {
+        match tag {
+            ProcessTag::Buffer(index) => self.buffers.on_process_output(
+                &mut self.word_database,
+                index,
+                bytes,
+                &mut self.events,
+            ),
+            ProcessTag::FindFiles => {
+                self.mode
+                    .picker_state
+                    .on_process_output(&mut self.picker, &self.read_line, bytes)
+            }
+            ProcessTag::Plugin {
+                plugin_handle,
+                index,
+            } => PluginCollection::on_process_output(
+                self,
+                platform,
+                clients,
+                plugin_handle,
+                index,
+                bytes,
+            ),
+            ProcessTag::Lsp(client_handle) => {
+                lsp::ClientManager::on_process_output(self, platform, clients, client_handle, bytes)
+            }
+        }
+
+        self.trigger_event_handlers(platform, clients);
+    }
+
+    pub(crate) fn on_process_exit(
+        &mut self,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        tag: ProcessTag,
+    ) {
+        match tag {
+            ProcessTag::Buffer(index) => {
+                self.buffers
+                    .on_process_exit(&mut self.word_database, index, &mut self.events)
+            }
+            ProcessTag::FindFiles => self
+                .mode
+                .picker_state
+                .on_process_exit(&mut self.picker, &self.read_line),
+            ProcessTag::Plugin {
+                plugin_handle,
+                index,
+            } => PluginCollection::on_process_exit(self, platform, clients, plugin_handle, index),
+            ProcessTag::Lsp(client_handle) => {
+                lsp::ClientManager::on_process_exit(self, client_handle)
+            }
+        }
+
+        self.trigger_event_handlers(platform, clients);
     }
 }
 

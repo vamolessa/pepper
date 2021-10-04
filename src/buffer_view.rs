@@ -541,40 +541,6 @@ impl BufferViewCollection {
         &mut self.buffer_views[handle.0 as usize]
     }
 
-    pub fn on_buffer_load(&mut self, buffer: &Buffer) {
-        let buffer_handle = buffer.handle();
-        let buffer = buffer.content();
-
-        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
-            if view.buffer_handle == buffer_handle {
-                for c in &mut view.cursors.mut_guard()[..] {
-                    c.anchor = buffer.saturate_position(c.anchor);
-                    c.position = buffer.saturate_position(c.position);
-                }
-            }
-        }
-    }
-
-    pub fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
-        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
-            if view.buffer_handle == buffer_handle {
-                for c in &mut view.cursors.mut_guard()[..] {
-                    c.insert(range);
-                }
-            }
-        }
-    }
-
-    pub fn on_buffer_delete_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
-        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
-            if view.buffer_handle == buffer_handle {
-                for c in &mut view.cursors.mut_guard()[..] {
-                    c.delete(range);
-                }
-            }
-        }
-    }
-
     pub fn buffer_view_handle_from_buffer_handle(
         &mut self,
         client_handle: ClientHandle,
@@ -591,6 +557,40 @@ impl BufferViewCollection {
         match current_buffer_view_handle {
             Some(handle) => handle,
             None => self.add_new(client_handle, buffer_handle),
+        }
+    }
+
+    pub(crate) fn on_buffer_load(&mut self, buffer: &Buffer) {
+        let buffer_handle = buffer.handle();
+        let buffer = buffer.content();
+
+        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
+            if view.buffer_handle == buffer_handle {
+                for c in &mut view.cursors.mut_guard()[..] {
+                    c.anchor = buffer.saturate_position(c.anchor);
+                    c.position = buffer.saturate_position(c.position);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
+            if view.buffer_handle == buffer_handle {
+                for c in &mut view.cursors.mut_guard()[..] {
+                    c.insert(range);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn on_buffer_delete_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
+            if view.buffer_handle == buffer_handle {
+                for c in &mut view.cursors.mut_guard()[..] {
+                    c.delete(range);
+                }
+            }
         }
     }
 }

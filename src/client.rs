@@ -69,7 +69,7 @@ pub struct Client {
     pub viewport_size: (u16, u16),
     pub scroll: (BufferPositionIndex, BufferPositionIndex),
     pub height: u16,
-    pub navigation_history: NavigationHistory,
+    pub(crate) navigation_history: NavigationHistory,
 
     buffer_view_handle: Option<BufferViewHandle>,
     stdin_buffer_handle: Option<BufferHandle>,
@@ -100,82 +100,6 @@ impl Client {
         self.stdin_buffer_handle
     }
 
-    pub fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
-        let mut buf = Default::default();
-        let texts = self.stdin_residual_bytes.receive_bytes(&mut buf, bytes);
-
-        let buffer_handle = match self.stdin_buffer_handle() {
-            Some(handle) => handle,
-            None => {
-                use fmt::Write;
-
-                let buffer = editor.buffers.add_new();
-
-                let mut path = editor.string_pool.acquire_with("pipe.");
-                let _ = write!(path, "{}", self.handle().into_index());
-                buffer.path.clear();
-                buffer.path.push(&path);
-                editor.string_pool.release(path);
-
-                buffer.capabilities = BufferCapabilities::text();
-                buffer.capabilities.is_file = false;
-
-                let buffer_view_handle =
-                    editor.buffer_views.add_new(self.handle(), buffer.handle());
-                self.set_buffer_view_handle(
-                    Some(buffer_view_handle),
-                    &editor.buffer_views,
-                    &mut editor.events,
-                );
-
-                self.stdin_buffer_handle = Some(buffer.handle());
-                buffer.handle()
-            }
-        };
-
-        let buffer = editor.buffers.get_mut(buffer_handle);
-        for text in texts {
-            let position = buffer.content().end();
-            buffer.insert_text(
-                &mut editor.word_database,
-                position,
-                text,
-                &mut editor.events,
-            );
-        }
-    }
-
-    pub fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
-        self.navigation_history
-            .remove_snapshots_with_buffer_handle(buffer_handle);
-
-        if let Some(handle) = self.buffer_view_handle {
-            let buffer_view = editor.buffer_views.get(handle);
-            if buffer_view.buffer_handle == buffer_handle {
-                self.buffer_view_handle = None;
-                NavigationHistory::move_in_history(self, editor, NavigationMovement::Backward);
-                NavigationHistory::move_in_history(self, editor, NavigationMovement::Forward);
-            }
-        }
-
-        if self.stdin_buffer_handle == Some(buffer_handle) {
-            self.stdin_buffer_handle = None;
-        }
-    }
-
-    pub fn set_buffer_view_handle_no_history(
-        &mut self,
-        handle: Option<BufferViewHandle>,
-        events: &mut EditorEventQueue,
-    ) {
-        if self.buffer_view_handle != handle {
-            if let Some(handle) = self.buffer_view_handle {
-                events.enqueue(EditorEvent::BufferViewLostFocus { handle });
-            }
-            self.buffer_view_handle = handle;
-        }
-    }
-
     pub fn set_buffer_view_handle(
         &mut self,
         handle: Option<BufferViewHandle>,
@@ -190,7 +114,20 @@ impl Client {
         self.viewport_size.0 != 0 && self.viewport_size.1 != 0
     }
 
-    pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
+    pub(crate) fn set_buffer_view_handle_no_history(
+        &mut self,
+        handle: Option<BufferViewHandle>,
+        events: &mut EditorEventQueue,
+    ) {
+        if self.buffer_view_handle != handle {
+            if let Some(handle) = self.buffer_view_handle {
+                events.enqueue(EditorEvent::BufferViewLostFocus { handle });
+            }
+            self.buffer_view_handle = handle;
+        }
+    }
+
+    pub(crate) fn update_view(&mut self, editor: &Editor, picker_height: u16) {
         self.height = self.viewport_size.1.saturating_sub(1 + picker_height);
 
         let width = self.viewport_size.0 as BufferPositionIndex;
@@ -250,6 +187,69 @@ impl Client {
 
         self.scroll = (scroll_x, scroll_y);
     }
+
+    pub(crate) fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
+        let mut buf = Default::default();
+        let texts = self.stdin_residual_bytes.receive_bytes(&mut buf, bytes);
+
+        let buffer_handle = match self.stdin_buffer_handle() {
+            Some(handle) => handle,
+            None => {
+                use fmt::Write;
+
+                let buffer = editor.buffers.add_new();
+
+                let mut path = editor.string_pool.acquire_with("pipe.");
+                let _ = write!(path, "{}", self.handle().into_index());
+                buffer.path.clear();
+                buffer.path.push(&path);
+                editor.string_pool.release(path);
+
+                buffer.capabilities = BufferCapabilities::text();
+                buffer.capabilities.is_file = false;
+
+                let buffer_view_handle =
+                    editor.buffer_views.add_new(self.handle(), buffer.handle());
+                self.set_buffer_view_handle(
+                    Some(buffer_view_handle),
+                    &editor.buffer_views,
+                    &mut editor.events,
+                );
+
+                self.stdin_buffer_handle = Some(buffer.handle());
+                buffer.handle()
+            }
+        };
+
+        let buffer = editor.buffers.get_mut(buffer_handle);
+        for text in texts {
+            let position = buffer.content().end();
+            buffer.insert_text(
+                &mut editor.word_database,
+                position,
+                text,
+                &mut editor.events,
+            );
+        }
+    }
+
+    pub(crate) fn on_buffer_close(&mut self, editor: &mut Editor, buffer_handle: BufferHandle) {
+        self.navigation_history
+            .remove_snapshots_with_buffer_handle(buffer_handle);
+
+        if let Some(handle) = self.buffer_view_handle {
+            let buffer_view = editor.buffer_views.get(handle);
+            if buffer_view.buffer_handle == buffer_handle {
+                self.buffer_view_handle = None;
+                NavigationHistory::move_in_history(self, editor, NavigationMovement::Backward);
+                NavigationHistory::move_in_history(self, editor, NavigationMovement::Forward);
+            }
+        }
+
+        if self.stdin_buffer_handle == Some(buffer_handle) {
+            self.stdin_buffer_handle = None;
+        }
+    }
 }
 
 #[derive(Default)]
@@ -282,24 +282,6 @@ impl ClientManager {
         changed
     }
 
-    pub fn on_client_joined(&mut self, handle: ClientHandle) {
-        let min_len = handle.into_index() + 1;
-        if min_len > self.clients.len() {
-            self.clients.resize_with(min_len, Client::default);
-        }
-
-        let client = &mut self.clients[handle.into_index()];
-        client.active = true;
-        client.handle = handle;
-    }
-
-    pub fn on_client_left(&mut self, handle: ClientHandle) {
-        self.clients[handle.into_index()].dispose();
-        if self.focused_client == Some(handle) {
-            self.focused_client = None;
-        }
-    }
-
     pub fn get(&self, handle: ClientHandle) -> &Client {
         &self.clients[handle.into_index()]
     }
@@ -315,4 +297,23 @@ impl ClientManager {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Client> {
         self.clients.iter_mut().filter(|c| c.active)
     }
+
+    pub(crate) fn on_client_joined(&mut self, handle: ClientHandle) {
+        let min_len = handle.into_index() + 1;
+        if min_len > self.clients.len() {
+            self.clients.resize_with(min_len, Client::default);
+        }
+
+        let client = &mut self.clients[handle.into_index()];
+        client.active = true;
+        client.handle = handle;
+    }
+
+    pub(crate) fn on_client_left(&mut self, handle: ClientHandle) {
+        self.clients[handle.into_index()].dispose();
+        if self.focused_client == Some(handle) {
+            self.focused_client = None;
+        }
+    }
 }
+

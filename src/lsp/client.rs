@@ -470,7 +470,7 @@ impl DiagnosticCollection {
             .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
     }
 
-    pub fn on_load_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
+    pub(self) fn on_load_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
         let buffer_path = &editor.buffers.get(buffer_handle).path;
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle.is_none()
@@ -487,7 +487,7 @@ impl DiagnosticCollection {
         }
     }
 
-    pub fn on_save_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
+    pub(self) fn on_save_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
         let buffer_path = &editor.buffers.get(buffer_handle).path;
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
@@ -505,7 +505,7 @@ impl DiagnosticCollection {
         }
     }
 
-    pub fn on_close_buffer(&mut self, buffer_handle: BufferHandle) {
+    pub(self) fn on_close_buffer(&mut self, buffer_handle: BufferHandle) {
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
                 diagnostics.buffer_handle = None;
@@ -2790,7 +2790,7 @@ impl ClientManager {
         })
     }
 
-    pub fn on_process_spawned(
+    pub(crate) fn on_process_spawned(
         editor: &mut Editor,
         platform: &mut Platform,
         handle: ClientHandle,
@@ -2802,7 +2802,7 @@ impl ClientManager {
         }
     }
 
-    pub fn on_process_output(
+    pub(crate) fn on_process_output(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut client::ClientManager,
@@ -2852,7 +2852,7 @@ impl ClientManager {
         editor.lsp.entries[handle.0 as usize] = ClientEntry::Occupied(client);
     }
 
-    pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
+    pub(crate) fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
         let index = handle.0 as usize;
         let mut entry = ClientEntry::Vacant;
         std::mem::swap(&mut entry, &mut editor.lsp.entries[index]);
@@ -2870,7 +2870,7 @@ impl ClientManager {
         }
     }
 
-    pub fn on_editor_events(editor: &mut Editor, platform: &mut Platform) {
+    pub(crate) fn on_editor_events(editor: &mut Editor, platform: &mut Platform) {
         let mut events = EditorEventIter::new();
         while let Some(event) = events.next(&editor.events) {
             if let EditorEvent::BufferRead { handle } = *event {

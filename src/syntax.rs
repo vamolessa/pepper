@@ -302,7 +302,7 @@ impl HighlightedBuffer {
         self.dirty_line_indexes.clear();
     }
 
-    pub fn on_insert(&mut self, range: BufferRange) {
+    pub fn insert_range(&mut self, range: BufferRange) {
         let insert_line_count = range.to.line_index - range.from.line_index;
         if insert_line_count > 0 {
             let previous_highlighted_len = self.highlighted_len;
@@ -334,7 +334,7 @@ impl HighlightedBuffer {
         self.dirty_line_indexes.push(range.from.line_index);
     }
 
-    pub fn on_delete(&mut self, range: BufferRange) {
+    pub fn delete_range(&mut self, range: BufferRange) {
         self.lines[range.from.line_index as usize].parse_state = LineParseState::Dirty;
 
         let delete_line_count = range.to.line_index - range.from.line_index;
@@ -576,7 +576,7 @@ mod tests {
         let mut highlighted = HighlightedBuffer::new();
 
         let range = buffer.insert_text(BufferPosition::zero(), "/*\n*/");
-        highlighted.on_insert(range);
+        highlighted.insert_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
 
@@ -588,7 +588,7 @@ mod tests {
         }
 
         let range = buffer.insert_text(BufferPosition::line_col(1, 0), "'");
-        highlighted.on_insert(range);
+        highlighted.insert_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         {
@@ -608,7 +608,7 @@ mod tests {
         let mut highlighted = HighlightedBuffer::new();
 
         let range = buffer.insert_text(BufferPosition::zero(), "/*\n\n\n*/");
-        highlighted.on_insert(range);
+        highlighted.insert_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
 
@@ -629,7 +629,7 @@ mod tests {
         let mut highlighted = HighlightedBuffer::new();
 
         let range = buffer.insert_text(BufferPosition::zero(), "/*\n* /\n*/");
-        highlighted.on_insert(range);
+        highlighted.insert_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let range = BufferRange::between(
@@ -637,7 +637,7 @@ mod tests {
             BufferPosition::line_col(1, 2),
         );
         buffer.delete_range(range);
-        highlighted.on_delete(range);
+        highlighted.delete_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let mut parse_states = highlighted.lines[..highlighted.highlighted_len]
@@ -670,7 +670,7 @@ mod tests {
         let mut highlighted = HighlightedBuffer::new();
 
         let range = buffer.insert_text(BufferPosition::zero(), "/ *\na\n*/");
-        highlighted.on_insert(range);
+        highlighted.insert_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let range = BufferRange::between(
@@ -678,7 +678,7 @@ mod tests {
             BufferPosition::line_col(0, 2),
         );
         buffer.delete_range(range);
-        highlighted.on_delete(range);
+        highlighted.delete_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let mut tokens = highlighted_tokens(&highlighted);
@@ -697,7 +697,7 @@ mod tests {
         let mut highlighted = HighlightedBuffer::new();
 
         let range = buffer.insert_text(BufferPosition::zero(), "a\n/*\nb\nc*/");
-        highlighted.on_insert(range);
+        highlighted.insert_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.highlighted_len);
 
@@ -712,7 +712,7 @@ mod tests {
 
         let range = BufferRange::between(BufferPosition::zero(), BufferPosition::line_col(1, 1));
         buffer.delete_range(range);
-        highlighted.on_delete(range);
+        highlighted.delete_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.highlighted_len);
 

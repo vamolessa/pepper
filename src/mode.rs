@@ -7,8 +7,8 @@ use crate::{
 mod command;
 mod insert;
 mod normal;
-pub mod picker;
-pub mod read_line;
+pub(crate) mod picker;
+pub(crate) mod read_line;
 
 pub struct ModeContext<'a> {
     pub editor: &'a mut Editor,
@@ -17,7 +17,7 @@ pub struct ModeContext<'a> {
     pub client_handle: ClientHandle,
 }
 
-pub trait ModeState {
+pub(crate) trait ModeState {
     fn on_enter(ctx: &mut ModeContext);
     fn on_exit(ctx: &mut ModeContext);
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow>;
@@ -78,7 +78,7 @@ impl Mode {
         }
     }
 
-    pub fn on_client_keys(
+    pub(crate) fn on_client_keys(
         ctx: &mut ModeContext,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow> {

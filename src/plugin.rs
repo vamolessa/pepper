@@ -8,10 +8,18 @@ use crate::{
     client::ClientManager,
     editor::Editor,
     editor_utils::ResidualStrBytes,
-    platform::{PlatformRequest, Platform, ProcessHandle, ProcessIndex, ProcessTag},
+    platform::{Platform, PlatformRequest, ProcessHandle, ProcessIndex, ProcessTag},
 };
 
 pub trait Plugin: 'static + AsAny {
+    fn on_editor_events(
+        &mut self,
+        _editor: &mut Editor,
+        _platform: &mut Platform,
+        _clients: &mut ClientManager,
+    ) {
+    }
+
     fn on_process_spawned(
         &mut self,
         _editor: &mut Editor,
@@ -130,6 +138,19 @@ impl PluginCollection {
         });
 
         index
+    }
+
+    pub(crate) fn on_editor_events(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+    ) {
+        let mut plugin = DummyPlugin::new();
+        for i in 0..editor.plugins.plugins.len() {
+            std::mem::swap(&mut plugin, &mut editor.plugins.plugins[i]);
+            plugin.on_editor_events(editor, platform, clients);
+            std::mem::swap(&mut plugin, &mut editor.plugins.plugins[i]);
+        }
     }
 
     pub(crate) fn on_process_spawned(
