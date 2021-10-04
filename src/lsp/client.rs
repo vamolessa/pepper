@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCapabilities, BufferContent, BufferHandle},
+    buffer::{BufferProperties, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,
@@ -1126,7 +1126,7 @@ impl Client {
             match editor.buffer_view_handle_from_path(
                 client_handle,
                 path,
-                BufferCapabilities::text(),
+                BufferProperties::text(),
             ) {
                 Ok(buffer_view_handle) => {
                     let client = clients.get_mut(client_handle);
@@ -1397,7 +1397,7 @@ impl Client {
                     match editor.buffer_view_handle_from_path(
                         client_handle,
                         path,
-                        BufferCapabilities::text(),
+                        BufferProperties::text(),
                     ) {
                         Ok(buffer_view_handle) => {
                             if let Some(true) = params.take_focus {
@@ -1748,7 +1748,7 @@ impl Client {
                 let buffer_view_handle = editor.buffer_view_handle_from_path(
                     client_handle,
                     Path::new(&buffer_name),
-                    BufferCapabilities::text(),
+                    BufferProperties::text(),
                 );
                 editor.string_pool.release(buffer_name);
                 let buffer_view_handle = match buffer_view_handle {
@@ -1768,8 +1768,8 @@ impl Client {
                 let buffer_view = editor.buffer_views.get(buffer_view_handle);
                 let buffer = editor.buffers.get_mut(buffer_view.buffer_handle);
 
-                buffer.capabilities = BufferCapabilities::log();
-                buffer.capabilities.auto_close = auto_close_buffer;
+                buffer.properties = BufferProperties::log();
+                buffer.properties.auto_close = auto_close_buffer;
 
                 let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
                 buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
@@ -2353,7 +2353,7 @@ impl Client {
                 match editor.buffer_view_handle_from_path(
                     client_handle,
                     path,
-                    BufferCapabilities::text(),
+                    BufferProperties::text(),
                 ) {
                     Ok(buffer_view_handle) => {
                         let client = clients.get_mut(client_handle);
@@ -2461,7 +2461,7 @@ mod helper {
         }
 
         let buffer = editor.buffers.get(buffer_handle);
-        if !buffer.capabilities.can_save {
+        if !buffer.properties.can_save {
             return;
         }
 
@@ -2491,7 +2491,7 @@ mod helper {
                 continue;
             }
             let buffer = editor.buffers.get(buffer_handle);
-            if !buffer.capabilities.can_save {
+            if !buffer.properties.can_save {
                 versioned_buffer.flush();
                 continue;
             }
@@ -2562,7 +2562,7 @@ mod helper {
         }
 
         let buffer = editor.buffers.get(buffer_handle);
-        if !buffer.capabilities.can_save {
+        if !buffer.properties.can_save {
             return;
         }
 
@@ -2593,7 +2593,7 @@ mod helper {
         }
 
         let buffer = editor.buffers.get(buffer_handle);
-        if !buffer.capabilities.can_save {
+        if !buffer.properties.can_save {
             return;
         }
 

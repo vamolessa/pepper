@@ -1,7 +1,7 @@
 use std::{path::Path, process::Stdio};
 
 use crate::{
-    buffer::{parse_path_and_position, BufferCapabilities},
+    buffer::{parse_path_and_position, BufferProperties},
     buffer_position::BufferPosition,
     cursor::Cursor,
     editor::{EditorControlFlow, KeysIterator},
@@ -183,7 +183,7 @@ pub mod opened_buffers {
             if let Ok(buffer_view_handle) = ctx.editor.buffer_view_handle_from_path(
                 ctx.client_handle,
                 Path::new(&path),
-                BufferCapabilities::text(),
+                BufferProperties::text(),
             ) {
                 let client = ctx.clients.get_mut(ctx.client_handle);
                 client.set_buffer_view_handle(
@@ -252,7 +252,7 @@ pub mod find_file {
             match ctx.editor.buffer_view_handle_from_path(
                 ctx.client_handle,
                 Path::new(&path),
-                BufferCapabilities::text(),
+                BufferProperties::text(),
             ) {
                 Ok(buffer_view_handle) => {
                     let client = ctx.clients.get_mut(ctx.client_handle);
@@ -333,7 +333,7 @@ pub mod lsp_definition {
                         match ctx.editor.buffer_view_handle_from_path(
                             ctx.client_handle,
                             Path::new(&path),
-                            BufferCapabilities::text(),
+                            BufferProperties::text(),
                         ) {
                             Ok(buffer_view_handle) => {
                                 let client = ctx.clients.get_mut(ctx.client_handle);

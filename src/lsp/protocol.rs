@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCapabilities, BufferHandle},
+    buffer::{BufferProperties, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
     editor_utils::MessageKind,
@@ -610,8 +610,8 @@ impl WorkspaceEdit {
                         Some(handle) => (false, handle),
                         None => {
                             let buffer = editor.buffers.add_new();
-                            buffer.capabilities = BufferCapabilities::log();
-                            buffer.capabilities.can_save = true;
+                            buffer.properties = BufferProperties::log();
+                            buffer.properties.can_save = true;
                             buffer.path.clear();
                             buffer.path.push(path);
                             let _ = buffer

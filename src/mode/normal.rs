@@ -2,7 +2,7 @@ use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
     buffer::{
-        find_path_and_position_at, parse_path_and_position, BufferCapabilities, BufferContent,
+        find_path_and_position_at, parse_path_and_position, BufferProperties, BufferContent,
     },
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
@@ -502,7 +502,7 @@ impl State {
                             match ctx.editor.buffer_view_handle_from_path(
                                 ctx.client_handle,
                                 path,
-                                BufferCapabilities::text(),
+                                BufferProperties::text(),
                             ) {
                                 Ok(buffer_view_handle) => {
                                     if jumped {
@@ -1085,7 +1085,7 @@ impl State {
                         match ctx.editor.buffer_view_handle_from_path(
                             ctx.client_handle,
                             Path::new(&path),
-                            BufferCapabilities::text(),
+                            BufferProperties::text(),
                         ) {
                             Ok(handle) => {
                                 let client = ctx.clients.get_mut(ctx.client_handle);
@@ -1782,7 +1782,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
             let handle = ctx.editor.buffer_view_handle_from_path(
                 ctx.client_handle,
                 Path::new(&path),
-                BufferCapabilities::text(),
+                BufferProperties::text(),
             );
             ctx.editor.string_pool.release(path);
             match handle {

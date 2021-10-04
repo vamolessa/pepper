@@ -601,7 +601,7 @@ mod tests {
 
     use std::ops::Range;
 
-    use crate::{buffer::BufferCapabilities, buffer_position::BufferPosition};
+    use crate::{buffer::BufferProperties, buffer_position::BufferPosition};
 
     struct TestContext {
         pub buffers: BufferCollection,
@@ -616,7 +616,7 @@ mod tests {
 
             let mut buffers = BufferCollection::default();
             let buffer = buffers.add_new();
-            buffer.capabilities = BufferCapabilities::text();
+            buffer.properties = BufferProperties::text();
             buffer.insert_text(
                 &mut word_database,
                 BufferPosition::zero(),

@@ -745,14 +745,14 @@ impl From<io::Error> for BufferWriteError {
 }
 
 #[derive(Default)]
-pub struct BufferCapabilities {
+pub struct BufferProperties {
     pub has_history: bool,
     pub can_save: bool,
     pub uses_word_database: bool,
     pub auto_close: bool,
     pub is_file: bool,
 }
-impl BufferCapabilities {
+impl BufferProperties {
     pub fn text() -> Self {
         Self {
             has_history: true,
@@ -784,7 +784,7 @@ pub struct Buffer {
     history: History,
     search_ranges: Vec<BufferRange>,
     needs_save: bool,
-    pub capabilities: BufferCapabilities,
+    pub properties: BufferProperties,
 }
 
 impl Buffer {
@@ -799,7 +799,7 @@ impl Buffer {
             history: History::new(),
             search_ranges: Vec::new(),
             needs_save: false,
-            capabilities: BufferCapabilities::default(),
+            properties: BufferProperties::default(),
         }
     }
 
@@ -814,11 +814,11 @@ impl Buffer {
         self.history.clear();
         self.search_ranges.clear();
         self.needs_save = false;
-        self.capabilities = BufferCapabilities::default();
+        self.properties = BufferProperties::default();
     }
 
     fn remove_all_words_from_database(&mut self, word_database: &mut WordDatabase) {
-        if self.capabilities.uses_word_database {
+        if self.properties.uses_word_database {
             for line in &self.content.lines {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.remove(word);
@@ -863,7 +863,7 @@ impl Buffer {
     }
 
     pub fn needs_save(&self) -> bool {
-        self.capabilities.can_save && self.needs_save
+        self.properties.can_save && self.needs_save
     }
 
     pub fn insert_text(
@@ -884,7 +884,7 @@ impl Buffer {
         let range = Self::insert_text_no_history(
             &mut self.content,
             &mut self.highlighted,
-            self.capabilities.uses_word_database,
+            self.properties.uses_word_database,
             word_database,
             position,
             text,
@@ -892,7 +892,7 @@ impl Buffer {
 
         events.enqueue_buffer_insert(self.handle, range, text);
 
-        if self.capabilities.has_history {
+        if self.properties.has_history {
             self.history.add_edit(Edit {
                 kind: EditKind::Insert,
                 range,
@@ -961,7 +961,7 @@ impl Buffer {
         let from = range.from;
         let to = range.to;
 
-        if self.capabilities.has_history {
+        if self.properties.has_history {
             fn add_history_delete_line(buffer: &mut Buffer, from: BufferPosition) {
                 let line = buffer.content.line_at(from.line_index as _).as_str();
                 let range = BufferRange::between(
@@ -1006,7 +1006,7 @@ impl Buffer {
         Self::delete_range_no_history(
             &mut self.content,
             &mut self.highlighted,
-            self.capabilities.uses_word_database,
+            self.properties.uses_word_database,
             word_database,
             range,
         );
@@ -1080,7 +1080,7 @@ impl Buffer {
 
         let content = &mut self.content;
         let highlighted = &mut self.highlighted;
-        let uses_word_database = self.capabilities.uses_word_database;
+        let uses_word_database = self.properties.uses_word_database;
 
         let edits = selector(&mut self.history);
         for edit in edits.clone() {
@@ -1154,7 +1154,7 @@ impl Buffer {
             BufferPosition::line_col((self.content.line_count() - 1) as _, 0),
         ));
 
-        if self.capabilities.uses_word_database {
+        if self.properties.uses_word_database {
             for line in &self.content.lines {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.add(word);
@@ -1172,7 +1172,7 @@ impl Buffer {
     ) -> Result<(), BufferWriteError> {
         let new_path = match new_path {
             Some(path) => {
-                self.capabilities.can_save = true;
+                self.properties.can_save = true;
                 self.path.clear();
                 self.path.push(path);
                 true
@@ -1180,11 +1180,11 @@ impl Buffer {
             None => false,
         };
 
-        if !self.capabilities.can_save {
+        if !self.properties.can_save {
             return Ok(());
         }
 
-        if self.capabilities.is_file {
+        if self.properties.is_file {
             let file = File::create(&self.path)?;
             self.content.write(&mut io::BufWriter::new(file))?;
         }
@@ -1742,7 +1742,7 @@ mod tests {
         let mut events = EditorEventQueue::default();
 
         let mut buffer = Buffer::new(BufferHandle(0));
-        buffer.capabilities = BufferCapabilities::text();
+        buffer.properties = BufferProperties::text();
         buffer.insert_text(
             &mut word_database,
             BufferPosition::zero(),
@@ -1777,7 +1777,7 @@ mod tests {
         let mut events = EditorEventQueue::default();
 
         let mut buffer = Buffer::new(BufferHandle(0));
-        buffer.capabilities = BufferCapabilities::text();
+        buffer.properties = BufferProperties::text();
         let insert_range = buffer.insert_text(
             &mut word_database,
             BufferPosition::zero(),

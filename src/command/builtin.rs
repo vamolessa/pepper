@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    buffer::{parse_path_and_position, BufferCapabilities, BufferHandle},
+    buffer::{parse_path_and_position, BufferProperties, BufferHandle},
     buffer_position::BufferPosition,
     client::ClientManager,
     command::{CommandContext, CommandError, CommandManager, CompletionSource},
@@ -35,7 +35,7 @@ pub fn init(commands: &mut CommandManager) {
         match ctx.editor.buffer_view_handle_from_path(
             client_handle,
             path,
-            BufferCapabilities::log(),
+            BufferProperties::log(),
         ) {
             Ok(handle) => {
                 let client = ctx.clients.get_mut(client_handle);
@@ -91,7 +91,7 @@ pub fn init(commands: &mut CommandManager) {
         match ctx.editor.buffer_view_handle_from_path(
             client_handle,
             Path::new(&path),
-            BufferCapabilities::text(),
+            BufferProperties::text(),
         ) {
             Ok(handle) => {
                 let client = ctx.clients.get_mut(client_handle);
@@ -144,7 +144,7 @@ pub fn init(commands: &mut CommandManager) {
 
         let mut count = 0;
         for buffer in ctx.editor.buffers.iter_mut() {
-            if buffer.capabilities.can_save {
+            if buffer.properties.can_save {
                 buffer
                     .write_to_file(None, &mut ctx.editor.events)
                     .map_err(CommandError::BufferWriteError)?;
@@ -379,7 +379,7 @@ pub fn init(commands: &mut CommandManager) {
                     match editor.buffer_view_handle_from_path(
                         client_handle,
                         Path::new(path),
-                        BufferCapabilities::log(),
+                        BufferProperties::log(),
                     ) {
                         Ok(buffer_view_handle) => {
                             let client = clients.get_mut(client_handle);

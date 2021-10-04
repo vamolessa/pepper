@@ -1,7 +1,7 @@
 use std::{fmt, str::FromStr};
 
 use crate::{
-    buffer::{BufferCapabilities, BufferHandle, CharDisplayDistances},
+    buffer::{BufferProperties, BufferHandle, CharDisplayDistances},
     buffer_position::BufferPositionIndex,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
@@ -205,8 +205,8 @@ impl Client {
                 buffer.path.push(&path);
                 editor.string_pool.release(path);
 
-                buffer.capabilities = BufferCapabilities::text();
-                buffer.capabilities.is_file = false;
+                buffer.properties = BufferProperties::text();
+                buffer.properties.is_file = false;
 
                 let buffer_view_handle =
                     editor.buffer_views.add_new(self.handle(), buffer.handle());

@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCapabilities, BufferCollection, BufferReadError},
+    buffer::{BufferProperties, BufferCollection, BufferReadError},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{Client, ClientHandle, ClientManager},
@@ -147,7 +147,7 @@ impl Editor {
         &mut self,
         client_handle: ClientHandle,
         path: &Path,
-        capabilities: BufferCapabilities,
+        properties: BufferProperties,
     ) -> Result<BufferViewHandle, BufferReadError> {
         if let Some(buffer_handle) = self.buffers.find_with_path(&self.current_directory, path) {
             let handle = self
@@ -159,7 +159,7 @@ impl Editor {
             let buffer = self.buffers.add_new();
             buffer.path.clear();
             buffer.path.push(path);
-            buffer.capabilities = capabilities;
+            buffer.properties = properties;
 
             match buffer.read_from_file(&mut self.word_database, &mut self.events) {
                 Ok(()) => {
@@ -307,7 +307,7 @@ impl Editor {
                         let buffer_view = self.buffer_views.get(handle);
                         let buffer_handle = buffer_view.buffer_handle;
                         let buffer = self.buffers.get(buffer_handle);
-                        let should_close = buffer.capabilities.auto_close && !buffer.needs_save();
+                        let should_close = buffer.properties.auto_close && !buffer.needs_save();
                         let any_view = !clients
                             .iter()
                             .filter_map(Client::buffer_view_handle)
