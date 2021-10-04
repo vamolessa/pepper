@@ -1,8 +1,3 @@
-use std::{
-    ffi::CStr,
-    sync::atomic::{AtomicPtr, AtomicU32, Ordering},
-};
-
 use crate::{
     client::ClientManager,
     command::{CommandContext, CommandError},

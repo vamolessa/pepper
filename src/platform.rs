@@ -117,7 +117,6 @@ impl PlatformRequestCollection {
 pub struct Platform {
     pub requests: PlatformRequestCollection,
 
-    load_plugin_fn: Option<fn(&str) -> Option<PluginInitFn>>,
     read_from_clipboard_fn: Option<fn(&mut String)>,
     write_to_clipboard_fn: Option<fn(&str)>,
 
@@ -128,10 +127,6 @@ pub struct Platform {
     pub paste_command: String,
 }
 impl Platform {
-    pub fn set_plugin_api(&mut self, load_plugin_fn: fn(&str) -> Option<PluginInitFn>) {
-        self.load_plugin_fn = Some(load_plugin_fn);
-    }
-
     pub fn set_clipboard_api(
         &mut self,
         read_from_clipboard_fn: fn(&mut String),
@@ -139,11 +134,6 @@ impl Platform {
     ) {
         self.read_from_clipboard_fn = Some(read_from_clipboard_fn);
         self.write_to_clipboard_fn = Some(write_to_clipboard_fn);
-    }
-
-    pub fn load_plugin(&self, path: &str) -> Option<PluginInitFn> {
-        let loader = self.load_plugin_fn?;
-        loader(path)
     }
 
     pub fn read_from_clipboard(&self, text: &mut String) {

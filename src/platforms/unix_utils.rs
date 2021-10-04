@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-use pepper::{
+use crate::{
     application::ClientApplication,
     editor_utils::hash_bytes,
     platform::{BufPool, Key, PooledBuf, ProcessTag},

@@ -65,7 +65,7 @@ use winapi::{
     },
 };
 
-use pepper::{
+use crate::{
     application::{ClientApplication, ServerApplication},
     client::ClientHandle,
     editor_utils::hash_bytes,

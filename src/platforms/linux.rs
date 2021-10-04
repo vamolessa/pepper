@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use pepper::{
+use crate::{
     application::{ClientApplication, ServerApplication},
     client::ClientHandle,
     platform::{Key, PlatformEvent, PlatformRequest, ProcessHandle},
