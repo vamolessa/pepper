@@ -46,7 +46,7 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 - cross-plaftorm (Windows, Linux, BSD, Mac)
 - extensible through external cli tools
 - be as fast and reponsive as possible
-- zero runtime dependencies (besides platform libs + buildtime plugin api binding generator)
+- zero runtime dependencies (besides platform libs)
 
 # non goals
 
