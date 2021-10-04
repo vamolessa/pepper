@@ -315,7 +315,7 @@ impl Editor {
                 };
 
                 let mut command = self.string_pool.acquire_with(command);
-                let flow = CommandManager::eval(
+                let flow = CommandManager::eval_and_write_error(
                     self,
                     platform,
                     clients,

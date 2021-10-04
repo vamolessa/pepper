@@ -1065,7 +1065,6 @@ impl Client {
             NavigationHistory::save_snapshot(clients.get_mut(client_handle), &editor.buffer_views);
 
             let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
-            let buffer = editor.buffers.get(buffer_view.buffer_handle);
             let position = position.into_buffer_position();
             let mut cursors = buffer_view.cursors.mut_guard();
             cursors.clear();
@@ -2365,7 +2364,6 @@ impl Client {
                         );
 
                         let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
-                        let buffer = editor.buffers.get(buffer_view.buffer_handle);
                         let position = location.range.start.into_buffer_position();
                         let mut cursors = buffer_view.cursors.mut_guard();
                         cursors.clear();

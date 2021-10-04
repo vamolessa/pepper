@@ -11,7 +11,6 @@ use crate::{
     keymap::ParseKeyMapError,
     pattern::PatternError,
     platform::Platform,
-    plugin,
 };
 
 mod builtin;
@@ -33,11 +32,10 @@ pub enum CommandError {
     KeyMapError(ParseKeyMapError),
     PatternError(PatternError),
     InvalidGlob(InvalidGlobError),
-    CouldNotLoadPlugin,
     LspServerNotRunning,
     LspServerNotLogging,
-    ErrorMessageNotUtf8,
-    PluginError(&'static str),
+    OtherStatic(&'static str),
+    OtherOwned(String),
 }
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -56,11 +54,10 @@ impl fmt::Display for CommandError {
             Self::KeyMapError(error) => error.fmt(f),
             Self::PatternError(error) => error.fmt(f),
             Self::InvalidGlob(error) => error.fmt(f),
-            Self::CouldNotLoadPlugin => f.write_str("could not load plugin"),
             Self::LspServerNotRunning => f.write_str("no lsp server running"),
             Self::LspServerNotLogging => f.write_str("lsp server is not logging"),
-            Self::ErrorMessageNotUtf8 => f.write_str("error message is not utf8"),
-            Self::PluginError(error) => f.write_str(error),
+            Self::OtherStatic(error) => f.write_str(error),
+            Self::OtherOwned(error) => f.write_str(&error),
         }
     }
 }
@@ -233,13 +230,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
     }
 }
 
-pub type BuiltinCommandFn = fn(ctx: &mut CommandContext) -> Result<(), CommandError>;
-
-#[derive(Clone, Copy)]
-enum CommandFn {
-    BuiltinCommandFn(BuiltinCommandFn),
-    PluginCommandFn(plugin::PluginHandle, plugin::api::PluginCommandFn),
-}
+pub type CommandFn = fn(ctx: &mut CommandContext) -> Result<(), CommandError>;
 
 pub struct Command {
     pub name: &'static str,
@@ -329,30 +320,16 @@ impl CommandManager {
         this
     }
 
-    pub fn register_builtin_command(
+    pub fn register_command(
         &mut self,
         name: &'static str,
         completions: &'static [CompletionSource],
-        command_fn: BuiltinCommandFn,
+        command_fn: CommandFn,
     ) {
         self.commands.push(Command {
             name,
             completions,
-            command_fn: CommandFn::BuiltinCommandFn(command_fn),
-        });
-    }
-
-    pub fn register_plugin_command(
-        &mut self,
-        handle: plugin::PluginHandle,
-        name: &'static str,
-        completions: &'static [CompletionSource],
-        command_fn: plugin::api::PluginCommandFn,
-    ) {
-        self.commands.push(Command {
-            name,
-            completions,
-            command_fn: CommandFn::PluginCommandFn(handle, command_fn),
+            command_fn,
         });
     }
 
@@ -396,7 +373,7 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    pub fn eval(
+    pub fn eval_and_write_error(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
@@ -431,10 +408,10 @@ impl CommandManager {
             }
         }
 
-        Self::do_eval(editor, platform, clients, client_handle, command)
+        Self::eval(editor, platform, clients, client_handle, command)
     }
 
-    fn do_eval(
+    fn eval(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
@@ -464,12 +441,7 @@ impl CommandManager {
             bang,
             flow: EditorControlFlow::Continue,
         };
-        match command_fn {
-            CommandFn::BuiltinCommandFn(f) => f(&mut ctx)?,
-            CommandFn::PluginCommandFn(handle, f) => {
-                plugin::PluginCollection::call_command_fn(&mut ctx, handle, f)?
-            }
-        }
+        command_fn(&mut ctx)?;
         Ok(ctx.flow)
     }
 }
@@ -523,3 +495,4 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
+

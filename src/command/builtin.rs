@@ -12,14 +12,13 @@ use crate::{
     help, lsp,
     mode::{picker, ModeContext, ModeKind},
     platform::Platform,
-    plugin::PluginCollection,
     syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
 };
 
 pub fn init(commands: &mut CommandManager) {
     let mut r = |name, completions, command_fn| {
-        commands.register_builtin_command(name, completions, command_fn);
+        commands.register_command(name, completions, command_fn);
     };
 
     static HELP_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Commands];
