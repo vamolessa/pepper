@@ -446,14 +446,10 @@ impl Editor {
         match tag {
             ProcessTag::Buffer(index) => self.buffers.on_process_spawned(platform, index, handle),
             ProcessTag::FindFiles => (),
-            ProcessTag::Plugin {
-                plugin_handle,
-                index,
-            } => PluginCollection::on_process_spawned(
+            ProcessTag::Plugin(index)  => PluginCollection::on_process_spawned(
                 self,
                 platform,
                 clients,
-                plugin_handle,
                 index,
                 handle,
             ),
@@ -482,14 +478,10 @@ impl Editor {
                     .picker_state
                     .on_process_output(&mut self.picker, &self.read_line, bytes)
             }
-            ProcessTag::Plugin {
-                plugin_handle,
-                index,
-            } => PluginCollection::on_process_output(
+            ProcessTag::Plugin(index) => PluginCollection::on_process_output(
                 self,
                 platform,
                 clients,
-                plugin_handle,
                 index,
                 bytes,
             ),
@@ -516,10 +508,7 @@ impl Editor {
                 .mode
                 .picker_state
                 .on_process_exit(&mut self.picker, &self.read_line),
-            ProcessTag::Plugin {
-                plugin_handle,
-                index,
-            } => PluginCollection::on_process_exit(self, platform, clients, plugin_handle, index),
+            ProcessTag::Plugin(index) => PluginCollection::on_process_exit(self, platform, clients, index),
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_exit(self, client_handle)
             }

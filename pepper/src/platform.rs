@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{client::ClientHandle, editor_utils::parse_process_command, lsp, plugin::PluginHandle};
+use crate::{client::ClientHandle, editor_utils::parse_process_command, lsp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -87,10 +87,7 @@ pub struct ProcessIndex(pub u32);
 pub enum ProcessTag {
     Buffer(ProcessIndex),
     FindFiles,
-    Plugin {
-        plugin_handle: PluginHandle,
-        index: ProcessIndex,
-    },
+    Plugin(ProcessIndex),
     Lsp(lsp::ClientHandle),
 }
 

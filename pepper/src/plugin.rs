@@ -131,10 +131,7 @@ impl PluginCollection {
 
         let index = ProcessIndex(index as _);
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::Plugin {
-                plugin_handle,
-                index,
-            },
+            tag: ProcessTag::Plugin(index),
             command,
             buf_len: 4 * 1024,
         });
@@ -159,41 +156,47 @@ impl PluginCollection {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        handle: PluginHandle,
         process_index: ProcessIndex,
         process_handle: ProcessHandle,
     ) {
+        let index = editor.plugins.processes[process_index.0 as usize]
+            .plugin_handle
+            .0 as usize;
         let mut plugin = DummyPlugin::new();
-        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[handle.0 as usize]);
+        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[index]);
         plugin.on_process_spawned(editor, platform, clients, process_index, process_handle);
-        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[handle.0 as usize]);
+        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[index]);
     }
 
     pub(crate) fn on_process_output(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        handle: PluginHandle,
         process_index: ProcessIndex,
         bytes: &[u8],
     ) {
+        let index = editor.plugins.processes[process_index.0 as usize]
+            .plugin_handle
+            .0 as usize;
         let mut plugin = DummyPlugin::new();
-        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[handle.0 as usize]);
+        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[index]);
         plugin.on_process_output(editor, platform, clients, process_index, bytes);
-        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[handle.0 as usize]);
+        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[index]);
     }
 
     pub(crate) fn on_process_exit(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        handle: PluginHandle,
         process_index: ProcessIndex,
     ) {
+        let index = editor.plugins.processes[process_index.0 as usize]
+            .plugin_handle
+            .0 as usize;
         let mut plugin = DummyPlugin::new();
-        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[handle.0 as usize]);
+        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[index]);
         plugin.on_process_exit(editor, platform, clients, process_index);
-        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[handle.0 as usize]);
+        std::mem::swap(&mut plugin, &mut editor.plugins.plugins[index]);
     }
 }
 
