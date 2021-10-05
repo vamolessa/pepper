@@ -2,9 +2,9 @@
 resolver = "2"
 
 members = [
-    "my",
     "pepper",
     "plugin-lsp",
+    "my",
 ]
 
 [profile.release]
