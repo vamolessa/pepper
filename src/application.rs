@@ -6,9 +6,31 @@ use crate::{
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     platform::{Key, Platform, PlatformEvent, PlatformRequest},
+    plugin::PluginCreateFn,
     serialization::{DeserializeError, Serialize},
     ui, Args,
 };
+
+pub struct ConfigSource {
+    pub name: &'static str,
+    pub content: &'static str,
+}
+
+pub struct ApplicationContext {
+    pub args: Args,
+    pub configs: Vec<ConfigSource>,
+    pub plugin_create_fns: Vec<PluginCreateFn>,
+
+}
+impl Default for ApplicationContext {
+    fn default() -> Self {
+        Self {
+            args: Args::parse(),
+            configs: vec![crate::DEFAULT_CONFIG_SOURCE, crate::DEFAULT_SYNTAXES_SOURCE],
+            plugin_create_fns: Vec::new(),
+        }
+    }
+}
 
 pub struct ServerApplication {
     editor: Editor,
@@ -25,24 +47,23 @@ impl ServerApplication {
         Duration::from_secs(1)
     }
 
-    pub fn new(args: Args) -> Option<Self> {
+    pub fn new(ctx: ApplicationContext) -> Option<Self> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
         let mut platform = Platform::default();
         let mut clients = ClientManager::default();
 
-        if !args.no_default_config {
-            let source = include_str!("../rc/default_config.pp");
+        for config in &ctx.configs {
             load_config(
                 &mut editor,
                 &mut platform,
                 &mut clients,
-                "default_config.pp",
-                source,
+                config.name,
+                config.content,
             );
         }
 
-        for config in args.configs {
+        for config in ctx.args.configs {
             let path = Path::new(&config.path);
             if config.suppress_file_not_found && !path.exists() {
                 continue;

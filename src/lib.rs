@@ -28,6 +28,15 @@ pub mod theme;
 pub mod ui;
 pub mod word_database;
 
+pub const DEFAULT_CONFIG_SOURCE: application::ConfigSource = application::ConfigSource {
+    name: "default_config.pp",
+    content: include_str!("../rc/default_config.pp"),
+};
+pub const DEFAULT_SYNTAXES_SOURCE: application::ConfigSource = application::ConfigSource {
+    name: "default_syntaxes.pp",
+    content: include_str!("../rc/default_syntaxes.pp"),
+};
+
 pub struct ArgsConfig {
     pub path: String,
     pub suppress_file_not_found: bool,
@@ -42,7 +51,6 @@ pub struct Args {
     pub quit: bool,
     pub server: bool,
     pub configs: Vec<ArgsConfig>,
-    pub no_default_config: bool,
     pub files: Vec<String>,
 }
 
@@ -72,9 +80,6 @@ fn print_help() {
     println!("  --server                 only run as server");
     println!("  -c, --config             sources config file at path (repeatable) (server only)");
     println!("  --try-config             like `--config` but suppresses the 'file not found' error (repeatable)");
-    println!(
-        "  --no-default-config      does not source the default config included in the editor"
-    );
 }
 
 impl Args {
@@ -142,7 +147,6 @@ impl Args {
                     }
                     None => error(format_args!("expected config path after {}", arg)),
                 },
-                "--no-default-config" => parsed.no_default_config = true,
                 "--" => {
                     while let Some(arg) = args.next() {
                         let arg = arg_to_str(&arg);
@@ -181,7 +185,7 @@ mod sys;
 #[path = "platforms/bsd.rs"]
 mod sys;
 
-pub fn run() {
+pub fn run(ctx: application::ApplicationContext) {
     use std::{fs, io, mem::MaybeUninit, panic};
 
     static mut ORIGINAL_PANIC_HOOK: MaybeUninit<Box<dyn Fn(&panic::PanicInfo) + Sync + Send>> =
@@ -200,6 +204,6 @@ pub fn run() {
         hook(info);
     }));
 
-    sys::main();
+    sys::main(ctx);
 }
 

@@ -1,0 +1,86 @@
+syntax "**/*.refs"
+syntax-keywords "^{%w/%._-!:}"
+syntax-symbols ","
+syntax-literals %d{%d}
+syntax-texts {%w-_}
+
+syntax "**/*.pp"
+syntax-keywords ""
+syntax-strings [["{!".}|'{!'.}|%[%[{!(%]%]).}]]
+syntax-comments ^#{.}
+
+# https://doc.rust-lang.org/reference/keywords.html
+syntax "**/*.rs"
+syntax-keywords as|break|const|continue|crate|else|enum|extern|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|static|struct|super|trait|type|unsafe|use|where|while|async|await|dyn|abstract|become|box|do|final|macro|override|priv|typeof|unsized|virtual|yield|try|union
+syntax-types bool|u8|u16|u32|u64|usize|i8|i16|i32|i64|isize|f32|f64|str|char|%u{%w_}
+syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%!|?|&|%||@
+syntax-literals [[true|false|self|'\''|'\{!'.}|'.'|b'{(\')(\\)!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|'%a{%w_}]]
+syntax-strings [["{(\\)(\")!".}|b"{(\\)(\")!".}]]
+syntax-comments //{.}|/*{!(*/).$}
+
+# https://ziglang.org/documentation/master/#Keyword-Reference
+syntax "**/*.zig"
+syntax-keywords align|allowzero|and|asm|async|await|break|catch|comptime|const|continue|defer|else|enum|errdefer|error|export|extern|fn|for|if|inline|noalias|nosuspend|or|orelse|packed|pub|resume|return|linksection|struct|suspend|switch|test|threadlocal|try|union|unreachable|usingnamespace|var|volatile|while
+syntax-types u%d{%d}|usize|i%d{%d}|isize|c_{%w}|f16|f32|f64|f128|bool|void|noreturn|type|anyframe|anytype|anyerror|comptime_int|comptime_float|@%u{%w}|%u{%w_}
+syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%!|~|?|&|%||@%l{%w}
+syntax-literals [[false|null|true|undefined|'\''|'\{!'.}|'.'|%d{%d_}%.%w{%w_}|%d{%w_}]]
+syntax-strings [["{(\\)(\")!".}|\\{.}]]
+syntax-comments //{.}
+
+# https://docs.microsoft.com/en-us/cpp/cpp/keywords-cpp
+syntax "**/*.{c,h,cpp,hpp}"
+syntax-keywords alignas|alignof|and_eq|and|asm|auto|bitand|bitor|bool|break|case|catch|class|compl|concept|const|const_cast|consteval|constexpr|constinit|continue|co_await|co_return|co_yield|decltype|default|delete|do|dynamic_cast|else|enum|explicit|export|extern|for|friend|goto|if|inline|mutable|namespace|new|noexcept|not_eq|not|operator|or_eq|or|override|private|protected|public|register|reinterpret_cast|requires|return|sizeof|static|static_assert|static_cast|struct|switch|template|thread_local|throw|try|typedef|typeid|typename|union|using|virtual|volatile|while|xor_eq|xor
+syntax-types char|char8_t|char16_t|char32_t|double|float|int|long|short|signed|unsigned|void|wchar_t|%u{%w_}
+syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|~|?|&|%||@
+syntax-literals [[true|false|this|nullptr|'{(\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{ }{%a}]]
+syntax-strings [["{(\\)(\")!".}]]
+syntax-comments //{.}|/*{!(*/).$}
+
+# https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/
+syntax "**/*.cs"
+syntax-keywords abstract|as|base|break|case|catch|checked|class|const|continue|default|delegate|do|else|enum|event|explicit|extern|finally|fixed|foreach|for|goto|if|implicit|in|interface|internal|is|lock|namespace|new|operator|out|override|params|private|protected|public|readonly|ref|return|sealed|sizeof|stackalloc|static|struct|switch|throw|try|typeof|unchecked|unsafe|using|virtual|volatile|while|add|alias|ascending|async|await|by|descending|dynamic|equals|from|get|global|group|into|join|let|nameof|not|on|orderby|partial|remove|select|set|unmanaged|value|var|when|where|yield
+syntax-types bool|byte|char|decimal|double|float|int|long|object|sbyte|short|string|uint|ulong|ushort|void|%u{%w_}
+syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@
+syntax-literals [[true|false|this|null|'{(\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{%a}]]
+syntax-strings [["{(\\)(\")!".}]]
+syntax-comments //{.}|/*{!(*/).$}
+
+# https://www.lua.org/manual/5.1/manual.html#2
+syntax "**/*.lua"
+syntax-keywords and|break|do|elseif|else|end|for|function|if|in|local|not|or|repeat|return|then|until|while
+syntax-symbols [[+|-|*|/|%%|%^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.]]
+syntax-literals nil|false|true|_G|_ENV|%d{%d_}%.%w{%w_}|%d{%w_}
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}|%[%[{!(%]%]).}]]
+syntax-comments --{.}|--%[%[{!(%]%]).$}
+
+# https://docs.python.org/3/reference/lexical_analysis.html#keywords
+syntax "**/*.py"
+syntax-keywords and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield
+syntax-symbols +|-|*|/|%%|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.
+syntax-literals None|False|True|%d{%d_}%.%w{%w_}|%d{%w_}
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}]]
+syntax-comments [[#{.}]]
+
+# https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#keywords
+syntax "**/*.{js,ts}"
+syntax-keywords break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|new|return|super|switch|this|throw|try|typeof|var|void|while|witch|yield|enum|implements|interface|let|package|private|protected|public|static|yield|await
+syntax-types %u{%w_}
+syntax-symbols %(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@
+syntax-literals null|undefined|this|true|false|%d{%d_}%.%w{%w_}|%d{%w_}
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}|`{(\\)(\`)!`.}]]
+syntax-comments //{.}|/*{!(*/).$}
+
+syntax "**/*.md"
+syntax-keywords [[#{.}$]]
+syntax-symbols %||%!|-
+syntax-literals %[{!%].}%({!%).}
+syntax-strings [[```{!(```).$}|`{!`.}]]
+syntax-texts {%w-_}
+
+syntax "**/*.html"
+syntax-keywords "%!DOCTYPE"
+syntax-symbols =
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}]]
+syntax-comments <%!--{!(-->).$}
+syntax-texts {%w-_}
+

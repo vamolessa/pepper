@@ -11,6 +11,8 @@ use crate::{
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessIndex, ProcessTag},
 };
 
+pub type PluginCreateFn = fn(&mut Editor, &mut Platform) -> Box<dyn Plugin>;
+
 pub trait Plugin: 'static + AsAny {
     fn on_editor_events(
         &mut self,

@@ -66,7 +66,7 @@ use winapi::{
 };
 
 use crate::{
-    application::{ClientApplication, ServerApplication},
+    application::{ClientApplication, ServerApplication, ApplicationContext},
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
@@ -150,13 +150,12 @@ pub fn try_launching_debugger() {
     unsafe { DebugBreak() };
 }
 
-pub fn main() {
+pub fn main(ctx: ApplicationContext) {
     CtrlCEvent::set_ctrl_handler();
-    let args = Args::parse();
 
     let mut pipe_path = Vec::new();
     let mut hash_buf = [0u8; 16];
-    let session_name = match &args.session {
+    let session_name = match &ctx.args.session {
         Some(name) => name.as_str(),
         None => {
             use io::Write;
@@ -185,14 +184,14 @@ pub fn main() {
     pipe_path.extend(session_name.encode_utf16());
     pipe_path.push(0);
 
-    if args.print_session {
+    if ctx.args.print_session {
         print!("{}{}", PIPE_PREFIX, session_name);
         return;
     }
 
-    if args.server {
+    if ctx.args.server {
         if !pipe_exists(&pipe_path) {
-            let _ = run_server(args, &pipe_path);
+            let _ = run_server(ctx, &pipe_path);
         }
     } else {
         if !pipe_exists(&pipe_path) {
@@ -202,7 +201,7 @@ pub fn main() {
             }
         }
 
-        run_client(args, &pipe_path);
+        run_client(ctx.args, &pipe_path);
     }
 }
 
@@ -986,12 +985,12 @@ impl EventListener {
     }
 }
 
-fn run_server(args: Args, pipe_path: &[u16]) {
+fn run_server(ctx: ApplicationContext, pipe_path: &[u16]) {
     let mut event_listener = EventListener::new();
     let mut listener =
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
-    let mut application = match ServerApplication::new(args) {
+    let mut application = match ServerApplication::new(ctx) {
         Some(application) => application,
         None => return,
     };

@@ -1,3 +1,4 @@
 fn main() {
-    pepper::run();
+    pepper::run(pepper::application::ApplicationContext::default());
 }
+

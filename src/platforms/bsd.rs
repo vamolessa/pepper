@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    application::{ClientApplication, ServerApplication},
+    application::{ClientApplication, ServerApplication, ApplicationContext},
     client::ClientHandle,
     platform::{Key, PlatformEvent, PlatformRequest, ProcessHandle},
     Args,
@@ -25,7 +25,7 @@ const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn try_launching_debugger() {}
 
-pub fn main() {
+pub fn main(ctx: ApplicationContext) {
     run(run_server, run_client);
 }
 
@@ -167,12 +167,12 @@ impl Drop for Kqueue {
     }
 }
 
-fn run_server(args: Args, listener: UnixListener) {
+fn run_server(ctx: ApplicationContext, listener: UnixListener) {
     use io::Write;
 
     const NONE_PROCESS: Option<Process> = None;
 
-    let mut application = match ServerApplication::new(args) {
+    let mut application = match ServerApplication::new(ctx) {
         Some(application) => application,
         None => return,
     };
