@@ -9,7 +9,7 @@ env:
   ubuntu_content_type: 'application/x-elf'
   macos_content_type: 'application/x-mach-binary'
   windows_content_type: 'application/vnd.microsoft.portable-executable'
-  ubuntu_install_dependencies: 'sudo apt-get install libxcb-shape0-dev libxcb-xfixes0-dev'
+  ubuntu_install_dependencies: ''
   macos_install_dependencies: ''
   windows_install_dependencies: ''
   ubuntu_channel: linux
