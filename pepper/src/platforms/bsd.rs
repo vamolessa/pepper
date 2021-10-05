@@ -26,7 +26,7 @@ const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 pub fn try_launching_debugger() {}
 
 pub fn main(ctx: ApplicationContext) {
-    run(run_server, run_client);
+    run(ctx, run_server, run_client);
 }
 
 fn errno() -> libc::c_int {
