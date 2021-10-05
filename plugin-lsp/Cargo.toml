@@ -17,4 +17,4 @@ name = "pepper_plugin_lsp"
 path = "src/lib.rs"
 
 [dependencies]
-pepper = { path = "../pepper" }
+pepper = { path = "../pepper", version = "*" }
