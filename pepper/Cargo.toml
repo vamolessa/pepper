@@ -1,0 +1,27 @@
+[package]
+name = "pepper"
+version = "0.12.0"
+authors = ["Matheus Lessa"]
+edition = "2018"
+description = "A simple and opinionated modal code editor for your terminal"
+license = "GPL-3.0"
+
+documentation = "https://vamolessa.github.io/pepper/pepper/rc/help"
+homepage = "https://vamolessa.github.io/pepper"
+repository = "https://github.com/vamolessa/pepper"
+readme = "README.md"
+categories = ["command-line-utilities", "text-editors"]
+
+[lib]
+name = "pepper"
+path = "src/lib.rs"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winbase", "winerror", "winuser", "errhandlingapi", "stringapiset", "winnls", "consoleapi", "processenv", "handleapi", "synchapi", "ioapiset", "namedpipeapi", "debugapi", "sysinfoapi"] }
+
+[[example]]
+name = "pepper-vanilla"
+path = "examples/vanilla.rs"

@@ -28,14 +28,19 @@ pub mod theme;
 pub mod ui;
 pub mod word_database;
 
-pub const DEFAULT_CONFIG_SOURCE: application::ConfigSource = application::ConfigSource {
+pub const DEFAULT_BINDINGS_CONFIG: ResourceFile = ResourceFile {
     name: "default_config.pp",
     content: include_str!("../rc/default_config.pp"),
 };
-pub const DEFAULT_SYNTAXES_SOURCE: application::ConfigSource = application::ConfigSource {
+pub const DEFAULT_SYNTAXES_CONFIG: ResourceFile = ResourceFile {
     name: "default_syntaxes.pp",
     content: include_str!("../rc/default_syntaxes.pp"),
 };
+
+pub struct ResourceFile {
+    name: &'static str,
+    content: &'static str,
+}
 
 pub struct ArgsConfig {
     pub path: String,
@@ -192,13 +197,22 @@ pub fn run(ctx: application::ApplicationContext) {
         MaybeUninit::uninit();
     unsafe { ORIGINAL_PANIC_HOOK = MaybeUninit::new(panic::take_hook()) };
 
+    static mut ON_PANIC_CONFIG: MaybeUninit<application::OnPanicConfig> = MaybeUninit::uninit();
+    unsafe { ON_PANIC_CONFIG = MaybeUninit::new(ctx.on_panic_config) };
+
     panic::set_hook(Box::new(|info| unsafe {
-        if let Ok(mut file) = fs::File::create("pepper-crash.txt") {
-            use io::Write;
-            let _ = writeln!(file, "{}", info);
+        let config = ON_PANIC_CONFIG.assume_init_ref();
+
+        if config.write_info_to_file {
+            if let Ok(mut file) = fs::File::create("pepper-crash.txt") {
+                use io::Write;
+                let _ = writeln!(file, "{}", info);
+            }
         }
 
-        sys::try_launching_debugger();
+        if config.try_attaching_debugger {
+            sys::try_launching_debugger();
+        }
 
         let hook = ORIGINAL_PANIC_HOOK.assume_init_ref();
         hook(info);

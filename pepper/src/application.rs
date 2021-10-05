@@ -8,26 +8,28 @@ use crate::{
     platform::{Key, Platform, PlatformEvent, PlatformRequest},
     plugin::PluginCreateFn,
     serialization::{DeserializeError, Serialize},
-    ui, Args,
+    ui, Args, ResourceFile,
 };
 
-pub struct ConfigSource {
-    pub name: &'static str,
-    pub content: &'static str,
+#[derive(Default, Clone, Copy)]
+pub struct OnPanicConfig {
+    pub write_info_to_file: bool,
+    pub try_attaching_debugger: bool,
 }
 
 pub struct ApplicationContext {
     pub args: Args,
-    pub configs: Vec<ConfigSource>,
+    pub configs: Vec<ResourceFile>,
     pub plugin_create_fns: Vec<PluginCreateFn>,
-
+    pub on_panic_config: OnPanicConfig,
 }
 impl Default for ApplicationContext {
     fn default() -> Self {
         Self {
             args: Args::parse(),
-            configs: vec![crate::DEFAULT_CONFIG_SOURCE, crate::DEFAULT_SYNTAXES_SOURCE],
+            configs: vec![crate::DEFAULT_BINDINGS_CONFIG, crate::DEFAULT_SYNTAXES_CONFIG],
             plugin_create_fns: Vec::new(),
+            on_panic_config: OnPanicConfig::default(),
         }
     }
 }

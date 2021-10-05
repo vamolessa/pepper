@@ -4,16 +4,30 @@ version = 3
 
 [[package]]
 name = "libc"
-version = "0.2.94"
+version = "0.2.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18794a8ad5b29321f790b55d93dfba91e125cb1a9edbd4f8e3150acc771c1a5e"
+checksum = "dd8f7255a17a627354f321ef0055d63b898c6fb27eff628af4d1b66b7331edf6"
+
+[[package]]
+name = "my"
+version = "0.1.0"
+dependencies = [
+ "pepper",
+]
 
 [[package]]
 name = "pepper"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "pepper-plugin-lsp"
+version = "0.1.0"
+dependencies = [
+ "pepper",
 ]
 
 [[package]]
