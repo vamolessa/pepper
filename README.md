@@ -9,11 +9,11 @@
 Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
 
-## [help page](rc/help.md)
-## [default keybindings](rc/bindings.md)
-## [command reference](rc/command_reference.md)
-## [defining language syntaxes](rc/language_syntax_definitions.md)
-## [config recipes](rc/config_recipes.md)
+## [help page](pepper/rc/help.md)
+## [default keybindings](pepper/rc/bindings.md)
+## [command reference](pepper/rc/command_reference.md)
+## [defining language syntaxes](pepper/rc/language_syntax_definitions.md)
+## [config recipes](pepper/rc/config_recipes.md)
 
 # installation
 

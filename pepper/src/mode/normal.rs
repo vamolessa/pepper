@@ -1,9 +1,7 @@
 use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
-    buffer::{
-        find_path_and_position_at, parse_path_and_position, BufferProperties, BufferContent,
-    },
+    buffer::{find_path_and_position_at, parse_path_and_position, BufferContent, BufferProperties},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     cursor::{Cursor, CursorCollection},
@@ -1049,7 +1047,6 @@ impl State {
                 }
                 _ => (),
             },
-            Key::Char('s') => read_line::search::enter_mode(ctx),
             Key::Char('m') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return None,
                 Key::Char(c) => {
@@ -1074,51 +1071,7 @@ impl State {
                 }
                 _ => (),
             },
-            Key::Char('M') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return None,
-                Key::Char(c) => {
-                    let c = c.to_ascii_lowercase();
-                    if let Some(key) = RegisterKey::from_char(c) {
-                        let register = ctx.editor.registers.get(key);
-                        let (path, position) = parse_path_and_position(register);
-                        let path = ctx.editor.string_pool.acquire_with(path);
-                        match ctx.editor.buffer_view_handle_from_path(
-                            ctx.client_handle,
-                            Path::new(&path),
-                            BufferProperties::text(),
-                        ) {
-                            Ok(handle) => {
-                                let client = ctx.clients.get_mut(ctx.client_handle);
-                                client.set_buffer_view_handle(
-                                    Some(handle),
-                                    &ctx.editor.buffer_views,
-                                    &mut ctx.editor.events,
-                                );
-
-                                if let Some(position) = position {
-                                    let mut cursors =
-                                        ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                                    cursors.clear();
-                                    cursors.add(Cursor {
-                                        anchor: position,
-                                        position,
-                                    });
-                                }
-
-                                ctx.editor.mode.normal_state.movement_kind =
-                                    CursorMovementKind::PositionAndAnchor;
-                            }
-                            Err(error) => ctx
-                                .editor
-                                .status_bar
-                                .write(MessageKind::Error)
-                                .fmt(format_args!("{}", error)),
-                        }
-                        ctx.editor.string_pool.release(path);
-                    }
-                }
-                _ => (),
-            },
+            Key::Char('s') => read_line::search::enter_mode(ctx),
             Key::Char('y') => {
                 let mut text = ctx.editor.string_pool.acquire();
                 copy_text(ctx, handle, &mut text);
@@ -1229,7 +1182,9 @@ impl ModeState for State {
             let main_position = buffer_view.cursors.main_cursor().position;
 
             for client in ctx.editor.lsp.clients() {
-                let diagnostics = client.diagnostics().buffer_diagnostics(buffer_view.buffer_handle);
+                let diagnostics = client
+                    .diagnostics()
+                    .buffer_diagnostics(buffer_view.buffer_handle);
 
                 if let Ok(index) = diagnostics.binary_search_by(|d| {
                     if d.range.to < main_position {
@@ -1302,6 +1257,52 @@ impl ModeState for State {
                     _ => (),
                 }
             }
+            Key::Char('M') => match keys.next(&ctx.editor.buffered_keys) {
+                Key::None => return None,
+                Key::Char(c) => {
+                    handled_keys = true;
+                    let c = c.to_ascii_lowercase();
+                    if let Some(key) = RegisterKey::from_char(c) {
+                        let register = ctx.editor.registers.get(key);
+                        let (path, position) = parse_path_and_position(register);
+                        let path = ctx.editor.string_pool.acquire_with(path);
+                        match ctx.editor.buffer_view_handle_from_path(
+                            ctx.client_handle,
+                            Path::new(&path),
+                            BufferProperties::text(),
+                        ) {
+                            Ok(handle) => {
+                                let client = ctx.clients.get_mut(ctx.client_handle);
+                                client.set_buffer_view_handle(
+                                    Some(handle),
+                                    &ctx.editor.buffer_views,
+                                    &mut ctx.editor.events,
+                                );
+
+                                if let Some(position) = position {
+                                    let mut cursors =
+                                        ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                                    cursors.clear();
+                                    cursors.add(Cursor {
+                                        anchor: position,
+                                        position,
+                                    });
+                                }
+
+                                ctx.editor.mode.normal_state.movement_kind =
+                                    CursorMovementKind::PositionAndAnchor;
+                            }
+                            Err(_) => ctx
+                                .editor
+                                .status_bar
+                                .write(MessageKind::Error)
+                                .fmt(format_args!("invalid marker: '{}'", &path)),
+                        }
+                        ctx.editor.string_pool.release(path);
+                    }
+                }
+                _ => (),
+            },
             Key::Char(':') => {
                 handled_keys = true;
                 Mode::change_to(ctx, ModeKind::Command);

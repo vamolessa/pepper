@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    buffer::{parse_path_and_position, BufferProperties, BufferHandle},
+    buffer::{parse_path_and_position, BufferHandle, BufferProperties, BufferReadError},
     buffer_position::BufferPosition,
     client::ClientManager,
     command::{CommandContext, CommandError, CommandManager, CompletionSource},
@@ -27,14 +27,17 @@ pub fn init(commands: &mut CommandManager) {
         ctx.args.assert_empty()?;
 
         let client_handle = ctx.client_handle()?;
-        let (path, position) = match keyword.and_then(|k| help::search(k)) {
+        let (path, position) = match keyword.and_then(help::search) {
             Some((path, line_index)) => (path, BufferPosition::line_col(line_index as _, 0)),
-            None => (help::main_help_path(), BufferPosition::zero()),
+            None => (help::main_help_name(), BufferPosition::zero()),
         };
 
+        let mut buffer_path = ctx.editor.string_pool.acquire();
+        buffer_path.push_str(help::HELP_PREFIX);
+        buffer_path.push_str(path);
         match ctx.editor.buffer_view_handle_from_path(
             client_handle,
-            path,
+            Path::new(&buffer_path),
             BufferProperties::log(),
         ) {
             Ok(handle) => {
@@ -60,6 +63,7 @@ pub fn init(commands: &mut CommandManager) {
                 .write(MessageKind::Error)
                 .fmt(format_args!("{}", error)),
         }
+        ctx.editor.string_pool.release(buffer_path);
 
         Ok(())
     });
@@ -87,36 +91,61 @@ pub fn init(commands: &mut CommandManager) {
         let client_handle = ctx.client_handle()?;
         let (path, position) = parse_path_and_position(path);
 
-        let path = ctx.editor.string_pool.acquire_with(path);
-        match ctx.editor.buffer_view_handle_from_path(
-            client_handle,
-            Path::new(&path),
-            BufferProperties::text(),
-        ) {
-            Ok(handle) => {
-                let client = ctx.clients.get_mut(client_handle);
-                client.set_buffer_view_handle(
-                    Some(handle),
-                    &ctx.editor.buffer_views,
-                    &mut ctx.editor.events,
-                );
+        let path = Path::new(&path);
+        let buffer_handle = if let Some(buffer_handle) = ctx
+            .editor
+            .buffers
+            .find_with_path(&ctx.editor.current_directory, path)
+        {
+            let handle = ctx
+                .editor
+                .buffer_views
+                .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
+            Some(handle)
+        } else {
+            let path = path
+                .strip_prefix(&ctx.editor.current_directory)
+                .unwrap_or(path);
+            let buffer = ctx.editor.buffers.add_new();
+            buffer.path.clear();
+            buffer.path.push(path);
+            buffer.properties = BufferProperties::text();
 
-                if let Some(position) = position {
-                    let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(Cursor {
-                        anchor: position,
-                        position,
-                    });
+            match buffer.read_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events) {
+                Ok(()) | Err(BufferReadError::FileNotFound) => {
+                    let handle = ctx
+                        .editor
+                        .buffer_views
+                        .add_new(client_handle, buffer.handle());
+                    Some(handle)
+                }
+                Err(error) => {
+                    ctx.editor
+                        .status_bar
+                        .write(MessageKind::Error)
+                        .fmt(format_args!("{}", error));
+                    None
                 }
             }
-            Err(error) => ctx
-                .editor
-                .status_bar
-                .write(MessageKind::Error)
-                .fmt(format_args!("{}", error)),
+        };
+
+        if let Some(handle) = buffer_handle {
+            let client = ctx.clients.get_mut(client_handle);
+            client.set_buffer_view_handle(
+                Some(handle),
+                &ctx.editor.buffer_views,
+                &mut ctx.editor.events,
+            );
+
+            if let Some(position) = position {
+                let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                cursors.clear();
+                cursors.add(Cursor {
+                    anchor: position,
+                    position,
+                });
+            }
         }
-        ctx.editor.string_pool.release(path);
 
         Ok(())
     });
@@ -632,3 +661,4 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
+

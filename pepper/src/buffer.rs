@@ -59,11 +59,11 @@ pub fn parse_path_and_position(text: &str) -> (&str, Option<BufferPosition>) {
 
 pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<BufferPosition>) {
     let (left, right) = text.split_at(index);
-    let from = match left.rfind(|c: char| c.is_ascii_whitespace()) {
+    let from = match left.rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')')) {
         Some(i) => i + 1,
         None => 0,
     };
-    let to = match right.find(|c: char| c.is_ascii_whitespace() || c == ':') {
+    let to = match right.find(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')' | ':')) {
         Some(i) => {
             if index + i - from == 1 {
                 text.len()
@@ -1142,9 +1142,12 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if let Some(mut reader) = help::open(&self.path) {
+        if self.path.as_os_str().is_empty() {
+            return Err(BufferReadError::FileNotFound);
+        } else if let Some(mut reader) = help::open(&self.path) {
             self.content.read(&mut reader)?;
-        } else if let Ok(file) = File::open(&self.path) {
+        } else {
+            let file = File::open(&self.path)?;
             let mut reader = io::BufReader::new(file);
             self.content.read(&mut reader)?;
         }
