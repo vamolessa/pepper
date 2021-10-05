@@ -1,6 +1,6 @@
 [package]
 name = "pepper-plugin-lsp"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Matheus Lessa"]
 edition = "2018"
 description = "Language Server Protocol plugin for Pepper editor"
@@ -17,4 +17,4 @@ name = "pepper_plugin_lsp"
 path = "src/lib.rs"
 
 [dependencies]
-pepper = { path = "../pepper", version = "0.*" }
+pepper = { path = "../pepper", version = "0" }
