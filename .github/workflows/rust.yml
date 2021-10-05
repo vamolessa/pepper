@@ -21,6 +21,7 @@ jobs:
   build:
     name: rust ${{ matrix.rust }} on ${{ matrix.os }} version
     #if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    if: github.event_name == 'push'
     runs-on: ${{ matrix.os }}-latest
 
     strategy:
