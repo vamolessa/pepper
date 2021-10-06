@@ -4,7 +4,17 @@ use crate::ResourceFile;
 
 pub const HELP_PREFIX: &str = "help://";
 
-static HELP_FILES: &[ResourceFile] = &[
+pub struct HelpPages {
+    pages: &'static [ResourceFile],
+    next: Option<&'static HelpPages>,
+}
+impl HelpPages {
+    pub const fn new(pages: &'static [ResourceFile]) -> Self {
+        Self { pages, next: None }
+    }
+}
+
+static HELP_PAGES: &HelpPages = &HelpPages::new(&[
     ResourceFile {
         name: "command_reference.md",
         content: include_str!("../rc/command_reference.md"),
@@ -25,10 +35,10 @@ static HELP_FILES: &[ResourceFile] = &[
         name: "help.md",
         content: include_str!("../rc/help.md"),
     },
-];
+]);
 
 pub fn main_help_name() -> &'static str {
-    HELP_FILES[HELP_FILES.len() - 1].name
+    HELP_PAGES.pages[HELP_PAGES.pages.len() - 1].name
 }
 
 pub fn open(path: &Path) -> Option<impl io::BufRead> {
@@ -36,9 +46,9 @@ pub fn open(path: &Path) -> Option<impl io::BufRead> {
         Some(path) => path,
         None => return None,
     };
-    for file in HELP_FILES {
-        if path == file.name {
-            return Some(io::Cursor::new(file.content));
+    for page in HELP_PAGES.pages {
+        if path == page.name {
+            return Some(io::Cursor::new(page.content));
         }
     }
     None
@@ -46,17 +56,17 @@ pub fn open(path: &Path) -> Option<impl io::BufRead> {
 
 pub fn search(keyword: &str) -> Option<(&'static str, usize)> {
     let mut last_match = None;
-    for file in HELP_FILES {
-        if keyword == file.name.trim_end_matches(".md") {
-            return Some((file.name, 0));
+    for page in HELP_PAGES.pages {
+        if keyword == page.name.trim_end_matches(".md") {
+            return Some((page.name, 0));
         }
 
-        for (line_index, line) in file.content.lines().enumerate() {
+        for (line_index, line) in page.content.lines().enumerate() {
             if line.contains(keyword) {
                 if line.starts_with('#') {
-                    return Some((file.name, line_index));
+                    return Some((page.name, line_index));
                 } else {
-                    last_match = Some((file.name, line_index));
+                    last_match = Some((page.name, line_index));
                 }
             }
         }

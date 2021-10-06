@@ -489,6 +489,7 @@ impl State {
                             path_buf.push_str(path);
 
                             let path = Path::new(&path_buf);
+                            /*
                             if !path.starts_with(HELP_PREFIX) && !path.is_file() {
                                 ctx.editor
                                     .status_bar
@@ -496,11 +497,13 @@ impl State {
                                     .fmt(format_args!("file {:?} does not exist", path));
                                 continue;
                             }
+                            */
 
                             match ctx.editor.buffer_view_handle_from_path(
                                 ctx.client_handle,
                                 path,
                                 BufferProperties::text(),
+                                false,
                             ) {
                                 Ok(buffer_view_handle) => {
                                     if jumped {
@@ -1270,6 +1273,7 @@ impl ModeState for State {
                             ctx.client_handle,
                             Path::new(&path),
                             BufferProperties::text(),
+                            false,
                         ) {
                             Ok(handle) => {
                                 let client = ctx.clients.get_mut(ctx.client_handle);
@@ -1292,11 +1296,11 @@ impl ModeState for State {
                                 ctx.editor.mode.normal_state.movement_kind =
                                     CursorMovementKind::PositionAndAnchor;
                             }
-                            Err(_) => ctx
+                            Err(error) => ctx
                                 .editor
                                 .status_bar
                                 .write(MessageKind::Error)
-                                .fmt(format_args!("invalid marker: '{}'", &path)),
+                                .fmt(format_args!("invalid marker '{}': {}", &path, error)),
                         }
                         ctx.editor.string_pool.release(path);
                     }
@@ -1784,6 +1788,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
                 ctx.client_handle,
                 Path::new(&path),
                 BufferProperties::text(),
+                false,
             );
             ctx.editor.string_pool.release(path);
             match handle {

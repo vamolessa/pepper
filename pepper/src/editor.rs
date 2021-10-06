@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferProperties, BufferCollection, BufferReadError},
+    buffer::{BufferCollection, BufferProperties, BufferReadError},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{Client, ClientHandle, ClientManager},
@@ -148,6 +148,7 @@ impl Editor {
         client_handle: ClientHandle,
         path: &Path,
         properties: BufferProperties,
+        create_if_not_found: bool,
     ) -> Result<BufferViewHandle, BufferReadError> {
         if let Some(buffer_handle) = self.buffers.find_with_path(&self.current_directory, path) {
             let handle = self
@@ -163,6 +164,10 @@ impl Editor {
 
             match buffer.read_from_file(&mut self.word_database, &mut self.events) {
                 Ok(()) => {
+                    let handle = self.buffer_views.add_new(client_handle, buffer.handle());
+                    Ok(handle)
+                }
+                Err(BufferReadError::FileNotFound) if create_if_not_found => {
                     let handle = self.buffer_views.add_new(client_handle, buffer.handle());
                     Ok(handle)
                 }
@@ -446,13 +451,9 @@ impl Editor {
         match tag {
             ProcessTag::Buffer(index) => self.buffers.on_process_spawned(platform, index, handle),
             ProcessTag::FindFiles => (),
-            ProcessTag::Plugin(index)  => PluginCollection::on_process_spawned(
-                self,
-                platform,
-                clients,
-                index,
-                handle,
-            ),
+            ProcessTag::Plugin(index) => {
+                PluginCollection::on_process_spawned(self, platform, clients, index, handle)
+            }
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
             }
@@ -478,13 +479,9 @@ impl Editor {
                     .picker_state
                     .on_process_output(&mut self.picker, &self.read_line, bytes)
             }
-            ProcessTag::Plugin(index) => PluginCollection::on_process_output(
-                self,
-                platform,
-                clients,
-                index,
-                bytes,
-            ),
+            ProcessTag::Plugin(index) => {
+                PluginCollection::on_process_output(self, platform, clients, index, bytes)
+            }
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_output(self, platform, clients, client_handle, bytes)
             }
@@ -508,7 +505,9 @@ impl Editor {
                 .mode
                 .picker_state
                 .on_process_exit(&mut self.picker, &self.read_line),
-            ProcessTag::Plugin(index) => PluginCollection::on_process_exit(self, platform, clients, index),
+            ProcessTag::Plugin(index) => {
+                PluginCollection::on_process_exit(self, platform, clients, index)
+            }
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_exit(self, client_handle)
             }

@@ -6,7 +6,7 @@ use crate::{
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     platform::{Key, Platform, PlatformEvent, PlatformRequest},
-    plugin::PluginCreateFn,
+    plugin::PluginDefinition,
     serialization::{DeserializeError, Serialize},
     ui, Args, ResourceFile,
 };
@@ -20,15 +20,18 @@ pub struct OnPanicConfig {
 pub struct ApplicationContext {
     pub args: Args,
     pub configs: Vec<ResourceFile>,
-    pub plugin_create_fns: Vec<PluginCreateFn>,
+    pub plugin_definitions: Vec<PluginDefinition>,
     pub on_panic_config: OnPanicConfig,
 }
 impl Default for ApplicationContext {
     fn default() -> Self {
         Self {
             args: Args::parse(),
-            configs: vec![crate::DEFAULT_BINDINGS_CONFIG, crate::DEFAULT_SYNTAXES_CONFIG],
-            plugin_create_fns: Vec::new(),
+            configs: vec![
+                crate::DEFAULT_BINDINGS_CONFIG,
+                crate::DEFAULT_SYNTAXES_CONFIG,
+            ],
+            plugin_definitions: Vec::new(),
             on_panic_config: OnPanicConfig::default(),
         }
     }

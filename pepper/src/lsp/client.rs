@@ -1127,6 +1127,7 @@ impl Client {
                 client_handle,
                 path,
                 BufferProperties::text(),
+                false,
             ) {
                 Ok(buffer_view_handle) => {
                     let client = clients.get_mut(client_handle);
@@ -1398,6 +1399,7 @@ impl Client {
                         client_handle,
                         path,
                         BufferProperties::text(),
+                        false,
                     ) {
                         Ok(buffer_view_handle) => {
                             if let Some(true) = params.take_focus {
@@ -1749,6 +1751,7 @@ impl Client {
                     client_handle,
                     Path::new(&buffer_name),
                     BufferProperties::text(),
+                    true,
                 );
                 editor.string_pool.release(buffer_name);
                 let buffer_view_handle = match buffer_view_handle {
@@ -2354,6 +2357,7 @@ impl Client {
                     client_handle,
                     path,
                     BufferProperties::text(),
+                    false,
                 ) {
                     Ok(buffer_view_handle) => {
                         let client = clients.get_mut(client_handle);

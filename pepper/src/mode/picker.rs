@@ -184,6 +184,7 @@ pub mod opened_buffers {
                 ctx.client_handle,
                 Path::new(&path),
                 BufferProperties::text(),
+                false,
             ) {
                 let client = ctx.clients.get_mut(ctx.client_handle);
                 client.set_buffer_view_handle(
@@ -253,6 +254,7 @@ pub mod find_file {
                 ctx.client_handle,
                 Path::new(&path),
                 BufferProperties::text(),
+                false,
             ) {
                 Ok(buffer_view_handle) => {
                     let client = ctx.clients.get_mut(ctx.client_handle);
@@ -334,6 +336,7 @@ pub mod lsp_definition {
                             ctx.client_handle,
                             Path::new(&path),
                             BufferProperties::text(),
+                            false,
                         ) {
                             Ok(buffer_view_handle) => {
                                 let client = ctx.clients.get_mut(ctx.client_handle);

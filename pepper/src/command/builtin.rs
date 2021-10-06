@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    buffer::{parse_path_and_position, BufferHandle, BufferProperties, BufferReadError},
+    buffer::{parse_path_and_position, BufferHandle, BufferProperties},
     buffer_position::BufferPosition,
     client::ClientManager,
     command::{CommandContext, CommandError, CommandManager, CompletionSource},
@@ -39,6 +39,7 @@ pub fn init(commands: &mut CommandManager) {
             client_handle,
             Path::new(&buffer_path),
             BufferProperties::log(),
+            true,
         ) {
             Ok(handle) => {
                 let client = ctx.clients.get_mut(client_handle);
@@ -92,59 +93,34 @@ pub fn init(commands: &mut CommandManager) {
         let (path, position) = parse_path_and_position(path);
 
         let path = Path::new(&path);
-        let buffer_handle = if let Some(buffer_handle) = ctx
-            .editor
-            .buffers
-            .find_with_path(&ctx.editor.current_directory, path)
-        {
-            let handle = ctx
+        match ctx.editor.buffer_view_handle_from_path(
+            client_handle,
+            Path::new(path),
+            BufferProperties::text(),
+            true,
+        ) {
+            Ok(handle) => {
+                let client = ctx.clients.get_mut(client_handle);
+                client.set_buffer_view_handle(
+                    Some(handle),
+                    &ctx.editor.buffer_views,
+                    &mut ctx.editor.events,
+                );
+
+                if let Some(position) = position {
+                    let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add(Cursor {
+                        anchor: position,
+                        position,
+                    });
+                }
+            }
+            Err(error) => ctx
                 .editor
-                .buffer_views
-                .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
-            Some(handle)
-        } else {
-            let path = path
-                .strip_prefix(&ctx.editor.current_directory)
-                .unwrap_or(path);
-            let buffer = ctx.editor.buffers.add_new();
-            buffer.path.clear();
-            buffer.path.push(path);
-            buffer.properties = BufferProperties::text();
-
-            match buffer.read_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events) {
-                Ok(()) | Err(BufferReadError::FileNotFound) => {
-                    let handle = ctx
-                        .editor
-                        .buffer_views
-                        .add_new(client_handle, buffer.handle());
-                    Some(handle)
-                }
-                Err(error) => {
-                    ctx.editor
-                        .status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!("{}", error));
-                    None
-                }
-            }
-        };
-
-        if let Some(handle) = buffer_handle {
-            let client = ctx.clients.get_mut(client_handle);
-            client.set_buffer_view_handle(
-                Some(handle),
-                &ctx.editor.buffer_views,
-                &mut ctx.editor.events,
-            );
-
-            if let Some(position) = position {
-                let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                cursors.clear();
-                cursors.add(Cursor {
-                    anchor: position,
-                    position,
-                });
-            }
+                .status_bar
+                .write(MessageKind::Error)
+                .fmt(format_args!("{}", error)),
         }
 
         Ok(())
@@ -409,6 +385,7 @@ pub fn init(commands: &mut CommandManager) {
                         client_handle,
                         Path::new(path),
                         BufferProperties::log(),
+                        true,
                     ) {
                         Ok(buffer_view_handle) => {
                             let client = clients.get_mut(client_handle);
