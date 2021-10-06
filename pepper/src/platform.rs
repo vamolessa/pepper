@@ -81,13 +81,13 @@ pub enum PlatformRequest {
 }
 
 #[derive(Clone, Copy)]
-pub struct ProcessIndex(pub u32);
+pub struct ProcessId(pub u32);
 
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
-    Buffer(ProcessIndex),
+    Buffer(ProcessId),
     FindFiles,
-    Plugin(ProcessIndex),
+    Plugin(ProcessId),
 }
 
 #[derive(Clone, Copy)]

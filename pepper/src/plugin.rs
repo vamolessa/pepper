@@ -1,60 +1,50 @@
-use std::{any::Any, ops::DerefMut, process::Command};
+use std::{
+    any::Any,
+    ops::{Deref, DerefMut},
+    process::Command,
+};
 
 use crate::{
     client::ClientManager,
     editor::Editor,
-    editor_utils::ResidualStrBytes,
     help,
-    platform::{Platform, PlatformRequest, ProcessHandle, ProcessIndex, ProcessTag},
+    platform::{Platform, PlatformRequest, ProcessHandle, ProcessId, ProcessTag},
 };
 
-pub struct PluginDefinition {
-    pub create_fn: fn(&mut Editor, &mut Platform) -> Box<dyn Plugin>,
-    pub help_pages: &'static help::HelpPages,
-}
-impl PluginDefinition {
-    pub fn get_plugin(self, editor: &mut Editor, platform: &mut Platform) -> Box<dyn Plugin> {
-        help::add_help_pages(self.help_pages);
-        (self.create_fn)(editor, platform)
-    }
+pub trait PluginDefinition {
+    fn instantiate(&self, _: &mut Editor, _: &mut Platform, _: PluginHandle) -> Box<dyn Plugin>;
+    fn help_pages(&self) -> &'static help::HelpPages;
 }
 
 pub trait Plugin: 'static + AsAny {
-    fn on_editor_events(
-        &mut self,
-        _editor: &mut Editor,
-        _platform: &mut Platform,
-        _clients: &mut ClientManager,
-        _plugin_handle: PluginHandle,
-    ) {
-    }
+    fn on_editor_events(&mut self, _: &mut Editor, _: &mut Platform, _: &mut ClientManager) {}
 
     fn on_process_spawned(
         &mut self,
-        _editor: &mut Editor,
-        _platform: &mut Platform,
-        _clients: &mut ClientManager,
-        _process_index: ProcessIndex,
-        _process_handle: ProcessHandle,
+        _: &mut Editor,
+        _: &mut Platform,
+        _: &mut ClientManager,
+        _: ProcessId,
+        _: ProcessHandle,
     ) {
     }
 
     fn on_process_output(
         &mut self,
-        _editor: &mut Editor,
-        _platform: &mut Platform,
-        _clients: &mut ClientManager,
-        _process_index: ProcessIndex,
-        _bytes: &[u8],
+        _: &mut Editor,
+        _: &mut Platform,
+        _: &mut ClientManager,
+        _: ProcessId,
+        _: &[u8],
     ) {
     }
 
     fn on_process_exit(
         &mut self,
-        _editor: &mut Editor,
-        _platform: &mut Platform,
-        _clients: &mut ClientManager,
-        _process_index: ProcessIndex,
+        _: &mut Editor,
+        _: &mut Platform,
+        _: &mut ClientManager,
+        _: ProcessId,
     ) {
     }
 }
@@ -73,6 +63,33 @@ where
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct PluginHandle(u32);
+
+pub struct PluginGuard<T> {
+    handle: PluginHandle,
+    plugin: Box<T>,
+}
+impl<T> Deref for PluginGuard<T>
+where
+    T: Plugin,
+{
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.plugin
+    }
+}
+impl<T> DerefMut for PluginGuard<T>
+where
+    T: Plugin,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.plugin
+    }
+}
+impl<T> Drop for PluginGuard<T> {
+    fn drop(&mut self) {
+        panic!("forgot to call 'release' on PluginCollection");
+    }
+}
 
 struct DummyPlugin;
 impl DummyPlugin {
@@ -93,16 +110,48 @@ pub struct PluginCollection {
     processes: Vec<PluginProcess>,
 }
 impl PluginCollection {
-    pub fn add(&mut self, plugin: Box<dyn Plugin>) {
+    pub(crate) fn next_handle(&self) -> PluginHandle {
+        PluginHandle(self.plugins.len() as _)
+    }
+
+    pub(crate) fn add(&mut self, plugin: Box<dyn Plugin>) {
         self.plugins.push(plugin);
     }
 
-    pub fn get<T>(&mut self, handle: PluginHandle) -> &mut T
+    pub fn acquire<T>(&mut self, handle: PluginHandle) -> PluginGuard<T>
     where
         T: Plugin,
     {
-        let plugin = self.plugins[handle.0 as usize].deref_mut();
-        plugin.as_any().downcast_mut::<T>().unwrap()
+        if !self.plugins[handle.0 as usize].as_any().is::<T>() {
+            panic!(
+                "plugin with handle {} was not of type '{}'",
+                handle.0,
+                std::any::type_name::<T>()
+            );
+        }
+
+        let mut plugin = DummyPlugin::new();
+        std::mem::swap(&mut plugin, &mut self.plugins[handle.0 as usize]);
+
+        let plugin = unsafe {
+            let raw = Box::into_raw(plugin);
+            Box::from_raw(raw as *mut T)
+        };
+
+        PluginGuard { plugin, handle }
+    }
+
+    pub fn release<T>(&mut self, mut plugin: PluginGuard<T>)
+    where
+        T: Plugin,
+    {
+        let index = plugin.handle.0 as usize;
+        let plugin = unsafe {
+            let raw = plugin.plugin.deref_mut() as *mut dyn Plugin;
+            std::mem::forget(plugin);
+            Box::from_raw(raw)
+        };
+        self.plugins[index] = plugin;
     }
 
     pub fn spawn_process(
@@ -111,7 +160,7 @@ impl PluginCollection {
         command: Command,
         plugin_handle: PluginHandle,
         buf_len: usize,
-    ) -> ProcessIndex {
+    ) -> ProcessId {
         let mut index = None;
         for (i, process) in self.processes.iter_mut().enumerate() {
             if !process.alive {
@@ -133,7 +182,7 @@ impl PluginCollection {
             }
         };
 
-        let index = ProcessIndex(index as _);
+        let index = ProcessId(index as _);
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Plugin(index),
             command,
@@ -151,7 +200,7 @@ impl PluginCollection {
         let mut plugin = DummyPlugin::new();
         for i in 0..editor.plugins.plugins.len() {
             std::mem::swap(&mut plugin, &mut editor.plugins.plugins[i]);
-            plugin.on_editor_events(editor, platform, clients, PluginHandle(i as _));
+            plugin.on_editor_events(editor, platform, clients);
             std::mem::swap(&mut plugin, &mut editor.plugins.plugins[i]);
         }
     }
@@ -160,7 +209,7 @@ impl PluginCollection {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        process_index: ProcessIndex,
+        process_index: ProcessId,
         process_handle: ProcessHandle,
     ) {
         let index = editor.plugins.processes[process_index.0 as usize]
@@ -176,7 +225,7 @@ impl PluginCollection {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        process_index: ProcessIndex,
+        process_index: ProcessId,
         bytes: &[u8],
     ) {
         let index = editor.plugins.processes[process_index.0 as usize]
@@ -192,7 +241,7 @@ impl PluginCollection {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        process_index: ProcessIndex,
+        process_index: ProcessId,
     ) {
         let index = editor.plugins.processes[process_index.0 as usize]
             .plugin_handle

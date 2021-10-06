@@ -9,14 +9,16 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind, ModeState},
     picker::{EntrySource, Picker},
     platform::{Key, PlatformRequest, ProcessTag},
+    plugin::PluginHandle,
     word_database::WordIndicesIter,
 };
 
 pub struct State {
-    on_client_keys:
+    pub on_client_keys:
         fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
+    pub plugin_handle: Option<PluginHandle>,
     find_file_waiting_for_process: bool,
-    find_file_buf: Vec<u8>,
+    find_file_buf: Vec<u8>, // TODO: move to plugin
 }
 
 impl State {
@@ -77,6 +79,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _| Some(EditorControlFlow::Continue),
+            plugin_handle: None,
             find_file_waiting_for_process: false,
             find_file_buf: Vec::new(),
         }

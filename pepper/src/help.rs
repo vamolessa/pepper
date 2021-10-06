@@ -44,7 +44,7 @@ static HELP_PAGES: HelpPages = HelpPages::new(&[
     },
 ]);
 
-pub fn add_help_pages(pages: &'static HelpPages) {
+pub(crate) fn add_help_pages(pages: &'static HelpPages) {
     let pages = pages as *const _ as *mut _;
     let mut current = &HELP_PAGES;
     loop {
@@ -60,11 +60,11 @@ pub fn add_help_pages(pages: &'static HelpPages) {
     }
 }
 
-pub fn main_help_name() -> &'static str {
+pub(crate) fn main_help_name() -> &'static str {
     HELP_PAGES.pages[HELP_PAGES.pages.len() - 1].name
 }
 
-pub fn open(path: &Path) -> Option<impl io::BufRead> {
+pub(crate) fn open(path: &Path) -> Option<impl io::BufRead> {
     let path = match path.to_str().and_then(|p| p.strip_prefix(HELP_PREFIX)) {
         Some(path) => path,
         None => return None,
@@ -77,7 +77,7 @@ pub fn open(path: &Path) -> Option<impl io::BufRead> {
     None
 }
 
-pub fn search(keyword: &str) -> Option<(&'static str, BufferPosition)> {
+pub(crate) fn search(keyword: &str) -> Option<(&'static str, BufferPosition)> {
     let mut last_match = None;
     for page in HelpPageIterator::new() {
         if keyword == page.name.trim_end_matches(".md") {

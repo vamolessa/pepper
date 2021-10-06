@@ -32,14 +32,13 @@ use crate::{
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
     },
-    picker,
+    mode::{picker, read_line},
     protocol::{
         self, DocumentCodeAction, DocumentCompletionItem, DocumentDiagnostic, DocumentLocation,
         DocumentPosition, DocumentRange, DocumentSymbolInformation, PendingRequestColection,
         Protocol, ProtocolError, ResponseError, ServerEvent, ServerNotification, ServerRequest,
         ServerResponse, TextEdit, Uri, WorkspaceEdit,
     },
-    read_line,
 };
 
 #[derive(Default)]
@@ -895,7 +894,7 @@ impl Client {
                 clients,
                 client_handle,
             };
-            read_line::lsp_rename::enter_mode(&mut ctx, self.handle(), "");
+            read_line::rename::enter_mode(&mut ctx, self.handle(), "");
         }
     }
 
@@ -2276,7 +2275,7 @@ impl Client {
         self.json.clear();
     }
 
-    fn notify(&mut self, platform: &mut Platform, method: &'static str, params: JsonObject) {
+    pub(crate) fn notify(&mut self, platform: &mut Platform, method: &'static str, params: JsonObject) {
         let params = params.into();
         self.write_to_log_file(|buf, json| {
             use io::Write;

@@ -16,7 +16,7 @@ use crate::{
     help,
     history::{Edit, EditKind, History},
     pattern::Pattern,
-    platform::{Platform, PlatformRequest, PooledBuf, ProcessHandle, ProcessIndex, ProcessTag},
+    platform::{Platform, PlatformRequest, PooledBuf, ProcessHandle, ProcessId, ProcessTag},
     plugin::PluginHandle,
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
@@ -1357,9 +1357,9 @@ impl BufferCollection {
         command.stdout(Stdio::piped());
         command.stderr(Stdio::null());
 
-        let index = ProcessIndex(index as _);
+        let id = ProcessId(index as _);
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::Buffer(index),
+            tag: ProcessTag::Buffer(id),
             command,
             buf_len: 4 * 1024,
         });
@@ -1368,10 +1368,10 @@ impl BufferCollection {
     pub(crate) fn on_process_spawned(
         &mut self,
         platform: &mut Platform,
-        index: ProcessIndex,
+        id: ProcessId,
         handle: ProcessHandle,
     ) {
-        if let Some(buf) = self.insert_processes[index.0 as usize].input.take() {
+        if let Some(buf) = self.insert_processes[id.0 as usize].input.take() {
             platform
                 .requests
                 .enqueue(PlatformRequest::WriteToProcess { handle, buf });
@@ -1384,11 +1384,11 @@ impl BufferCollection {
     pub(crate) fn on_process_output(
         &mut self,
         word_database: &mut WordDatabase,
-        index: ProcessIndex,
+        id: ProcessId,
         bytes: &[u8],
         events: &mut EditorEventQueue,
     ) {
-        let process = &mut self.insert_processes[index.0 as usize];
+        let process = &mut self.insert_processes[id.0 as usize];
 
         let mut buf = Default::default();
         let texts = process.output_residual_bytes.receive_bytes(&mut buf, bytes);
@@ -1413,10 +1413,10 @@ impl BufferCollection {
     pub(crate) fn on_process_exit(
         &mut self,
         word_database: &mut WordDatabase,
-        index: ProcessIndex,
+        id: ProcessId,
         events: &mut EditorEventQueue,
     ) {
-        let process = &mut self.insert_processes[index.0 as usize];
+        let process = &mut self.insert_processes[id.0 as usize];
         process.alive = false;
 
         let mut buf = Default::default();

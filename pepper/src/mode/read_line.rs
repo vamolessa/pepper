@@ -7,11 +7,13 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind, ModeState},
     pattern::Pattern,
     platform::PooledBuf,
+    plugin::PluginHandle,
 };
 
 pub struct State {
-    on_client_keys:
+    pub on_client_keys:
         fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
+    pub plugin_handle: Option<PluginHandle>,
     previous_position: BufferPosition,
 }
 
@@ -19,6 +21,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _| Some(EditorControlFlow::Continue),
+            plugin_handle: None,
             previous_position: BufferPosition::zero(),
         }
     }
@@ -30,6 +33,7 @@ impl ModeState for State {
     }
 
     fn on_exit(ctx: &mut ModeContext) {
+        ctx.editor.mode.read_line_state.plugin_handle = None;
         ctx.editor.read_line.input_mut().clear();
     }
 
@@ -641,50 +645,6 @@ pub mod process {
     }
 }
 
-/*
-pub mod lsp_rename {
-    use super::*;
-
-    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle, placeholder: &str) {
-        fn on_client_keys(
-            ctx: &mut ModeContext,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) -> Option<EditorControlFlow> {
-            match poll {
-                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
-                ReadLinePoll::Submitted => {
-                    if let Some(handle) = ctx.editor.mode.read_line_state.lsp_client_handle {
-                        let platform = &mut *ctx.platform;
-                        lsp::ClientManager::access(ctx.editor, handle, |e, c| {
-                            c.finish_rename(e, platform);
-                        });
-                    }
-                    Mode::change_to(ctx, ModeKind::default());
-                    Some(EditorControlFlow::Continue)
-                }
-                ReadLinePoll::Canceled => {
-                    if let Some(handle) = ctx.editor.mode.read_line_state.lsp_client_handle {
-                        lsp::ClientManager::access(ctx.editor, handle, |_, c| {
-                            c.cancel_current_request();
-                        });
-                    }
-                    Mode::change_to(ctx, ModeKind::default());
-                    Some(EditorControlFlow::Continue)
-                }
-            }
-        }
-
-        ctx.editor.read_line.set_prompt("rename:");
-        let state = &mut ctx.editor.mode.read_line_state;
-        state.on_client_keys = on_client_keys;
-        state.lsp_client_handle = Some(client_handle);
-        Mode::change_to(ctx, ModeKind::ReadLine);
-        ctx.editor.read_line.input_mut().push_str(placeholder);
-    }
-}
-*/
-
 fn save_current_position(ctx: &mut ModeContext) {
     let buffer_view_handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
         Some(handle) => handle,
@@ -708,3 +668,4 @@ fn restore_saved_position(ctx: &mut ModeContext) {
         position,
     });
 }
+

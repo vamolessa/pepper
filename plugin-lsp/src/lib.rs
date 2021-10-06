@@ -9,38 +9,34 @@ use pepper::{
     editor_utils::{hash_bytes, parse_process_command, MessageKind},
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
+    help::HelpPages,
     platform::{Platform, PlatformRequest, ProcessTag},
-    plugin::{Plugin, PluginHandle},
+    plugin::{Plugin, PluginDefinition, PluginHandle},
 };
 
 mod capabilities;
 mod client;
 mod json;
+mod mode;
 mod protocol;
 
 use client::{Client, ClientHandle};
-use json::JsonValue;
+use json::{JsonObject, JsonValue};
 use protocol::{ResponseError, ServerEvent};
 
 const SERVER_PROCESS_BUFFER_LEN: usize = 4 * 1024;
 
-enum ClientEntry {
-    Vacant,
-    Reserved,
-    Occupied(Box<Client>),
-}
-impl ClientEntry {
-    pub fn reserve_and_take(&mut self) -> Option<Box<Client>> {
-        let mut entry = Self::Reserved;
-        std::mem::swap(self, &mut entry);
-        match entry {
-            Self::Vacant => {
-                *self = Self::Vacant;
-                None
-            }
-            Self::Reserved => None,
-            Self::Occupied(client) => Some(client),
-        }
+static DEFINITION: LspPluginDefinition = LspPluginDefinition;
+
+struct LspPluginDefinition;
+impl PluginDefinition for LspPluginDefinition {
+    fn instantiate(&self, _: &mut Editor, _: &mut Platform, handle: PluginHandle) -> Box<dyn Plugin> {
+        Box::new(LspPlugin::new(handle))
+    }
+
+    fn help_pages(&self) -> &'static HelpPage {
+        static HELP_PAGES: HelpPages = HelpPages::new(&[]);
+        &HELP_PAGES
     }
 }
 
@@ -54,14 +50,16 @@ struct ClientRecipe {
 }
 
 pub struct LspPlugin {
-    entries: Vec<ClientEntry>,
+    plugin_handle: PluginHandle,
+    clients: Vec<Option<Box<Client>>>,
     recipes: Vec<ClientRecipe>,
 }
 
 impl LspPlugin {
-    pub fn new() -> Self {
+    pub fn new(plugin_handle: PluginHandle) -> Self {
         Self {
-            entries: Vec::new(),
+            plugin_handle,
+            clients: Vec::new(),
             recipes: Vec::new(),
         }
     }
@@ -114,14 +112,13 @@ impl LspPlugin {
         log_file_path: Option<String>,
     ) -> ClientHandle {
         fn find_vacant_entry(this: &mut LspPlugin) -> ClientHandle {
-            for (i, slot) in this.entries.iter_mut().enumerate() {
-                if let ClientEntry::Vacant = slot {
-                    *slot = ClientEntry::Reserved;
+            for (i, client) in this.clients.iter_mut().enumerate() {
+                if client.is_none() {
                     return ClientHandle(i as _);
                 }
             }
-            let handle = ClientHandle(this.entries.len() as _);
-            this.entries.push(ClientEntry::Reserved);
+            let handle = ClientHandle(this.clients.len() as _);
+            this.clients.push(None);
             handle
         }
 
@@ -139,12 +136,12 @@ impl LspPlugin {
         );
 
         let client = Client::new(handle, root, log_file_path);
-        self.entries[handle.0 as usize] = ClientEntry::Occupied(Box::new(client));
+        self.clients[handle.0 as usize] = Some(Box::new(client));
         handle
     }
 
     pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
-        if let ClientEntry::Occupied(client) = &mut self.entries[handle.0 as usize] {
+        if let Some(client) = &mut self.clients[handle.0 as usize] {
             let _ = client.notify(platform, "exit", JsonObject::default());
             if let Some(process_handle) = client.protocol.process_handle() {
                 platform.requests.enqueue(PlatformRequest::KillProcess {
@@ -152,7 +149,7 @@ impl LspPlugin {
                 });
             }
 
-            self.entries[handle.0 as usize] = ClientEntry::Vacant;
+            self.clients[handle.0 as usize] = None;
             for recipe in &mut self.recipes {
                 if recipe.running_client == Some(handle) {
                     recipe.running_client = None;
@@ -162,33 +159,21 @@ impl LspPlugin {
     }
 
     pub fn stop_all(&mut self, platform: &mut Platform) {
-        for i in 0..self.entries.len() {
+        for i in 0..self.clients.len() {
             self.stop(platform, ClientHandle(i as _));
         }
     }
 
     pub fn get(&self, handle: ClientHandle) -> Option<&Client> {
-        match self.entries[handle.0 as usize] {
-            ClientEntry::Occupied(ref client) => Some(client),
-            _ => None,
-        }
+        self.clients[handle.0 as usize].as_deref()
     }
 
-    pub fn access<A, R>(editor: &mut Editor, handle: ClientHandle, accessor: A) -> Option<R>
-    where
-        A: FnOnce(&mut Editor, &mut Client) -> R,
-    {
-        let mut client = editor.lsp.entries[handle.0 as usize].reserve_and_take()?;
-        let result = accessor(editor, &mut client);
-        editor.lsp.entries[handle.0 as usize] = ClientEntry::Occupied(client);
-        Some(result)
+    pub fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
+        self.clients[handle.0 as usize].as_deref_mut()
     }
 
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
-        self.entries.iter().flat_map(|e| match e {
-            ClientEntry::Occupied(client) => Some(client.as_ref()),
-            _ => None,
-        })
+        self.clients.iter().flat_map(Option::as_deref)
     }
 }
 
@@ -198,7 +183,6 @@ impl Plugin for LspPlugin {
         editor: &mut pepper::editor::Editor,
         platform: &mut pepper::platform::Platform,
         clients: &mut pepper::client::ClientManager,
-        plugin_handle: PluginHandle,
     ) {
         let mut events = EditorEventIter::new();
         while let Some(event) = events.next(&editor.events) {
@@ -254,10 +238,10 @@ impl Plugin for LspPlugin {
             }
         }
 
-        for i in 0..editor.lsp.entries.len() {
-            if let Some(mut client) = editor.lsp.entries[i].reserve_and_take() {
+        for i in 0..self.clients.len() {
+            if let Some(mut client) = self.clients[i].reserve_and_take() {
                 client.on_editor_events(editor, platform);
-                editor.lsp.entries[i] = ClientEntry::Occupied(client);
+                self.clients[i] = ClientEntry::Occupied(client);
             }
         }
     }
@@ -267,10 +251,10 @@ impl Plugin for LspPlugin {
         editor: &mut pepper::editor::Editor,
         platform: &mut pepper::platform::Platform,
         clients: &mut pepper::client::ClientManager,
-        process_index: pepper::platform::ProcessIndex,
+        process_index: pepper::platform::ProcessId,
         process_handle: pepper::platform::ProcessHandle,
     ) {
-        if let ClientEntry::Occupied(ref mut client) = editor.lsp.entries[handle.0 as usize] {
+        if let ClientEntry::Occupied(ref mut client) = self.clients[handle.0 as usize] {
             client.protocol.set_process_handle(process_handle);
             client.initialize(platform);
         }
@@ -281,10 +265,10 @@ impl Plugin for LspPlugin {
         editor: &mut pepper::editor::Editor,
         platform: &mut pepper::platform::Platform,
         clients: &mut pepper::client::ClientManager,
-        process_index: pepper::platform::ProcessIndex,
+        process_index: pepper::platform::ProcessId,
         bytes: &[u8],
     ) {
-        let mut client = match editor.lsp.entries[handle.0 as usize].reserve_and_take() {
+        let mut client = match self.clients[handle.0 as usize].reserve_and_take() {
             Some(client) => client,
             None => return,
         };
@@ -324,7 +308,7 @@ impl Plugin for LspPlugin {
         }
         events.finish(&mut client.protocol);
 
-        editor.lsp.entries[handle.0 as usize] = ClientEntry::Occupied(client);
+        self.clients[handle.0 as usize] = ClientEntry::Occupied(client);
     }
 
     fn on_process_exit(
@@ -332,11 +316,11 @@ impl Plugin for LspPlugin {
         editor: &mut pepper::editor::Editor,
         platform: &mut pepper::platform::Platform,
         clients: &mut pepper::client::ClientManager,
-        process_index: pepper::platform::ProcessIndex,
+        process_index: pepper::platform::ProcessId,
     ) {
         let index = handle.0 as usize;
         let mut entry = ClientEntry::Vacant;
-        std::mem::swap(&mut entry, &mut editor.lsp.entries[index]);
+        std::mem::swap(&mut entry, &mut self.clients[index]);
         if let ClientEntry::Occupied(mut client) = entry {
             client.write_to_log_file(|buf, _| {
                 use io::Write;
@@ -344,7 +328,7 @@ impl Plugin for LspPlugin {
             });
         }
 
-        for recipe in &mut editor.lsp.recipes {
+        for recipe in &mut self.recipes {
             if recipe.running_client == Some(handle) {
                 recipe.running_client = None;
             }

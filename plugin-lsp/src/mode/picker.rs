@@ -1,7 +1,11 @@
-pub mod lsp_definition {
+use pepper::mode::ModeContext;
+
+use crate::ClientHandle;
+
+pub mod definition {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle) {
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: ClientHandle) {
 /*
         fn on_client_keys(
             ctx: &mut ModeContext,
@@ -82,7 +86,7 @@ pub mod lsp_definition {
 pub mod lsp_code_action {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle) {
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: ClientHandle) {
 /*
         fn on_client_keys(
             ctx: &mut ModeContext,
@@ -138,7 +142,7 @@ pub mod lsp_code_action {
 pub mod lsp_document_symbol {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle) {
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: ClientHandle) {
 /*
         fn on_client_keys(
             ctx: &mut ModeContext,
@@ -196,7 +200,7 @@ pub mod lsp_document_symbol {
 pub mod lsp_workspace_symbol {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle) {
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: ClientHandle) {
 /*
         fn on_client_keys(
             ctx: &mut ModeContext,

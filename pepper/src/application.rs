@@ -5,6 +5,7 @@ use crate::{
     editor::{Editor, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
+    help,
     platform::{Key, Platform, PlatformEvent, PlatformRequest},
     plugin::PluginDefinition,
     serialization::{DeserializeError, Serialize},
@@ -20,7 +21,7 @@ pub struct OnPanicConfig {
 pub struct ApplicationContext {
     pub args: Args,
     pub configs: Vec<ResourceFile>,
-    pub plugin_definitions: Vec<PluginDefinition>,
+    pub plugin_definitions: Vec<&'static dyn PluginDefinition>,
     pub on_panic_config: OnPanicConfig,
 }
 impl Default for ApplicationContext {
@@ -59,7 +60,9 @@ impl ServerApplication {
         let mut clients = ClientManager::default();
 
         for definition in ctx.plugin_definitions {
-            let plugin = definition.get_plugin(&mut editor, &mut platform);
+            help::add_help_pages(definition.help_pages());
+            let plugin_handle = editor.plugins.next_handle();
+            let plugin = definition.instantiate(&mut editor, &mut platform, plugin_handle);
             editor.plugins.add(plugin);
         }
 
