@@ -58,6 +58,11 @@ impl ServerApplication {
         let mut platform = Platform::default();
         let mut clients = ClientManager::default();
 
+        for definition in ctx.plugin_definitions {
+            let plugin = definition.get_plugin(&mut editor, &mut platform);
+            editor.plugins.add(plugin);
+        }
+
         for config in &ctx.configs {
             load_config(
                 &mut editor,

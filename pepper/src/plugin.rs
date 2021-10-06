@@ -1,6 +1,6 @@
 use std::{
     any::Any,
-    ops::{Deref, DerefMut},
+    ops::DerefMut,
     process::{Command, Stdio},
 };
 
@@ -8,13 +8,19 @@ use crate::{
     client::ClientManager,
     editor::Editor,
     editor_utils::ResidualStrBytes,
-    help::HelpPages,
+    help,
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessIndex, ProcessTag},
 };
 
 pub struct PluginDefinition {
     pub create_fn: fn(&mut Editor, &mut Platform) -> Box<dyn Plugin>,
-    pub help_pages: &'static HelpPages,
+    pub help_pages: &'static help::HelpPages,
+}
+impl PluginDefinition {
+    pub fn get_plugin(self, editor: &mut Editor, platform: &mut Platform) -> Box<dyn Plugin> {
+        help::add_help_pages(self.help_pages);
+        (self.create_fn)(editor, platform)
+    }
 }
 
 pub trait Plugin: 'static + AsAny {
@@ -91,8 +97,8 @@ pub struct PluginCollection {
     processes: Vec<PluginProcess>,
 }
 impl PluginCollection {
-    pub fn all(&self) -> impl Iterator<Item = &dyn Plugin> {
-        self.plugins.iter().map(Deref::deref)
+    pub fn add(&mut self, plugin: Box<dyn Plugin>) {
+        self.plugins.push(plugin);
     }
 
     pub fn get<T>(&mut self, handle: PluginHandle) -> &mut T
