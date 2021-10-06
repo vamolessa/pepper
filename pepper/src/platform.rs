@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{client::ClientHandle, editor_utils::parse_process_command, lsp};
+use crate::{client::ClientHandle, editor_utils::parse_process_command};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -88,7 +88,6 @@ pub enum ProcessTag {
     Buffer(ProcessIndex),
     FindFiles,
     Plugin(ProcessIndex),
-    Lsp(lsp::ClientHandle),
 }
 
 #[derive(Clone, Copy)]

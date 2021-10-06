@@ -4,7 +4,6 @@ use crate::{
     cursor::{Cursor, CursorCollection},
     editor::{EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll},
-    lsp,
     mode::{Mode, ModeContext, ModeKind, ModeState},
     pattern::Pattern,
     platform::PooledBuf,
@@ -14,7 +13,6 @@ pub struct State {
     on_client_keys:
         fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
     previous_position: BufferPosition,
-    lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
 impl Default for State {
@@ -22,7 +20,6 @@ impl Default for State {
         Self {
             on_client_keys: |_, _, _| Some(EditorControlFlow::Continue),
             previous_position: BufferPosition::zero(),
-            lsp_client_handle: None,
         }
     }
 }
@@ -644,6 +641,7 @@ pub mod process {
     }
 }
 
+/*
 pub mod lsp_rename {
     use super::*;
 
@@ -685,6 +683,7 @@ pub mod lsp_rename {
         ctx.editor.read_line.input_mut().push_str(placeholder);
     }
 }
+*/
 
 fn save_current_position(ctx: &mut ModeContext) {
     let buffer_view_handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {

@@ -17,6 +17,7 @@ use crate::{
     history::{Edit, EditKind, History},
     pattern::Pattern,
     platform::{Platform, PlatformRequest, PooledBuf, ProcessHandle, ProcessIndex, ProcessTag},
+    plugin::PluginHandle,
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
@@ -157,6 +158,21 @@ impl<'a> WordRefWithPosition<'a> {
             self.position.column_byte_index + self.text.len() as BufferPositionIndex,
         )
     }
+}
+
+pub struct BufferLint {
+    pub message: String,
+    pub range: BufferRange,
+    plugin_handle: PluginHandle,
+}
+
+pub struct BufferLintCollection {
+    lints: Vec<BufferLint>,
+    len: usize,
+}
+// TODO implement
+impl BufferLintCollection {
+    //pub fn add(&mut self, lints: &
 }
 
 struct BufferLinePool {

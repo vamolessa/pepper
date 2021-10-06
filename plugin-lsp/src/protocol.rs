@@ -5,17 +5,18 @@ use std::{
     path::{Component, Path, Prefix},
 };
 
-use crate::{
-    buffer::{BufferProperties, BufferHandle},
+use pepper::{
+    buffer::{BufferHandle, BufferProperties},
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
     editor_utils::MessageKind,
     glob::InvalidGlobError,
-    json::{
-        FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString,
-        JsonValue,
-    },
     platform::{Platform, PlatformRequest, ProcessHandle},
+};
+
+use crate::json::{
+    FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString,
+    JsonValue,
 };
 
 pub struct UriParseError;

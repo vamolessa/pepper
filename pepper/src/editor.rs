@@ -16,7 +16,6 @@ use crate::{
         ServerEvent, TargetClient,
     },
     keymap::{KeyMapCollection, MatchResult},
-    lsp,
     mode::{Mode, ModeContext, ModeKind},
     pattern::Pattern,
     picker::Picker,
@@ -108,7 +107,6 @@ pub struct Editor {
 
     pub commands: CommandManager,
     pub plugins: PluginCollection,
-    pub lsp: lsp::ClientManager,
     pub events: EditorEventQueue,
 }
 impl Editor {
@@ -138,7 +136,6 @@ impl Editor {
 
             commands: CommandManager::new(),
             plugins: PluginCollection::default(),
-            lsp: lsp::ClientManager::new(),
             events: EditorEventQueue::default(),
         }
     }
@@ -247,7 +244,6 @@ impl Editor {
             }
 
             PluginCollection::on_editor_events(self, platform, clients);
-            lsp::ClientManager::on_editor_events(self, platform);
 
             let mut events = EditorEventIter::new();
             while let Some(event) = events.next(&self.events) {
@@ -454,9 +450,6 @@ impl Editor {
             ProcessTag::Plugin(index) => {
                 PluginCollection::on_process_spawned(self, platform, clients, index, handle)
             }
-            ProcessTag::Lsp(client_handle) => {
-                lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
-            }
         }
     }
 
@@ -482,9 +475,6 @@ impl Editor {
             ProcessTag::Plugin(index) => {
                 PluginCollection::on_process_output(self, platform, clients, index, bytes)
             }
-            ProcessTag::Lsp(client_handle) => {
-                lsp::ClientManager::on_process_output(self, platform, clients, client_handle, bytes)
-            }
         }
 
         self.trigger_event_handlers(platform, clients);
@@ -507,9 +497,6 @@ impl Editor {
                 .on_process_exit(&mut self.picker, &self.read_line),
             ProcessTag::Plugin(index) => {
                 PluginCollection::on_process_exit(self, platform, clients, index)
-            }
-            ProcessTag::Lsp(client_handle) => {
-                lsp::ClientManager::on_process_exit(self, client_handle)
             }
         }
 

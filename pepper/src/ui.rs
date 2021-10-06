@@ -1,6 +1,7 @@
 use std::{io, iter};
 
 use crate::{
+    buffer::BufferLint,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     client::ClientManager,
@@ -171,13 +172,16 @@ fn draw_buffer_view(
     let search_ranges = buffer.search_ranges();
     let search_ranges_end_index = search_ranges.len().saturating_sub(1);
 
-    let mut diagnostics: &[_] = &[];
+    // TODO: implement
+    let mut diagnostics: &[BufferLint] = &[];
+    /*
     for client in ctx.editor.lsp.clients() {
         diagnostics = client.diagnostics().buffer_diagnostics(buffer.handle());
         if !diagnostics.is_empty() {
             break;
         }
     }
+    */
     let diagnostics = diagnostics;
     let diagnostics_end_index = diagnostics.len().saturating_sub(1);
 

@@ -4,7 +4,6 @@ use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     editor::{Editor, EditorControlFlow, KeysIterator},
-    lsp,
     mode::{Mode, ModeContext, ModeKind, ModeState},
     platform::Key,
     register::AUTO_MACRO_REGISTER,
@@ -13,16 +12,18 @@ use crate::{
 
 #[derive(Default)]
 pub struct State {
-    lsp_client_handle: Option<lsp::ClientHandle>,
     completion_positions: Vec<BufferPosition>,
 }
 
+// TODO: make completions work again
 impl State {
+    /*
     fn get_lsp_client_handle(
         &mut self,
         lsp_clients: &lsp::ClientManager,
         buffer_path: &Path,
     ) -> Option<lsp::ClientHandle> {
+        None
         if self
             .lsp_client_handle
             .and_then(|h| lsp_clients.get(h))
@@ -39,6 +40,7 @@ impl State {
         self.lsp_client_handle = handle;
         handle
     }
+    */
 }
 
 impl ModeState for State {
@@ -238,6 +240,7 @@ fn cancel_completion(editor: &mut Editor) {
 }
 
 fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle) {
+/*
     let state = &mut ctx.editor.mode.insert_state;
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
@@ -339,6 +342,7 @@ fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandl
             }
         }
     }
+*/
 }
 
 fn apply_completion(
@@ -346,6 +350,7 @@ fn apply_completion(
     buffer_view_handle: BufferViewHandle,
     cursor_movement: isize,
 ) {
+/*
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
 
     ctx.editor.picker.move_cursor(cursor_movement);
@@ -392,4 +397,5 @@ fn apply_completion(
         &mut ctx.editor.events,
     );
     ctx.editor.string_pool.release(completion);
+*/
 }

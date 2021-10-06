@@ -9,8 +9,8 @@ use std::{
     str::FromStr,
 };
 
-use crate::{
-    buffer::{BufferProperties, BufferContent, BufferHandle},
+use pepper::{
+    buffer::{BufferContent, BufferHandle, BufferProperties},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,
@@ -19,26 +19,28 @@ use crate::{
     editor_utils::{hash_bytes, parse_process_command, MessageKind, StatusBar},
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
-    json::{
-        FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
-    },
-    lsp::{
-        capabilities,
-        protocol::{
-            self, DocumentCodeAction, DocumentCompletionItem, DocumentDiagnostic, DocumentLocation,
-            DocumentPosition, DocumentRange, DocumentSymbolInformation, PendingRequestColection,
-            Protocol, ProtocolError, ResponseError, ServerEvent, ServerNotification, ServerRequest,
-            ServerResponse, TextEdit, Uri, WorkspaceEdit,
-        },
-    },
-    mode::{picker, read_line, ModeContext, ModeKind},
+    mode::{ModeContext, ModeKind},
     navigation_history::NavigationHistory,
     picker::Picker,
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
+    plugin::PluginHandle,
     word_database::{WordIndicesIter, WordKind},
 };
 
-const SERVER_PROCESS_BUFFER_LEN: usize = 4 * 1024;
+use crate::{
+    capabilities,
+    json::{
+        FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
+    },
+    picker,
+    protocol::{
+        self, DocumentCodeAction, DocumentCompletionItem, DocumentDiagnostic, DocumentLocation,
+        DocumentPosition, DocumentRange, DocumentSymbolInformation, PendingRequestColection,
+        Protocol, ProtocolError, ResponseError, ServerEvent, ServerNotification, ServerRequest,
+        ServerResponse, TextEdit, Uri, WorkspaceEdit,
+    },
+    read_line,
+};
 
 #[derive(Default)]
 struct GenericCapability(pub bool);
@@ -470,7 +472,12 @@ impl DiagnosticCollection {
             .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
     }
 
-    pub(self) fn on_load_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
+    pub(self) fn on_load_buffer(
+        &mut self,
+        editor: &Editor,
+        buffer_handle: BufferHandle,
+        root: &Path,
+    ) {
         let buffer_path = &editor.buffers.get(buffer_handle).path;
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle.is_none()
@@ -487,7 +494,12 @@ impl DiagnosticCollection {
         }
     }
 
-    pub(self) fn on_save_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
+    pub(self) fn on_save_buffer(
+        &mut self,
+        editor: &Editor,
+        buffer_handle: BufferHandle,
+        root: &Path,
+    ) {
         let buffer_path = &editor.buffers.get(buffer_handle).path;
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
@@ -571,7 +583,7 @@ impl RequestState {
 
 pub struct Client {
     handle: ClientHandle,
-    protocol: Protocol,
+    pub(crate) protocol: Protocol,
     json: Json,
     root: PathBuf,
     pending_requests: PendingRequestColection,
@@ -593,7 +605,7 @@ pub struct Client {
 }
 
 impl Client {
-    fn new(handle: ClientHandle, root: PathBuf, log_file_path: Option<String>) -> Self {
+    pub(crate) fn new(handle: ClientHandle, root: PathBuf, log_file_path: Option<String>) -> Self {
         let (log_file_path, log_file) = match log_file_path {
             Some(path) => match File::create(&path) {
                 Ok(file) => (path, Some(io::BufWriter::new(file))),
@@ -1225,7 +1237,7 @@ impl Client {
         self.request(platform, "textDocument/completion", params);
     }
 
-    fn write_to_log_file<F>(&mut self, writer: F)
+    pub(crate) fn write_to_log_file<F>(&mut self, writer: F)
     where
         F: FnOnce(&mut io::BufWriter<File>, &mut Json),
     {
@@ -2276,7 +2288,7 @@ impl Client {
         self.json.clear();
     }
 
-    fn initialize(&mut self, platform: &mut Platform) {
+    pub fn initialize(&mut self, platform: &mut Platform) {
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
@@ -2614,7 +2626,7 @@ mod helper {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ClientHandle(u8);
+pub struct ClientHandle(pub(crate) u8);
 impl fmt::Display for ClientHandle {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
@@ -2630,34 +2642,6 @@ impl FromStr for ClientHandle {
     }
 }
 
-struct ClientRecipe {
-    glob_hash: u64,
-    glob: Glob,
-    command: String,
-    root: PathBuf,
-    log_file_path: String,
-    running_client: Option<ClientHandle>,
-}
-
-enum ClientEntry {
-    Vacant,
-    Reserved,
-    Occupied(Box<Client>),
-}
-impl ClientEntry {
-    pub fn reserve_and_take(&mut self) -> Option<Box<Client>> {
-        let mut entry = Self::Reserved;
-        std::mem::swap(self, &mut entry);
-        match entry {
-            Self::Vacant => {
-                *self = Self::Vacant;
-                None
-            }
-            Self::Reserved => None,
-            Self::Occupied(client) => Some(client),
-        }
-    }
-}
 
 pub struct ClientManager {
     entries: Vec<ClientEntry>,
@@ -2711,8 +2695,9 @@ impl ClientManager {
     }
 
     pub fn start(
-        &mut self,
+        editor: &mut Editor,
         platform: &mut Platform,
+        plugin_handle: PluginHandle,
         mut command: Command,
         root: PathBuf,
         log_file_path: Option<String>,
@@ -2729,7 +2714,8 @@ impl ClientManager {
             handle
         }
 
-        let handle = find_vacant_entry(self);
+        let this = &mut editor.plugins.get::<Self>(plugin_handle);
+        let handle = find_vacant_entry(this);
 
         command
             .stdin(Stdio::piped())

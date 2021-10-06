@@ -1,8 +1,4 @@
-use std::{
-    any::Any,
-    ops::DerefMut,
-    process::{Command, Stdio},
-};
+use std::{any::Any, ops::DerefMut, process::Command};
 
 use crate::{
     client::ClientManager,
@@ -29,6 +25,7 @@ pub trait Plugin: 'static + AsAny {
         _editor: &mut Editor,
         _platform: &mut Platform,
         _clients: &mut ClientManager,
+        _plugin_handle: PluginHandle,
     ) {
     }
 
@@ -88,7 +85,6 @@ impl Plugin for DummyPlugin {}
 struct PluginProcess {
     pub alive: bool,
     pub plugin_handle: PluginHandle,
-    pub output_residual_bytes: ResidualStrBytes,
 }
 
 #[derive(Default)]
@@ -112,16 +108,15 @@ impl PluginCollection {
     pub fn spawn_process(
         &mut self,
         platform: &mut Platform,
-        mut command: Command,
+        command: Command,
         plugin_handle: PluginHandle,
-        stdin: Stdio,
+        buf_len: usize,
     ) -> ProcessIndex {
         let mut index = None;
         for (i, process) in self.processes.iter_mut().enumerate() {
             if !process.alive {
                 process.alive = true;
                 process.plugin_handle = plugin_handle;
-                process.output_residual_bytes = ResidualStrBytes::default();
                 index = Some(i);
                 break;
             }
@@ -133,21 +128,16 @@ impl PluginCollection {
                 self.processes.push(PluginProcess {
                     alive: true,
                     plugin_handle,
-                    output_residual_bytes: ResidualStrBytes::default(),
                 });
                 index
             }
         };
 
-        command.stdin(stdin);
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::null());
-
         let index = ProcessIndex(index as _);
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Plugin(index),
             command,
-            buf_len: 4 * 1024,
+            buf_len,
         });
 
         index
@@ -161,7 +151,7 @@ impl PluginCollection {
         let mut plugin = DummyPlugin::new();
         for i in 0..editor.plugins.plugins.len() {
             std::mem::swap(&mut plugin, &mut editor.plugins.plugins[i]);
-            plugin.on_editor_events(editor, platform, clients);
+            plugin.on_editor_events(editor, platform, clients, PluginHandle(i as _));
             std::mem::swap(&mut plugin, &mut editor.plugins.plugins[i]);
         }
     }

@@ -8,7 +8,6 @@ use crate::{
     editor::{Editor, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, MessageKind},
     help::HELP_PREFIX,
-    lsp,
     mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeState},
     navigation_history::{NavigationHistory, NavigationMovement},
     pattern::PatternEscaper,
@@ -1184,6 +1183,7 @@ impl ModeState for State {
             let buffer_view = ctx.editor.buffer_views.get(handle);
             let main_position = buffer_view.cursors.main_cursor().position;
 
+            /*
             for client in ctx.editor.lsp.clients() {
                 let diagnostics = client
                     .diagnostics()
@@ -1205,6 +1205,7 @@ impl ModeState for State {
                     break;
                 }
             }
+            */
         }
 
         let state = &mut ctx.editor.mode.normal_state;
@@ -1673,6 +1674,7 @@ fn search_word_or_move_to_it(
 }
 
 fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
+/*
     enum DirectedIter<I> {
         Forward(I),
         Backward(I),
@@ -1822,5 +1824,6 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         anchor: position,
         position,
     });
+*/
 }
 
