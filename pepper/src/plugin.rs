@@ -8,20 +8,16 @@ use crate::{
     client::ClientManager,
     editor::Editor,
     editor_utils::ResidualStrBytes,
+    help::HelpPages,
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessIndex, ProcessTag},
-    ResourceFile,
 };
 
 pub struct PluginDefinition {
     pub create_fn: fn(&mut Editor, &mut Platform) -> Box<dyn Plugin>,
-    pub help_pages: &'static [ResourceFile],
+    pub help_pages: &'static HelpPages,
 }
 
 pub trait Plugin: 'static + AsAny {
-    fn help_pages(&self) -> &'static [ResourceFile] {
-        &[]
-    }
-
     fn on_editor_events(
         &mut self,
         _editor: &mut Editor,

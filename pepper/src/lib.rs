@@ -37,6 +37,7 @@ pub const DEFAULT_SYNTAXES_CONFIG: ResourceFile = ResourceFile {
     content: include_str!("../rc/default_syntaxes.pp"),
 };
 
+#[derive(Clone, Copy)]
 pub struct ResourceFile {
     name: &'static str,
     content: &'static str,

@@ -28,7 +28,7 @@ pub fn init(commands: &mut CommandManager) {
 
         let client_handle = ctx.client_handle()?;
         let (path, position) = match keyword.and_then(help::search) {
-            Some((path, line_index)) => (path, BufferPosition::line_col(line_index as _, 0)),
+            Some((path, position)) => (path, position),
             None => (help::main_help_name(), BufferPosition::zero()),
         };
 
