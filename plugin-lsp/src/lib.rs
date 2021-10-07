@@ -53,6 +53,8 @@ pub struct LspPlugin {
     plugin_handle: PluginHandle,
     clients: Vec<Option<Box<Client>>>,
     recipes: Vec<ClientRecipe>,
+    read_line_client_handle: Option<ClientHandle>,
+    picker_client_handle: Option<ClientHandle>,
 }
 
 impl LspPlugin {
@@ -61,6 +63,8 @@ impl LspPlugin {
             plugin_handle,
             clients: Vec::new(),
             recipes: Vec::new(),
+            read_line_client_handle: None,
+            picker_client_handle: None,
         }
     }
 
