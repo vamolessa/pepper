@@ -10,12 +10,13 @@ use pepper::{
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
     help::HelpPages,
-    platform::{Platform, PlatformRequest, ProcessId, ProcessTag},
+    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessId},
     plugin::{Plugin, PluginDefinition, PluginHandle},
 };
 
 mod capabilities;
 mod client;
+mod client_event_handler;
 mod json;
 mod mode;
 mod protocol;
@@ -198,8 +199,8 @@ impl LspPlugin {
 impl Plugin for LspPlugin {
     fn on_editor_events(
         &mut self,
-        editor: &mut pepper::editor::Editor,
-        platform: &mut pepper::platform::Platform,
+        editor: &mut Editor,
+        platform: &mut Platform,
         clients: &mut pepper::client::ClientManager,
     ) {
         let mut events = EditorEventIter::new();
@@ -258,11 +259,11 @@ impl Plugin for LspPlugin {
 
     fn on_process_spawned(
         &mut self,
-        editor: &mut pepper::editor::Editor,
-        platform: &mut pepper::platform::Platform,
+        editor: &mut Editor,
+        platform: &mut Platform,
         clients: &mut pepper::client::ClientManager,
         process_id: pepper::platform::ProcessId,
-        process_handle: pepper::platform::PlatformProcessHandle,
+        process_handle: PlatformProcessHandle,
     ) {
         if let Some(client) = self.find_client_by_process_id(process_id) {
             client.protocol.set_process_handle(process_handle);
@@ -272,8 +273,8 @@ impl Plugin for LspPlugin {
 
     fn on_process_output(
         &mut self,
-        editor: &mut pepper::editor::Editor,
-        platform: &mut pepper::platform::Platform,
+        editor: &mut Editor,
+        platform: &mut Platform,
         clients: &mut pepper::client::ClientManager,
         process_id: pepper::platform::ProcessId,
         bytes: &[u8],
@@ -296,7 +297,7 @@ impl Plugin for LspPlugin {
                 }
                 ServerEvent::Request(request) => {
                     let request_id = request.id.clone();
-                    match client.on_request(editor, clients, request) {
+                    match client_event_handler::on_request(client, editor, clients, request) {
                         Ok(value) => client.respond(platform, request_id, Ok(value)),
                         Err(ProtocolError::ParseError) => {
                             client.respond(platform, request_id, Err(ResponseError::parse_error()))
@@ -309,10 +310,12 @@ impl Plugin for LspPlugin {
                     }
                 }
                 ServerEvent::Notification(notification) => {
-                    let _ = client.on_notification(editor, notification);
+                    let _ = client_event_handler::on_notification(client, editor, notification);
                 }
                 ServerEvent::Response(response) => {
-                    let _ = client.on_response(editor, platform, clients, response);
+                    let _ = client_event_handler::on_response(
+                        client, editor, platform, clients, response,
+                    );
                 }
             }
         }
@@ -321,8 +324,8 @@ impl Plugin for LspPlugin {
 
     fn on_process_exit(
         &mut self,
-        editor: &mut pepper::editor::Editor,
-        platform: &mut pepper::platform::Platform,
+        editor: &mut Editor,
+        platform: &mut Platform,
         clients: &mut pepper::client::ClientManager,
         process_id: pepper::platform::ProcessId,
     ) {

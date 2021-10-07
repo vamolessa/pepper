@@ -1,5 +1,4 @@
 use std::{
-    cmp::Ord,
     fmt,
     fs::File,
     io,
@@ -9,7 +8,7 @@ use std::{
 };
 
 use pepper::{
-    buffer::{BufferContent, BufferHandle, BufferProperties},
+    buffer::{BufferHandle, BufferProperties},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,
@@ -18,24 +17,19 @@ use pepper::{
     editor_utils::{MessageKind, StatusBar},
     events::{EditorEvent, EditorEventIter},
     glob::Glob,
-    mode::{ModeContext, ModeKind},
+    mode::ModeContext,
     navigation_history::NavigationHistory,
-    picker::Picker,
     platform::{Platform, ProcessId},
-    word_database::{WordIndicesIter, WordKind},
 };
 
 use crate::{
     capabilities,
-    json::{
-        FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
-    },
+    json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonValue},
     mode::{picker, read_line},
     protocol::{
-        self, DocumentCodeAction, DocumentCompletionItem, DocumentDiagnostic, DocumentLocation,
-        DocumentPosition, DocumentRange, DocumentSymbolInformation, PendingRequestColection,
-        Protocol, ProtocolError, ResponseError, ServerNotification, ServerRequest, ServerResponse,
-        TextEdit, Uri, WorkspaceEdit,
+        self, DocumentCodeAction, DocumentDiagnostic, DocumentLocation, DocumentPosition,
+        DocumentRange, DocumentSymbolInformation, PendingRequestColection, Protocol, ProtocolError,
+        ResponseError, Uri,
     },
 };
 
@@ -195,7 +189,7 @@ impl<'json> FromJson<'json> for TextDocumentSyncCapability {
 }
 
 #[derive(Default)]
-struct ServerCapabilities {
+pub(crate) struct ServerCapabilities {
     text_document_sync: TextDocumentSyncCapability,
     completion_provider: TriggerCharactersCapability,
     hover_provider: GenericCapability,
@@ -276,7 +270,7 @@ impl Diagnostic {
     }
 }
 
-struct BufferDiagnosticCollection {
+pub(crate) struct BufferDiagnosticCollection {
     path: PathBuf,
     buffer_handle: Option<BufferHandle>,
     diagnostics: Vec<Diagnostic>,
@@ -414,7 +408,7 @@ impl DiagnosticCollection {
             .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
     }
 
-    pub(self) fn diagnostics_at_path(
+    pub(crate) fn diagnostics_at_path(
         &mut self,
         editor: &Editor,
         root: &Path,
@@ -461,7 +455,7 @@ impl DiagnosticCollection {
         &mut self.buffer_diagnostics[end_index]
     }
 
-    pub(self) fn clear_empty(&mut self) {
+    pub(crate) fn clear_empty(&mut self) {
         for i in (0..self.buffer_diagnostics.len()).rev() {
             if self.buffer_diagnostics[i].len == 0 {
                 self.buffer_diagnostics.swap_remove(i);
@@ -469,7 +463,7 @@ impl DiagnosticCollection {
         }
     }
 
-    pub(self) fn on_load_buffer(
+    pub(crate) fn on_load_buffer(
         &mut self,
         editor: &Editor,
         buffer_handle: BufferHandle,
@@ -491,7 +485,7 @@ impl DiagnosticCollection {
         }
     }
 
-    pub(self) fn on_save_buffer(
+    pub(crate) fn on_save_buffer(
         &mut self,
         editor: &Editor,
         buffer_handle: BufferHandle,
@@ -514,7 +508,7 @@ impl DiagnosticCollection {
         }
     }
 
-    pub(self) fn on_close_buffer(&mut self, buffer_handle: BufferHandle) {
+    pub(crate) fn on_close_buffer(&mut self, buffer_handle: BufferHandle) {
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
                 diagnostics.buffer_handle = None;
@@ -524,7 +518,7 @@ impl DiagnosticCollection {
     }
 }
 
-enum RequestState {
+pub(crate) enum RequestState {
     Idle,
     Definition {
         client_handle: client::ClientHandle,
@@ -607,20 +601,20 @@ pub struct Client {
     process_id: ProcessId,
     pub(crate) protocol: Protocol,
     pub(crate) json: Json,
-    root: PathBuf,
-    pending_requests: PendingRequestColection,
+    pub(crate) root: PathBuf,
+    pub(crate) pending_requests: PendingRequestColection,
 
-    initialized: bool,
-    server_capabilities: ServerCapabilities,
+    pub(crate) initialized: bool,
+    pub(crate) server_capabilities: ServerCapabilities,
 
-    document_selectors: Vec<Glob>,
+    pub(crate) document_selectors: Vec<Glob>,
     versioned_buffers: VersionedBufferCollection,
-    diagnostics: DiagnosticCollection,
+    pub(crate) diagnostics: DiagnosticCollection,
 
-    temp_edits: Vec<(BufferRange, BufferRange)>,
+    pub(crate) temp_edits: Vec<(BufferRange, BufferRange)>,
 
-    request_state: RequestState,
-    request_raw_json: Vec<u8>,
+    pub(crate) request_state: RequestState,
+    pub(crate) request_raw_json: Vec<u8>,
 
     log_file_path: String,
     log_file: Option<io::BufWriter<File>>,
@@ -1285,942 +1279,6 @@ impl Client {
         }
     }
 
-    pub(crate) fn on_request(
-        &mut self,
-        editor: &mut Editor,
-        clients: &mut client::ClientManager,
-        request: ServerRequest,
-    ) -> Result<JsonValue, ProtocolError> {
-        self.write_to_log_file(|buf, json| {
-            use io::Write;
-            let _ = write!(buf, "receive request\nid: ");
-            let _ = json.write(buf, &request.id);
-            let _ = write!(
-                buf,
-                "\nmethod: '{}'\nparams:\n",
-                request.method.as_str(json)
-            );
-            let _ = json.write(buf, &request.params);
-        });
-
-        match request.method.as_str(&self.json) {
-            "client/registerCapability" => {
-                for registration in request
-                    .params
-                    .get("registrations", &self.json)
-                    .elements(&self.json)
-                {
-                    #[derive(Default)]
-                    struct Registration {
-                        method: JsonString,
-                        register_options: JsonObject,
-                    }
-                    impl<'json> FromJson<'json> for Registration {
-                        fn from_json(
-                            value: JsonValue,
-                            json: &'json Json,
-                        ) -> Result<Self, JsonConvertError> {
-                            let mut this = Self::default();
-                            for (key, value) in value.members(json) {
-                                match key {
-                                    "method" => this.method = JsonString::from_json(value, json)?,
-                                    "registerOptions" => {
-                                        this.register_options = JsonObject::from_json(value, json)?
-                                    }
-                                    _ => (),
-                                }
-                            }
-                            Ok(this)
-                        }
-                    }
-
-                    struct Filter {
-                        pattern: Option<JsonString>,
-                    }
-                    impl<'json> FromJson<'json> for Filter {
-                        fn from_json(
-                            value: JsonValue,
-                            json: &'json Json,
-                        ) -> Result<Self, JsonConvertError> {
-                            let pattern = value.get("pattern", json);
-                            Ok(Self {
-                                pattern: FromJson::from_json(pattern, json)?,
-                            })
-                        }
-                    }
-
-                    let registration = Registration::from_json(registration, &self.json)?;
-                    match registration.method.as_str(&self.json) {
-                        "textDocument/didSave" => {
-                            self.document_selectors.clear();
-                            for filter in registration
-                                .register_options
-                                .get("documentSelector", &self.json)
-                                .elements(&self.json)
-                            {
-                                let filter = Filter::from_json(filter, &self.json)?;
-                                let pattern = match filter.pattern {
-                                    Some(pattern) => pattern.as_str(&self.json),
-                                    None => continue,
-                                };
-                                let mut glob = Glob::default();
-                                glob.compile(pattern)?;
-                                self.document_selectors.push(glob);
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-                Ok(JsonValue::Null)
-            }
-            "window/showMessage" => {
-                fn parse_params(
-                    params: JsonValue,
-                    json: &Json,
-                ) -> Result<(MessageKind, &str), JsonConvertError> {
-                    let params = match params {
-                        JsonValue::Object(object) => object,
-                        _ => return Err(JsonConvertError),
-                    };
-                    let mut kind = MessageKind::Info;
-                    let mut message = "";
-                    for (key, value) in params.members(json) {
-                        match key {
-                            "type" => {
-                                kind = match value {
-                                    JsonValue::Integer(1) => MessageKind::Error,
-                                    JsonValue::Integer(2..=4) => MessageKind::Info,
-                                    _ => return Err(JsonConvertError),
-                                }
-                            }
-                            "message" => {
-                                message = match value {
-                                    JsonValue::String(string) => string.as_str(json),
-                                    _ => return Err(JsonConvertError),
-                                }
-                            }
-                            _ => (),
-                        }
-                    }
-
-                    Ok((kind, message))
-                }
-
-                let (kind, message) = parse_params(request.params, &self.json)?;
-                editor.status_bar.write(kind).str(message);
-                Ok(JsonValue::Null)
-            }
-            "window/showDocument" => {
-                #[derive(Default)]
-                struct ShowDocumentParams {
-                    uri: JsonString,
-                    external: Option<bool>,
-                    take_focus: Option<bool>,
-                    selection: Option<DocumentRange>,
-                }
-                impl<'json> FromJson<'json> for ShowDocumentParams {
-                    fn from_json(
-                        value: JsonValue,
-                        json: &'json Json,
-                    ) -> Result<Self, JsonConvertError> {
-                        let mut this = Self::default();
-                        for (key, value) in value.members(json) {
-                            match key {
-                                "key" => this.uri = JsonString::from_json(value, json)?,
-                                "external" => this.external = FromJson::from_json(value, json)?,
-                                "takeFocus" => this.take_focus = FromJson::from_json(value, json)?,
-                                "selection" => this.selection = FromJson::from_json(value, json)?,
-                                _ => (),
-                            }
-                        }
-                        Ok(this)
-                    }
-                }
-
-                let params = ShowDocumentParams::from_json(request.params, &self.json)?;
-                let Uri::Path(path) = Uri::parse(&self.root, params.uri.as_str(&self.json))?;
-
-                let success = if let Some(true) = params.external {
-                    false
-                } else if let Some(client_handle) = clients.focused_client() {
-                    match editor.buffer_view_handle_from_path(
-                        client_handle,
-                        path,
-                        BufferProperties::text(),
-                        false,
-                    ) {
-                        Ok(buffer_view_handle) => {
-                            if let Some(true) = params.take_focus {
-                                let client = clients.get_mut(client_handle);
-                                client.set_buffer_view_handle(
-                                    Some(buffer_view_handle),
-                                    &editor.buffer_views,
-                                    &mut editor.events,
-                                );
-                            }
-                            if let Some(range) = params.selection {
-                                let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
-                                let mut cursors = buffer_view.cursors.mut_guard();
-                                cursors.clear();
-                                cursors.add(Cursor {
-                                    anchor: range.start.into_buffer_position(),
-                                    position: range.end.into_buffer_position(),
-                                });
-                            }
-                            true
-                        }
-                        Err(error) => {
-                            editor
-                                .status_bar
-                                .write(MessageKind::Error)
-                                .fmt(format_args!("{}", error));
-                            false
-                        }
-                    }
-                } else {
-                    false
-                };
-
-                let mut result = JsonObject::default();
-                result.set("success".into(), success.into(), &mut self.json);
-                Ok(result.into())
-            }
-            _ => Err(ProtocolError::MethodNotFound),
-        }
-    }
-
-    pub(crate) fn on_notification(
-        &mut self,
-        editor: &mut Editor,
-        notification: ServerNotification,
-    ) -> Result<(), ProtocolError> {
-        self.write_to_log_file(|buf, json| {
-            use io::Write;
-            let _ = write!(
-                buf,
-                "receive notification\nmethod: '{}'\nparams:\n",
-                notification.method.as_str(json)
-            );
-            let _ = json.write(buf, &notification.params);
-        });
-
-        match notification.method.as_str(&self.json) {
-            "window/showMessage" => {
-                let mut message_type: JsonInteger = 0;
-                let mut message = JsonString::default();
-                for (key, value) in notification.params.members(&self.json) {
-                    match key {
-                        "type" => message_type = JsonInteger::from_json(value, &self.json)?,
-                        "value" => message = JsonString::from_json(value, &self.json)?,
-                        _ => (),
-                    }
-                }
-                let message = message.as_str(&self.json);
-                match message_type {
-                    1 => editor.status_bar.write(MessageKind::Error).str(message),
-                    2 => editor
-                        .status_bar
-                        .write(MessageKind::Info)
-                        .fmt(format_args!("warning: {}", message)),
-                    3 => editor
-                        .status_bar
-                        .write(MessageKind::Info)
-                        .fmt(format_args!("info: {}", message)),
-                    4 => editor.status_bar.write(MessageKind::Info).str(message),
-                    _ => (),
-                }
-                Ok(())
-            }
-            "textDocument/publishDiagnostics" => {
-                #[derive(Default)]
-                struct Params {
-                    uri: JsonString,
-                    diagnostics: JsonArray,
-                }
-                impl<'json> FromJson<'json> for Params {
-                    fn from_json(
-                        value: JsonValue,
-                        json: &'json Json,
-                    ) -> Result<Self, JsonConvertError> {
-                        let mut this = Self::default();
-                        for (key, value) in value.members(json) {
-                            match key {
-                                "uri" => this.uri = JsonString::from_json(value, json)?,
-                                "diagnostics" => {
-                                    this.diagnostics = JsonArray::from_json(value, json)?
-                                }
-                                _ => (),
-                            }
-                        }
-                        Ok(this)
-                    }
-                }
-
-                let params = Params::from_json(notification.params, &self.json)?;
-                let uri = params.uri.as_str(&self.json);
-                let Uri::Path(path) = Uri::parse(&self.root, uri)?;
-
-                let diagnostics = self
-                    .diagnostics
-                    .diagnostics_at_path(editor, &self.root, path);
-                for diagnostic in params.diagnostics.elements(&self.json) {
-                    let diagnostic = DocumentDiagnostic::from_json(diagnostic, &self.json)?;
-                    diagnostics.add(diagnostic, &self.json);
-                }
-                diagnostics.sort();
-                self.diagnostics.clear_empty();
-                Ok(())
-            }
-            _ => Ok(()),
-        }
-    }
-
-    pub(crate) fn on_response(
-        &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut client::ClientManager,
-        response: ServerResponse,
-    ) -> Result<ClientOperation, ProtocolError> {
-        let method = match self.pending_requests.take(response.id) {
-            Some(method) => method,
-            None => return Ok(ClientOperation::None),
-        };
-
-        self.write_to_log_file(|buf, json| {
-            use io::Write;
-            let _ = write!(
-                buf,
-                "receive response\nid: {}\nmethod: '{}'\n",
-                response.id.0, method
-            );
-            match &response.result {
-                Ok(result) => {
-                    let _ = buf.write_all(b"result:\n");
-                    let _ = json.write(buf, result);
-                }
-                Err(error) => {
-                    let _ = write!(
-                        buf,
-                        "error_code: {}\nerror_message: '{}'\nerror_data:\n",
-                        error.code,
-                        error.message.as_str(json)
-                    );
-                    let _ = json.write(buf, &error.data);
-                }
-            }
-        });
-
-        let result = match response.result {
-            Ok(result) => result,
-            Err(error) => {
-                self.request_state = RequestState::Idle;
-                util::write_response_error(&mut editor.status_bar, error, &self.json);
-                return Ok(ClientOperation::None);
-            }
-        };
-
-        match method {
-            "initialize" => {
-                let mut server_name = "";
-                for (key, value) in result.members(&self.json) {
-                    match key {
-                        "capabilities" => {
-                            self.server_capabilities =
-                                ServerCapabilities::from_json(value, &self.json)?
-                        }
-                        "serverInfo" => {
-                            if let JsonValue::String(name) = value.get("name", &self.json) {
-                                server_name = name.as_str(&self.json);
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-
-                match server_name {
-                    "" => editor
-                        .status_bar
-                        .write(MessageKind::Info)
-                        .str("lsp server started"),
-                    _ => editor
-                        .status_bar
-                        .write(MessageKind::Info)
-                        .fmt(format_args!("lsp server '{}' started", server_name)),
-                }
-
-                self.initialized = true;
-                self.notify(platform, "initialized", JsonObject::default());
-
-                for buffer in editor.buffers.iter() {
-                    util::send_did_open(self, editor, platform, buffer.handle());
-                }
-
-                Ok(ClientOperation::None)
-            }
-            "textDocument/hover" => {
-                let contents = result.get("contents", &self.json);
-                let info = util::extract_markup_content(contents, &self.json);
-                editor.status_bar.write(MessageKind::Info).str(info);
-                Ok(ClientOperation::None)
-            }
-            "textDocument/signatureHelp" => {
-                #[derive(Default)]
-                struct SignatureHelp {
-                    active_signature: usize,
-                    signatures: JsonArray,
-                }
-                impl<'json> FromJson<'json> for SignatureHelp {
-                    fn from_json(
-                        value: JsonValue,
-                        json: &'json Json,
-                    ) -> Result<Self, JsonConvertError> {
-                        let mut this = Self::default();
-                        for (key, value) in value.members(json) {
-                            match key {
-                                "activeSignature" => {
-                                    this.active_signature = usize::from_json(value, json)?;
-                                }
-                                "signatures" => {
-                                    this.signatures = JsonArray::from_json(value, json)?;
-                                }
-                                _ => (),
-                            }
-                        }
-                        Ok(this)
-                    }
-                }
-
-                #[derive(Default)]
-                struct SignatureInformation<'a> {
-                    label: JsonString,
-                    documentation: &'a str,
-                }
-                impl<'json> FromJson<'json> for SignatureInformation<'json> {
-                    fn from_json(
-                        value: JsonValue,
-                        json: &'json Json,
-                    ) -> Result<Self, JsonConvertError> {
-                        let mut this = Self::default();
-                        for (key, value) in value.members(json) {
-                            match key {
-                                "label" => this.label = JsonString::from_json(value, json)?,
-                                "documentation" => {
-                                    this.documentation = util::extract_markup_content(value, json);
-                                }
-                                _ => (),
-                            }
-                        }
-                        Ok(this)
-                    }
-                }
-
-                let signature_help: Option<SignatureHelp> =
-                    FromJson::from_json(result, &self.json)?;
-                let signature = match signature_help
-                    .and_then(|sh| sh.signatures.elements(&self.json).nth(sh.active_signature))
-                {
-                    Some(signature) => signature,
-                    None => return Ok(ClientOperation::None),
-                };
-                let signature = SignatureInformation::from_json(signature, &self.json)?;
-                let label = signature.label.as_str(&self.json);
-
-                if signature.documentation.is_empty() {
-                    editor.status_bar.write(MessageKind::Info).str(label);
-                } else {
-                    editor
-                        .status_bar
-                        .write(MessageKind::Info)
-                        .fmt(format_args!("{}\n{}", signature.documentation, label));
-                }
-
-                Ok(ClientOperation::None)
-            }
-            "textDocument/definition" => {
-                let client_handle = match self.request_state {
-                    RequestState::Definition { client_handle } => client_handle,
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.goto_definition(editor, platform, clients, client_handle, result)
-            }
-            "textDocument/declaration" => {
-                let client_handle = match self.request_state {
-                    RequestState::Declaration { client_handle } => client_handle,
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.goto_definition(editor, platform, clients, client_handle, result)
-            }
-            "textDocument/implementation" => {
-                let client_handle = match self.request_state {
-                    RequestState::Implementation { client_handle } => client_handle,
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.goto_definition(editor, platform, clients, client_handle, result)
-            }
-            "textDocument/references" => {
-                let (client_handle, auto_close_buffer, context_len) = match self.request_state {
-                    RequestState::References {
-                        client_handle,
-                        auto_close_buffer,
-                        context_len,
-                    } => (client_handle, auto_close_buffer, context_len),
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.request_state = RequestState::Idle;
-                let locations = match result {
-                    JsonValue::Array(locations) => locations,
-                    _ => return Ok(ClientOperation::None),
-                };
-
-                let mut buffer_name = editor.string_pool.acquire();
-                for location in locations.clone().elements(&self.json) {
-                    let location = DocumentLocation::from_json(location, &self.json)?;
-                    let Uri::Path(path) = Uri::parse(&self.root, location.uri.as_str(&self.json))?;
-
-                    if let Some(buffer) = editor
-                        .buffers
-                        .find_with_path(&editor.current_directory, path)
-                        .map(|h| editor.buffers.get(h))
-                    {
-                        let range = location.range.into_buffer_range();
-                        for text in buffer.content().text_range(range) {
-                            buffer_name.push_str(text);
-                        }
-                        break;
-                    }
-                }
-                if buffer_name.is_empty() {
-                    buffer_name.push_str("lsp");
-                }
-                buffer_name.push_str(".refs");
-
-                let buffer_view_handle = editor.buffer_view_handle_from_path(
-                    client_handle,
-                    Path::new(&buffer_name),
-                    BufferProperties::text(),
-                    true,
-                );
-                editor.string_pool.release(buffer_name);
-                let buffer_view_handle = match buffer_view_handle {
-                    Ok(handle) => handle,
-                    Err(error) => {
-                        editor
-                            .status_bar
-                            .write(MessageKind::Error)
-                            .fmt(format_args!("{}", error));
-                        return Ok(ClientOperation::None);
-                    }
-                };
-
-                let mut count = 0;
-                let mut context_buffer = BufferContent::new();
-
-                let buffer_view = editor.buffer_views.get(buffer_view_handle);
-                let buffer = editor.buffers.get_mut(buffer_view.buffer_handle);
-
-                buffer.properties = BufferProperties::log();
-                buffer.properties.auto_close = auto_close_buffer;
-
-                let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
-                buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
-
-                let mut text = editor.string_pool.acquire();
-                let mut last_path = "";
-                for location in locations.elements(&self.json) {
-                    let location = match DocumentLocation::from_json(location, &self.json) {
-                        Ok(location) => location,
-                        Err(_) => continue,
-                    };
-                    let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
-                        Ok(Uri::Path(path)) => path,
-                        Err(_) => continue,
-                    };
-                    let path = match path.to_str() {
-                        Some(path) => path,
-                        None => continue,
-                    };
-
-                    use fmt::Write;
-                    let position = location.range.start.into_buffer_position();
-                    let _ = writeln!(
-                        text,
-                        "{}:{},{}",
-                        path,
-                        position.line_index + 1,
-                        position.column_byte_index + 1,
-                    );
-
-                    if context_len > 0 {
-                        if last_path != path {
-                            context_buffer.clear();
-                            if let Ok(file) = File::open(path) {
-                                let mut reader = io::BufReader::new(file);
-                                let _ = context_buffer.read(&mut reader);
-                            }
-                        }
-
-                        let surrounding_len = context_len - 1;
-                        let start =
-                            (location.range.start.line as usize).saturating_sub(surrounding_len);
-                        let end = location.range.end.line as usize + surrounding_len;
-                        let len = end - start + 1;
-
-                        for line in context_buffer
-                            .lines()
-                            .skip(start)
-                            .take(len)
-                            .skip_while(|l| l.as_str().is_empty())
-                        {
-                            text.push_str(line.as_str());
-                            text.push('\n');
-                        }
-                        text.push('\n');
-                    }
-
-                    let position = buffer.content().end();
-                    buffer.insert_text(
-                        &mut editor.word_database,
-                        position,
-                        &text,
-                        &mut editor.events,
-                    );
-                    text.clear();
-
-                    count += 1;
-                    last_path = path;
-                }
-
-                if count == 1 {
-                    text.push_str("1 reference found\n");
-                } else {
-                    use fmt::Write;
-                    let _ = writeln!(text, "{} references found\n", count);
-                }
-
-                buffer.insert_text(
-                    &mut editor.word_database,
-                    BufferPosition::zero(),
-                    &text,
-                    &mut editor.events,
-                );
-                editor.string_pool.release(text);
-
-                let client = clients.get_mut(client_handle);
-                client.set_buffer_view_handle(
-                    Some(buffer_view_handle),
-                    &editor.buffer_views,
-                    &mut editor.events,
-                );
-                editor.trigger_event_handlers(platform, clients);
-
-                let mut cursors = editor
-                    .buffer_views
-                    .get_mut(buffer_view_handle)
-                    .cursors
-                    .mut_guard();
-                cursors.clear();
-                cursors.add(Cursor {
-                    anchor: BufferPosition::zero(),
-                    position: BufferPosition::zero(),
-                });
-
-                Ok(ClientOperation::None)
-            }
-            "textDocument/prepareRename" => {
-                let (client_handle, buffer_handle, buffer_position) = match self.request_state {
-                    RequestState::Rename {
-                        client_handle,
-                        buffer_handle,
-                        buffer_position,
-                    } => (client_handle, buffer_handle, buffer_position),
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.request_state = RequestState::Idle;
-                let result = match result {
-                    JsonValue::Null => {
-                        editor
-                            .status_bar
-                            .write(MessageKind::Error)
-                            .str("could not rename item under cursor");
-                        return Ok(ClientOperation::None);
-                    }
-                    JsonValue::Object(result) => result,
-                    _ => return Ok(ClientOperation::None),
-                };
-                let mut range = DocumentRange::default();
-                let mut placeholder: Option<JsonString> = None;
-                let mut default_behaviour: Option<bool> = None;
-                for (key, value) in result.members(&self.json) {
-                    match key {
-                        "start" => range.start = DocumentPosition::from_json(value, &self.json)?,
-                        "end" => range.end = DocumentPosition::from_json(value, &self.json)?,
-                        "range" => range = DocumentRange::from_json(value, &self.json)?,
-                        "placeholder" => placeholder = FromJson::from_json(value, &self.json)?,
-                        "defaultBehavior" => {
-                            default_behaviour = FromJson::from_json(value, &self.json)?
-                        }
-                        _ => (),
-                    }
-                }
-
-                let buffer = editor.buffers.get(buffer_handle);
-
-                let mut range = range.into_buffer_range();
-                if let Some(true) = default_behaviour {
-                    let word = buffer.content().word_at(buffer_position);
-                    range = BufferRange::between(word.position, word.end_position());
-                }
-
-                let mut input = editor.string_pool.acquire();
-                match placeholder {
-                    Some(text) => input.push_str(text.as_str(&self.json)),
-                    None => {
-                        for text in buffer.content().text_range(range) {
-                            input.push_str(text);
-                        }
-                    }
-                }
-
-                let mut ctx = ModeContext {
-                    editor,
-                    platform,
-                    clients,
-                    client_handle,
-                };
-                let op = read_line::enter_rename_mode(&mut ctx, &input);
-                editor.string_pool.release(input);
-
-                self.request_state = RequestState::FinishRename {
-                    buffer_handle,
-                    buffer_position,
-                };
-                Ok(op)
-            }
-            "textDocument/rename" => {
-                let edit = WorkspaceEdit::from_json(result, &self.json)?;
-                edit.apply(editor, &mut self.temp_edits, &self.root, &self.json);
-                Ok(ClientOperation::None)
-            }
-            "textDocument/codeAction" => {
-                let client_handle = match self.request_state {
-                    RequestState::CodeAction { client_handle } => client_handle,
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.request_state = RequestState::Idle;
-                let actions = match result {
-                    JsonValue::Array(actions) => actions,
-                    _ => return Ok(ClientOperation::None),
-                };
-
-                editor.picker.clear();
-                for action in actions
-                    .clone()
-                    .elements(&self.json)
-                    .filter_map(|a| DocumentCodeAction::from_json(a, &self.json).ok())
-                    .filter(|a| !a.disabled)
-                {
-                    editor
-                        .picker
-                        .add_custom_entry(action.title.as_str(&self.json));
-                }
-
-                let mut ctx = ModeContext {
-                    editor,
-                    platform,
-                    clients,
-                    client_handle,
-                };
-                let op = picker::enter_code_action_mode(&mut ctx, self.handle());
-
-                self.request_state = RequestState::FinishCodeAction;
-                self.request_raw_json.clear();
-                let _ = self.json.write(&mut self.request_raw_json, &actions.into());
-
-                Ok(op)
-            }
-            "textDocument/documentSymbol" => {
-                let (client_handle, buffer_view_handle) = match self.request_state {
-                    RequestState::DocumentSymbols {
-                        client_handle,
-                        buffer_view_handle,
-                    } => (client_handle, buffer_view_handle),
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.request_state = RequestState::Idle;
-                let symbols = match result {
-                    JsonValue::Array(symbols) => symbols,
-                    _ => return Ok(ClientOperation::None),
-                };
-
-                fn add_symbols(picker: &mut Picker, depth: usize, symbols: JsonArray, json: &Json) {
-                    let indent_buf = [b' '; 32];
-                    let indent_len = indent_buf.len().min(depth * 2);
-
-                    for symbol in symbols
-                        .elements(json)
-                        .filter_map(|s| DocumentSymbolInformation::from_json(s, json).ok())
-                    {
-                        let indent =
-                            unsafe { std::str::from_utf8_unchecked(&indent_buf[..indent_len]) };
-
-                        let name = symbol.name.as_str(json);
-                        match symbol.container_name {
-                            Some(container_name) => {
-                                let container_name = container_name.as_str(json);
-                                picker.add_custom_entry_fmt(format_args!(
-                                    "{}{} ({})",
-                                    indent, name, container_name,
-                                ));
-                            }
-                            None => {
-                                picker.add_custom_entry_fmt(format_args!("{}{}", indent, name,))
-                            }
-                        }
-
-                        add_symbols(picker, depth + 1, symbol.children.clone(), json);
-                    }
-                }
-
-                editor.picker.clear();
-                add_symbols(&mut editor.picker, 0, symbols.clone(), &self.json);
-
-                let mut ctx = ModeContext {
-                    editor,
-                    platform,
-                    clients,
-                    client_handle,
-                };
-                let op = picker::enter_document_symbol_mode(&mut ctx, self.handle());
-
-                self.request_state = RequestState::FinishDocumentSymbols { buffer_view_handle };
-                self.request_raw_json.clear();
-                let _ = self.json.write(&mut self.request_raw_json, &symbols.into());
-
-                Ok(op)
-            }
-            "workspace/symbol" => {
-                let client_handle = match self.request_state {
-                    RequestState::WorkspaceSymbols { client_handle } => client_handle,
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.request_state = RequestState::Idle;
-                let symbols = match result {
-                    JsonValue::Array(symbols) => symbols,
-                    _ => return Ok(ClientOperation::None),
-                };
-
-                editor.picker.clear();
-                for symbol in symbols
-                    .clone()
-                    .elements(&self.json)
-                    .filter_map(|s| DocumentSymbolInformation::from_json(s, &self.json).ok())
-                {
-                    let name = symbol.name.as_str(&self.json);
-                    match symbol.container_name {
-                        Some(container_name) => {
-                            let container_name = container_name.as_str(&self.json);
-                            editor.picker.add_custom_entry_fmt(format_args!(
-                                "{} ({})",
-                                name, container_name,
-                            ));
-                        }
-                        None => editor.picker.add_custom_entry(name),
-                    }
-                }
-
-                let mut ctx = ModeContext {
-                    editor,
-                    platform,
-                    clients,
-                    client_handle,
-                };
-                let op = picker::enter_workspace_symbol_mode(&mut ctx, self.handle());
-
-                self.request_state = RequestState::FinishWorkspaceSymbols;
-                self.request_raw_json.clear();
-                let _ = self.json.write(&mut self.request_raw_json, &symbols.into());
-
-                Ok(op)
-            }
-            "textDocument/formatting" => {
-                let buffer_handle = match self.request_state {
-                    RequestState::Formatting { buffer_handle } => buffer_handle,
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.request_state = RequestState::Idle;
-                let edits = match result {
-                    JsonValue::Array(edits) => edits,
-                    _ => return Ok(ClientOperation::None),
-                };
-                TextEdit::apply_edits(
-                    editor,
-                    buffer_handle,
-                    &mut self.temp_edits,
-                    edits,
-                    &self.json,
-                );
-
-                Ok(ClientOperation::None)
-            }
-            "textDocument/completion" => {
-                let (client_handle, buffer_handle) = match self.request_state {
-                    RequestState::Completion {
-                        client_handle,
-                        buffer_handle,
-                    } => (client_handle, buffer_handle),
-                    _ => return Ok(ClientOperation::None),
-                };
-                self.request_state = RequestState::Idle;
-
-                if editor.mode.kind() != ModeKind::Insert {
-                    return Ok(ClientOperation::None);
-                }
-
-                let buffer_view_handle = match clients.get(client_handle).buffer_view_handle() {
-                    Some(handle) => handle,
-                    None => return Ok(ClientOperation::None),
-                };
-                let buffer_view = editor.buffer_views.get(buffer_view_handle);
-                if buffer_view.buffer_handle != buffer_handle {
-                    return Ok(ClientOperation::None);
-                }
-                let buffer = editor.buffers.get(buffer_handle).content();
-
-                let completions = match result {
-                    JsonValue::Array(completions) => completions,
-                    JsonValue::Object(completions) => match completions.get("items", &self.json) {
-                        JsonValue::Array(completions) => completions,
-                        _ => return Ok(ClientOperation::None),
-                    },
-                    _ => return Ok(ClientOperation::None),
-                };
-
-                editor.picker.clear();
-                for completion in completions.elements(&self.json) {
-                    if let Ok(completion) =
-                        DocumentCompletionItem::from_json(completion, &self.json)
-                    {
-                        let text = completion.text.as_str(&self.json);
-                        editor.picker.add_custom_entry(text);
-                    }
-                }
-
-                let position = buffer_view.cursors.main_cursor().position;
-                let position = buffer.position_before(position);
-                let word = buffer.word_at(position);
-                let filter = match word.kind {
-                    WordKind::Identifier => word.text,
-                    _ => "",
-                };
-                editor.picker.filter(WordIndicesIter::empty(), filter);
-
-                Ok(ClientOperation::None)
-            }
-            _ => Ok(ClientOperation::None),
-        }
-    }
-
     pub(crate) fn on_editor_events(&mut self, editor: &Editor, platform: &mut Platform) {
         if !self.initialized {
             return;
@@ -2367,121 +1425,9 @@ impl Client {
         self.request(platform, "initialize", params);
         self.initialized = false;
     }
-
-    fn goto_definition(
-        &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut client::ClientManager,
-        client_handle: client::ClientHandle,
-        result: JsonValue,
-    ) -> Result<ClientOperation, ProtocolError> {
-        enum DefinitionLocation {
-            Single(DocumentLocation),
-            Many(JsonArray),
-            Invalid,
-        }
-        impl DefinitionLocation {
-            pub fn parse(value: JsonValue, json: &Json) -> Self {
-                match value {
-                    JsonValue::Object(_) => match DocumentLocation::from_json(value, json) {
-                        Ok(location) => Self::Single(location),
-                        Err(_) => Self::Invalid,
-                    },
-                    JsonValue::Array(array) => {
-                        let mut locations = array
-                            .clone()
-                            .elements(json)
-                            .filter_map(move |l| DocumentLocation::from_json(l, json).ok());
-                        let location = match locations.next() {
-                            Some(location) => location,
-                            None => return Self::Invalid,
-                        };
-                        match locations.next() {
-                            Some(_) => Self::Many(array),
-                            None => Self::Single(location),
-                        }
-                    }
-                    _ => Self::Invalid,
-                }
-            }
-        }
-
-        self.request_state = RequestState::Idle;
-        match DefinitionLocation::parse(result, &self.json) {
-            DefinitionLocation::Single(location) => {
-                let Uri::Path(path) = Uri::parse(&self.root, location.uri.as_str(&self.json))?;
-
-                match editor.buffer_view_handle_from_path(
-                    client_handle,
-                    path,
-                    BufferProperties::text(),
-                    false,
-                ) {
-                    Ok(buffer_view_handle) => {
-                        let client = clients.get_mut(client_handle);
-                        client.set_buffer_view_handle(
-                            Some(buffer_view_handle),
-                            &editor.buffer_views,
-                            &mut editor.events,
-                        );
-
-                        let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
-                        let position = location.range.start.into_buffer_position();
-                        let mut cursors = buffer_view.cursors.mut_guard();
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: position,
-                            position,
-                        });
-                    }
-                    Err(error) => editor
-                        .status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!("{}", error)),
-                }
-
-                Ok(ClientOperation::None)
-            }
-            DefinitionLocation::Many(locations) => {
-                editor.picker.clear();
-                for location in locations
-                    .elements(&self.json)
-                    .filter_map(|l| DocumentLocation::from_json(l, &self.json).ok())
-                {
-                    let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
-                        Ok(Uri::Path(path)) => path,
-                        Err(_) => continue,
-                    };
-                    let path = match path.to_str() {
-                        Some(path) => path,
-                        None => continue,
-                    };
-
-                    let position = location.range.start.into_buffer_position();
-                    editor.picker.add_custom_entry_fmt(format_args!(
-                        "{}:{},{}",
-                        path,
-                        position.line_index + 1,
-                        position.column_byte_index + 1
-                    ));
-                }
-
-                let mut ctx = ModeContext {
-                    editor,
-                    platform,
-                    clients,
-                    client_handle,
-                };
-                let op = picker::enter_definition_mode(&mut ctx, self.handle());
-                Ok(op)
-            }
-            DefinitionLocation::Invalid => Ok(ClientOperation::None),
-        }
-    }
 }
 
-mod util {
+pub(crate) mod util {
     use super::*;
 
     pub fn write_response_error(status_bar: &mut StatusBar, error: ResponseError, json: &Json) {
