@@ -772,7 +772,7 @@ pub(crate) fn on_response(
                 clients,
                 client_handle,
             };
-            let op = picker::enter_code_action_mode(&mut ctx, client.handle());
+            let op = picker::enter_code_action_mode(&mut ctx);
 
             client.request_state = RequestState::FinishCodeAction;
             client.request_raw_json.clear();
@@ -832,7 +832,7 @@ pub(crate) fn on_response(
                 clients,
                 client_handle,
             };
-            let op = picker::enter_document_symbol_mode(&mut ctx, client.handle());
+            let op = picker::enter_document_symbol_mode(&mut ctx);
 
             client.request_state = RequestState::FinishDocumentSymbols { buffer_view_handle };
             client.request_raw_json.clear();
@@ -877,7 +877,7 @@ pub(crate) fn on_response(
                 clients,
                 client_handle,
             };
-            let op = picker::enter_workspace_symbol_mode(&mut ctx, client.handle());
+            let op = picker::enter_workspace_symbol_mode(&mut ctx);
 
             client.request_state = RequestState::FinishWorkspaceSymbols;
             client.request_raw_json.clear();
@@ -1069,9 +1069,10 @@ fn goto_definition(
                 clients,
                 client_handle,
             };
-            let op = picker::enter_definition_mode(&mut ctx, client.handle());
+            let op = picker::enter_definition_mode(&mut ctx);
             Ok(op)
         }
         DefinitionLocation::Invalid => Ok(ClientOperation::None),
     }
 }
+
