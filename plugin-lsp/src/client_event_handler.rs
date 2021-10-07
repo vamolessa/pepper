@@ -772,7 +772,7 @@ pub(crate) fn on_response(
                 clients,
                 client_handle,
             };
-            let op = picker::enter_code_action_mode(&mut ctx);
+            let op = picker::enter_code_action_mode(&mut ctx, client);
 
             client.request_state = RequestState::FinishCodeAction;
             client.request_raw_json.clear();

@@ -26,6 +26,7 @@ pub fn enter_rename_mode(ctx: &mut ModeContext, placeholder: &str) -> ClientOper
                     }
                     ctx.editor.plugins.release(this);
                 }
+
                 Mode::change_to(ctx, ModeKind::default());
                 Some(EditorControlFlow::Continue)
             }
@@ -41,6 +42,7 @@ pub fn enter_rename_mode(ctx: &mut ModeContext, placeholder: &str) -> ClientOper
                     }
                     ctx.editor.plugins.release(this);
                 }
+
                 Mode::change_to(ctx, ModeKind::default());
                 Some(EditorControlFlow::Continue)
             }
