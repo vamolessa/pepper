@@ -15,13 +15,13 @@ use pepper::{
     client,
     cursor::Cursor,
     editor::Editor,
-    editor_utils::{hash_bytes, parse_process_command, MessageKind, StatusBar},
+    editor_utils::{MessageKind, StatusBar},
     events::{EditorEvent, EditorEventIter},
-    glob::{Glob, InvalidGlobError},
+    glob::Glob,
     mode::{ModeContext, ModeKind},
     navigation_history::NavigationHistory,
     picker::Picker,
-    platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
+    platform::{Platform, ProcessId},
     word_database::{WordIndicesIter, WordKind},
 };
 
@@ -34,8 +34,8 @@ use crate::{
     protocol::{
         self, DocumentCodeAction, DocumentCompletionItem, DocumentDiagnostic, DocumentLocation,
         DocumentPosition, DocumentRange, DocumentSymbolInformation, PendingRequestColection,
-        Protocol, ProtocolError, ResponseError, ServerEvent, ServerNotification, ServerRequest,
-        ServerResponse, TextEdit, Uri, WorkspaceEdit,
+        Protocol, ProtocolError, ResponseError, ServerNotification, ServerRequest, ServerResponse,
+        TextEdit, Uri, WorkspaceEdit,
     },
 };
 
@@ -406,7 +406,15 @@ impl DiagnosticCollection {
         &[]
     }
 
-    fn diagnostics_at_path(
+    pub fn iter(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (&Path, Option<BufferHandle>, &[Diagnostic])> {
+        self.buffer_diagnostics
+            .iter()
+            .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
+    }
+
+    pub(self) fn diagnostics_at_path(
         &mut self,
         editor: &Editor,
         root: &Path,
@@ -453,20 +461,12 @@ impl DiagnosticCollection {
         &mut self.buffer_diagnostics[end_index]
     }
 
-    fn clear_empty(&mut self) {
+    pub(self) fn clear_empty(&mut self) {
         for i in (0..self.buffer_diagnostics.len()).rev() {
             if self.buffer_diagnostics[i].len == 0 {
                 self.buffer_diagnostics.swap_remove(i);
             }
         }
-    }
-
-    pub fn iter(
-        &self,
-    ) -> impl DoubleEndedIterator<Item = (&Path, Option<BufferHandle>, &[Diagnostic])> {
-        self.buffer_diagnostics
-            .iter()
-            .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
     }
 
     pub(self) fn on_load_buffer(
@@ -578,6 +578,12 @@ impl RequestState {
     }
 }
 
+pub enum ClientOperation {
+    None,
+    EnteredReadLineMode,
+    EnteredPickerMode,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ClientHandle(pub(crate) u8);
 impl fmt::Display for ClientHandle {
@@ -597,8 +603,9 @@ impl FromStr for ClientHandle {
 
 pub struct Client {
     handle: ClientHandle,
+    process_id: ProcessId,
     pub(crate) protocol: Protocol,
-    json: Json,
+    pub(crate) json: Json,
     root: PathBuf,
     pending_requests: PendingRequestColection,
 
@@ -619,7 +626,12 @@ pub struct Client {
 }
 
 impl Client {
-    pub(crate) fn new(handle: ClientHandle, root: PathBuf, log_file_path: Option<String>) -> Self {
+    pub(crate) fn new(
+        handle: ClientHandle,
+        process_id: ProcessId,
+        root: PathBuf,
+        log_file_path: Option<String>,
+    ) -> Self {
         let (log_file_path, log_file) = match log_file_path {
             Some(path) => match File::create(&path) {
                 Ok(file) => (path, Some(io::BufWriter::new(file))),
@@ -630,6 +642,7 @@ impl Client {
 
         Self {
             handle,
+            process_id,
             protocol: Protocol::new(),
             json: Json::new(),
             root,
@@ -653,6 +666,10 @@ impl Client {
 
     pub fn handle(&self) -> ClientHandle {
         self.handle
+    }
+
+    pub fn process_id(&self) -> ProcessId {
+        self.process_id
     }
 
     pub fn handles_path(&self, path: &str) -> bool {
@@ -699,15 +716,15 @@ impl Client {
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.hover_provider.0 {
-            return;
+            return ClientOperation::None;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let buffer = editor.buffers.get(buffer_handle);
-        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
         let position = DocumentPosition::from_buffer_position(buffer_position);
 
         let mut params = JsonObject::default();
@@ -719,6 +736,8 @@ impl Client {
         );
 
         self.request(platform, "textDocument/hover", params);
+
+        ClientOperation::None
     }
 
     pub fn signature_help(
@@ -727,15 +746,15 @@ impl Client {
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.signature_help_provider.on {
-            return;
+            return ClientOperation::None;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let buffer = editor.buffers.get(buffer_handle);
-        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
         let position = DocumentPosition::from_buffer_position(buffer_position);
 
         let mut params = JsonObject::default();
@@ -747,30 +766,8 @@ impl Client {
         );
 
         self.request(platform, "textDocument/signatureHelp", params);
-    }
 
-    fn make_definition_params(
-        &mut self,
-        editor: &Editor,
-        platform: &mut Platform,
-        buffer_handle: BufferHandle,
-        buffer_position: BufferPosition,
-    ) -> JsonObject {
-        helper::send_pending_did_change(self, editor, platform);
-
-        let buffer = editor.buffers.get(buffer_handle);
-        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
-        let position = DocumentPosition::from_buffer_position(buffer_position);
-
-        let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), &mut self.json);
-        params.set(
-            "position".into(),
-            position.to_json_value(&mut self.json),
-            &mut self.json,
-        );
-
-        params
+        ClientOperation::None
     }
 
     pub fn definition(
@@ -785,7 +782,8 @@ impl Client {
             return;
         }
 
-        let params = self.make_definition_params(editor, platform, buffer_handle, buffer_position);
+        let params =
+            util::create_definition_params(self, editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Definition { client_handle };
         self.request(platform, "textDocument/definition", params);
     }
@@ -802,7 +800,8 @@ impl Client {
             return;
         }
 
-        let params = self.make_definition_params(editor, platform, buffer_handle, buffer_position);
+        let params =
+            util::create_definition_params(self, editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Declaration { client_handle };
         self.request(platform, "textDocument/declaration", params);
     }
@@ -819,7 +818,8 @@ impl Client {
             return;
         }
 
-        let params = self.make_definition_params(editor, platform, buffer_handle, buffer_position);
+        let params =
+            util::create_definition_params(self, editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Implementation { client_handle };
         self.request(platform, "textDocument/implementation", params);
     }
@@ -838,10 +838,10 @@ impl Client {
             return;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let buffer = editor.buffers.get(buffer_handle);
-        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
         let position = DocumentPosition::from_buffer_position(buffer_position);
 
         let mut context = JsonObject::default();
@@ -872,15 +872,15 @@ impl Client {
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.rename_provider.on || !self.request_state.is_idle() {
-            return;
+            return ClientOperation::None;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let buffer = editor.buffers.get(buffer_handle);
-        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
         let position = DocumentPosition::from_buffer_position(buffer_position);
 
         let mut params = JsonObject::default();
@@ -898,16 +898,25 @@ impl Client {
                 buffer_position,
             };
             self.request(platform, "textDocument/prepareRename", params);
+
+            ClientOperation::None
         } else {
             self.request_state = RequestState::FinishRename {
                 buffer_handle,
                 buffer_position,
             };
-            read_line::rename::enter_mode(editor, self.handle(), "");
+            let mut ctx = ModeContext {
+                editor,
+                platform,
+                clients,
+                client_handle,
+            };
+
+            read_line::enter_rename_mode(&mut ctx, "")
         }
     }
 
-    pub fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform) {
+    pub(crate) fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform) {
         let (buffer_handle, buffer_position) = match self.request_state {
             RequestState::FinishRename {
                 buffer_handle,
@@ -920,10 +929,10 @@ impl Client {
             return;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let buffer = editor.buffers.get(buffer_handle);
-        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
         let position = DocumentPosition::from_buffer_position(buffer_position);
         let new_name = self.json.create_string(editor.read_line.input());
 
@@ -951,10 +960,10 @@ impl Client {
             return;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let buffer = editor.buffers.get(buffer_handle);
-        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
 
         let mut diagnostics = JsonArray::default();
         for diagnostic in self.diagnostics.buffer_diagnostics(buffer_handle) {
@@ -982,7 +991,7 @@ impl Client {
         self.request(platform, "textDocument/codeAction", params);
     }
 
-    pub fn finish_code_action(&mut self, editor: &mut Editor, index: usize) {
+    pub(crate) fn finish_code_action(&mut self, editor: &mut Editor, index: usize) {
         match self.request_state {
             RequestState::FinishCodeAction => (),
             _ => return,
@@ -1019,11 +1028,11 @@ impl Client {
             return;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let buffer_handle = editor.buffer_views.get(buffer_view_handle).buffer_handle;
         let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
+        let text_document = util::text_document_with_id(&self.root, buffer_path, &mut self.json);
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -1035,7 +1044,7 @@ impl Client {
         self.request(platform, "textDocument/documentSymbol", params);
     }
 
-    pub fn finish_document_symbols(
+    pub(crate) fn finish_document_symbols(
         &mut self,
         editor: &mut Editor,
         clients: &mut client::ClientManager,
@@ -1106,7 +1115,7 @@ impl Client {
             return;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let query = self.json.create_string(query);
         let mut params = JsonObject::default();
@@ -1116,7 +1125,7 @@ impl Client {
         self.request(platform, "workspace/symbol", params);
     }
 
-    pub fn finish_workspace_symbols(
+    pub(crate) fn finish_workspace_symbols(
         &mut self,
         editor: &mut Editor,
         clients: &mut client::ClientManager,
@@ -1185,10 +1194,10 @@ impl Client {
             return;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let buffer_path = &editor.buffers.get(buffer_handle).path;
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
+        let text_document = util::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let mut options = JsonObject::default();
         options.set(
             "tabSize".into(),
@@ -1223,10 +1232,10 @@ impl Client {
             return;
         }
 
-        helper::send_pending_did_change(self, editor, platform);
+        util::send_pending_did_change(self, editor, platform);
 
         let buffer = editor.buffers.get(buffer_handle);
-        let text_document = helper::text_document_with_id(&self.root, &buffer.path, &mut self.json);
+        let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
         let position = DocumentPosition::from_buffer_position(buffer_position);
 
         let mut params = JsonObject::default();
@@ -1257,7 +1266,7 @@ impl Client {
         }
     }
 
-    fn on_request(
+    pub(crate) fn on_request(
         &mut self,
         editor: &mut Editor,
         clients: &mut client::ClientManager,
@@ -1461,7 +1470,7 @@ impl Client {
         }
     }
 
-    fn on_notification(
+    pub(crate) fn on_notification(
         &mut self,
         editor: &mut Editor,
         notification: ServerNotification,
@@ -1547,16 +1556,16 @@ impl Client {
         }
     }
 
-    fn on_response(
+    pub(crate) fn on_response(
         &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut client::ClientManager,
         response: ServerResponse,
-    ) -> Result<(), ProtocolError> {
+    ) -> Result<ClientOperation, ProtocolError> {
         let method = match self.pending_requests.take(response.id) {
             Some(method) => method,
-            None => return Ok(()),
+            None => return Ok(ClientOperation::None),
         };
 
         self.write_to_log_file(|buf, json| {
@@ -1587,8 +1596,8 @@ impl Client {
             Ok(result) => result,
             Err(error) => {
                 self.request_state = RequestState::Idle;
-                helper::write_response_error(&mut editor.status_bar, error, &self.json);
-                return Ok(());
+                util::write_response_error(&mut editor.status_bar, error, &self.json);
+                return Ok(ClientOperation::None);
             }
         };
 
@@ -1625,16 +1634,16 @@ impl Client {
                 self.notify(platform, "initialized", JsonObject::default());
 
                 for buffer in editor.buffers.iter() {
-                    helper::send_did_open(self, editor, platform, buffer.handle());
+                    util::send_did_open(self, editor, platform, buffer.handle());
                 }
 
-                Ok(())
+                Ok(ClientOperation::None)
             }
             "textDocument/hover" => {
                 let contents = result.get("contents", &self.json);
-                let info = helper::extract_markup_content(contents, &self.json);
+                let info = util::extract_markup_content(contents, &self.json);
                 editor.status_bar.write(MessageKind::Info).str(info);
-                Ok(())
+                Ok(ClientOperation::None)
             }
             "textDocument/signatureHelp" => {
                 #[derive(Default)]
@@ -1678,8 +1687,7 @@ impl Client {
                             match key {
                                 "label" => this.label = JsonString::from_json(value, json)?,
                                 "documentation" => {
-                                    this.documentation =
-                                        helper::extract_markup_content(value, json);
+                                    this.documentation = util::extract_markup_content(value, json);
                                 }
                                 _ => (),
                             }
@@ -1694,7 +1702,7 @@ impl Client {
                     .and_then(|sh| sh.signatures.elements(&self.json).nth(sh.active_signature))
                 {
                     Some(signature) => signature,
-                    None => return Ok(()),
+                    None => return Ok(ClientOperation::None),
                 };
                 let signature = SignatureInformation::from_json(signature, &self.json)?;
                 let label = signature.label.as_str(&self.json);
@@ -1707,26 +1715,27 @@ impl Client {
                         .write(MessageKind::Info)
                         .fmt(format_args!("{}\n{}", signature.documentation, label));
                 }
-                Ok(())
+
+                Ok(ClientOperation::None)
             }
             "textDocument/definition" => {
                 let client_handle = match self.request_state {
                     RequestState::Definition { client_handle } => client_handle,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.goto_definition(editor, platform, clients, client_handle, result)
             }
             "textDocument/declaration" => {
                 let client_handle = match self.request_state {
                     RequestState::Declaration { client_handle } => client_handle,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.goto_definition(editor, platform, clients, client_handle, result)
             }
             "textDocument/implementation" => {
                 let client_handle = match self.request_state {
                     RequestState::Implementation { client_handle } => client_handle,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.goto_definition(editor, platform, clients, client_handle, result)
             }
@@ -1737,12 +1746,12 @@ impl Client {
                         auto_close_buffer,
                         context_len,
                     } => (client_handle, auto_close_buffer, context_len),
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.request_state = RequestState::Idle;
                 let locations = match result {
                     JsonValue::Array(locations) => locations,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
 
                 let mut buffer_name = editor.string_pool.acquire();
@@ -1781,7 +1790,7 @@ impl Client {
                             .status_bar
                             .write(MessageKind::Error)
                             .fmt(format_args!("{}", error));
-                        return Ok(());
+                        return Ok(ClientOperation::None);
                     }
                 };
 
@@ -1896,7 +1905,8 @@ impl Client {
                     anchor: BufferPosition::zero(),
                     position: BufferPosition::zero(),
                 });
-                Ok(())
+
+                Ok(ClientOperation::None)
             }
             "textDocument/prepareRename" => {
                 let (client_handle, buffer_handle, buffer_position) = match self.request_state {
@@ -1905,7 +1915,7 @@ impl Client {
                         buffer_handle,
                         buffer_position,
                     } => (client_handle, buffer_handle, buffer_position),
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.request_state = RequestState::Idle;
                 let result = match result {
@@ -1914,10 +1924,10 @@ impl Client {
                             .status_bar
                             .write(MessageKind::Error)
                             .str("could not rename item under cursor");
-                        return Ok(());
+                        return Ok(ClientOperation::None);
                     }
                     JsonValue::Object(result) => result,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 let mut range = DocumentRange::default();
                 let mut placeholder: Option<JsonString> = None;
@@ -1953,29 +1963,35 @@ impl Client {
                     }
                 }
 
-                read_line::rename::enter_mode(editor, self.handle(), &input);
+                let mut ctx = ModeContext {
+                    editor,
+                    platform,
+                    clients,
+                    client_handle,
+                };
+                let op = read_line::enter_rename_mode(&mut ctx, &input);
                 editor.string_pool.release(input);
 
                 self.request_state = RequestState::FinishRename {
                     buffer_handle,
                     buffer_position,
                 };
-                Ok(())
+                Ok(op)
             }
             "textDocument/rename" => {
                 let edit = WorkspaceEdit::from_json(result, &self.json)?;
                 edit.apply(editor, &mut self.temp_edits, &self.root, &self.json);
-                Ok(())
+                Ok(ClientOperation::None)
             }
             "textDocument/codeAction" => {
                 let client_handle = match self.request_state {
                     RequestState::CodeAction { client_handle } => client_handle,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.request_state = RequestState::Idle;
                 let actions = match result {
                     JsonValue::Array(actions) => actions,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
 
                 editor.picker.clear();
@@ -1996,12 +2012,13 @@ impl Client {
                     clients,
                     client_handle,
                 };
-                picker::lsp_code_action::enter_mode(&mut ctx, self.handle());
+                let op = picker::enter_code_action_mode(&mut ctx, self.handle());
 
                 self.request_state = RequestState::FinishCodeAction;
                 self.request_raw_json.clear();
                 let _ = self.json.write(&mut self.request_raw_json, &actions.into());
-                Ok(())
+
+                Ok(op)
             }
             "textDocument/documentSymbol" => {
                 let (client_handle, buffer_view_handle) = match self.request_state {
@@ -2009,12 +2026,12 @@ impl Client {
                         client_handle,
                         buffer_view_handle,
                     } => (client_handle, buffer_view_handle),
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.request_state = RequestState::Idle;
                 let symbols = match result {
                     JsonValue::Array(symbols) => symbols,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
 
                 fn add_symbols(picker: &mut Picker, depth: usize, symbols: JsonArray, json: &Json) {
@@ -2055,22 +2072,23 @@ impl Client {
                     clients,
                     client_handle,
                 };
-                picker::lsp_document_symbol::enter_mode(&mut ctx, self.handle());
+                let op = picker::enter_document_symbol_mode(&mut ctx, self.handle());
 
                 self.request_state = RequestState::FinishDocumentSymbols { buffer_view_handle };
                 self.request_raw_json.clear();
                 let _ = self.json.write(&mut self.request_raw_json, &symbols.into());
-                Ok(())
+
+                Ok(op)
             }
             "workspace/symbol" => {
                 let client_handle = match self.request_state {
                     RequestState::WorkspaceSymbols { client_handle } => client_handle,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.request_state = RequestState::Idle;
                 let symbols = match result {
                     JsonValue::Array(symbols) => symbols,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
 
                 editor.picker.clear();
@@ -2098,22 +2116,23 @@ impl Client {
                     clients,
                     client_handle,
                 };
-                picker::lsp_workspace_symbol::enter_mode(&mut ctx, self.handle());
+                let op = picker::enter_workspace_symbol_mode(&mut ctx, self.handle());
 
                 self.request_state = RequestState::FinishWorkspaceSymbols;
                 self.request_raw_json.clear();
                 let _ = self.json.write(&mut self.request_raw_json, &symbols.into());
-                Ok(())
+
+                Ok(op)
             }
             "textDocument/formatting" => {
                 let buffer_handle = match self.request_state {
                     RequestState::Formatting { buffer_handle } => buffer_handle,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.request_state = RequestState::Idle;
                 let edits = match result {
                     JsonValue::Array(edits) => edits,
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 TextEdit::apply_edits(
                     editor,
@@ -2122,7 +2141,8 @@ impl Client {
                     edits,
                     &self.json,
                 );
-                Ok(())
+
+                Ok(ClientOperation::None)
             }
             "textDocument/completion" => {
                 let (client_handle, buffer_handle) = match self.request_state {
@@ -2130,21 +2150,21 @@ impl Client {
                         client_handle,
                         buffer_handle,
                     } => (client_handle, buffer_handle),
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
                 self.request_state = RequestState::Idle;
 
                 if editor.mode.kind() != ModeKind::Insert {
-                    return Ok(());
+                    return Ok(ClientOperation::None);
                 }
 
                 let buffer_view_handle = match clients.get(client_handle).buffer_view_handle() {
                     Some(handle) => handle,
-                    None => return Ok(()),
+                    None => return Ok(ClientOperation::None),
                 };
                 let buffer_view = editor.buffer_views.get(buffer_view_handle);
                 if buffer_view.buffer_handle != buffer_handle {
-                    return Ok(());
+                    return Ok(ClientOperation::None);
                 }
                 let buffer = editor.buffers.get(buffer_handle).content();
 
@@ -2152,9 +2172,9 @@ impl Client {
                     JsonValue::Array(completions) => completions,
                     JsonValue::Object(completions) => match completions.get("items", &self.json) {
                         JsonValue::Array(completions) => completions,
-                        _ => return Ok(()),
+                        _ => return Ok(ClientOperation::None),
                     },
-                    _ => return Ok(()),
+                    _ => return Ok(ClientOperation::None),
                 };
 
                 editor.picker.clear();
@@ -2175,13 +2195,14 @@ impl Client {
                     _ => "",
                 };
                 editor.picker.filter(WordIndicesIter::empty(), filter);
-                Ok(())
+
+                Ok(ClientOperation::None)
             }
-            _ => Ok(()),
+            _ => Ok(ClientOperation::None),
         }
     }
 
-    fn on_editor_events(&mut self, editor: &Editor, platform: &mut Platform) {
+    pub(crate) fn on_editor_events(&mut self, editor: &Editor, platform: &mut Platform) {
         if !self.initialized {
             return;
         }
@@ -2190,13 +2211,13 @@ impl Client {
         while let Some(event) = events.next(&editor.events) {
             match *event {
                 EditorEvent::Idle => {
-                    helper::send_pending_did_change(self, editor, platform);
+                    util::send_pending_did_change(self, editor, platform);
                 }
                 EditorEvent::BufferRead { handle } => {
                     let handle = handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(editor, handle, &self.root);
-                    helper::send_did_open(self, editor, platform, handle);
+                    util::send_did_open(self, editor, platform, handle);
                 }
                 EditorEvent::BufferInsertText {
                     handle,
@@ -2213,14 +2234,14 @@ impl Client {
                 }
                 EditorEvent::BufferWrite { handle, .. } => {
                     self.diagnostics.on_save_buffer(editor, handle, &self.root);
-                    helper::send_pending_did_change(self, editor, platform);
-                    helper::send_did_save(self, editor, platform, handle);
+                    util::send_pending_did_change(self, editor, platform);
+                    util::send_did_save(self, editor, platform, handle);
                 }
                 EditorEvent::BufferClose { handle } => {
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
-                    helper::send_pending_did_change(self, editor, platform);
-                    helper::send_did_close(self, editor, platform, handle);
+                    util::send_pending_did_change(self, editor, platform);
+                    util::send_did_close(self, editor, platform, handle);
                 }
                 EditorEvent::FixCursors { .. } => (),
                 EditorEvent::BufferViewLostFocus { .. } => (),
@@ -2247,7 +2268,7 @@ impl Client {
         self.pending_requests.add(id, method);
     }
 
-    fn respond(
+    pub(crate) fn respond(
         &mut self,
         platform: &mut Platform,
         request_id: JsonValue,
@@ -2335,7 +2356,7 @@ impl Client {
         clients: &mut client::ClientManager,
         client_handle: client::ClientHandle,
         result: JsonValue,
-    ) -> Result<(), ProtocolError> {
+    ) -> Result<ClientOperation, ProtocolError> {
         enum DefinitionLocation {
             Single(DocumentLocation),
             Many(JsonArray),
@@ -2400,6 +2421,8 @@ impl Client {
                         .write(MessageKind::Error)
                         .fmt(format_args!("{}", error)),
                 }
+
+                Ok(ClientOperation::None)
             }
             DefinitionLocation::Many(locations) => {
                 editor.picker.clear();
@@ -2423,23 +2446,23 @@ impl Client {
                         position.line_index + 1,
                         position.column_byte_index + 1
                     ));
-
-                    let mut ctx = ModeContext {
-                        editor,
-                        platform,
-                        clients,
-                        client_handle,
-                    };
-                    picker::lsp_definition::enter_mode(&mut ctx, self.handle());
                 }
+
+                let mut ctx = ModeContext {
+                    editor,
+                    platform,
+                    clients,
+                    client_handle,
+                };
+                let op = picker::enter_definition_mode(&mut ctx, self.handle());
+                Ok(op)
             }
-            DefinitionLocation::Invalid => (),
+            DefinitionLocation::Invalid => Ok(ClientOperation::None),
         }
-        Ok(())
     }
 }
 
-mod helper {
+mod util {
     use super::*;
 
     pub fn write_response_error(status_bar: &mut StatusBar, error: ResponseError, json: &Json) {
@@ -2471,6 +2494,35 @@ mod helper {
             },
             _ => "",
         }
+    }
+
+    pub fn create_definition_params(
+        client: &mut Client,
+        editor: &Editor,
+        platform: &mut Platform,
+        buffer_handle: BufferHandle,
+        buffer_position: BufferPosition,
+    ) -> JsonObject {
+        util::send_pending_did_change(client, editor, platform);
+
+        let buffer = editor.buffers.get(buffer_handle);
+        let text_document =
+            util::text_document_with_id(&client.root, &buffer.path, &mut client.json);
+        let position = DocumentPosition::from_buffer_position(buffer_position);
+
+        let mut params = JsonObject::default();
+        params.set(
+            "textDocument".into(),
+            text_document.into(),
+            &mut client.json,
+        );
+        params.set(
+            "position".into(),
+            position.to_json_value(&mut client.json),
+            &mut client.json,
+        );
+
+        params
     }
 
     pub fn send_did_open(

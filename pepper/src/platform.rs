@@ -42,7 +42,7 @@ pub enum PlatformEvent {
     },
     ProcessSpawned {
         tag: ProcessTag,
-        handle: ProcessHandle,
+        handle: PlatformProcessHandle,
     },
     ProcessOutput {
         tag: ProcessTag,
@@ -69,19 +69,19 @@ pub enum PlatformRequest {
         buf_len: usize,
     },
     WriteToProcess {
-        handle: ProcessHandle,
+        handle: PlatformProcessHandle,
         buf: PooledBuf,
     },
     CloseProcessInput {
-        handle: ProcessHandle,
+        handle: PlatformProcessHandle,
     },
     KillProcess {
-        handle: ProcessHandle,
+        handle: PlatformProcessHandle,
     },
 }
 
-#[derive(Clone, Copy)]
-pub struct ProcessId(pub u32);
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ProcessId(pub(crate) u32);
 
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
@@ -91,7 +91,7 @@ pub enum ProcessTag {
 }
 
 #[derive(Clone, Copy)]
-pub struct ProcessHandle(pub u8);
+pub struct PlatformProcessHandle(pub u8);
 
 #[derive(Default)]
 pub struct PlatformRequestCollection {

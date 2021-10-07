@@ -10,7 +10,7 @@ use pepper::{
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
     help::HelpPages,
-    platform::{Platform, PlatformRequest, ProcessTag},
+    platform::{Platform, PlatformRequest, ProcessId, ProcessTag},
     plugin::{Plugin, PluginDefinition, PluginHandle},
 };
 
@@ -22,19 +22,24 @@ mod protocol;
 
 use client::{Client, ClientHandle};
 use json::{JsonObject, JsonValue};
-use protocol::{ResponseError, ServerEvent};
+use protocol::{ProtocolError, ResponseError, ServerEvent};
 
 const SERVER_PROCESS_BUFFER_LEN: usize = 4 * 1024;
 
-static DEFINITION: LspPluginDefinition = LspPluginDefinition;
+pub static DEFINITION: LspPluginDefinition = LspPluginDefinition;
 
-struct LspPluginDefinition;
+pub struct LspPluginDefinition;
 impl PluginDefinition for LspPluginDefinition {
-    fn instantiate(&self, _: &mut Editor, _: &mut Platform, handle: PluginHandle) -> Box<dyn Plugin> {
+    fn instantiate(
+        &self,
+        _: &mut Editor,
+        _: &mut Platform,
+        handle: PluginHandle,
+    ) -> Box<dyn Plugin> {
         Box::new(LspPlugin::new(handle))
     }
 
-    fn help_pages(&self) -> &'static HelpPage {
+    fn help_pages(&self) -> &'static HelpPages {
         static HELP_PAGES: HelpPages = HelpPages::new(&[]);
         &HELP_PAGES
     }
@@ -110,7 +115,6 @@ impl LspPlugin {
         &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
-        plugin_handle: PluginHandle,
         mut command: Command,
         root: PathBuf,
         log_file_path: Option<String>,
@@ -132,14 +136,14 @@ impl LspPlugin {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        let process_index = editor.plugins.spawn_process(
+        let process_id = editor.plugins.spawn_process(
             platform,
             command,
-            plugin_handle,
+            self.plugin_handle,
             SERVER_PROCESS_BUFFER_LEN,
         );
 
-        let client = Client::new(handle, root, log_file_path);
+        let client = Client::new(handle, process_id, root, log_file_path);
         self.clients[handle.0 as usize] = Some(Box::new(client));
         handle
     }
@@ -178,6 +182,16 @@ impl LspPlugin {
 
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
         self.clients.iter().flat_map(Option::as_deref)
+    }
+
+    fn find_client_by_process_id(&mut self, process_id: ProcessId) -> Option<&mut Client> {
+        for client in self.clients.iter_mut().flatten() {
+            if client.process_id() == process_id {
+                return Some(client);
+            }
+        }
+
+        None
     }
 }
 
@@ -230,22 +244,14 @@ impl Plugin for LspPlugin {
                     Some(recipe.log_file_path.clone())
                 };
 
-                let client_handle = self.start(
-                    editor,
-                    platform,
-                    plugin_handle,
-                    command,
-                    root,
-                    log_file_path,
-                );
+                let client_handle = self.start(editor, platform, command, root, log_file_path);
                 self.recipes[index].running_client = Some(client_handle);
             }
         }
 
         for i in 0..self.clients.len() {
-            if let Some(mut client) = self.clients[i].reserve_and_take() {
+            if let Some(client) = &mut self.clients[i] {
                 client.on_editor_events(editor, platform);
-                self.clients[i] = ClientEntry::Occupied(client);
             }
         }
     }
@@ -255,10 +261,10 @@ impl Plugin for LspPlugin {
         editor: &mut pepper::editor::Editor,
         platform: &mut pepper::platform::Platform,
         clients: &mut pepper::client::ClientManager,
-        process_index: pepper::platform::ProcessId,
-        process_handle: pepper::platform::ProcessHandle,
+        process_id: pepper::platform::ProcessId,
+        process_handle: pepper::platform::PlatformProcessHandle,
     ) {
-        if let ClientEntry::Occupied(ref mut client) = self.clients[handle.0 as usize] {
+        if let Some(client) = self.find_client_by_process_id(process_id) {
             client.protocol.set_process_handle(process_handle);
             client.initialize(platform);
         }
@@ -269,10 +275,10 @@ impl Plugin for LspPlugin {
         editor: &mut pepper::editor::Editor,
         platform: &mut pepper::platform::Platform,
         clients: &mut pepper::client::ClientManager,
-        process_index: pepper::platform::ProcessId,
+        process_id: pepper::platform::ProcessId,
         bytes: &[u8],
     ) {
-        let mut client = match self.clients[handle.0 as usize].reserve_and_take() {
+        let client = match self.find_client_by_process_id(process_id) {
             Some(client) => client,
             None => return,
         };
@@ -311,8 +317,6 @@ impl Plugin for LspPlugin {
             }
         }
         events.finish(&mut client.protocol);
-
-        self.clients[handle.0 as usize] = ClientEntry::Occupied(client);
     }
 
     fn on_process_exit(
@@ -320,21 +324,19 @@ impl Plugin for LspPlugin {
         editor: &mut pepper::editor::Editor,
         platform: &mut pepper::platform::Platform,
         clients: &mut pepper::client::ClientManager,
-        process_index: pepper::platform::ProcessId,
+        process_id: pepper::platform::ProcessId,
     ) {
-        let index = handle.0 as usize;
-        let mut entry = ClientEntry::Vacant;
-        std::mem::swap(&mut entry, &mut self.clients[index]);
-        if let ClientEntry::Occupied(mut client) = entry {
+        if let Some(client) = self.find_client_by_process_id(process_id) {
             client.write_to_log_file(|buf, _| {
                 use io::Write;
                 let _ = write!(buf, "lsp server stopped");
             });
-        }
 
-        for recipe in &mut self.recipes {
-            if recipe.running_client == Some(handle) {
-                recipe.running_client = None;
+            let client_handle = client.handle();
+            for recipe in &mut self.recipes {
+                if recipe.running_client == Some(client_handle) {
+                    recipe.running_client = None;
+                }
             }
         }
     }

@@ -19,7 +19,7 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind},
     pattern::Pattern,
     picker::Picker,
-    platform::{Key, Platform, PlatformRequest, ProcessHandle, ProcessTag},
+    platform::{Key, Platform, PlatformRequest, PlatformProcessHandle, ProcessTag},
     plugin::PluginCollection,
     register::{RegisterCollection, RegisterKey},
     syntax::{HighlightResult, SyntaxCollection},
@@ -442,7 +442,7 @@ impl Editor {
         platform: &mut Platform,
         clients: &mut ClientManager,
         tag: ProcessTag,
-        handle: ProcessHandle,
+        handle: PlatformProcessHandle,
     ) {
         match tag {
             ProcessTag::Buffer(index) => self.buffers.on_process_spawned(platform, index, handle),

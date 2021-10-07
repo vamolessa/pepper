@@ -70,7 +70,7 @@ use crate::{
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
-        BufPool, Key, PlatformEvent, PlatformRequest, PooledBuf, ProcessHandle, ProcessTag,
+        BufPool, Key, PlatformEvent, PlatformRequest, PooledBuf, PlatformProcessHandle, ProcessTag,
     },
     Args,
 };
@@ -1088,7 +1088,7 @@ fn run_server(ctx: ApplicationContext, pipe_path: &[u16]) {
                                     continue;
                                 }
 
-                                let handle = ProcessHandle(i as _);
+                                let handle = PlatformProcessHandle(i as _);
                                 if let Ok(child) = command.spawn() {
                                     *p = Some(AsyncProcess::new(child, tag, buf_len));
                                     events.push(PlatformEvent::ProcessSpawned { tag, handle });

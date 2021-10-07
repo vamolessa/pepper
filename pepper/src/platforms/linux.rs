@@ -10,7 +10,7 @@ use std::{
 use crate::{
     application::{ClientApplication, ServerApplication, ApplicationContext},
     client::ClientHandle,
-    platform::{Key, PlatformEvent, PlatformRequest, ProcessHandle},
+    platform::{Key, PlatformEvent, PlatformRequest, PlatformProcessHandle},
     Args,
 };
 
@@ -276,7 +276,7 @@ fn run_server(ctx: ApplicationContext, listener: UnixListener) {
                             continue;
                         }
 
-                        let handle = ProcessHandle(i as _);
+                        let handle = PlatformProcessHandle(i as _);
                         if let Ok(child) = command.spawn() {
                             let process = Process::new(child, tag, buf_len);
                             if let Some(fd) = process.try_as_raw_fd() {

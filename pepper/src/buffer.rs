@@ -16,7 +16,7 @@ use crate::{
     help,
     history::{Edit, EditKind, History},
     pattern::Pattern,
-    platform::{Platform, PlatformRequest, PooledBuf, ProcessHandle, ProcessId, ProcessTag},
+    platform::{Platform, PlatformRequest, PooledBuf, PlatformProcessHandle, ProcessId, ProcessTag},
     plugin::PluginHandle,
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
@@ -1369,7 +1369,7 @@ impl BufferCollection {
         &mut self,
         platform: &mut Platform,
         id: ProcessId,
-        handle: ProcessHandle,
+        handle: PlatformProcessHandle,
     ) {
         if let Some(buf) = self.insert_processes[id.0 as usize].input.take() {
             platform

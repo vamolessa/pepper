@@ -11,7 +11,7 @@ use pepper::{
     editor::Editor,
     editor_utils::MessageKind,
     glob::InvalidGlobError,
-    platform::{Platform, PlatformRequest, ProcessHandle},
+    platform::{Platform, PlatformRequest, PlatformProcessHandle},
 };
 
 use crate::json::{
@@ -953,7 +953,7 @@ impl Drop for ServerEventIter {
 }
 
 pub struct Protocol {
-    process_handle: Option<ProcessHandle>,
+    process_handle: Option<PlatformProcessHandle>,
     body_buf: Vec<u8>,
     read_buf: Vec<u8>,
     next_request_id: usize,
@@ -969,11 +969,11 @@ impl Protocol {
         }
     }
 
-    pub fn process_handle(&self) -> Option<ProcessHandle> {
+    pub fn process_handle(&self) -> Option<PlatformProcessHandle> {
         self.process_handle
     }
 
-    pub fn set_process_handle(&mut self, handle: ProcessHandle) {
+    pub fn set_process_handle(&mut self, handle: PlatformProcessHandle) {
         self.process_handle = Some(handle);
     }
 
