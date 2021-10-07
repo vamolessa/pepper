@@ -96,8 +96,8 @@ pub struct CommandContext<'state, 'command> {
     pub editor: &'state mut Editor,
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
-    pub client_handle: Option<ClientHandle>,
-    pub plugin_handle: Option<PluginHandle>,
+    client_handle: Option<ClientHandle>,
+    plugin_handle: Option<PluginHandle>,
 
     pub args: CommandArgs<'command>,
     pub bang: bool,
@@ -109,6 +109,10 @@ impl<'state, 'command> CommandContext<'state, 'command> {
             Some(handle) => Ok(handle),
             None => Err(CommandError::NoTargetClient),
         }
+    }
+
+    pub fn plugin_handle(&self) -> PluginHandle {
+        self.plugin_handle.unwrap()
     }
 
     pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError> {
@@ -319,7 +323,7 @@ impl CommandManager {
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
             aliases: AliasCollection::default(),
         };
-        builtin::init(&mut this);
+        builtin::register_commands(&mut this);
         this
     }
 

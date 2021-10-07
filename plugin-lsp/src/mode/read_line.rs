@@ -47,17 +47,10 @@ pub fn enter_rename_mode(ctx: &mut ModeContext, placeholder: &str) -> ClientOper
         }
     }
 
-    // TODO: figure a way to set these values
     ctx.editor.read_line.set_prompt("rename:");
-    /*
-    let this = ctx.editor.plugins.acquire::<LspPlugin>(plugin_handle);
-    this.read_line_client_handle = Some(client_handle);
-    ctx.editor.plugins.release(this);
-    */
 
     let state = &mut ctx.editor.mode.read_line_state;
     state.on_client_keys = on_client_keys;
-    //state.plugin_handle = Some(plugin_handle);
     Mode::change_to(ctx, ModeKind::ReadLine);
     ctx.editor.read_line.input_mut().push_str(placeholder);
 

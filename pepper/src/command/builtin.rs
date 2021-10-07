@@ -14,7 +14,7 @@ use crate::{
     theme::{Color, THEME_COLOR_NAMES},
 };
 
-pub fn init(commands: &mut CommandManager) {
+pub fn register_commands(commands: &mut CommandManager) {
     let mut r = |name, completions, command_fn| {
         commands.register_command(None, name, completions, command_fn);
     };
@@ -337,15 +337,14 @@ pub fn init(commands: &mut CommandManager) {
     r("find-file", &[], |ctx| {
         let command = ctx.args.next()?;
         ctx.args.assert_empty()?;
-        if let Some(client_handle) = ctx.client_handle {
-            let mut ctx = ModeContext {
-                editor: ctx.editor,
-                platform: ctx.platform,
-                clients: ctx.clients,
-                client_handle,
-            };
-            picker::find_file::enter_mode(&mut ctx, command);
-        }
+        let client_handle = ctx.client_handle()?;
+        let mut ctx = ModeContext {
+            editor: ctx.editor,
+            platform: ctx.platform,
+            clients: ctx.clients,
+            client_handle,
+        };
+        picker::find_file::enter_mode(&mut ctx, command);
         Ok(())
     });
 
@@ -357,222 +356,6 @@ pub fn init(commands: &mut CommandManager) {
             .fmt(format_args!("{}", std::process::id()));
         Ok(())
     });
-
-    /*
-        r("lsp", &[], |ctx| {
-            let command = ctx.args.next()?;
-            let glob = ctx.args.next()?;
-            let log_path = ctx.args.try_next();
-            ctx.args.assert_empty()?;
-
-            match ctx.editor.lsp.add_recipe(glob, command, None, log_path) {
-                Ok(()) => Ok(()),
-                Err(error) => Err(CommandError::InvalidGlob(error)),
-            }
-        });
-
-        r("lsp-open-log", &[], |ctx| {
-            ctx.args.assert_empty()?;
-            let client_handle = ctx.client_handle()?;
-            let buffer_handle = ctx.current_buffer_handle()?;
-            access_lsp(
-                ctx,
-                buffer_handle,
-                |editor, _, clients, client| match client.log_file_path() {
-                    Some(path) => {
-                        match editor.buffer_view_handle_from_path(
-                            client_handle,
-                            Path::new(path),
-                            BufferProperties::log(),
-                            true,
-                        ) {
-                            Ok(buffer_view_handle) => {
-                                let client = clients.get_mut(client_handle);
-                                client.set_buffer_view_handle(
-                                    Some(buffer_view_handle),
-                                    &editor.buffer_views,
-                                    &mut editor.events,
-                                );
-                            }
-                            Err(error) => editor
-                                .status_bar
-                                .write(MessageKind::Error)
-                                .fmt(format_args!("{}", error)),
-                        }
-                        Ok(())
-                    }
-                    None => Err(CommandError::LspServerNotLogging),
-                },
-            )??;
-            Ok(())
-        });
-
-        r("lsp-stop", &[], |ctx| {
-            ctx.args.assert_empty()?;
-            let buffer_handle = ctx.current_buffer_handle()?;
-            match find_lsp_client_for_buffer(ctx.editor, buffer_handle) {
-                Some(client) => ctx.editor.lsp.stop(ctx.platform, client),
-                None => ctx.editor.lsp.stop_all(ctx.platform),
-            }
-            Ok(())
-        });
-
-        r("lsp-stop-all", &[], |ctx| {
-            ctx.args.assert_empty()?;
-            ctx.editor.lsp.stop_all(ctx.platform);
-            Ok(())
-        });
-
-        r("lsp-hover", &[], |ctx| {
-            ctx.args.assert_empty()?;
-            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
-                client.hover(editor, platform, buffer_handle, cursor.position)
-            })?;
-            Ok(())
-        });
-
-        r("lsp-definition", &[], |ctx| {
-            ctx.args.assert_empty()?;
-            let client_handle = ctx.client_handle()?;
-            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
-                client.definition(
-                    editor,
-                    platform,
-                    buffer_handle,
-                    cursor.position,
-                    client_handle,
-                )
-            })?;
-            Ok(())
-        });
-
-        r("lsp-declaration", &[], |ctx| {
-            ctx.args.assert_empty()?;
-            let client_handle = ctx.client_handle()?;
-            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
-                client.declaration(
-                    editor,
-                    platform,
-                    buffer_handle,
-                    cursor.position,
-                    client_handle,
-                )
-            })?;
-            Ok(())
-        });
-
-        r("lsp-implementation", &[], |ctx| {
-            ctx.args.assert_empty()?;
-            let client_handle = ctx.client_handle()?;
-            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
-                client.implementation(
-                    editor,
-                    platform,
-                    buffer_handle,
-                    cursor.position,
-                    client_handle,
-                )
-            })?;
-            Ok(())
-        });
-
-        r("lsp-references", &[], |ctx| {
-            let context_len = 2;
-            ctx.args.assert_empty()?;
-
-            let client_handle = ctx.client_handle()?;
-            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-
-            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
-                client.references(
-                    editor,
-                    platform,
-                    buffer_handle,
-                    cursor.position,
-                    context_len,
-                    false,
-                    client_handle,
-                )
-            })?;
-            Ok(())
-        });
-
-        r("lsp-rename", &[], |ctx| {
-            ctx.args.assert_empty()?;
-
-            let client_handle = ctx.client_handle()?;
-            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-
-            access_lsp(ctx, buffer_handle, |editor, platform, clients, client| {
-                client.rename(
-                    editor,
-                    platform,
-                    clients,
-                    client_handle,
-                    buffer_handle,
-                    cursor.position,
-                )
-            })?;
-            Ok(())
-        });
-
-        r("lsp-code-action", &[], |ctx| {
-            ctx.args.assert_empty()?;
-
-            let client_handle = ctx.client_handle()?;
-            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-
-            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
-                client.code_action(
-                    editor,
-                    platform,
-                    client_handle,
-                    buffer_handle,
-                    cursor.to_range(),
-                )
-            })?;
-            Ok(())
-        });
-
-        r("lsp-document-symbol", &[], |ctx| {
-            ctx.args.assert_empty()?;
-
-            let client_handle = ctx.client_handle()?;
-            let view_handle = ctx.current_buffer_view_handle()?;
-            let buffer_handle = ctx.editor.buffer_views.get(view_handle).buffer_handle;
-
-            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
-                client.document_symbols(editor, platform, client_handle, view_handle)
-            })?;
-            Ok(())
-        });
-
-        r("lsp-workspace-symbols", &[], |ctx| {
-            let query = ctx.args.try_next().unwrap_or("");
-            ctx.args.assert_empty()?;
-
-            let client_handle = ctx.client_handle()?;
-            let buffer_handle = ctx.current_buffer_handle()?;
-
-            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
-                client.workspace_symbols(editor, platform, client_handle, query)
-            })?;
-            Ok(())
-        });
-
-        r("lsp-format", &[], |ctx| {
-            ctx.args.assert_empty()?;
-            let buffer_handle = ctx.current_buffer_handle()?;
-            access_lsp(ctx, buffer_handle, |editor, platform, _, client| {
-                client.formatting(editor, platform, buffer_handle)
-            })?;
-            Ok(())
-        });
-    */
 }
 
 fn map(ctx: &mut CommandContext, mode: ModeKind) -> Result<(), CommandError> {
@@ -599,45 +382,4 @@ fn syntax_pattern(ctx: &mut CommandContext, token_kind: TokenKind) -> Result<(),
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
-
-/*
-fn current_buffer_and_main_cursor(
-    ctx: &CommandContext,
-) -> Result<(BufferHandle, Cursor), CommandError> {
-    let view_handle = ctx.current_buffer_view_handle()?;
-    let buffer_view = ctx.editor.buffer_views.get(view_handle);
-
-    let buffer_handle = buffer_view.buffer_handle;
-    let cursor = *buffer_view.cursors.main_cursor();
-    Ok((buffer_handle, cursor))
-}
-
-fn find_lsp_client_for_buffer(
-    editor: &Editor,
-    buffer_handle: BufferHandle,
-) -> Option<lsp::ClientHandle> {
-    let buffer_path = editor.buffers.get(buffer_handle).path.to_str()?;
-    let client = editor.lsp.clients().find(|c| c.handles_path(buffer_path))?;
-    Some(client.handle())
-}
-
-fn access_lsp<A, R>(
-    ctx: &mut CommandContext,
-    buffer_handle: BufferHandle,
-    accessor: A,
-) -> Result<R, CommandError>
-where
-    A: FnOnce(&mut Editor, &mut Platform, &mut ClientManager, &mut lsp::Client) -> R,
-{
-    let editor = &mut *ctx.editor;
-    let platform = &mut *ctx.platform;
-    let clients = &mut *ctx.clients;
-    match find_lsp_client_for_buffer(editor, buffer_handle).and_then(|h| {
-        lsp::ClientManager::access(editor, h, |e, c| accessor(e, platform, clients, c))
-    }) {
-        Some(result) => Ok(result),
-        None => Err(CommandError::LspServerNotRunning),
-    }
-}
-*/
 

@@ -17,11 +17,12 @@ use pepper::{
 mod capabilities;
 mod client;
 mod client_event_handler;
+mod command;
 mod json;
 mod mode;
 mod protocol;
 
-use client::{Client, ClientHandle};
+use client::{Client, ClientHandle, ClientOperation};
 use json::{JsonObject, JsonValue};
 use protocol::{ProtocolError, ResponseError, ServerEvent};
 
@@ -33,10 +34,11 @@ pub struct LspPluginDefinition;
 impl PluginDefinition for LspPluginDefinition {
     fn instantiate(
         &self,
-        _: &mut Editor,
+        editor: &mut Editor,
         _: &mut Platform,
         handle: PluginHandle,
     ) -> Box<dyn Plugin> {
+        command::register_commands(&mut editor.commands);
         Box::new(LspPlugin::new(handle))
     }
 
@@ -181,6 +183,27 @@ impl LspPlugin {
         self.clients[handle.0 as usize].as_deref_mut()
     }
 
+    pub(crate) fn on_client_operation(
+        &mut self,
+        editor: &mut Editor,
+        client_handle: ClientHandle,
+        op: ClientOperation,
+    ) {
+        match op {
+            ClientOperation::None => (),
+            ClientOperation::EnteredReadLineMode => {
+                let state = &mut editor.mode.read_line_state;
+                state.plugin_handle = Some(self.plugin_handle);
+                self.read_line_client_handle = Some(client_handle);
+            }
+            ClientOperation::EnteredPickerMode => {
+                let state = &mut editor.mode.picker_state;
+                state.plugin_handle = Some(self.plugin_handle);
+                self.picker_client_handle = Some(client_handle);
+            }
+        }
+    }
+
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
         self.clients.iter().flat_map(Option::as_deref)
     }
@@ -201,7 +224,7 @@ impl Plugin for LspPlugin {
         &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
-        clients: &mut pepper::client::ClientManager,
+        _: &mut pepper::client::ClientManager,
     ) {
         let mut events = EditorEventIter::new();
         while let Some(event) = events.next(&editor.events) {
@@ -259,9 +282,9 @@ impl Plugin for LspPlugin {
 
     fn on_process_spawned(
         &mut self,
-        editor: &mut Editor,
+        _: &mut Editor,
         platform: &mut Platform,
-        clients: &mut pepper::client::ClientManager,
+        _: &mut pepper::client::ClientManager,
         process_id: pepper::platform::ProcessId,
         process_handle: PlatformProcessHandle,
     ) {
@@ -324,9 +347,9 @@ impl Plugin for LspPlugin {
 
     fn on_process_exit(
         &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut pepper::client::ClientManager,
+        _: &mut Editor,
+        _: &mut Platform,
+        _: &mut pepper::client::ClientManager,
         process_id: pepper::platform::ProcessId,
     ) {
         if let Some(client) = self.find_client_by_process_id(process_id) {
