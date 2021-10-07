@@ -176,7 +176,7 @@ impl LspPlugin {
         self.clients[handle.0 as usize].as_deref()
     }
 
-    pub fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
+    pub(crate) fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
         self.clients[handle.0 as usize].as_deref_mut()
     }
 

@@ -578,6 +578,7 @@ impl RequestState {
     }
 }
 
+#[must_use]
 pub enum ClientOperation {
     None,
     EnteredReadLineMode,
@@ -777,15 +778,17 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
         client_handle: client::ClientHandle,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.definition_provider.0 || !self.request_state.is_idle() {
-            return;
+            return ClientOperation::None;
         }
 
         let params =
             util::create_definition_params(self, editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Definition { client_handle };
         self.request(platform, "textDocument/definition", params);
+
+        ClientOperation::None
     }
 
     pub fn declaration(
@@ -795,15 +798,17 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
         client_handle: client::ClientHandle,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.declaration_provider.0 || !self.request_state.is_idle() {
-            return;
+            return ClientOperation::None;
         }
 
         let params =
             util::create_definition_params(self, editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Declaration { client_handle };
         self.request(platform, "textDocument/declaration", params);
+
+        ClientOperation::None
     }
 
     pub fn implementation(
@@ -813,15 +818,17 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
         client_handle: client::ClientHandle,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.implementation_provider.0 || !self.request_state.is_idle() {
-            return;
+            return ClientOperation::None;
         }
 
         let params =
             util::create_definition_params(self, editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Implementation { client_handle };
         self.request(platform, "textDocument/implementation", params);
+
+        ClientOperation::None
     }
 
     pub fn references(
@@ -833,9 +840,9 @@ impl Client {
         context_len: usize,
         auto_close_buffer: bool,
         client_handle: client::ClientHandle,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.references_provider.0 || !self.request_state.is_idle() {
-            return;
+            return ClientOperation::None;
         }
 
         util::send_pending_did_change(self, editor, platform);
@@ -862,6 +869,8 @@ impl Client {
             auto_close_buffer,
         };
         self.request(platform, "textDocument/references", params);
+
+        ClientOperation::None
     }
 
     pub fn rename(
@@ -955,9 +964,9 @@ impl Client {
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         range: BufferRange,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.code_action_provider.0 || !self.request_state.is_idle() {
-            return;
+            return ClientOperation::None;
         }
 
         util::send_pending_did_change(self, editor, platform);
@@ -989,6 +998,8 @@ impl Client {
 
         self.request_state = RequestState::CodeAction { client_handle };
         self.request(platform, "textDocument/codeAction", params);
+
+        ClientOperation::None
     }
 
     pub(crate) fn finish_code_action(&mut self, editor: &mut Editor, index: usize) {
@@ -1023,9 +1034,9 @@ impl Client {
         platform: &mut Platform,
         client_handle: client::ClientHandle,
         buffer_view_handle: BufferViewHandle,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.document_symbol_provider.0 || !self.request_state.is_idle() {
-            return;
+            return ClientOperation::None;
         }
 
         util::send_pending_did_change(self, editor, platform);
@@ -1042,6 +1053,8 @@ impl Client {
             buffer_view_handle,
         };
         self.request(platform, "textDocument/documentSymbol", params);
+
+        ClientOperation::None
     }
 
     pub(crate) fn finish_document_symbols(
@@ -1110,9 +1123,9 @@ impl Client {
         platform: &mut Platform,
         client_handle: client::ClientHandle,
         query: &str,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.workspace_symbol_provider.0 || !self.request_state.is_idle() {
-            return;
+            return ClientOperation::None;
         }
 
         util::send_pending_did_change(self, editor, platform);
@@ -1123,6 +1136,8 @@ impl Client {
 
         self.request_state = RequestState::WorkspaceSymbols { client_handle };
         self.request(platform, "workspace/symbol", params);
+
+        ClientOperation::None
     }
 
     pub(crate) fn finish_workspace_symbols(
@@ -1188,10 +1203,10 @@ impl Client {
         editor: &Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.document_formatting_provider.0 || !self.request_state.is_idle()
         {
-            return;
+            return ClientOperation::None;
         }
 
         util::send_pending_did_change(self, editor, platform);
@@ -1218,6 +1233,8 @@ impl Client {
 
         self.request_state = RequestState::Formatting { buffer_handle };
         self.request(platform, "textDocument/formatting", params);
+
+        ClientOperation::None
     }
 
     pub fn completion(
@@ -1227,9 +1244,9 @@ impl Client {
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
-    ) {
+    ) -> ClientOperation {
         if !self.server_capabilities.completion_provider.on || !self.request_state.is_idle() {
-            return;
+            return ClientOperation::None;
         }
 
         util::send_pending_did_change(self, editor, platform);
@@ -1252,6 +1269,8 @@ impl Client {
         };
 
         self.request(platform, "textDocument/completion", params);
+
+        ClientOperation::None
     }
 
     pub(crate) fn write_to_log_file<F>(&mut self, writer: F)

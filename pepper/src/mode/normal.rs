@@ -1183,6 +1183,7 @@ impl ModeState for State {
             let buffer_view = ctx.editor.buffer_views.get(handle);
             let main_position = buffer_view.cursors.main_cursor().position;
 
+            // TODO: only print diagnostic (lint) if we just moved
             /*
             for client in ctx.editor.lsp.clients() {
                 let diagnostics = client
