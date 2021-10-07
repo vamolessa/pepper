@@ -11,7 +11,7 @@ use pepper::{
     editor::Editor,
     editor_utils::MessageKind,
     glob::InvalidGlobError,
-    platform::{Platform, PlatformRequest, PlatformProcessHandle},
+    platform::{Platform, PlatformProcessHandle, PlatformRequest},
 };
 
 use crate::json::{
@@ -1095,4 +1095,3 @@ impl PendingRequestColection {
         None
     }
 }
-

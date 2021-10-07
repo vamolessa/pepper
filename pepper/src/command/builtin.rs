@@ -382,4 +382,3 @@ fn syntax_pattern(ctx: &mut CommandContext, token_kind: TokenKind) -> Result<(),
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
-

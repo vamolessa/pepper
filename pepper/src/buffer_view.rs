@@ -574,7 +574,11 @@ impl BufferViewCollection {
         }
     }
 
-    pub(crate) fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+    pub(crate) fn on_buffer_insert_text(
+        &mut self,
+        buffer_handle: BufferHandle,
+        range: BufferRange,
+    ) {
         for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
             if view.buffer_handle == buffer_handle {
                 for c in &mut view.cursors.mut_guard()[..] {
@@ -584,7 +588,11 @@ impl BufferViewCollection {
         }
     }
 
-    pub(crate) fn on_buffer_delete_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+    pub(crate) fn on_buffer_delete_text(
+        &mut self,
+        buffer_handle: BufferHandle,
+        range: BufferRange,
+    ) {
         for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
             if view.buffer_handle == buffer_handle {
                 for c in &mut view.cursors.mut_guard()[..] {

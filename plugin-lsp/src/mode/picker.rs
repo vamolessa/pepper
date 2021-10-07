@@ -258,4 +258,3 @@ pub fn enter_workspace_symbol_mode(
 
     ClientOperation::EnteredPickerMode
 }
-

@@ -367,4 +367,3 @@ impl Plugin for LspPlugin {
         }
     }
 }
-

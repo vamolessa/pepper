@@ -327,4 +327,3 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
 
     capabilities.into()
 }
-

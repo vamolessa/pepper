@@ -8,7 +8,7 @@ use crate::{
     client::ClientManager,
     editor::Editor,
     help,
-    platform::{Platform, PlatformRequest, PlatformProcessHandle, ProcessId, ProcessTag},
+    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessId, ProcessTag},
 };
 
 pub trait PluginDefinition {
@@ -252,4 +252,3 @@ impl PluginCollection {
         std::mem::swap(&mut plugin, &mut editor.plugins.plugins[index]);
     }
 }
-

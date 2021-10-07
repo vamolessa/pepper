@@ -15,7 +15,7 @@ use pepper::{
 };
 
 use crate::{
-    client::{util, ServerCapabilities, Client, ClientOperation, RequestState},
+    client::{util, Client, ClientOperation, RequestState, ServerCapabilities},
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
     },
@@ -1075,4 +1075,3 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(ClientOperation::None),
     }
 }
-

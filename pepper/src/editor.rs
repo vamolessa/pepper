@@ -19,7 +19,7 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind},
     pattern::Pattern,
     picker::Picker,
-    platform::{Key, Platform, PlatformRequest, PlatformProcessHandle, ProcessTag},
+    platform::{Key, Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
     plugin::PluginCollection,
     register::{RegisterCollection, RegisterKey},
     syntax::{HighlightResult, SyntaxCollection},
@@ -503,4 +503,3 @@ impl Editor {
         self.trigger_event_handlers(platform, clients);
     }
 }
-

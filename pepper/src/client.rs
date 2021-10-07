@@ -1,7 +1,7 @@
 use std::{fmt, str::FromStr};
 
 use crate::{
-    buffer::{BufferProperties, BufferHandle, CharDisplayDistances},
+    buffer::{BufferHandle, BufferProperties, CharDisplayDistances},
     buffer_position::BufferPositionIndex,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
@@ -316,4 +316,3 @@ impl ClientManager {
         }
     }
 }
-

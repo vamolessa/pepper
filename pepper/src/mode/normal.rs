@@ -1675,156 +1675,155 @@ fn search_word_or_move_to_it(
 }
 
 fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
-/*
-    enum DirectedIter<I> {
-        Forward(I),
-        Backward(I),
-    }
-    impl<I> DirectedIter<I> {
-        pub fn new(iter: I, forward: bool) -> Self {
-            if forward {
-                Self::Forward(iter)
-            } else {
-                Self::Backward(iter)
-            }
+    /*
+        enum DirectedIter<I> {
+            Forward(I),
+            Backward(I),
         }
-    }
-    impl<I, E> Iterator for DirectedIter<I>
-    where
-        I: DoubleEndedIterator<Item = E>,
-    {
-        type Item = E;
-        fn next(&mut self) -> Option<Self::Item> {
-            match self {
-                Self::Forward(iter) => iter.next(),
-                Self::Backward(iter) => iter.next_back(),
-            }
-        }
-    }
-
-    let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
-        Some(handle) => handle,
-        None => return,
-    };
-    let buffer_view = ctx.editor.buffer_views.get(handle);
-    let main_position = buffer_view.cursors.main_cursor().position;
-
-    let mut diagnostics = DirectedIter::new(
-        ctx.editor
-            .lsp
-            .clients()
-            .flat_map(|c| c.diagnostics().iter()),
-        forward,
-    );
-    let mut next_diagnostic = None;
-
-    for (path, buffer_handle, diagnostics) in &mut diagnostics {
-        if buffer_handle != Some(buffer_view.buffer_handle) {
-            continue;
-        }
-
-        if forward {
-            for d in diagnostics.iter() {
-                let from = d.range.from;
-                if from > main_position {
-                    next_diagnostic = Some((path, buffer_handle, from));
-                    break;
-                }
-            }
-        } else {
-            for d in diagnostics.iter().rev() {
-                let from = d.range.from;
-                if from < main_position {
-                    next_diagnostic = Some((path, buffer_handle, from));
-                    break;
+        impl<I> DirectedIter<I> {
+            pub fn new(iter: I, forward: bool) -> Self {
+                if forward {
+                    Self::Forward(iter)
+                } else {
+                    Self::Backward(iter)
                 }
             }
         }
-        break;
-    }
-
-    fn select_diagnostic_position(
-        diagnostics: &[lsp::Diagnostic],
-        forward: bool,
-    ) -> BufferPosition {
-        if forward {
-            diagnostics[0].range.from
-        } else {
-            diagnostics[diagnostics.len() - 1].range.from
+        impl<I, E> Iterator for DirectedIter<I>
+        where
+            I: DoubleEndedIterator<Item = E>,
+        {
+            type Item = E;
+            fn next(&mut self) -> Option<Self::Item> {
+                match self {
+                    Self::Forward(iter) => iter.next(),
+                    Self::Backward(iter) => iter.next_back(),
+                }
+            }
         }
-    }
 
-    if next_diagnostic.is_none() {
-        next_diagnostic = diagnostics
-            .next()
-            .map(|(p, h, d)| (p, h, select_diagnostic_position(d, forward)));
-    }
+        let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+            Some(handle) => handle,
+            None => return,
+        };
+        let buffer_view = ctx.editor.buffer_views.get(handle);
+        let main_position = buffer_view.cursors.main_cursor().position;
 
-    if next_diagnostic.is_none() {
-        let mut iter = DirectedIter::new(
+        let mut diagnostics = DirectedIter::new(
             ctx.editor
                 .lsp
                 .clients()
                 .flat_map(|c| c.diagnostics().iter()),
             forward,
         );
-        next_diagnostic = iter
-            .next()
-            .map(|(p, h, d)| (p, h, select_diagnostic_position(d, forward)));
-    }
+        let mut next_diagnostic = None;
 
-    drop(diagnostics);
+        for (path, buffer_handle, diagnostics) in &mut diagnostics {
+            if buffer_handle != Some(buffer_view.buffer_handle) {
+                continue;
+            }
 
-    let (path, buffer_handle, position) = match next_diagnostic {
-        Some(diagnostic) => diagnostic,
-        None => return,
-    };
-    let buffer_view_handle = match buffer_handle {
-        Some(buffer_handle) => ctx
-            .editor
-            .buffer_views
-            .buffer_view_handle_from_buffer_handle(ctx.client_handle, buffer_handle),
-        None => {
-            let path = path.to_str().unwrap_or("");
-            let path = ctx.editor.string_pool.acquire_with(path);
-            let handle = ctx.editor.buffer_view_handle_from_path(
-                ctx.client_handle,
-                Path::new(&path),
-                BufferProperties::text(),
-                false,
-            );
-            ctx.editor.string_pool.release(path);
-            match handle {
-                Ok(handle) => handle,
-                Err(error) => {
-                    ctx.editor
-                        .status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!("{}", error));
-                    return;
+            if forward {
+                for d in diagnostics.iter() {
+                    let from = d.range.from;
+                    if from > main_position {
+                        next_diagnostic = Some((path, buffer_handle, from));
+                        break;
+                    }
+                }
+            } else {
+                for d in diagnostics.iter().rev() {
+                    let from = d.range.from;
+                    if from < main_position {
+                        next_diagnostic = Some((path, buffer_handle, from));
+                        break;
+                    }
                 }
             }
+            break;
         }
-    };
 
-    ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
-    let client = ctx.clients.get_mut(ctx.client_handle);
-    client.set_buffer_view_handle(
-        Some(buffer_view_handle),
-        &ctx.editor.buffer_views,
-        &mut ctx.editor.events,
-    );
+        fn select_diagnostic_position(
+            diagnostics: &[lsp::Diagnostic],
+            forward: bool,
+        ) -> BufferPosition {
+            if forward {
+                diagnostics[0].range.from
+            } else {
+                diagnostics[diagnostics.len() - 1].range.from
+            }
+        }
 
-    let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
-    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
-    let position = buffer.content().saturate_position(position);
+        if next_diagnostic.is_none() {
+            next_diagnostic = diagnostics
+                .next()
+                .map(|(p, h, d)| (p, h, select_diagnostic_position(d, forward)));
+        }
 
-    let mut cursors = buffer_view.cursors.mut_guard();
-    cursors.clear();
-    cursors.add(Cursor {
-        anchor: position,
-        position,
-    });
-*/
+        if next_diagnostic.is_none() {
+            let mut iter = DirectedIter::new(
+                ctx.editor
+                    .lsp
+                    .clients()
+                    .flat_map(|c| c.diagnostics().iter()),
+                forward,
+            );
+            next_diagnostic = iter
+                .next()
+                .map(|(p, h, d)| (p, h, select_diagnostic_position(d, forward)));
+        }
+
+        drop(diagnostics);
+
+        let (path, buffer_handle, position) = match next_diagnostic {
+            Some(diagnostic) => diagnostic,
+            None => return,
+        };
+        let buffer_view_handle = match buffer_handle {
+            Some(buffer_handle) => ctx
+                .editor
+                .buffer_views
+                .buffer_view_handle_from_buffer_handle(ctx.client_handle, buffer_handle),
+            None => {
+                let path = path.to_str().unwrap_or("");
+                let path = ctx.editor.string_pool.acquire_with(path);
+                let handle = ctx.editor.buffer_view_handle_from_path(
+                    ctx.client_handle,
+                    Path::new(&path),
+                    BufferProperties::text(),
+                    false,
+                );
+                ctx.editor.string_pool.release(path);
+                match handle {
+                    Ok(handle) => handle,
+                    Err(error) => {
+                        ctx.editor
+                            .status_bar
+                            .write(MessageKind::Error)
+                            .fmt(format_args!("{}", error));
+                        return;
+                    }
+                }
+            }
+        };
+
+        ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
+        let client = ctx.clients.get_mut(ctx.client_handle);
+        client.set_buffer_view_handle(
+            Some(buffer_view_handle),
+            &ctx.editor.buffer_views,
+            &mut ctx.editor.events,
+        );
+
+        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+        let position = buffer.content().saturate_position(position);
+
+        let mut cursors = buffer_view.cursors.mut_guard();
+        cursors.clear();
+        cursors.add(Cursor {
+            anchor: position,
+            position,
+        });
+    */
 }
-

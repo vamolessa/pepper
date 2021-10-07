@@ -746,4 +746,3 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
-

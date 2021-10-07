@@ -219,4 +219,3 @@ pub fn run(ctx: application::ApplicationContext) {
 
     sys::main(ctx);
 }
-

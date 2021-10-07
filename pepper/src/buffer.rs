@@ -16,7 +16,9 @@ use crate::{
     help,
     history::{Edit, EditKind, History},
     pattern::Pattern,
-    platform::{Platform, PlatformRequest, PooledBuf, PlatformProcessHandle, ProcessId, ProcessTag},
+    platform::{
+        Platform, PlatformProcessHandle, PlatformRequest, PooledBuf, ProcessId, ProcessTag,
+    },
     plugin::PluginHandle,
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
@@ -1958,4 +1960,3 @@ mod tests {
         );
     }
 }
-

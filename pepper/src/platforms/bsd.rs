@@ -8,9 +8,9 @@ use std::{
 };
 
 use crate::{
-    application::{ClientApplication, ServerApplication, ApplicationContext},
+    application::{ApplicationContext, ClientApplication, ServerApplication},
     client::ClientHandle,
-    platform::{Key, PlatformEvent, PlatformRequest, PlatformProcessHandle},
+    platform::{Key, PlatformEvent, PlatformProcessHandle, PlatformRequest},
     Args,
 };
 

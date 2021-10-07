@@ -56,4 +56,3 @@ pub fn enter_rename_mode(ctx: &mut ModeContext, placeholder: &str) -> ClientOper
 
     ClientOperation::EnteredReadLineMode
 }
-

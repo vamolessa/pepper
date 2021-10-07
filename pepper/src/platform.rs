@@ -209,4 +209,3 @@ impl BufPool {
         self.pool.push(ManuallyDrop::new(buf));
     }
 }
-

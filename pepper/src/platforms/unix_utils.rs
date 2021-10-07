@@ -12,13 +12,17 @@ use std::{
 };
 
 use crate::{
-    application::{ClientApplication, ApplicationContext},
+    application::{ApplicationContext, ClientApplication},
     editor_utils::hash_bytes,
     platform::{BufPool, Key, PooledBuf, ProcessTag},
     Args,
 };
 
-pub fn run(ctx: ApplicationContext, server_fn: fn(ApplicationContext, UnixListener), client_fn: fn(Args, UnixStream)) {
+pub fn run(
+    ctx: ApplicationContext,
+    server_fn: fn(ApplicationContext, UnixListener),
+    client_fn: fn(Args, UnixStream),
+) {
     let mut session_path = String::new();
     session_path.push_str("/tmp/");
     session_path.push_str(env!("CARGO_PKG_NAME"));

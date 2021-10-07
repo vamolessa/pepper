@@ -22,7 +22,12 @@ pub struct State {
 }
 
 impl State {
-    pub(crate) fn on_process_output(&mut self, picker: &mut Picker, read_line: &ReadLine, bytes: &[u8]) {
+    pub(crate) fn on_process_output(
+        &mut self,
+        picker: &mut Picker,
+        read_line: &ReadLine,
+        bytes: &[u8],
+    ) {
         if !self.find_file_waiting_for_process {
             return;
         }
@@ -309,4 +314,3 @@ pub mod find_file {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
-
