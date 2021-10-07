@@ -25,11 +25,10 @@ use pepper::{
 use crate::{
     capabilities,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonValue},
-    mode::{picker, read_line},
+    mode::read_line,
     protocol::{
-        self, DocumentCodeAction, DocumentDiagnostic, DocumentLocation, DocumentPosition,
-        DocumentRange, DocumentSymbolInformation, PendingRequestColection, Protocol, ProtocolError,
-        ResponseError, Uri,
+        self, DocumentCodeAction, DocumentDiagnostic, DocumentPosition, DocumentRange,
+        DocumentSymbolInformation, PendingRequestColection, Protocol, ResponseError, Uri,
     },
 };
 
@@ -1648,3 +1647,4 @@ pub(crate) mod util {
         client.notify(platform, "textDocument/didClose", params);
     }
 }
+

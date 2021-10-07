@@ -832,7 +832,7 @@ pub(crate) fn on_response(
                 clients,
                 client_handle,
             };
-            let op = picker::enter_document_symbol_mode(&mut ctx);
+            let op = picker::enter_document_symbol_mode(&mut ctx, client);
 
             client.request_state = RequestState::FinishDocumentSymbols { buffer_view_handle };
             client.request_raw_json.clear();
@@ -877,7 +877,7 @@ pub(crate) fn on_response(
                 clients,
                 client_handle,
             };
-            let op = picker::enter_workspace_symbol_mode(&mut ctx);
+            let op = picker::enter_workspace_symbol_mode(&mut ctx, client);
 
             client.request_state = RequestState::FinishWorkspaceSymbols;
             client.request_raw_json.clear();
