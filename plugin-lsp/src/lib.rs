@@ -38,7 +38,7 @@ impl PluginDefinition for LspPluginDefinition {
         _: &mut Platform,
         handle: PluginHandle,
     ) -> Box<dyn Plugin> {
-        command::register_commands(&mut editor.commands);
+        command::register_commands(&mut editor.commands, handle);
         Box::new(LspPlugin::new(handle))
     }
 

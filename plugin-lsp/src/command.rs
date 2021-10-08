@@ -6,7 +6,7 @@ use pepper::{
     cursor::Cursor,
     editor::Editor,
     editor_utils::parse_process_command,
-    plugin::PluginGuard,
+    plugin::{PluginGuard, PluginHandle},
 };
 
 use crate::{
@@ -14,9 +14,9 @@ use crate::{
     LspPlugin,
 };
 
-pub fn register_commands(commands: &mut CommandManager) {
+pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle) {
     let mut r = |name, completions, command_fn| {
-        commands.register_command(None, name, completions, command_fn);
+        commands.register_command(Some(plugin_handle), name, completions, command_fn);
     };
 
     r("lsp", &[], |ctx| {
