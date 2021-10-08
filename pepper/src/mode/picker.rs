@@ -1,13 +1,11 @@
-use std::{path::Path, process::Stdio};
+use std::process::Stdio;
 
 use crate::{
-    buffer::{parse_path_and_position, BufferProperties},
-    buffer_position::BufferPosition,
-    cursor::Cursor,
+    buffer::BufferProperties,
     editor::{EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeState},
-    picker::{EntrySource, Picker},
+    picker::Picker,
     platform::{Key, PlatformRequest, ProcessTag},
     plugin::PluginHandle,
     word_database::WordIndicesIter,
@@ -314,3 +312,4 @@ pub mod find_file {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
+

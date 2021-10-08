@@ -1,7 +1,6 @@
 use std::{io, iter};
 
 use crate::{
-    buffer::BufferLint,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     client::ClientManager,
@@ -172,18 +171,8 @@ fn draw_buffer_view(
     let search_ranges = buffer.search_ranges();
     let search_ranges_end_index = search_ranges.len().saturating_sub(1);
 
-    // TODO: implement
-    let mut diagnostics: &[BufferLint] = &[];
-    /*
-    for client in ctx.editor.lsp.clients() {
-        diagnostics = client.diagnostics().buffer_diagnostics(buffer.handle());
-        if !diagnostics.is_empty() {
-            break;
-        }
-    }
-    */
-    let diagnostics = diagnostics;
-    let diagnostics_end_index = diagnostics.len().saturating_sub(1);
+    let lints = buffer.lints.as_slice();
+    let lints_end_index = lints.len().saturating_sub(1);
 
     let display_position_offset = BufferPosition::line_col(ctx.scroll.1 as _, ctx.scroll.0 as _);
 
@@ -210,12 +199,12 @@ fn draw_buffer_view(
         }
     }
 
-    let mut current_diagnostic_index = diagnostics.len();
-    let mut current_diagnostic_range = BufferRange::zero();
-    for (i, diagnostic) in diagnostics.iter().enumerate() {
-        if display_position_offset < diagnostic.range.to {
-            current_diagnostic_index = i;
-            current_diagnostic_range = diagnostic.range;
+    let mut current_lint_index = lints.len();
+    let mut current_lint_range = BufferRange::zero();
+    for (i, lint) in lints.iter().enumerate() {
+        if display_position_offset < lint.range.to {
+            current_lint_index = i;
+            current_lint_range = lint.range;
             break;
         }
     }
@@ -277,7 +266,7 @@ fn draw_buffer_view(
 
         let line = line.as_str();
         let mut draw_state = DrawState::Token(TokenKind::Text);
-        let mut was_inside_diagnostic_range = false;
+        let mut was_inside_lint_range = false;
         let mut x = 0;
         let mut last_line_token = Token::default();
         let mut line_tokens = highlighted_buffer.line_tokens(line_index).iter();
@@ -344,18 +333,18 @@ fn draw_buffer_view(
             let inside_search_range = current_search_range.from <= char_position
                 && char_position < current_search_range.to;
 
-            while current_diagnostic_range.to < char_position
-                && current_diagnostic_index < diagnostics_end_index
+            while current_lint_range.to < char_position
+                && current_lint_index < lints_end_index
             {
-                current_diagnostic_index += 1;
-                current_diagnostic_range = diagnostics[current_diagnostic_index].range;
+                current_lint_index += 1;
+                current_lint_range = lints[current_lint_index].range;
             }
-            let inside_diagnostic_range = current_diagnostic_range.from <= char_position
-                && char_position < current_diagnostic_range.to;
+            let inside_lint_range = current_lint_range.from <= char_position
+                && char_position < current_lint_range.to;
 
-            if inside_diagnostic_range != was_inside_diagnostic_range {
-                was_inside_diagnostic_range = inside_diagnostic_range;
-                if inside_diagnostic_range {
+            if inside_lint_range != was_inside_lint_range {
+                was_inside_lint_range = inside_lint_range;
+                if inside_lint_range {
                     set_underlined(buf);
                 } else {
                     set_not_underlined(buf);

@@ -255,9 +255,11 @@ impl Editor {
                         self.buffer_views.on_buffer_load(buffer);
                     }
                     EditorEvent::BufferInsertText { handle, range, .. } => {
+                        // TODO: fix lints
                         self.buffer_views.on_buffer_insert_text(handle, range);
                     }
                     EditorEvent::BufferDeleteText { handle, range } => {
+                        // TODO: fix lints
                         self.buffer_views.on_buffer_delete_text(handle, range);
                     }
                     EditorEvent::BufferWrite { handle, new_path } => {

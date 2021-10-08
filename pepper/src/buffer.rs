@@ -168,6 +168,7 @@ pub struct BufferLint {
     plugin_handle: PluginHandle,
 }
 
+#[derive(Default)]
 pub struct BufferLintCollection {
     lints: Vec<BufferLint>,
     len: u32,
@@ -845,6 +846,7 @@ pub struct Buffer {
     syntax_handle: SyntaxHandle,
     highlighted: HighlightedBuffer,
     history: BufferHistory,
+    pub lints: BufferLintCollection,
     search_ranges: Vec<BufferRange>,
     needs_save: bool,
     pub properties: BufferProperties,
@@ -860,6 +862,7 @@ impl Buffer {
             syntax_handle: SyntaxHandle::default(),
             highlighted: HighlightedBuffer::new(),
             history: BufferHistory::new(),
+            lints: BufferLintCollection::default(),
             search_ranges: Vec::new(),
             needs_save: false,
             properties: BufferProperties::default(),
