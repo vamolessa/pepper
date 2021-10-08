@@ -33,8 +33,6 @@ pub enum CommandError {
     KeyMapError(ParseKeyMapError),
     PatternError(PatternError),
     InvalidGlob(InvalidGlobError),
-    LspServerNotRunning,
-    LspServerNotLogging,
     OtherStatic(&'static str),
     OtherOwned(String),
 }
@@ -55,8 +53,6 @@ impl fmt::Display for CommandError {
             Self::KeyMapError(error) => error.fmt(f),
             Self::PatternError(error) => error.fmt(f),
             Self::InvalidGlob(error) => error.fmt(f),
-            Self::LspServerNotRunning => f.write_str("no lsp server running"),
-            Self::LspServerNotLogging => f.write_str("lsp server is not logging"),
             Self::OtherStatic(error) => f.write_str(error),
             Self::OtherOwned(error) => f.write_str(&error),
         }

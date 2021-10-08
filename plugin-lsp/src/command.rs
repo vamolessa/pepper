@@ -39,10 +39,9 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let client_handle = ctx.client_handle()?;
         let buffer_handle = ctx.current_buffer_handle()?;
         access(ctx, buffer_handle, |ctx, client| {
-            let path = match client.log_file_path() {
-                Some(path) => path,
-                None => return Err(CommandError::LspServerNotLogging),
-            };
+            let path = client
+                .log_file_path()
+                .ok_or(CommandError::OtherStatic("lsp server is not logging"))?;
 
             let buffer_view_handle = ctx
                 .editor
@@ -297,16 +296,19 @@ where
     A: FnOnce(&mut CommandContext, &mut Client) -> Result<ClientOperation, CommandError>,
 {
     let mut lsp = acquire(ctx);
-    let client_handle = find_lsp_client_for_buffer(&lsp, ctx.editor, buffer_handle);
-    let result = match client_handle.and_then(|h| lsp.get_mut(h)) {
-        Some(client) => {
-            let op = accessor(ctx, client)?;
-            let client_handle = client.handle();
-            lsp.on_client_operation(ctx.editor, client_handle, op);
-            Ok(())
-        }
-        None => Err(CommandError::LspServerNotRunning),
+
+    let access_with_lsp = || {
+        let client_handle = find_lsp_client_for_buffer(&lsp, ctx.editor, buffer_handle);
+        let client = client_handle
+            .and_then(|h| lsp.get_mut(h))
+            .ok_or(CommandError::OtherStatic("lsp server not running"))?;
+        let op = accessor(ctx, client)?;
+        let client_handle = client.handle();
+        lsp.on_client_operation(ctx.editor, client_handle, op);
+        Ok(())
     };
+    let result = access_with_lsp();
+
     release(ctx, lsp);
     result
 }
