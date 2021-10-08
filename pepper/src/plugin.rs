@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::{
+    buffer::BufferHandle,
     client::ClientManager,
     editor::Editor,
     help,
@@ -46,6 +47,10 @@ pub trait Plugin: 'static + AsAny {
         _: &mut ClientManager,
         _: ProcessId,
     ) {
+    }
+
+    fn on_completion(&mut self, _: &mut Editor, _: &mut Platform, _: &mut ClientManager, _: BufferHandle) -> bool {
+        false
     }
 }
 
@@ -116,6 +121,10 @@ impl PluginCollection {
 
     pub(crate) fn add(&mut self, plugin: Box<dyn Plugin>) {
         self.plugins.push(plugin);
+    }
+
+    pub fn get_mut(&mut self, handle: PluginHandle) -> &mut dyn Plugin {
+        self.plugins[handle.0 as usize].deref_mut()
     }
 
     pub fn acquire<T>(&mut self, handle: PluginHandle) -> PluginGuard<T>
@@ -252,3 +261,4 @@ impl PluginCollection {
         std::mem::swap(&mut plugin, &mut editor.plugins.plugins[index]);
     }
 }
+
