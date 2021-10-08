@@ -41,14 +41,14 @@ enum HistoryState {
     InsertGroup { edit_index: usize },
 }
 
-pub struct History {
+pub struct BufferHistory {
     texts: String,
     edits: Vec<EditInternal>,
     group_ranges: Vec<Range<usize>>,
     state: HistoryState,
 }
 
-impl History {
+impl BufferHistory {
     pub fn new() -> Self {
         Self {
             texts: String::new(),
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn commit_edits_on_emtpy_history() {
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         assert_eq!(0, history.undo_edits().count());
         assert_eq!(0, history.redo_edits().count());
         history.commit_edits();
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn edit_grouping() {
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
 
         history.add_edit(Edit {
             kind: EditKind::Insert,
@@ -522,7 +522,7 @@ mod tests {
 
     #[test]
     fn compress_insert_insert_edits() {
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 0), (0, 3)),
@@ -541,7 +541,7 @@ mod tests {
         assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
         assert!(edits.next().is_none());
 
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 0), (0, 3)),
@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn compress_delete_delete_edits() {
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range((0, 0), (0, 3)),
@@ -582,7 +582,7 @@ mod tests {
         assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
         assert!(edits.next().is_none());
 
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range((0, 3), (0, 6)),
@@ -606,7 +606,7 @@ mod tests {
     fn compress_insert_delete_edits() {
         // -- insert ------
         // -- delete --
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 0), (0, 6)),
@@ -627,7 +627,7 @@ mod tests {
 
         // ------ insert --
         //     -- delete --
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 0), (0, 6)),
@@ -648,7 +648,7 @@ mod tests {
 
         // -- insert --
         // -- delete ------
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 0), (0, 3)),
@@ -669,7 +669,7 @@ mod tests {
 
         //     -- insert --
         // ------ delete --
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 3), (0, 6)),
@@ -691,7 +691,7 @@ mod tests {
 
     #[test]
     fn compress_multiple_insert_insert_edits() {
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((1, 0), (1, 1)),
@@ -726,7 +726,7 @@ mod tests {
 
         //
 
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 1), (0, 2)),
@@ -761,7 +761,7 @@ mod tests {
 
         //
 
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 4), (0, 5)),
@@ -797,7 +797,7 @@ mod tests {
 
     #[test]
     fn compress_multiple_delete_delete_edits() {
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range((1, 0), (1, 1)),
@@ -832,7 +832,7 @@ mod tests {
 
         //
 
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range((0, 2), (0, 3)),
@@ -867,7 +867,7 @@ mod tests {
 
         //
 
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range((0, 4), (0, 5)),
@@ -905,7 +905,7 @@ mod tests {
     fn compress_multiple_insert_delete_edits() {
         // -- insert --
         // -- delete --
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 1), (0, 3)),
@@ -932,7 +932,7 @@ mod tests {
 
         // -- insert ------
         // -- delete --
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 1), (0, 3)),
@@ -967,7 +967,7 @@ mod tests {
 
         // ------ insert --
         //     -- delete --
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 1), (0, 3)),
@@ -1002,7 +1002,7 @@ mod tests {
 
         // -- insert --
         // -- delete ------
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 2), (0, 3)),
@@ -1037,7 +1037,7 @@ mod tests {
 
         //     -- insert --
         // ------ delete --
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((0, 3), (0, 4)),
@@ -1073,7 +1073,7 @@ mod tests {
 
     #[test]
     fn insert_multiple_deletes_insert() {
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((1, 4), (1, 5)),
@@ -1149,7 +1149,7 @@ mod tests {
 
     #[test]
     fn insert_delete_insert() {
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range((1, 4), (1, 5)),
@@ -1206,7 +1206,7 @@ mod tests {
     #[test]
     fn delete_insert_twice() {
         let range01to02 = buffer_range((0, 1), (0, 2));
-        let mut history = History::new();
+        let mut history = BufferHistory::new();
 
         history.add_edit(Edit {
             kind: EditKind::Delete,

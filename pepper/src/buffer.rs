@@ -14,7 +14,7 @@ use crate::{
     editor_utils::ResidualStrBytes,
     events::{EditorEvent, EditorEventQueue},
     help,
-    history::{Edit, EditKind, History},
+    buffer_history::{Edit, EditKind, BufferHistory},
     pattern::Pattern,
     platform::{
         Platform, PlatformProcessHandle, PlatformRequest, PooledBuf, ProcessId, ProcessTag,
@@ -170,11 +170,56 @@ pub struct BufferLint {
 
 pub struct BufferLintCollection {
     lints: Vec<BufferLint>,
-    len: usize,
+    len: u32,
 }
-// TODO implement
 impl BufferLintCollection {
-    //pub fn add(&mut self, lints: &
+    pub fn as_slice(&self) -> &[BufferLint] {
+        &self.lints
+    }
+
+    pub fn add_guard(&mut self, plugin_handle: PluginHandle) -> BufferLintCollectionAddGuard {
+        for i in (0..self.len as usize).rev() {
+            if self.lints[i].plugin_handle == plugin_handle {
+                self.len -= 1;
+                self.lints.swap(self.len as usize, i);
+            }
+        }
+
+        BufferLintCollectionAddGuard {
+            inner: self,
+            plugin_handle,
+        }
+    }
+}
+
+pub struct BufferLintCollectionAddGuard<'a> {
+    inner: &'a mut BufferLintCollection,
+    plugin_handle: PluginHandle,
+}
+impl<'a> BufferLintCollectionAddGuard<'a> {
+    pub fn add(&mut self, message: &str, range: BufferRange) {
+        match self.inner.lints.get_mut(self.inner.len as usize) {
+            Some(lint) => {
+                lint.message.clear();
+                lint.message.push_str(message);
+                lint.range = range;
+                lint.plugin_handle = self.plugin_handle;
+            }
+            None => {
+                self.inner.lints.push(BufferLint {
+                    message: message.into(),
+                    range,
+                    plugin_handle: self.plugin_handle,
+                });
+            }
+        }
+        self.inner.len += 1;
+    }
+}
+impl<'a> Drop for BufferLintCollectionAddGuard<'a> {
+    fn drop(&mut self) {
+        self.inner.lints[..self.inner.len as usize].sort_unstable_by_key(|l| l.range.from);
+    }
 }
 
 struct BufferLinePool {
@@ -799,7 +844,7 @@ pub struct Buffer {
     content: BufferContent,
     syntax_handle: SyntaxHandle,
     highlighted: HighlightedBuffer,
-    history: History,
+    history: BufferHistory,
     search_ranges: Vec<BufferRange>,
     needs_save: bool,
     pub properties: BufferProperties,
@@ -814,7 +859,7 @@ impl Buffer {
             content: BufferContent::new(),
             syntax_handle: SyntaxHandle::default(),
             highlighted: HighlightedBuffer::new(),
-            history: History::new(),
+            history: BufferHistory::new(),
             search_ranges: Vec::new(),
             needs_save: false,
             properties: BufferProperties::default(),
@@ -1072,7 +1117,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> + DoubleEndedIterator<Item = Edit<'a>> {
-        self.apply_history_edits(word_database, events, History::undo_edits)
+        self.apply_history_edits(word_database, events, BufferHistory::undo_edits)
     }
 
     pub fn redo<'a>(
@@ -1080,7 +1125,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> + DoubleEndedIterator<Item = Edit<'a>> {
-        self.apply_history_edits(word_database, events, History::redo_edits)
+        self.apply_history_edits(word_database, events, BufferHistory::redo_edits)
     }
 
     fn apply_history_edits<'a, F, I>(
@@ -1090,7 +1135,7 @@ impl Buffer {
         selector: F,
     ) -> I
     where
-        F: FnOnce(&'a mut History) -> I,
+        F: FnOnce(&'a mut BufferHistory) -> I,
         I: 'a + Clone + ExactSizeIterator<Item = Edit<'a>>,
     {
         self.search_ranges.clear();
@@ -1960,3 +2005,4 @@ mod tests {
         );
     }
 }
+

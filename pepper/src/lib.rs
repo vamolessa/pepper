@@ -11,7 +11,7 @@ pub mod editor_utils;
 pub mod events;
 pub mod glob;
 pub mod help;
-pub mod history;
+pub mod buffer_history;
 pub mod keymap;
 pub mod mode;
 pub mod navigation_history;

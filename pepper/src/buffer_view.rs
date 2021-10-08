@@ -6,7 +6,7 @@ use crate::{
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     events::EditorEventQueue,
-    history::EditKind,
+    buffer_history::EditKind,
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
