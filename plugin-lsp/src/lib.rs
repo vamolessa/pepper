@@ -302,6 +302,7 @@ impl Plugin for LspPlugin {
         process_id: pepper::platform::ProcessId,
         bytes: &[u8],
     ) {
+        let plugin_handle = self.plugin_handle;
         let client = match self.find_client_by_process_id(process_id) {
             Some(client) => client,
             None => return,
@@ -333,7 +334,12 @@ impl Plugin for LspPlugin {
                     }
                 }
                 ServerEvent::Notification(notification) => {
-                    let _ = client_event_handler::on_notification(client, editor, notification);
+                    let _ = client_event_handler::on_notification(
+                        client,
+                        editor,
+                        plugin_handle,
+                        notification,
+                    );
                 }
                 ServerEvent::Response(response) => {
                     let _ = client_event_handler::on_response(
@@ -347,11 +353,16 @@ impl Plugin for LspPlugin {
 
     fn on_process_exit(
         &mut self,
-        _: &mut Editor,
+        editor: &mut Editor,
         _: &mut Platform,
         _: &mut pepper::client::ClientManager,
         process_id: pepper::platform::ProcessId,
     ) {
+        for buffer in editor.buffers.iter_mut() {
+            let mut lints = buffer.lints.mut_guard(self.plugin_handle);
+            lints.clear();
+        }
+
         if let Some(client) = self.find_client_by_process_id(process_id) {
             client.write_to_log_file(|buf, _| {
                 use io::Write;
@@ -367,3 +378,4 @@ impl Plugin for LspPlugin {
         }
     }
 }
+

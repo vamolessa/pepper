@@ -11,6 +11,7 @@ use pepper::{
     mode::{ModeContext, ModeKind},
     picker::Picker,
     platform::Platform,
+    plugin::PluginHandle,
     word_database::{WordIndicesIter, WordKind},
 };
 
@@ -234,6 +235,7 @@ pub(crate) fn on_request(
 pub(crate) fn on_notification(
     client: &mut Client,
     editor: &mut Editor,
+    plugin_handle: PluginHandle,
     notification: ServerNotification,
 ) -> Result<(), ProtocolError> {
     client.write_to_log_file(|buf, json| {
@@ -300,15 +302,40 @@ pub(crate) fn on_notification(
             let uri = params.uri.as_str(&client.json);
             let Uri::Path(path) = Uri::parse(&client.root, uri)?;
 
-            let diagnostics = client
-                .diagnostics
-                .diagnostics_at_path(editor, &client.root, path);
-            for diagnostic in params.diagnostics.elements(&client.json) {
-                let diagnostic = DocumentDiagnostic::from_json(diagnostic, &client.json)?;
-                diagnostics.add(diagnostic, &client.json);
+            let mut buffer_handle = None;
+            for buffer in editor.buffers.iter() {
+                if util::is_editor_path_equals_to_lsp_path(
+                    &editor.current_directory,
+                    &buffer.path,
+                    &client.root,
+                    path,
+                ) {
+                    buffer_handle = Some(buffer.handle());
+                    break;
+                }
             }
-            diagnostics.sort();
-            client.diagnostics.clear_empty();
+            if let Some(buffer_handle) = buffer_handle {
+                let mut lints = editor
+                    .buffers
+                    .get_mut(buffer_handle)
+                    .lints
+                    .mut_guard(plugin_handle);
+                lints.clear();
+
+                let diagnostics = client.diagnostics.get_buffer_diagnostics(buffer_handle);
+                diagnostics.clear();
+
+                for diagnostic in params.diagnostics.elements(&client.json) {
+                    let diagnostic = DocumentDiagnostic::from_json(diagnostic, &client.json)?;
+                    let range = diagnostic.range.into_buffer_range();
+
+                    lints.add(diagnostic.message.as_str(&client.json), range);
+                    diagnostics.add(range.from, &diagnostic.data, &client.json);
+                }
+
+                diagnostics.sort();
+            }
+
             Ok(())
         }
         _ => Ok(()),
@@ -1075,3 +1102,4 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(ClientOperation::None),
     }
 }
+

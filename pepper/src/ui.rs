@@ -171,7 +171,7 @@ fn draw_buffer_view(
     let search_ranges = buffer.search_ranges();
     let search_ranges_end_index = search_ranges.len().saturating_sub(1);
 
-    let lints = buffer.lints.as_slice();
+    let lints = buffer.lints.all();
     let lints_end_index = lints.len().saturating_sub(1);
 
     let display_position_offset = BufferPosition::line_col(ctx.scroll.1 as _, ctx.scroll.0 as _);

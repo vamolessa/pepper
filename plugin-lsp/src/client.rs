@@ -8,7 +8,7 @@ use std::{
 };
 
 use pepper::{
-    buffer::{BufferHandle, BufferProperties},
+    buffer::{BufferCollection, BufferHandle, BufferProperties},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,
@@ -20,6 +20,7 @@ use pepper::{
     mode::ModeContext,
     navigation_history::NavigationHistory,
     platform::{Platform, ProcessId},
+    plugin::PluginHandle,
 };
 
 use crate::{
@@ -248,78 +249,6 @@ impl<'json> FromJson<'json> for ServerCapabilities {
     }
 }
 
-pub struct Diagnostic {
-    pub message: String,
-    pub range: BufferRange,
-    data: Vec<u8>,
-}
-impl Diagnostic {
-    pub fn as_document_diagnostic(&self, json: &mut Json) -> DocumentDiagnostic {
-        let mut reader = io::Cursor::new(&self.data);
-        let data = match json.read(&mut reader) {
-            Ok(value) => value,
-            Err(_) => JsonValue::Null,
-        };
-        let range = DocumentRange::from_buffer_range(self.range);
-        DocumentDiagnostic {
-            message: json.create_string(&self.message),
-            range,
-            data,
-        }
-    }
-}
-
-pub(crate) struct BufferDiagnosticCollection {
-    path: PathBuf,
-    buffer_handle: Option<BufferHandle>,
-    diagnostics: Vec<Diagnostic>,
-    len: usize,
-}
-impl BufferDiagnosticCollection {
-    pub fn add(&mut self, diagnostic: DocumentDiagnostic, json: &Json) {
-        let message = diagnostic.message.as_str(json);
-        let range = diagnostic.range.into_buffer_range();
-
-        if self.len < self.diagnostics.len() {
-            let diagnostic = &mut self.diagnostics[self.len];
-            diagnostic.message.clear();
-            diagnostic.message.push_str(message);
-            diagnostic.range = range;
-            diagnostic.data.clear();
-        } else {
-            self.diagnostics.push(Diagnostic {
-                message: message.into(),
-                range,
-                data: Vec::new(),
-            });
-        }
-
-        let _ = json.write(&mut self.diagnostics[self.len].data, &diagnostic.data);
-        self.len += 1;
-    }
-
-    pub fn sort(&mut self) {
-        self.diagnostics.sort_unstable_by_key(|d| d.range.from);
-    }
-}
-
-fn is_editor_path_equals_to_lsp_path(
-    editor_root: &Path,
-    editor_path: &Path,
-    lsp_root: &Path,
-    lsp_path: &Path,
-) -> bool {
-    let lsp_components = lsp_root.components().chain(lsp_path.components());
-    if editor_path.is_absolute() {
-        editor_path.components().eq(lsp_components)
-    } else {
-        editor_root
-            .components()
-            .chain(editor_path.components())
-            .eq(lsp_components)
-    }
-}
-
 struct VersionedBufferEdit {
     buffer_range: BufferRange,
     text_range: Range<u32>,
@@ -385,135 +314,63 @@ impl VersionedBufferCollection {
     }
 }
 
+struct BufferDiagnosticDataRange {
+    position: BufferPosition,
+    range: Range<u32>,
+}
+
 #[derive(Default)]
-pub struct DiagnosticCollection {
-    buffer_diagnostics: Vec<BufferDiagnosticCollection>,
+pub(crate) struct BufferDiagnosticDataCollection {
+    data: Vec<u8>,
+    ranges: Vec<BufferDiagnosticDataRange>,
+}
+impl BufferDiagnosticDataCollection {
+    pub fn clear(&mut self) {
+        self.data.clear();
+        self.ranges.clear();
+    }
+
+    pub fn add(&mut self, position: BufferPosition, data: &JsonValue, json: &Json) {
+        let start = self.data.len() as _;
+        let _ = json.write(&mut self.data, data);
+        let end = self.data.len() as _;
+
+        self.ranges.push(BufferDiagnosticDataRange {
+            position,
+            range: start..end,
+        });
+    }
+
+    pub fn sort(&mut self) {
+        self.ranges.sort_unstable_by_key(|d| d.position);
+    }
+
+    pub fn get_data(&self, index: usize) -> Option<&[u8]> {
+        self.ranges
+            .get(index)
+            .map(|d| &self.data[d.range.start as usize..d.range.end as usize])
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct DiagnosticCollection {
+    buffer_data_diagnostics: Vec<BufferDiagnosticDataCollection>,
 }
 impl DiagnosticCollection {
-    pub fn buffer_diagnostics(&self, buffer_handle: BufferHandle) -> &[Diagnostic] {
-        for diagnostics in &self.buffer_diagnostics {
-            if diagnostics.buffer_handle == Some(buffer_handle) {
-                return &diagnostics.diagnostics[..diagnostics.len];
-            }
-        }
-        &[]
-    }
-
-    pub fn iter(
-        &self,
-    ) -> impl DoubleEndedIterator<Item = (&Path, Option<BufferHandle>, &[Diagnostic])> {
-        self.buffer_diagnostics
-            .iter()
-            .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
-    }
-
-    pub(crate) fn diagnostics_at_path(
+    pub fn get_buffer_diagnostics(
         &mut self,
-        editor: &Editor,
-        root: &Path,
-        path: &Path,
-    ) -> &mut BufferDiagnosticCollection {
-        fn find_buffer_with_path(
-            editor: &Editor,
-            root: &Path,
-            path: &Path,
-        ) -> Option<BufferHandle> {
-            for buffer in editor.buffers.iter() {
-                if is_editor_path_equals_to_lsp_path(
-                    &editor.current_directory,
-                    &buffer.path,
-                    root,
-                    path,
-                ) {
-                    return Some(buffer.handle());
-                }
-            }
-            None
-        }
-
-        for i in 0..self.buffer_diagnostics.len() {
-            if self.buffer_diagnostics[i].path == path {
-                let diagnostics = &mut self.buffer_diagnostics[i];
-                diagnostics.len = 0;
-
-                if diagnostics.buffer_handle.is_none() {
-                    diagnostics.buffer_handle = find_buffer_with_path(editor, root, path);
-                }
-
-                return diagnostics;
-            }
-        }
-
-        let end_index = self.buffer_diagnostics.len();
-        self.buffer_diagnostics.push(BufferDiagnosticCollection {
-            path: path.into(),
-            buffer_handle: find_buffer_with_path(editor, root, path),
-            diagnostics: Vec::new(),
-            len: 0,
-        });
-        &mut self.buffer_diagnostics[end_index]
-    }
-
-    pub(crate) fn clear_empty(&mut self) {
-        for i in (0..self.buffer_diagnostics.len()).rev() {
-            if self.buffer_diagnostics[i].len == 0 {
-                self.buffer_diagnostics.swap_remove(i);
-            }
-        }
-    }
-
-    pub(crate) fn on_load_buffer(
-        &mut self,
-        editor: &Editor,
         buffer_handle: BufferHandle,
-        root: &Path,
-    ) {
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        for diagnostics in &mut self.buffer_diagnostics {
-            if diagnostics.buffer_handle.is_none()
-                && is_editor_path_equals_to_lsp_path(
-                    &editor.current_directory,
-                    buffer_path,
-                    root,
-                    &diagnostics.path,
-                )
-            {
-                diagnostics.buffer_handle = Some(buffer_handle);
-                return;
-            }
+    ) -> &mut BufferDiagnosticDataCollection {
+        let index = buffer_handle.0 as usize;
+        if index >= self.buffer_data_diagnostics.len() {
+            self.buffer_data_diagnostics
+                .resize_with(index + 1, BufferDiagnosticDataCollection::default);
         }
-    }
-
-    pub(crate) fn on_save_buffer(
-        &mut self,
-        editor: &Editor,
-        buffer_handle: BufferHandle,
-        root: &Path,
-    ) {
-        let buffer_path = &editor.buffers.get(buffer_handle).path;
-        for diagnostics in &mut self.buffer_diagnostics {
-            if diagnostics.buffer_handle == Some(buffer_handle) {
-                diagnostics.buffer_handle = None;
-                if is_editor_path_equals_to_lsp_path(
-                    &editor.current_directory,
-                    buffer_path,
-                    root,
-                    &diagnostics.path,
-                ) {
-                    diagnostics.buffer_handle = Some(buffer_handle);
-                    return;
-                }
-            }
-        }
+        &mut self.buffer_data_diagnostics[index]
     }
 
     pub(crate) fn on_close_buffer(&mut self, buffer_handle: BufferHandle) {
-        for diagnostics in &mut self.buffer_diagnostics {
-            if diagnostics.buffer_handle == Some(buffer_handle) {
-                diagnostics.buffer_handle = None;
-                return;
-            }
-        }
+        self.get_buffer_diagnostics(buffer_handle).clear();
     }
 }
 
@@ -680,10 +537,6 @@ impl Client {
         } else {
             Some(&self.log_file_path)
         }
-    }
-
-    pub fn diagnostics(&self) -> &DiagnosticCollection {
-        &self.diagnostics
     }
 
     pub fn signature_help_triggers(&self) -> &str {
@@ -954,6 +807,7 @@ impl Client {
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
+        plugin_handle: PluginHandle,
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         range: BufferRange,
@@ -968,12 +822,28 @@ impl Client {
         let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
 
         let mut diagnostics = JsonArray::default();
-        for diagnostic in self.diagnostics.buffer_diagnostics(buffer_handle) {
-            if diagnostic.range.from <= range.from && range.from < diagnostic.range.to
-                || diagnostic.range.from <= range.to && range.to < diagnostic.range.to
+
+        let buffer_diagnostics = self.diagnostics.get_buffer_diagnostics(buffer_handle);
+        for (i, lint) in buffer
+            .lints
+            .all()
+            .iter()
+            .filter(|l| l.plugin_handle == plugin_handle)
+            .enumerate()
+        {
+            if lint.range.from <= range.from && range.from < lint.range.to
+                || lint.range.from <= range.to && range.to < lint.range.to
             {
-                let diagnostic = diagnostic.as_document_diagnostic(&mut self.json);
-                diagnostics.push(diagnostic.to_json_value(&mut self.json), &mut self.json);
+                if let Some(data) = buffer_diagnostics.get_data(i) {
+                    let range = DocumentRange::from_buffer_range(lint.range);
+                    let diagnostic = DocumentDiagnostic::to_json_value_from_parts(
+                        &lint.message,
+                        range,
+                        data,
+                        &mut self.json,
+                    );
+                    diagnostics.push(diagnostic, &mut self.json);
+                }
             }
         }
 
@@ -1292,7 +1162,6 @@ impl Client {
                 EditorEvent::BufferRead { handle } => {
                     let handle = handle;
                     self.versioned_buffers.dispose(handle);
-                    self.diagnostics.on_load_buffer(editor, handle, &self.root);
                     util::send_did_open(self, editor, platform, handle);
                 }
                 EditorEvent::BufferInsertText {
@@ -1309,7 +1178,6 @@ impl Client {
                     self.versioned_buffers.add_edit(handle, range, "");
                 }
                 EditorEvent::BufferWrite { handle, .. } => {
-                    self.diagnostics.on_save_buffer(editor, handle, &self.root);
                     util::send_pending_did_change(self, editor, platform);
                     util::send_did_save(self, editor, platform, handle);
                 }
@@ -1428,6 +1296,23 @@ impl Client {
 
 pub(crate) mod util {
     use super::*;
+
+    pub fn is_editor_path_equals_to_lsp_path(
+        editor_root: &Path,
+        editor_path: &Path,
+        lsp_root: &Path,
+        lsp_path: &Path,
+    ) -> bool {
+        let lsp_components = lsp_root.components().chain(lsp_path.components());
+        if editor_path.is_absolute() {
+            editor_path.components().eq(lsp_components)
+        } else {
+            editor_root
+                .components()
+                .chain(editor_path.components())
+                .eq(lsp_components)
+        }
+    }
 
     pub fn write_response_error(status_bar: &mut StatusBar, error: ResponseError, json: &Json) {
         status_bar
@@ -1647,3 +1532,4 @@ pub(crate) mod util {
         client.notify(platform, "textDocument/didClose", params);
     }
 }
+

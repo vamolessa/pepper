@@ -10,11 +10,11 @@ use std::{
 };
 
 use crate::{
+    buffer_history::{BufferHistory, Edit, EditKind},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     editor_utils::ResidualStrBytes,
     events::{EditorEvent, EditorEventQueue},
     help,
-    buffer_history::{Edit, EditKind, BufferHistory},
     pattern::Pattern,
     platform::{
         Platform, PlatformProcessHandle, PlatformRequest, PooledBuf, ProcessId, ProcessTag,
@@ -165,7 +165,7 @@ impl<'a> WordRefWithPosition<'a> {
 pub struct BufferLint {
     pub message: String,
     pub range: BufferRange,
-    plugin_handle: PluginHandle,
+    pub plugin_handle: PluginHandle,
 }
 
 #[derive(Default)]
@@ -174,30 +174,32 @@ pub struct BufferLintCollection {
     len: u32,
 }
 impl BufferLintCollection {
-    pub fn as_slice(&self) -> &[BufferLint] {
+    pub fn all(&self) -> &[BufferLint] {
         &self.lints
     }
 
-    pub fn add_guard(&mut self, plugin_handle: PluginHandle) -> BufferLintCollectionAddGuard {
-        for i in (0..self.len as usize).rev() {
-            if self.lints[i].plugin_handle == plugin_handle {
-                self.len -= 1;
-                self.lints.swap(self.len as usize, i);
-            }
-        }
-
-        BufferLintCollectionAddGuard {
+    pub fn mut_guard(&mut self, plugin_handle: PluginHandle) -> BufferLintCollectionMutGuard {
+        BufferLintCollectionMutGuard {
             inner: self,
             plugin_handle,
         }
     }
 }
 
-pub struct BufferLintCollectionAddGuard<'a> {
+pub struct BufferLintCollectionMutGuard<'a> {
     inner: &'a mut BufferLintCollection,
     plugin_handle: PluginHandle,
 }
-impl<'a> BufferLintCollectionAddGuard<'a> {
+impl<'a> BufferLintCollectionMutGuard<'a> {
+    pub fn clear(&mut self) {
+        for i in (0..self.inner.len as usize).rev() {
+            if self.inner.lints[i].plugin_handle == self.plugin_handle {
+                self.inner.len -= 1;
+                self.inner.lints.swap(self.inner.len as usize, i);
+            }
+        }
+    }
+
     pub fn add(&mut self, message: &str, range: BufferRange) {
         match self.inner.lints.get_mut(self.inner.len as usize) {
             Some(lint) => {
@@ -217,7 +219,7 @@ impl<'a> BufferLintCollectionAddGuard<'a> {
         self.inner.len += 1;
     }
 }
-impl<'a> Drop for BufferLintCollectionAddGuard<'a> {
+impl<'a> Drop for BufferLintCollectionMutGuard<'a> {
     fn drop(&mut self) {
         self.inner.lints[..self.inner.len as usize].sort_unstable_by_key(|l| l.range.from);
     }

@@ -435,6 +435,7 @@ impl State {
                             }
                         }
                     }
+                    // TODO: make a version that closes the previous buffer
                     Key::Char('f') => {
                         let buffer_handle = buffer_view.buffer_handle;
 
@@ -1174,7 +1175,7 @@ impl ModeState for State {
             let main_position = buffer_view.cursors.main_cursor().position;
 
             // TODO: only print diagnostic (lint) if we just moved
-            let lints = buffer.lints.as_slice();
+            let lints = buffer.lints.all();
             let index = lints.binary_search_by(|l| {
                 if l.range.to < main_position {
                     Ordering::Less
@@ -1665,7 +1666,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     let buffer_view = ctx.editor.buffer_views.get(handle);
     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
 
-    let lints = buffer.lints.as_slice();
+    let lints = buffer.lints.all();
     if lints.is_empty() {
         return;
     }

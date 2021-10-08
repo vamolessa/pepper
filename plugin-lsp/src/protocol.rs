@@ -722,6 +722,28 @@ pub struct DocumentDiagnostic {
     pub data: JsonValue,
 }
 impl DocumentDiagnostic {
+    pub fn to_json_value_from_parts(
+        message: &str,
+        range: DocumentRange,
+        data: &[u8],
+        json: &mut Json,
+    ) -> JsonValue {
+        let mut reader = io::Cursor::new(data);
+        let data = match json.read(&mut reader) {
+            Ok(value) => value,
+            Err(_) => JsonValue::Null,
+        };
+
+        let message = json.create_string(message);
+
+        let mut value = JsonObject::default();
+        value.set("message".into(), message.into(), json);
+        value.set("range".into(), range.to_json_value(json), json);
+        value.set("data".into(), data, json);
+
+        value.into()
+    }
+
     pub fn to_json_value(self, json: &mut Json) -> JsonValue {
         let mut value = JsonObject::default();
         value.set("message".into(), self.message.into(), json);
@@ -1095,3 +1117,4 @@ impl PendingRequestColection {
         None
     }
 }
+
