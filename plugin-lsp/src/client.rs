@@ -8,7 +8,7 @@ use std::{
 };
 
 use pepper::{
-    buffer::{BufferCollection, BufferHandle, BufferProperties},
+    buffer::{BufferHandle, BufferProperties},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,

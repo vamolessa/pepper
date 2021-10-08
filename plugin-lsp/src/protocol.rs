@@ -743,14 +743,6 @@ impl DocumentDiagnostic {
 
         value.into()
     }
-
-    pub fn to_json_value(self, json: &mut Json) -> JsonValue {
-        let mut value = JsonObject::default();
-        value.set("message".into(), self.message.into(), json);
-        value.set("range".into(), self.range.to_json_value(json), json);
-        value.set("data".into(), self.data, json);
-        value.into()
-    }
 }
 impl<'json> FromJson<'json> for DocumentDiagnostic {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
