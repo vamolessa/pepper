@@ -5,6 +5,7 @@ use pepper::{
     command::{CommandContext, CommandError, CommandManager},
     cursor::Cursor,
     editor::Editor,
+    editor_utils::parse_process_command,
     plugin::PluginGuard,
 };
 
@@ -62,6 +63,29 @@ pub fn register_commands(commands: &mut CommandManager) {
 
             Ok(ClientOperation::None)
         })
+    });
+
+    r("lsp-start", &[], |ctx| {
+        let command = ctx.args.next()?;
+        let log_path = ctx.args.try_next();
+        ctx.args.assert_empty()?;
+
+        let command = parse_process_command(command).ok_or(CommandError::OtherOwned(format!(
+            "invalid lsp command '{}'",
+            command
+        )))?;
+        let root = ctx.editor.current_directory.clone();
+
+        let mut lsp = acquire(ctx);
+        lsp.start(
+            ctx.editor,
+            ctx.platform,
+            command,
+            root,
+            log_path.map(String::from),
+        );
+        release(ctx, lsp);
+        Ok(())
     });
 
     r("lsp-stop", &[], |ctx| {
@@ -286,3 +310,4 @@ where
     release(ctx, lsp);
     result
 }
+
