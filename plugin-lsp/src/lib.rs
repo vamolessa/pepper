@@ -177,12 +177,7 @@ impl LspPlugin {
         self.clients[handle.0 as usize].as_deref_mut()
     }
 
-    pub(crate) fn on_client_operation(
-        &mut self,
-        editor: &mut Editor,
-        client_handle: ClientHandle,
-        op: ClientOperation,
-    ) {
+    pub(crate) fn on_client_operation(&mut self, client_handle: ClientHandle, op: ClientOperation) {
         match op {
             ClientOperation::None => (),
             ClientOperation::EnteredReadLineMode => {

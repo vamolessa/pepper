@@ -307,7 +307,7 @@ where
             .ok_or(CommandError::OtherStatic("lsp server not running"))?;
         let op = accessor(ctx, client)?;
         let client_handle = client.handle();
-        lsp.on_client_operation(ctx.editor, client_handle, op);
+        lsp.on_client_operation(client_handle, op);
         Ok(())
     };
     let result = access_with_lsp();
