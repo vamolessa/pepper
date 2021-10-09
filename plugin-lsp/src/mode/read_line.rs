@@ -2,11 +2,16 @@ use pepper::{
     editor::{EditorControlFlow, KeysIterator},
     editor_utils::ReadLinePoll,
     mode::{Mode, ModeContext, ModeKind},
+    plugin::PluginHandle,
 };
 
 use crate::{client::ClientOperation, LspPlugin};
 
-pub fn enter_rename_mode(ctx: &mut ModeContext, placeholder: &str) -> ClientOperation {
+pub fn enter_rename_mode(
+    ctx: &mut ModeContext,
+    plugin_handle: PluginHandle,
+    placeholder: &str,
+) -> ClientOperation {
     fn on_client_keys(
         ctx: &mut ModeContext,
         _: &mut KeysIterator,
@@ -53,6 +58,7 @@ pub fn enter_rename_mode(ctx: &mut ModeContext, placeholder: &str) -> ClientOper
 
     let state = &mut ctx.editor.mode.read_line_state;
     state.on_client_keys = on_client_keys;
+    state.plugin_handle = Some(plugin_handle);
     Mode::change_to(ctx, ModeKind::ReadLine);
     ctx.editor.read_line.input_mut().push_str(placeholder);
 

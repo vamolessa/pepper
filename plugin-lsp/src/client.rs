@@ -724,6 +724,7 @@ impl Client {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut client::ClientManager,
+        plugin_handle: PluginHandle,
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -760,14 +761,14 @@ impl Client {
                 buffer_handle,
                 buffer_position,
             };
+
             let mut ctx = ModeContext {
                 editor,
                 platform,
                 clients,
                 client_handle,
             };
-
-            read_line::enter_rename_mode(&mut ctx, "")
+            read_line::enter_rename_mode(&mut ctx, plugin_handle, "")
         }
     }
 
@@ -1532,4 +1533,3 @@ pub(crate) mod util {
         client.notify(platform, "textDocument/didClose", params);
     }
 }
-

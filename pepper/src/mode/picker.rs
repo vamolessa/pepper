@@ -312,4 +312,3 @@ pub mod find_file {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
-

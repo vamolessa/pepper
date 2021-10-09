@@ -333,14 +333,12 @@ fn draw_buffer_view(
             let inside_search_range = current_search_range.from <= char_position
                 && char_position < current_search_range.to;
 
-            while current_lint_range.to < char_position
-                && current_lint_index < lints_end_index
-            {
+            while current_lint_range.to < char_position && current_lint_index < lints_end_index {
                 current_lint_index += 1;
                 current_lint_range = lints[current_lint_index].range;
             }
-            let inside_lint_range = current_lint_range.from <= char_position
-                && char_position < current_lint_range.to;
+            let inside_lint_range =
+                current_lint_range.from <= char_position && char_position < current_lint_range.to;
 
             if inside_lint_range != was_inside_lint_range {
                 was_inside_lint_range = inside_lint_range;

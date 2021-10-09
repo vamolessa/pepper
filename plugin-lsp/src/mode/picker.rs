@@ -8,6 +8,7 @@ use pepper::{
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind},
     picker::EntrySource,
+    plugin::PluginHandle,
     word_database::WordIndicesIter,
 };
 
@@ -16,7 +17,10 @@ use crate::{
     LspPlugin,
 };
 
-pub fn enter_definition_mode(ctx: &mut ModeContext) -> ClientOperation {
+pub fn enter_definition_mode(
+    ctx: &mut ModeContext,
+    plugin_handle: PluginHandle,
+) -> ClientOperation {
     fn on_client_keys(
         ctx: &mut ModeContext,
         _: &mut KeysIterator,
@@ -91,7 +95,11 @@ pub fn enter_definition_mode(ctx: &mut ModeContext) -> ClientOperation {
     ClientOperation::EnteredPickerMode
 }
 
-pub fn enter_code_action_mode(ctx: &mut ModeContext, client: &mut Client) -> ClientOperation {
+pub fn enter_code_action_mode(
+    ctx: &mut ModeContext,
+    plugin_handle: PluginHandle,
+    client: &mut Client,
+) -> ClientOperation {
     fn on_client_keys(
         ctx: &mut ModeContext,
         _: &mut KeysIterator,
@@ -143,14 +151,18 @@ pub fn enter_code_action_mode(ctx: &mut ModeContext, client: &mut Client) -> Cli
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::Picker);
+        ClientOperation::EnteredPickerMode
     } else {
         client.cancel_current_request();
+        ClientOperation::None
     }
-
-    ClientOperation::EnteredPickerMode
 }
 
-pub fn enter_document_symbol_mode(ctx: &mut ModeContext, client: &mut Client) -> ClientOperation {
+pub fn enter_document_symbol_mode(
+    ctx: &mut ModeContext,
+    plugin_handle: PluginHandle,
+    client: &mut Client,
+) -> ClientOperation {
     fn on_client_keys(
         ctx: &mut ModeContext,
         _: &mut KeysIterator,
@@ -207,14 +219,18 @@ pub fn enter_document_symbol_mode(ctx: &mut ModeContext, client: &mut Client) ->
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::Picker);
+        ClientOperation::EnteredPickerMode
     } else {
         client.cancel_current_request();
+        ClientOperation::None
     }
-
-    ClientOperation::EnteredPickerMode
 }
 
-pub fn enter_workspace_symbol_mode(ctx: &mut ModeContext, client: &mut Client) -> ClientOperation {
+pub fn enter_workspace_symbol_mode(
+    ctx: &mut ModeContext,
+    plugin_handle: PluginHandle,
+    client: &mut Client,
+) -> ClientOperation {
     fn on_client_keys(
         ctx: &mut ModeContext,
         _: &mut KeysIterator,
@@ -271,9 +287,9 @@ pub fn enter_workspace_symbol_mode(ctx: &mut ModeContext, client: &mut Client) -
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::Picker);
+        ClientOperation::EnteredPickerMode
     } else {
         client.cancel_current_request();
+        ClientOperation::None
     }
-
-    ClientOperation::EnteredPickerMode
 }

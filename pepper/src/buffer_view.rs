@@ -2,11 +2,11 @@ use std::num::NonZeroU8;
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferHandle, CharDisplayDistances},
+    buffer_history::EditKind,
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     events::EditorEventQueue,
-    buffer_history::EditKind,
     word_database::{WordDatabase, WordIter, WordKind},
 };
 

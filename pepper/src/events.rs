@@ -57,7 +57,8 @@ pub enum EditorEvent {
         handle: BufferViewHandle,
         cursors: EditorEventCursors,
     },
-    BufferViewLostFocus { // TODO: remove since we won't have `BufferProperties.auto_close` anymore
+    BufferViewLostFocus {
+        // TODO: remove since we won't have `BufferProperties.auto_close` anymore
         handle: BufferViewHandle,
     },
 }
@@ -85,7 +86,12 @@ impl EditorEventQueue {
         self.write.events.push(event);
     }
 
-    pub(crate) fn enqueue_buffer_insert(&mut self, handle: BufferHandle, range: BufferRange, text: &str) {
+    pub(crate) fn enqueue_buffer_insert(
+        &mut self,
+        handle: BufferHandle,
+        range: BufferRange,
+        text: &str,
+    ) {
         let from = self.write.texts.len();
         self.write.texts.push_str(text);
         let text = EditorEventText {

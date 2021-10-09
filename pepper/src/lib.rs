@@ -1,5 +1,6 @@
 pub mod application;
 pub mod buffer;
+pub mod buffer_history;
 pub mod buffer_position;
 pub mod buffer_view;
 pub mod client;
@@ -11,7 +12,6 @@ pub mod editor_utils;
 pub mod events;
 pub mod glob;
 pub mod help;
-pub mod buffer_history;
 pub mod keymap;
 pub mod mode;
 pub mod navigation_history;

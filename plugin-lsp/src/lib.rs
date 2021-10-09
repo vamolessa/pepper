@@ -11,7 +11,7 @@ use pepper::{
     glob::{Glob, InvalidGlobError},
     help::HelpPages,
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessId},
-    plugin::{Plugin, PluginDefinition, PluginHandle},
+    plugin::{Plugin, PluginContext, PluginDefinition, PluginHandle},
 };
 
 mod capabilities;
@@ -32,14 +32,9 @@ pub static DEFINITION: LspPluginDefinition = LspPluginDefinition;
 
 pub struct LspPluginDefinition;
 impl PluginDefinition for LspPluginDefinition {
-    fn instantiate(
-        &self,
-        editor: &mut Editor,
-        _: &mut Platform,
-        handle: PluginHandle,
-    ) -> Box<dyn Plugin> {
-        command::register_commands(&mut editor.commands, handle);
-        Box::new(LspPlugin::new(handle))
+    fn instantiate(&self, ctx: &mut PluginContext) -> Box<dyn Plugin> {
+        command::register_commands(&mut ctx.editor.commands, ctx.plugin_handle);
+        Box::new(LspPlugin::new())
     }
 
     fn help_pages(&self) -> &'static HelpPages {
@@ -58,7 +53,6 @@ struct ClientRecipe {
 }
 
 pub struct LspPlugin {
-    plugin_handle: PluginHandle,
     clients: Vec<Option<Box<Client>>>,
     recipes: Vec<ClientRecipe>,
     read_line_client_handle: Option<ClientHandle>,
@@ -66,9 +60,8 @@ pub struct LspPlugin {
 }
 
 impl LspPlugin {
-    pub fn new(plugin_handle: PluginHandle) -> Self {
+    pub fn new() -> Self {
         Self {
-            plugin_handle,
             clients: Vec::new(),
             recipes: Vec::new(),
             read_line_client_handle: None,
@@ -118,6 +111,7 @@ impl LspPlugin {
         &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
+        plugin_handle: PluginHandle,
         mut command: Command,
         root: PathBuf,
         log_file_path: Option<String>,
@@ -142,7 +136,7 @@ impl LspPlugin {
         let process_id = editor.plugins.spawn_process(
             platform,
             command,
-            self.plugin_handle,
+            plugin_handle,
             SERVER_PROCESS_BUFFER_LEN,
         );
 
@@ -192,13 +186,9 @@ impl LspPlugin {
         match op {
             ClientOperation::None => (),
             ClientOperation::EnteredReadLineMode => {
-                let state = &mut editor.mode.read_line_state;
-                state.plugin_handle = Some(self.plugin_handle);
                 self.read_line_client_handle = Some(client_handle);
             }
             ClientOperation::EnteredPickerMode => {
-                let state = &mut editor.mode.picker_state;
-                state.plugin_handle = Some(self.plugin_handle);
                 self.picker_client_handle = Some(client_handle);
             }
         }
@@ -220,16 +210,11 @@ impl LspPlugin {
 }
 
 impl Plugin for LspPlugin {
-    fn on_editor_events(
-        &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        _: &mut pepper::client::ClientManager,
-    ) {
+    fn on_editor_events(&mut self, ctx: &mut PluginContext) {
         let mut events = EditorEventIter::new();
-        while let Some(event) = events.next(&editor.events) {
+        while let Some(event) = events.next(&ctx.editor.events) {
             if let EditorEvent::BufferRead { handle } = *event {
-                let buffer_path = match editor.buffers.get(handle).path.to_str() {
+                let buffer_path = match ctx.editor.buffers.get(handle).path.to_str() {
                     Some(path) => path,
                     None => continue,
                 };
@@ -248,7 +233,7 @@ impl Plugin for LspPlugin {
                 let command = match parse_process_command(&recipe.command) {
                     Some(command) => command,
                     None => {
-                        editor
+                        ctx.editor
                             .status_bar
                             .write(MessageKind::Error)
                             .fmt(format_args!("invalid lsp command '{}'", &recipe.command));
@@ -257,7 +242,7 @@ impl Plugin for LspPlugin {
                 };
 
                 let root = if recipe.root.as_os_str().is_empty() {
-                    editor.current_directory.clone()
+                    ctx.editor.current_directory.clone()
                 } else {
                     recipe.root.clone()
                 };
@@ -268,41 +253,43 @@ impl Plugin for LspPlugin {
                     Some(recipe.log_file_path.clone())
                 };
 
-                let client_handle = self.start(editor, platform, command, root, log_file_path);
+                let client_handle = self.start(
+                    ctx.editor,
+                    ctx.platform,
+                    ctx.plugin_handle,
+                    command,
+                    root,
+                    log_file_path,
+                );
                 self.recipes[index].running_client = Some(client_handle);
             }
         }
 
         for i in 0..self.clients.len() {
             if let Some(client) = &mut self.clients[i] {
-                client.on_editor_events(editor, platform);
+                client.on_editor_events(ctx.editor, ctx.platform);
             }
         }
     }
 
     fn on_process_spawned(
         &mut self,
-        _: &mut Editor,
-        platform: &mut Platform,
-        _: &mut pepper::client::ClientManager,
+        ctx: &mut PluginContext,
         process_id: pepper::platform::ProcessId,
         process_handle: PlatformProcessHandle,
     ) {
         if let Some(client) = self.find_client_by_process_id(process_id) {
             client.protocol.set_process_handle(process_handle);
-            client.initialize(platform);
+            client.initialize(ctx.platform);
         }
     }
 
     fn on_process_output(
         &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut pepper::client::ClientManager,
+        ctx: &mut PluginContext,
         process_id: pepper::platform::ProcessId,
         bytes: &[u8],
     ) {
-        let plugin_handle = self.plugin_handle;
         let client = match self.find_client_by_process_id(process_id) {
             Some(client) => client,
             None => return,
@@ -317,34 +304,33 @@ impl Plugin for LspPlugin {
                         let _ = write!(buf, "send parse error\nrequest_id: ");
                         let _ = json.write(buf, &JsonValue::Null);
                     });
-                    client.respond(platform, JsonValue::Null, Err(ResponseError::parse_error()));
+                    client.respond(
+                        ctx.platform,
+                        JsonValue::Null,
+                        Err(ResponseError::parse_error()),
+                    );
                 }
                 ServerEvent::Request(request) => {
                     let request_id = request.id.clone();
-                    match client_event_handler::on_request(client, editor, clients, request) {
-                        Ok(value) => client.respond(platform, request_id, Ok(value)),
-                        Err(ProtocolError::ParseError) => {
-                            client.respond(platform, request_id, Err(ResponseError::parse_error()))
-                        }
+                    match client_event_handler::on_request(client, ctx, request) {
+                        Ok(value) => client.respond(ctx.platform, request_id, Ok(value)),
+                        Err(ProtocolError::ParseError) => client.respond(
+                            ctx.platform,
+                            request_id,
+                            Err(ResponseError::parse_error()),
+                        ),
                         Err(ProtocolError::MethodNotFound) => client.respond(
-                            platform,
+                            ctx.platform,
                             request_id,
                             Err(ResponseError::method_not_found()),
                         ),
                     }
                 }
                 ServerEvent::Notification(notification) => {
-                    let _ = client_event_handler::on_notification(
-                        client,
-                        editor,
-                        plugin_handle,
-                        notification,
-                    );
+                    let _ = client_event_handler::on_notification(client, ctx, notification);
                 }
                 ServerEvent::Response(response) => {
-                    let _ = client_event_handler::on_response(
-                        client, editor, platform, clients, response,
-                    );
+                    let _ = client_event_handler::on_response(client, ctx, response);
                 }
             }
         }
@@ -353,13 +339,11 @@ impl Plugin for LspPlugin {
 
     fn on_process_exit(
         &mut self,
-        editor: &mut Editor,
-        _: &mut Platform,
-        _: &mut pepper::client::ClientManager,
+        ctx: &mut PluginContext,
         process_id: pepper::platform::ProcessId,
     ) {
-        for buffer in editor.buffers.iter_mut() {
-            let mut lints = buffer.lints.mut_guard(self.plugin_handle);
+        for buffer in ctx.editor.buffers.iter_mut() {
+            let mut lints = buffer.lints.mut_guard(ctx.plugin_handle);
             lints.clear();
         }
 
@@ -378,4 +362,3 @@ impl Plugin for LspPlugin {
         }
     }
 }
-

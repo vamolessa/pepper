@@ -7,7 +7,7 @@ use crate::{
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     help,
     platform::{Key, Platform, PlatformEvent, PlatformRequest},
-    plugin::PluginDefinition,
+    plugin::{PluginContext, PluginDefinition},
     serialization::{DeserializeError, Serialize},
     ui, Args, ResourceFile,
 };
@@ -61,8 +61,15 @@ impl ServerApplication {
 
         for definition in ctx.plugin_definitions {
             help::add_help_pages(definition.help_pages());
+
             let plugin_handle = editor.plugins.next_handle();
-            let plugin = definition.instantiate(&mut editor, &mut platform, plugin_handle);
+            let mut ctx = PluginContext {
+                editor: &mut editor,
+                platform: &mut platform,
+                clients: &mut clients,
+                plugin_handle,
+            };
+            let plugin = definition.instantiate(&mut ctx);
             editor.plugins.add(plugin);
         }
 
