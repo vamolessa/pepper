@@ -89,6 +89,7 @@ pub fn enter_definition_mode(
     if ctx.editor.picker.len() > 0 {
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
+        state.plugin_handle = Some(plugin_handle);
         Mode::change_to(ctx, ModeKind::Picker);
     }
 
@@ -150,6 +151,7 @@ pub fn enter_code_action_mode(
     if ctx.editor.picker.len() > 0 {
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
+        state.plugin_handle = Some(plugin_handle);
         Mode::change_to(ctx, ModeKind::Picker);
         ClientOperation::EnteredPickerMode
     } else {
@@ -218,6 +220,7 @@ pub fn enter_document_symbol_mode(
     if ctx.editor.picker.len() > 0 {
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
+        state.plugin_handle = Some(plugin_handle);
         Mode::change_to(ctx, ModeKind::Picker);
         ClientOperation::EnteredPickerMode
     } else {
@@ -286,6 +289,7 @@ pub fn enter_workspace_symbol_mode(
     if ctx.editor.picker.len() > 0 {
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
+        state.plugin_handle = Some(plugin_handle);
         Mode::change_to(ctx, ModeKind::Picker);
         ClientOperation::EnteredPickerMode
     } else {

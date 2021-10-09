@@ -301,7 +301,6 @@ where
     let mut lsp = acquire(ctx);
 
     let access_with_lsp = || {
-        let plugin_handle = ctx.plugin_handle();
         let client_handle = find_lsp_client_for_buffer(&lsp, ctx.editor, buffer_handle);
         let client = client_handle
             .and_then(|h| lsp.get_mut(h))
