@@ -6,7 +6,7 @@ use crate::{
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::ClientHandle,
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
-    mode::{Mode, ModeKind, ModeState},
+    mode::{ModeKind, ModeState},
     platform::Key,
     plugin::{CompletionContext, PluginCollection, PluginHandle},
     register::AUTO_MACRO_REGISTER,
@@ -71,12 +71,12 @@ impl State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut EditorContext) {
-        cancel_completion(&mut ctx.editor);
+    fn on_enter(editor: &mut Editor) {
+        cancel_completion(editor);
     }
 
-    fn on_exit(ctx: &mut EditorContext) {
-        cancel_completion(&mut ctx.editor);
+    fn on_exit(editor: &mut Editor) {
+        cancel_completion(editor);
     }
 
     fn on_client_keys(
@@ -87,7 +87,7 @@ impl ModeState for State {
         let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => {
-                Mode::change_to(ctx, ModeKind::default());
+                ctx.editor.enter_mode(ModeKind::default());
                 return Some(EditorControlFlow::Continue);
             }
         };
@@ -103,7 +103,7 @@ impl ModeState for State {
                     .buffers
                     .get_mut(buffer_view.buffer_handle)
                     .commit_edits();
-                Mode::change_to(ctx, ModeKind::default());
+                ctx.editor.enter_mode(ModeKind::default());
                 return Some(EditorControlFlow::Continue);
             }
             Key::Left => {

@@ -1,14 +1,14 @@
 use pepper::{
-    editor::{EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorControlFlow, KeysIterator},
     editor_utils::ReadLinePoll,
-    mode::{Mode, ModeContext, ModeKind},
+    mode::{ModeContext, ModeKind},
     plugin::PluginHandle,
 };
 
 use crate::{client::ClientOperation, LspPlugin};
 
 pub fn enter_rename_mode(
-    ctx: &mut ModeContext,
+    editor: &mut Editor,
     plugin_handle: PluginHandle,
     placeholder: &str,
 ) -> ClientOperation {
@@ -32,7 +32,7 @@ pub fn enter_rename_mode(
                     ctx.editor.plugins.release(lsp);
                 }
 
-                Mode::change_to(ctx, ModeKind::default());
+                ctx.editor.enter_mode(ModeKind::default());
                 Some(EditorControlFlow::Continue)
             }
             ReadLinePoll::Canceled => {
@@ -48,19 +48,19 @@ pub fn enter_rename_mode(
                     ctx.editor.plugins.release(lsp);
                 }
 
-                Mode::change_to(ctx, ModeKind::default());
+                ctx.editor.enter_mode(ModeKind::default());
                 Some(EditorControlFlow::Continue)
             }
         }
     }
 
-    ctx.editor.read_line.set_prompt("rename:");
+    editor.read_line.set_prompt("rename:");
 
-    let state = &mut ctx.editor.mode.read_line_state;
+    let state = &mut editor.mode.read_line_state;
     state.on_client_keys = on_client_keys;
     state.plugin_handle = Some(plugin_handle);
-    Mode::change_to(ctx, ModeKind::ReadLine);
-    ctx.editor.read_line.input_mut().push_str(placeholder);
+    editor.enter_mode(ModeKind::ReadLine);
+    editor.read_line.input_mut().push_str(placeholder);
 
     ClientOperation::EnteredReadLineMode
 }

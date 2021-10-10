@@ -86,7 +86,7 @@ pub enum ProcessTag {
     FindFiles,
     Plugin {
         plugin_handle: PluginHandle,
-        process_id: u32,
+        id: u32,
     },
 }
 

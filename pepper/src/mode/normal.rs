@@ -9,7 +9,7 @@ use crate::{
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, MessageKind},
     help::HELP_PREFIX,
-    mode::{picker, read_line, Mode, ModeKind, ModeState},
+    mode::{picker, read_line, ModeKind, ModeState},
     navigation_history::{NavigationHistory, NavigationMovement},
     pattern::PatternEscaper,
     platform::Key,
@@ -790,7 +790,7 @@ impl State {
                 );
 
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
-                Mode::change_to(ctx, ModeKind::Insert);
+                ctx.editor.enter_mode(ModeKind::Insert);
                 return Some(EditorControlFlow::Continue);
             }
             Key::Char('<') => {
@@ -1154,14 +1154,14 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut EditorContext) {
-        let state = &mut ctx.editor.mode.normal_state;
+    fn on_enter(editor: &mut Editor) {
+        let state = &mut editor.mode.normal_state;
         state.movement_kind = CursorMovementKind::PositionAndAnchor;
         state.is_recording_auto_macro = false;
         state.count = 0;
     }
 
-    fn on_exit(_: &mut EditorContext) {}
+    fn on_exit(_: &mut Editor) {}
 
     fn on_client_keys(
         ctx: &mut EditorContext,
@@ -1298,7 +1298,7 @@ impl ModeState for State {
             },
             Key::Char(':') => {
                 handled_keys = true;
-                Mode::change_to(ctx, ModeKind::Command);
+                ctx.editor.enter_mode(ModeKind::Command);
             }
             Key::Char('g' | 'G') => {
                 if state.count == 0 {

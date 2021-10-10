@@ -3,9 +3,9 @@ use std::process::Stdio;
 use crate::{
     buffer::BufferProperties,
     client::ClientHandle,
-    editor::{EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
-    mode::{Mode, ModeKind, ModeState},
+    mode::{ModeKind, ModeState},
     picker::Picker,
     platform::{Key, PlatformRequest, ProcessTag},
     plugin::PluginHandle,
@@ -95,14 +95,14 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut EditorContext) {
-        ctx.editor.read_line.input_mut().clear();
+    fn on_enter(editor: &mut Editor) {
+        editor.read_line.input_mut().clear();
     }
 
-    fn on_exit(ctx: &mut EditorContext) {
-        ctx.editor.mode.picker_state.find_file_waiting_for_process = false;
-        ctx.editor.read_line.input_mut().clear();
-        ctx.editor.picker.clear();
+    fn on_exit(editor: &mut Editor) {
+        editor.mode.picker_state.find_file_waiting_for_process = false;
+        editor.read_line.input_mut().clear();
+        editor.picker.clear();
     }
 
     fn on_client_keys(
@@ -179,7 +179,7 @@ pub mod opened_buffers {
                 ReadLinePoll::Pending => return Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                     return Some(EditorControlFlow::Continue);
                 }
             }
@@ -187,7 +187,7 @@ pub mod opened_buffers {
             let path = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
                 Some((_, entry)) => entry,
                 _ => {
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                     return Some(EditorControlFlow::Continue);
                 }
             };
@@ -208,7 +208,7 @@ pub mod opened_buffers {
             }
             ctx.editor.string_pool.release(path);
 
-            Mode::change_to(ctx, ModeKind::default());
+            ctx.editor.enter_mode(ModeKind::default());
             Some(EditorControlFlow::Continue)
         }
 
@@ -224,7 +224,7 @@ pub mod opened_buffers {
 
         if ctx.editor.picker.len() > 0 {
             ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
-            Mode::change_to(ctx, ModeKind::Picker);
+            ctx.editor.enter_mode(ModeKind::Picker);
         } else {
             ctx.editor
                 .status_bar
@@ -250,7 +250,7 @@ pub mod find_file {
                 ReadLinePoll::Pending => return Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                     return Some(EditorControlFlow::Continue);
                 }
             }
@@ -258,7 +258,7 @@ pub mod find_file {
             let path = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
                 Some((_, entry)) => entry,
                 _ => {
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                     return Some(EditorControlFlow::Continue);
                 }
             };
@@ -286,7 +286,7 @@ pub mod find_file {
             }
             ctx.editor.string_pool.release(path);
 
-            Mode::change_to(ctx, ModeKind::default());
+            ctx.editor.enter_mode(ModeKind::default());
             Some(EditorControlFlow::Continue)
         }
 
@@ -320,6 +320,6 @@ pub mod find_file {
             });
 
         ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
-        Mode::change_to(ctx, ModeKind::Picker);
+        ctx.editor.enter_mode(ModeKind::Picker);
     }
 }

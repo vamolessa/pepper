@@ -3,9 +3,9 @@ use std::fs;
 use crate::{
     client::ClientHandle,
     command::{CommandManager, CommandTokenizer, CompletionSource},
-    editor::{EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, ReadLinePoll},
-    mode::{Mode, ModeKind, ModeState},
+    mode::{ModeKind, ModeState},
     picker::Picker,
     platform::Key,
     word_database::WordIndicesIter,
@@ -35,21 +35,21 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut EditorContext) {
-        let state = &mut ctx.editor.mode.command_state;
-        state.read_state = ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
+    fn on_enter(editor: &mut Editor) {
+        let state = &mut editor.mode.command_state;
+        state.read_state = ReadCommandState::NavigatingHistory(editor.commands.history_len());
         state.completion_index = 0;
         state.completion_source = CompletionSource::Custom(&[]);
         state.completion_path_hash = None;
 
-        ctx.editor.read_line.set_prompt(":");
-        ctx.editor.read_line.input_mut().clear();
-        ctx.editor.picker.clear();
+        editor.read_line.set_prompt(":");
+        editor.read_line.input_mut().clear();
+        editor.picker.clear();
     }
 
-    fn on_exit(ctx: &mut EditorContext) {
-        ctx.editor.read_line.input_mut().clear();
-        ctx.editor.picker.clear();
+    fn on_exit(editor: &mut Editor) {
+        editor.read_line.input_mut().clear();
+        editor.picker.clear();
     }
 
     fn on_client_keys(
@@ -95,7 +95,7 @@ impl ModeState for State {
                     _ => update_autocomplete_entries(ctx),
                 }
             }
-            ReadLinePoll::Canceled => Mode::change_to(ctx, ModeKind::default()),
+            ReadLinePoll::Canceled => ctx.editor.enter_mode(ModeKind::default()),
             ReadLinePoll::Submitted => {
                 let input = ctx.editor.read_line.input();
                 ctx.editor.commands.add_to_history(input);
@@ -106,7 +106,7 @@ impl ModeState for State {
                 ctx.editor.string_pool.release(command);
 
                 if ctx.editor.mode.kind() == ModeKind::Command {
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                 }
 
                 return Some(flow);

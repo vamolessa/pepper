@@ -18,7 +18,7 @@ use pepper::{
     events::{EditorEvent, EditorEventIter},
     glob::Glob,
     navigation_history::NavigationHistory,
-    platform::{Platform, ProcessId},
+    platform::Platform,
     plugin::PluginHandle,
 };
 
@@ -453,7 +453,6 @@ impl FromStr for ClientHandle {
 
 pub struct Client {
     handle: ClientHandle,
-    process_id: ProcessId,
     pub(crate) protocol: Protocol,
     pub(crate) json: Json,
     pub(crate) root: PathBuf,
@@ -478,7 +477,6 @@ pub struct Client {
 impl Client {
     pub(crate) fn new(
         handle: ClientHandle,
-        process_id: ProcessId,
         root: PathBuf,
         log_file_path: Option<String>,
     ) -> Self {
@@ -492,7 +490,6 @@ impl Client {
 
         Self {
             handle,
-            process_id,
             protocol: Protocol::new(),
             json: Json::new(),
             root,
@@ -516,10 +513,6 @@ impl Client {
 
     pub fn handle(&self) -> ClientHandle {
         self.handle
-    }
-
-    pub fn process_id(&self) -> ProcessId {
-        self.process_id
     }
 
     pub fn handles_path(&self, path: &str) -> bool {
@@ -1532,3 +1525,4 @@ pub(crate) mod util {
         client.notify(platform, "textDocument/didClose", params);
     }
 }
+

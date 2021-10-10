@@ -1,17 +1,18 @@
 use std::{
     io,
+    ops::{Deref, DerefMut},
     path::PathBuf,
     process::{Command, Stdio},
 };
 
 use pepper::{
-    editor::Editor,
+    editor::{Editor, EditorContext},
     editor_utils::{hash_bytes, parse_process_command, MessageKind},
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
     help::HelpPages,
-    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessId},
-    plugin::{Plugin, PluginContext, PluginDefinition, PluginHandle},
+    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
+    plugin::{Plugin, PluginDefinition, PluginHandle},
 };
 
 mod capabilities;
@@ -28,20 +29,20 @@ use protocol::{ProtocolError, ResponseError, ServerEvent};
 
 const SERVER_PROCESS_BUFFER_LEN: usize = 4 * 1024;
 
-pub static DEFINITION: LspPluginDefinition = LspPluginDefinition;
-
-pub struct LspPluginDefinition;
-impl PluginDefinition for LspPluginDefinition {
-    fn instantiate(&self, ctx: &mut PluginContext) -> Box<dyn Plugin> {
-        command::register_commands(&mut ctx.editor.commands, ctx.plugin_handle);
-        Box::new(LspPlugin::new())
-    }
-
-    fn help_pages(&self) -> &'static HelpPages {
-        static HELP_PAGES: HelpPages = HelpPages::new(&[]);
-        &HELP_PAGES
-    }
-}
+pub static DEFINITION: PluginDefinition = PluginDefinition {
+    instantiate: |handle, ctx| {
+        command::register_commands(&mut ctx.editor.commands, handle);
+        Plugin {
+            data: Box::new(LspPlugin::new()),
+            on_editor_events,
+            on_process_spawned,
+            on_process_output,
+            on_process_exit,
+            ..Default::default()
+        }
+    },
+    help_pages: &HelpPages::new(&[]),
+};
 
 struct ClientRecipe {
     glob_hash: u64,
@@ -52,8 +53,47 @@ struct ClientRecipe {
     running_client: Option<ClientHandle>,
 }
 
+enum ClientEntry {
+    Occupied(Box<Client>),
+    Reserved,
+    Vacant,
+}
+impl ClientEntry {
+    pub fn reserve_and_take(&mut self) -> Option<Box<Client>> {
+        match self {
+            Self::Occupied(_) => {
+                let mut client = ClientEntry::Reserved;
+                std::mem::swap(self, &mut client);
+                match client {
+                    Self::Occupied(client) => Some(client),
+                    _ => unreachable!(),
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+pub(crate) struct ClientGuard(Box<Client>);
+impl Deref for ClientGuard {
+    type Target = Client;
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+impl DerefMut for ClientGuard {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
+    }
+}
+impl Drop for ClientGuard {
+    fn drop(&mut self) {
+        panic!("forgot to call 'release' on LspPlugin with ClientGuard");
+    }
+}
+
 pub struct LspPlugin {
-    clients: Vec<Option<Box<Client>>>,
+    entries: Vec<ClientEntry>,
     recipes: Vec<ClientRecipe>,
     read_line_client_handle: Option<ClientHandle>,
     picker_client_handle: Option<ClientHandle>,
@@ -62,7 +102,7 @@ pub struct LspPlugin {
 impl LspPlugin {
     pub fn new() -> Self {
         Self {
-            clients: Vec::new(),
+            entries: Vec::new(),
             recipes: Vec::new(),
             read_line_client_handle: None,
             picker_client_handle: None,
@@ -109,21 +149,20 @@ impl LspPlugin {
 
     pub fn start(
         &mut self,
-        editor: &mut Editor,
         platform: &mut Platform,
         plugin_handle: PluginHandle,
         mut command: Command,
         root: PathBuf,
         log_file_path: Option<String>,
     ) -> ClientHandle {
-        fn find_vacant_entry(this: &mut LspPlugin) -> ClientHandle {
-            for (i, client) in this.clients.iter_mut().enumerate() {
-                if client.is_none() {
+        fn find_vacant_entry(lsp: &mut LspPlugin) -> ClientHandle {
+            for (i, entry) in lsp.entries.iter_mut().enumerate() {
+                if let ClientEntry::Vacant = entry {
                     return ClientHandle(i as _);
                 }
             }
-            let handle = ClientHandle(this.clients.len() as _);
-            this.clients.push(None);
+            let handle = ClientHandle(lsp.entries.len() as _);
+            lsp.entries.push(ClientEntry::Vacant);
             handle
         }
 
@@ -133,20 +172,23 @@ impl LspPlugin {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        let process_id = editor.plugins.spawn_process(
-            platform,
-            command,
-            plugin_handle,
-            SERVER_PROCESS_BUFFER_LEN,
-        );
 
-        let client = Client::new(handle, process_id, root, log_file_path);
-        self.clients[handle.0 as usize] = Some(Box::new(client));
+        platform.requests.enqueue(PlatformRequest::SpawnProcess {
+            tag: ProcessTag::Plugin {
+                plugin_handle,
+                id: handle.0,
+            },
+            command,
+            buf_len: SERVER_PROCESS_BUFFER_LEN,
+        });
+
+        let client = Client::new(handle, root, log_file_path);
+        self.entries[handle.0 as usize] = ClientEntry::Occupied(Box::new(client));
         handle
     }
 
     pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
-        if let Some(client) = &mut self.clients[handle.0 as usize] {
+        if let ClientEntry::Occupied(client) = &mut self.entries[handle.0 as usize] {
             let _ = client.notify(platform, "exit", JsonObject::default());
             if let Some(process_handle) = client.protocol.process_handle() {
                 platform.requests.enqueue(PlatformRequest::KillProcess {
@@ -154,7 +196,7 @@ impl LspPlugin {
                 });
             }
 
-            self.clients[handle.0 as usize] = None;
+            self.entries[handle.0 as usize] = ClientEntry::Vacant;
             for recipe in &mut self.recipes {
                 if recipe.running_client == Some(handle) {
                     recipe.running_client = None;
@@ -164,17 +206,20 @@ impl LspPlugin {
     }
 
     pub fn stop_all(&mut self, platform: &mut Platform) {
-        for i in 0..self.clients.len() {
+        for i in 0..self.entries.len() {
             self.stop(platform, ClientHandle(i as _));
         }
     }
 
-    pub fn get(&self, handle: ClientHandle) -> Option<&Client> {
-        self.clients[handle.0 as usize].as_deref()
+    pub(crate) fn acquire(&mut self, handle: ClientHandle) -> Option<ClientGuard> {
+        self.entries[handle.0 as usize]
+            .reserve_and_take()
+            .map(ClientGuard)
     }
 
-    pub(crate) fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
-        self.clients[handle.0 as usize].as_deref_mut()
+    pub(crate) fn release(&mut self, guard: ClientGuard) {
+        let index = guard.handle().0 as usize;
+        self.entries[index] = ClientEntry::Occupied(guard.0);
     }
 
     pub(crate) fn on_client_operation(&mut self, client_handle: ClientHandle, op: ClientOperation) {
@@ -190,170 +235,166 @@ impl LspPlugin {
     }
 
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
-        self.clients.iter().flat_map(Option::as_deref)
-    }
-
-    fn find_client_by_process_id(&mut self, process_id: ProcessId) -> Option<&mut Client> {
-        for client in self.clients.iter_mut().flatten() {
-            if client.process_id() == process_id {
-                return Some(client);
-            }
-        }
-
-        None
+        self.entries.iter().flat_map(|e| match e {
+            ClientEntry::Occupied(c) => Some(c.deref()),
+            _ => None,
+        })
     }
 }
 
-impl Plugin for LspPlugin {
-    fn on_editor_events(&mut self, ctx: &mut PluginContext) {
-        let mut events = EditorEventIter::new();
-        while let Some(event) = events.next(&ctx.editor.events) {
-            if let EditorEvent::BufferRead { handle } = *event {
-                let buffer_path = match ctx.editor.buffers.get(handle).path.to_str() {
-                    Some(path) => path,
-                    None => continue,
-                };
-                let (index, recipe) = match self
-                    .recipes
-                    .iter_mut()
-                    .enumerate()
-                    .find(|(_, r)| r.glob.matches(buffer_path))
-                {
-                    Some(recipe) => recipe,
-                    None => continue,
-                };
-                if recipe.running_client.is_some() {
+fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
+    let lsp = ctx.plugins.get::<LspPlugin>(plugin_handle);
+
+    let mut events = EditorEventIter::new();
+    while let Some(event) = events.next(&ctx.editor.events) {
+        if let EditorEvent::BufferRead { handle } = *event {
+            let buffer_path = match ctx.editor.buffers.get(handle).path.to_str() {
+                Some(path) => path,
+                None => continue,
+            };
+            let (index, recipe) = match lsp
+                .recipes
+                .iter_mut()
+                .enumerate()
+                .find(|(_, r)| r.glob.matches(buffer_path))
+            {
+                Some(recipe) => recipe,
+                None => continue,
+            };
+            if recipe.running_client.is_some() {
+                continue;
+            }
+            let command = match parse_process_command(&recipe.command) {
+                Some(command) => command,
+                None => {
+                    ctx.editor
+                        .status_bar
+                        .write(MessageKind::Error)
+                        .fmt(format_args!("invalid lsp command '{}'", &recipe.command));
                     continue;
                 }
-                let command = match parse_process_command(&recipe.command) {
-                    Some(command) => command,
-                    None => {
-                        ctx.editor
-                            .status_bar
-                            .write(MessageKind::Error)
-                            .fmt(format_args!("invalid lsp command '{}'", &recipe.command));
-                        continue;
-                    }
-                };
+            };
 
-                let root = if recipe.root.as_os_str().is_empty() {
-                    ctx.editor.current_directory.clone()
-                } else {
-                    recipe.root.clone()
-                };
+            let root = if recipe.root.as_os_str().is_empty() {
+                ctx.editor.current_directory.clone()
+            } else {
+                recipe.root.clone()
+            };
 
-                let log_file_path = if recipe.log_file_path.is_empty() {
-                    None
-                } else {
-                    Some(recipe.log_file_path.clone())
-                };
+            let log_file_path = if recipe.log_file_path.is_empty() {
+                None
+            } else {
+                Some(recipe.log_file_path.clone())
+            };
 
-                let client_handle = self.start(
-                    ctx.editor,
-                    ctx.platform,
-                    ctx.plugin_handle,
-                    command,
-                    root,
-                    log_file_path,
+            let client_handle = lsp.start(
+                &mut ctx.platform,
+                plugin_handle,
+                command,
+                root,
+                log_file_path,
+            );
+            lsp.recipes[index].running_client = Some(client_handle);
+        }
+    }
+
+    for entry in &mut lsp.entries {
+        if let ClientEntry::Occupied(client) = entry {
+            client.on_editor_events(&mut ctx.editor, &mut ctx.platform);
+        }
+    }
+}
+
+fn on_process_spawned(
+    handle: PluginHandle,
+    ctx: &mut EditorContext,
+    client_index: u32,
+    process_handle: PlatformProcessHandle,
+) {
+    if let ClientEntry::Occupied(client) =
+        &mut ctx.plugins.get::<LspPlugin>(handle).entries[client_index as usize]
+    {
+        client.protocol.set_process_handle(process_handle);
+        client.initialize(&mut ctx.platform);
+    }
+}
+
+fn on_process_output(
+    handle: PluginHandle,
+    ctx: &mut EditorContext,
+    client_index: u32,
+    bytes: &[u8],
+) {
+    let client = match ctx
+        .plugins
+        .get::<LspPlugin>(handle)
+        .get_mut(ClientHandle(client_index as _))
+    {
+        Some(client) => client,
+        None => return,
+    };
+
+    let mut events = client.protocol.parse_events(bytes);
+    while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
+        match event {
+            ServerEvent::ParseError => {
+                client.write_to_log_file(|buf, json| {
+                    use io::Write;
+                    let _ = write!(buf, "send parse error\nrequest_id: ");
+                    let _ = json.write(buf, &JsonValue::Null);
+                });
+                client.respond(
+                    &mut ctx.platform,
+                    JsonValue::Null,
+                    Err(ResponseError::parse_error()),
                 );
-                self.recipes[index].running_client = Some(client_handle);
             }
-        }
-
-        for i in 0..self.clients.len() {
-            if let Some(client) = &mut self.clients[i] {
-                client.on_editor_events(ctx.editor, ctx.platform);
-            }
-        }
-    }
-
-    fn on_process_spawned(
-        &mut self,
-        ctx: &mut PluginContext,
-        process_id: pepper::platform::ProcessId,
-        process_handle: PlatformProcessHandle,
-    ) {
-        if let Some(client) = self.find_client_by_process_id(process_id) {
-            client.protocol.set_process_handle(process_handle);
-            client.initialize(ctx.platform);
-        }
-    }
-
-    fn on_process_output(
-        &mut self,
-        ctx: &mut PluginContext,
-        process_id: pepper::platform::ProcessId,
-        bytes: &[u8],
-    ) {
-        let client = match self.find_client_by_process_id(process_id) {
-            Some(client) => client,
-            None => return,
-        };
-
-        let mut events = client.protocol.parse_events(bytes);
-        while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
-            match event {
-                ServerEvent::ParseError => {
-                    client.write_to_log_file(|buf, json| {
-                        use io::Write;
-                        let _ = write!(buf, "send parse error\nrequest_id: ");
-                        let _ = json.write(buf, &JsonValue::Null);
-                    });
-                    client.respond(
-                        ctx.platform,
-                        JsonValue::Null,
+            ServerEvent::Request(request) => {
+                let request_id = request.id.clone();
+                match client_event_handler::on_request(client, ctx, request) {
+                    Ok(value) => client.respond(&mut ctx.platform, request_id, Ok(value)),
+                    Err(ProtocolError::ParseError) => client.respond(
+                        &mut ctx.platform,
+                        request_id,
                         Err(ResponseError::parse_error()),
-                    );
-                }
-                ServerEvent::Request(request) => {
-                    let request_id = request.id.clone();
-                    match client_event_handler::on_request(client, ctx, request) {
-                        Ok(value) => client.respond(ctx.platform, request_id, Ok(value)),
-                        Err(ProtocolError::ParseError) => client.respond(
-                            ctx.platform,
-                            request_id,
-                            Err(ResponseError::parse_error()),
-                        ),
-                        Err(ProtocolError::MethodNotFound) => client.respond(
-                            ctx.platform,
-                            request_id,
-                            Err(ResponseError::method_not_found()),
-                        ),
-                    }
-                }
-                ServerEvent::Notification(notification) => {
-                    let _ = client_event_handler::on_notification(client, ctx, notification);
-                }
-                ServerEvent::Response(response) => {
-                    let _ = client_event_handler::on_response(client, ctx, response);
+                    ),
+                    Err(ProtocolError::MethodNotFound) => client.respond(
+                        &mut ctx.platform,
+                        request_id,
+                        Err(ResponseError::method_not_found()),
+                    ),
                 }
             }
+            ServerEvent::Notification(notification) => {
+                let _ = client_event_handler::on_notification(client, ctx, notification);
+            }
+            ServerEvent::Response(response) => {
+                let _ = client_event_handler::on_response(client, ctx, response);
+            }
         }
-        events.finish(&mut client.protocol);
+    }
+    events.finish(&mut client.protocol);
+}
+
+fn on_process_exit(handle: PluginHandle, ctx: &mut EditorContext, client_index: u32) {
+    for buffer in ctx.editor.buffers.iter_mut() {
+        let mut lints = buffer.lints.mut_guard(handle);
+        lints.clear();
     }
 
-    fn on_process_exit(
-        &mut self,
-        ctx: &mut PluginContext,
-        process_id: pepper::platform::ProcessId,
-    ) {
-        for buffer in ctx.editor.buffers.iter_mut() {
-            let mut lints = buffer.lints.mut_guard(ctx.plugin_handle);
-            lints.clear();
-        }
+    let lsp = ctx.plugins.get::<LspPlugin>(handle);
+    if let Some(client) = lsp.get_mut(ClientHandle(client_index as _)) {
+        client.write_to_log_file(|buf, _| {
+            use io::Write;
+            let _ = write!(buf, "lsp server stopped");
+        });
 
-        if let Some(client) = self.find_client_by_process_id(process_id) {
-            client.write_to_log_file(|buf, _| {
-                use io::Write;
-                let _ = write!(buf, "lsp server stopped");
-            });
-
-            let client_handle = client.handle();
-            for recipe in &mut self.recipes {
-                if recipe.running_client == Some(client_handle) {
-                    recipe.running_client = None;
-                }
+        let client_handle = client.handle();
+        for recipe in &mut lsp.recipes {
+            if recipe.running_client == Some(client_handle) {
+                recipe.running_client = None;
             }
         }
     }
 }
+

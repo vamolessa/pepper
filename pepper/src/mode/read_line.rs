@@ -3,9 +3,9 @@ use crate::{
     buffer_view::CursorMovementKind,
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
-    editor::{EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll},
-    mode::{Mode, ModeKind, ModeState},
+    mode::{ModeKind, ModeState},
     pattern::Pattern,
     platform::PooledBuf,
     plugin::PluginHandle,
@@ -33,13 +33,13 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut EditorContext) {
-        ctx.editor.read_line.input_mut().clear();
+    fn on_enter(editor: &mut Editor) {
+        editor.read_line.input_mut().clear();
     }
 
-    fn on_exit(ctx: &mut EditorContext) {
-        ctx.editor.mode.read_line_state.plugin_handle = None;
-        ctx.editor.read_line.input_mut().clear();
+    fn on_exit(editor: &mut Editor) {
+        editor.mode.read_line_state.plugin_handle = None;
+        editor.read_line.input_mut().clear();
     }
 
     fn on_client_keys(
@@ -98,11 +98,11 @@ pub mod search {
                     let register = ctx.editor.registers.get_mut(SEARCH_REGISTER);
                     register.clear();
                     register.push_str(ctx.editor.read_line.input());
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                 }
                 ReadLinePoll::Canceled => {
                     restore_saved_position(ctx, client_handle);
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                 }
             }
 
@@ -114,7 +114,7 @@ pub mod search {
         update_search(ctx, client_handle);
 
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
     fn update_search(ctx: &mut EditorContext, client_handle: ClientHandle) {
@@ -174,9 +174,9 @@ fn on_submitted(
         ReadLinePoll::Pending => (),
         ReadLinePoll::Submitted => {
             proc(ctx, client_handle);
-            Mode::change_to(ctx, ModeKind::default());
+            ctx.editor.enter_mode(ModeKind::default());
         }
-        ReadLinePoll::Canceled => Mode::change_to(ctx, ModeKind::default()),
+        ReadLinePoll::Canceled => ctx.editor.enter_mode(ModeKind::default()),
     }
 }
 
@@ -196,7 +196,7 @@ pub mod filter_cursors {
             });
             Some(EditorControlFlow::Continue)
         };
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
     pub fn enter_except_mode(ctx: &mut EditorContext) {
@@ -207,7 +207,7 @@ pub mod filter_cursors {
             });
             Some(EditorControlFlow::Continue)
         };
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
     fn on_event_impl(
@@ -341,7 +341,7 @@ pub mod split_cursors {
             });
             Some(EditorControlFlow::Continue)
         };
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
     pub fn enter_by_separators_mode(ctx: &mut EditorContext) {
@@ -398,7 +398,7 @@ pub mod split_cursors {
             });
             Some(EditorControlFlow::Continue)
         };
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
     fn on_event_impl(
@@ -545,10 +545,10 @@ pub mod goto {
                         position,
                     });
                 }
-                ReadLinePoll::Submitted => Mode::change_to(ctx, ModeKind::default()),
+                ReadLinePoll::Submitted => ctx.editor.enter_mode(ModeKind::default()),
                 ReadLinePoll::Canceled => {
                     restore_saved_position(ctx, client_handle);
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                 }
             }
             Some(EditorControlFlow::Continue)
@@ -557,7 +557,7 @@ pub mod goto {
         save_current_position(ctx, client_handle);
         ctx.editor.read_line.set_prompt("goto-line:");
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 }
 
@@ -575,11 +575,11 @@ pub mod process {
                 ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => {
                     spawn_process(ctx, client_handle, true);
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                     Some(EditorControlFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                     Some(EditorControlFlow::Continue)
                 }
             }
@@ -587,7 +587,7 @@ pub mod process {
 
         ctx.editor.read_line.set_prompt("replace-with-output:");
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
     pub fn enter_insert_mode(ctx: &mut EditorContext) {
@@ -601,11 +601,11 @@ pub mod process {
                 ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
                 ReadLinePoll::Submitted => {
                     spawn_process(ctx, client_handle, false);
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                     Some(EditorControlFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                     Some(EditorControlFlow::Continue)
                 }
             }
@@ -613,7 +613,7 @@ pub mod process {
 
         ctx.editor.read_line.set_prompt("insert-from-output:");
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
     fn spawn_process(ctx: &mut EditorContext, client_handle: ClientHandle, pipe: bool) {

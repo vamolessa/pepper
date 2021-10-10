@@ -155,15 +155,14 @@ impl ServerApplication {
                             handle,
                         ),
                         ProcessTag::FindFiles => (),
-                        ProcessTag::Plugin {
-                            plugin_handle,
-                            process_id,
-                        } => PluginCollection::on_process_spawned(
-                            &mut self.ctx,
-                            plugin_handle,
-                            process_id,
-                            handle,
-                        ),
+                        ProcessTag::Plugin { plugin_handle, id } => {
+                            PluginCollection::on_process_spawned(
+                                &mut self.ctx,
+                                plugin_handle,
+                                id,
+                                handle,
+                            )
+                        }
                     }
                     self.ctx.trigger_event_handlers();
                 }
@@ -183,15 +182,14 @@ impl ServerApplication {
                                 bytes,
                             )
                         }
-                        ProcessTag::Plugin {
-                            plugin_handle,
-                            process_id,
-                        } => PluginCollection::on_process_output(
-                            &mut self.ctx,
-                            plugin_handle,
-                            process_id,
-                            bytes,
-                        ),
+                        ProcessTag::Plugin { plugin_handle, id } => {
+                            PluginCollection::on_process_output(
+                                &mut self.ctx,
+                                plugin_handle,
+                                id,
+                                bytes,
+                            )
+                        }
                     }
                     self.ctx.trigger_event_handlers();
                     self.ctx.platform.buf_pool.release(buf);
@@ -207,14 +205,9 @@ impl ServerApplication {
                             &mut self.ctx.editor.picker,
                             &self.ctx.editor.read_line,
                         ),
-                        ProcessTag::Plugin {
-                            plugin_handle,
-                            process_id,
-                        } => PluginCollection::on_process_exit(
-                            &mut self.ctx,
-                            plugin_handle,
-                            process_id,
-                        ),
+                        ProcessTag::Plugin { plugin_handle, id } => {
+                            PluginCollection::on_process_exit(&mut self.ctx, plugin_handle, id)
+                        }
                     }
                     self.ctx.trigger_event_handlers();
                 }
@@ -400,3 +393,4 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
+

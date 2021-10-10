@@ -283,6 +283,10 @@ impl Editor {
         }
     }
 
+    pub fn enter_mode(&mut self, next: ModeKind) {
+        Mode::change_to(self, next);
+    }
+
     pub fn execute_keys(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
@@ -312,7 +316,7 @@ impl Editor {
                 None => return EditorControlFlow::Continue,
                 Some(EditorControlFlow::Continue) => (),
                 Some(flow) => {
-                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.enter_mode(ModeKind::default());
                     ctx.editor.buffered_keys.0.truncate(start_index);
                     return flow;
                 }
@@ -383,7 +387,7 @@ impl Editor {
                     ctx.editor.buffered_keys.0.clear();
 
                     if ctx.editor.mode.kind() == ModeKind::Insert {
-                        Mode::change_to(ctx, ModeKind::default());
+                        ctx.editor.enter_mode(ModeKind::default());
                     }
                 }
 

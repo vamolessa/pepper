@@ -19,11 +19,11 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         commands.register_command(Some(plugin_handle), name, completions, command_fn);
     };
 
-    r("lsp", &[], |ctx| {
-        let command = ctx.args.next()?;
-        let glob = ctx.args.next()?;
-        let log_path = ctx.args.try_next();
-        ctx.args.assert_empty()?;
+    r("lsp", &[], |ctx, io| {
+        let command = io.args.next()?;
+        let glob = io.args.next()?;
+        let log_path = io.args.try_next();
+        io.args.assert_empty()?;
 
         let mut lsp = acquire(ctx);
         let result = match lsp.add_recipe(glob, command, None, log_path) {
@@ -34,10 +34,10 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         result
     });
 
-    r("lsp-open-log", &[], |ctx| {
-        ctx.args.assert_empty()?;
-        let client_handle = ctx.client_handle()?;
-        let buffer_handle = ctx.current_buffer_handle()?;
+    r("lsp-open-log", &[], |ctx, io| {
+        io.args.assert_empty()?;
+        let client_handle = io.client_handle()?;
+        let buffer_handle = io.current_buffer_handle(ctx)?;
         access(ctx, buffer_handle, |ctx, client| {
             let path = client
                 .log_file_path()
@@ -64,10 +64,10 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-start", &[], |ctx| {
-        let command = ctx.args.next()?;
-        let log_path = ctx.args.try_next();
-        ctx.args.assert_empty()?;
+    r("lsp-start", &[], |ctx, io| {
+        let command = io.args.next()?;
+        let log_path = io.args.try_next();
+        io.args.assert_empty()?;
 
         let command = parse_process_command(command).ok_or(CommandError::OtherOwned(format!(
             "invalid lsp command '{}'",
@@ -88,9 +88,9 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         Ok(())
     });
 
-    r("lsp-stop", &[], |ctx| {
-        ctx.args.assert_empty()?;
-        let buffer_handle = ctx.current_buffer_handle()?;
+    r("lsp-stop", &[], |ctx, io| {
+        io.args.assert_empty()?;
+        let buffer_handle = io.current_buffer_handle(ctx)?;
         let mut lsp = acquire(ctx);
         match find_lsp_client_for_buffer(&lsp, ctx.editor, buffer_handle) {
             Some(client) => lsp.stop(ctx.platform, client),
@@ -100,16 +100,16 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         Ok(())
     });
 
-    r("lsp-stop-all", &[], |ctx| {
-        ctx.args.assert_empty()?;
+    r("lsp-stop-all", &[], |ctx, io| {
+        io.args.assert_empty()?;
         let mut lsp = acquire(ctx);
         lsp.stop_all(ctx.platform);
         release(ctx, lsp);
         Ok(())
     });
 
-    r("lsp-hover", &[], |ctx| {
-        ctx.args.assert_empty()?;
+    r("lsp-hover", &[], |ctx, io| {
+        io.args.assert_empty()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
         access(ctx, buffer_handle, |ctx, client| {
             let op = client.hover(ctx.editor, ctx.platform, buffer_handle, cursor.position);
@@ -117,9 +117,9 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-definition", &[], |ctx| {
-        ctx.args.assert_empty()?;
-        let client_handle = ctx.client_handle()?;
+    r("lsp-definition", &[], |ctx, io| {
+        io.args.assert_empty()?;
+        let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
         access(ctx, buffer_handle, |ctx, client| {
             let op = client.definition(
@@ -133,9 +133,9 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-declaration", &[], |ctx| {
-        ctx.args.assert_empty()?;
-        let client_handle = ctx.client_handle()?;
+    r("lsp-declaration", &[], |ctx, io| {
+        io.args.assert_empty()?;
+        let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
         access(ctx, buffer_handle, |ctx, client| {
             let op = client.declaration(
@@ -149,9 +149,9 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-implementation", &[], |ctx| {
-        ctx.args.assert_empty()?;
-        let client_handle = ctx.client_handle()?;
+    r("lsp-implementation", &[], |ctx, io| {
+        io.args.assert_empty()?;
+        let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
         access(ctx, buffer_handle, |ctx, client| {
             let op = client.implementation(
@@ -165,11 +165,11 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-references", &[], |ctx| {
+    r("lsp-references", &[], |ctx, io| {
         let context_len = 2;
-        ctx.args.assert_empty()?;
+        io.args.assert_empty()?;
 
-        let client_handle = ctx.client_handle()?;
+        let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
 
         access(ctx, buffer_handle, |ctx, client| {
@@ -186,10 +186,10 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-rename", &[], |ctx| {
-        ctx.args.assert_empty()?;
+    r("lsp-rename", &[], |ctx, io| {
+        io.args.assert_empty()?;
 
-        let client_handle = ctx.client_handle()?;
+        let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
 
         access(ctx, buffer_handle, |ctx, client| {
@@ -206,10 +206,10 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-code-action", &[], |ctx| {
-        ctx.args.assert_empty()?;
+    r("lsp-code-action", &[], |ctx, io| {
+        io.args.assert_empty()?;
 
-        let client_handle = ctx.client_handle()?;
+        let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
 
         access(ctx, buffer_handle, |ctx, client| {
@@ -225,10 +225,10 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-document-symbol", &[], |ctx| {
-        ctx.args.assert_empty()?;
+    r("lsp-document-symbol", &[], |ctx, io| {
+        io.args.assert_empty()?;
 
-        let client_handle = ctx.client_handle()?;
+        let client_handle = io.client_handle()?;
         let view_handle = ctx.current_buffer_view_handle()?;
         let buffer_handle = ctx.editor.buffer_views.get(view_handle).buffer_handle;
 
@@ -238,12 +238,12 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-workspace-symbols", &[], |ctx| {
-        let query = ctx.args.try_next().unwrap_or("");
-        ctx.args.assert_empty()?;
+    r("lsp-workspace-symbols", &[], |ctx, io| {
+        let query = io.args.try_next().unwrap_or, io("");
+        io.args.assert_empty()?;
 
-        let client_handle = ctx.client_handle()?;
-        let buffer_handle = ctx.current_buffer_handle()?;
+        let client_handle = io.client_handle()?;
+        let buffer_handle = io.current_buffer_handle(ctx)?;
 
         access(ctx, buffer_handle, |ctx, client| {
             let op = client.workspace_symbols(ctx.editor, ctx.platform, client_handle, query);
@@ -251,9 +251,9 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-format", &[], |ctx| {
-        ctx.args.assert_empty()?;
-        let buffer_handle = ctx.current_buffer_handle()?;
+    r("lsp-format", &[], |ctx, io| {
+        io.args.assert_empty()?;
+        let buffer_handle = io.current_buffer_handle(ctx)?;
         access(ctx, buffer_handle, |ctx, client| {
             let op = client.formatting(ctx.editor, ctx.platform, buffer_handle);
             Ok(op)
