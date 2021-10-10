@@ -1,11 +1,12 @@
 use std::{fmt::Write, path::Path};
 
 use crate::{
+    client::ClientHandle,
     buffer::{Buffer, BufferHandle},
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    editor::{Editor, EditorControlFlow, KeysIterator},
-    mode::{Mode, ModeContext, ModeKind, ModeState},
+    editor::{ApplicationContext, Editor, EditorControlFlow, KeysIterator},
+    mode::{Mode, ModeKind, ModeState},
     platform::Key,
     plugin::{CompletionContext, PluginContext, PluginCollection, PluginHandle},
     register::AUTO_MACRO_REGISTER,
@@ -70,16 +71,16 @@ impl State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ModeContext) {
-        cancel_completion(ctx.editor);
+    fn on_enter(ctx: &mut ApplicationContext) {
+        cancel_completion(&mut ctx.editor);
     }
 
-    fn on_exit(ctx: &mut ModeContext) {
-        cancel_completion(ctx.editor);
+    fn on_exit(ctx: &mut ApplicationContext) {
+        cancel_completion(&mut ctx.editor);
     }
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
-        let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+    fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
+        let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => {
                 Mode::change_to(ctx, ModeKind::default());
@@ -108,7 +109,7 @@ impl ModeState for State {
                     CursorMovementKind::PositionAndAnchor,
                     ctx.editor.config.tab_size,
                 );
-                cancel_completion(ctx.editor);
+                cancel_completion(&mut ctx.editor);
                 return Some(EditorControlFlow::Continue);
             }
             Key::Down => {
@@ -118,7 +119,7 @@ impl ModeState for State {
                     CursorMovementKind::PositionAndAnchor,
                     ctx.editor.config.tab_size,
                 );
-                cancel_completion(ctx.editor);
+                cancel_completion(&mut ctx.editor);
                 return Some(EditorControlFlow::Continue);
             }
             Key::Up => {
@@ -128,7 +129,7 @@ impl ModeState for State {
                     CursorMovementKind::PositionAndAnchor,
                     ctx.editor.config.tab_size,
                 );
-                cancel_completion(ctx.editor);
+                cancel_completion(&mut ctx.editor);
                 return Some(EditorControlFlow::Continue);
             }
             Key::Right => {
@@ -138,7 +139,7 @@ impl ModeState for State {
                     CursorMovementKind::PositionAndAnchor,
                     ctx.editor.config.tab_size,
                 );
-                cancel_completion(ctx.editor);
+                cancel_completion(&mut ctx.editor);
                 return Some(EditorControlFlow::Continue);
             }
             Key::Tab => {
@@ -254,7 +255,7 @@ impl ModeState for State {
             _ => return Some(EditorControlFlow::Continue),
         };
 
-        ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
+        ctx.trigger_event_handlers();
         update_completions(ctx, handle);
         Some(EditorControlFlow::Continue)
     }
@@ -265,7 +266,7 @@ fn cancel_completion(editor: &mut Editor) {
     editor.mode.insert_state.completion_positions.clear();
 }
 
-fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle) {
+fn update_completions(ctx: &mut ApplicationContext, buffer_view_handle: BufferViewHandle) {
     let state = &mut ctx.editor.mode.insert_state;
 
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
@@ -403,7 +404,7 @@ fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandl
 }
 
 fn apply_completion(
-    ctx: &mut ModeContext,
+    ctx: &mut ApplicationContext,
     buffer_view_handle: BufferViewHandle,
     cursor_movement: isize,
 ) {

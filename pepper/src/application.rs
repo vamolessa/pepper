@@ -175,7 +175,7 @@ impl ServerApplication {
                         ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_output(
                             &mut self.ctx.editor.word_database,
                             id,
-                            bytes.,
+                            bytes,
                             &mut self.ctx.editor.events,
                         ),
                         ProcessTag::FindFiles => {

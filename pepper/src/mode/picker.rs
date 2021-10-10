@@ -1,10 +1,11 @@
 use std::process::Stdio;
 
 use crate::{
+    client::ClientHandle,
     buffer::BufferProperties,
-    editor::{EditorControlFlow, KeysIterator},
+    editor::{ApplicationContext, EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
-    mode::{Mode, ModeContext, ModeKind, ModeState},
+    mode::{Mode, ModeKind, ModeState},
     picker::Picker,
     platform::{Key, PlatformRequest, ProcessTag},
     plugin::PluginHandle,
@@ -13,7 +14,7 @@ use crate::{
 
 pub struct State {
     pub on_client_keys:
-        fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
+        fn(ctx: &mut ApplicationContext, ClientHandle, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
     pub plugin_handle: Option<PluginHandle>,
     find_file_waiting_for_process: bool,
     find_file_buf: Vec<u8>, // TODO: move to plugin
@@ -81,7 +82,7 @@ impl State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _| Some(EditorControlFlow::Continue),
+            on_client_keys: |_, _, _, _| Some(EditorControlFlow::Continue),
             plugin_handle: None,
             find_file_waiting_for_process: false,
             find_file_buf: Vec::new(),
@@ -90,20 +91,20 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ModeContext) {
+    fn on_enter(ctx: &mut ApplicationContext) {
         ctx.editor.read_line.input_mut().clear();
     }
 
-    fn on_exit(ctx: &mut ModeContext) {
+    fn on_exit(ctx: &mut ApplicationContext) {
         ctx.editor.mode.picker_state.find_file_waiting_for_process = false;
         ctx.editor.read_line.input_mut().clear();
         ctx.editor.picker.clear();
     }
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
+    fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
         let this = &mut ctx.editor.mode.picker_state;
         let poll = ctx.editor.read_line.poll(
-            ctx.platform,
+            &mut ctx.platform,
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
             keys,
@@ -150,7 +151,7 @@ impl ModeState for State {
         }
 
         let f = this.on_client_keys;
-        f(ctx, keys, poll)
+        f(ctx, client_handle, keys, poll)
     }
 }
 
@@ -159,9 +160,10 @@ pub mod opened_buffers {
 
     use std::path::Path;
 
-    pub fn enter_mode(ctx: &mut ModeContext) {
+    pub fn enter_mode(ctx: &mut ApplicationContext) {
         fn on_client_keys(
-            ctx: &mut ModeContext,
+            ctx: &mut ApplicationContext,
+            client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
         ) -> Option<EditorControlFlow> {
@@ -184,12 +186,12 @@ pub mod opened_buffers {
 
             let path = ctx.editor.string_pool.acquire_with(path);
             if let Ok(buffer_view_handle) = ctx.editor.buffer_view_handle_from_path(
-                ctx.client_handle,
+                client_handle,
                 Path::new(&path),
                 BufferProperties::text(),
                 false,
             ) {
-                let client = ctx.clients.get_mut(ctx.client_handle);
+                let client = ctx.clients.get_mut(client_handle);
                 client.set_buffer_view_handle(
                     Some(buffer_view_handle),
                     &ctx.editor.buffer_views,
@@ -229,9 +231,10 @@ pub mod find_file {
 
     use std::path::Path;
 
-    pub fn enter_mode(ctx: &mut ModeContext, command: &str) {
+    pub fn enter_mode(ctx: &mut ApplicationContext, command: &str) {
         fn on_client_keys(
-            ctx: &mut ModeContext,
+            ctx: &mut ApplicationContext,
+            client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
         ) -> Option<EditorControlFlow> {
@@ -254,13 +257,13 @@ pub mod find_file {
 
             let path = ctx.editor.string_pool.acquire_with(path);
             match ctx.editor.buffer_view_handle_from_path(
-                ctx.client_handle,
+                client_handle,
                 Path::new(&path),
                 BufferProperties::text(),
                 false,
             ) {
                 Ok(buffer_view_handle) => {
-                    let client = ctx.clients.get_mut(ctx.client_handle);
+                    let client = ctx.clients.get_mut(client_handle);
                     client.set_buffer_view_handle(
                         Some(buffer_view_handle),
                         &ctx.editor.buffer_views,

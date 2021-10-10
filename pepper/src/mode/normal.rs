@@ -76,6 +76,7 @@ impl State {
 
     fn on_client_keys_with_buffer_view(
         ctx: &mut ApplicationContext,
+        client_handle: ClientHandle,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
     ) -> Option<EditorControlFlow> {
@@ -125,7 +126,7 @@ impl State {
                         Ok(index) => index + count as usize,
                         Err(index) => index + count as usize - 1,
                     };
-                    index % len, client_handle: ClientHandle
+                    index % len
                 });
             }
             Key::Char('p') => {
@@ -777,7 +778,7 @@ impl State {
                     .get_mut(buffer_view.buffer_handle)
                     .commit_edits();
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                Self::on_edit_keys(ctx.editor, keys, keys_from_index);
+                Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
                 return Some(EditorControlFlow::Continue);
             }
             Key::Char('i') => {
@@ -788,7 +789,7 @@ impl State {
                     &mut ctx.editor.events,
                 );
 
-                Self::on_edit_keys(ctx.editor, keys, keys_from_index);
+                Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
                 Mode::change_to(ctx, ModeKind::Insert);
                 return Some(EditorControlFlow::Continue);
             }
@@ -834,7 +835,7 @@ impl State {
                 }
 
                 buffer.commit_edits();
-                Self::on_edit_keys(ctx.editor, keys, keys_from_index);
+                Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
                 return Some(EditorControlFlow::Continue);
             }
             Key::Char('>') => {
@@ -868,7 +869,7 @@ impl State {
                 ctx.editor.string_pool.release(buf);
 
                 buffer.commit_edits();
-                Self::on_edit_keys(ctx.editor, keys, keys_from_index);
+                Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
                 return Some(EditorControlFlow::Continue);
             }
             Key::Char('c' | 'C') => match keys.next(&ctx.editor.buffered_keys) {
@@ -1132,7 +1133,7 @@ impl State {
             _ => (),
         }
 
-        Self::on_movement_keys(ctx.editor, keys, keys_from_index);
+        Self::on_movement_keys(&mut ctx.editor, keys, keys_from_index);
         ctx.editor.mode.normal_state.count = 0;
         Some(EditorControlFlow::Continue)
     }
@@ -1163,7 +1164,7 @@ impl ModeState for State {
     fn on_exit(_: &mut ApplicationContext) {}
 
     fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
-        fn show_hovered_diagnostic(ctx: &mut ApplicationContext) {
+        fn show_hovered_diagnostic(ctx: &mut ApplicationContext, client_handle: ClientHandle) {
             let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
                 Some(handle) => handle,
                 None => return,
@@ -1309,7 +1310,7 @@ impl ModeState for State {
                             handled_keys = true;
                             NavigationHistory::move_to_previous_buffer(
                                 ctx.clients.get_mut(client_handle),
-                                ctx.editor,
+                                &mut ctx.editor,
                             );
                         }
                         Key::Char('B') => {
@@ -1346,7 +1347,7 @@ impl ModeState for State {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 NavigationHistory::move_in_history(
                     ctx.clients.get_mut(client_handle),
-                    ctx.editor,
+                    &mut ctx.editor,
                     NavigationMovement::Forward,
                 );
                 handled_keys = true;
@@ -1355,7 +1356,7 @@ impl ModeState for State {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 NavigationHistory::move_in_history(
                     ctx.clients.get_mut(client_handle),
-                    ctx.editor,
+                    &mut ctx.editor,
                     NavigationMovement::Backward,
                 );
                 handled_keys = true;
@@ -1378,8 +1379,8 @@ impl ModeState for State {
             match ctx.clients.get(client_handle).buffer_view_handle() {
                 Some(buffer_view_handle) => {
                     keys.index = previous_index;
-                    let op = Self::on_client_keys_with_buffer_view(ctx, keys, buffer_view_handle);
-                    show_hovered_diagnostic(ctx);
+                    let op = Self::on_client_keys_with_buffer_view(ctx, client_handle, keys, buffer_view_handle);
+                    show_hovered_diagnostic(ctx, client_handle);
                     op
                 }
                 None => Some(EditorControlFlow::Continue),

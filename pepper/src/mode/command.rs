@@ -1,10 +1,11 @@
 use std::fs;
 
 use crate::{
+    client::ClientHandle,
     command::{CommandManager, CommandTokenizer, CompletionSource},
-    editor::{EditorControlFlow, KeysIterator},
+    editor::{ApplicationContext, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, ReadLinePoll},
-    mode::{Mode, ModeContext, ModeKind, ModeState},
+    mode::{Mode, ModeKind, ModeState},
     picker::Picker,
     platform::Key,
     word_database::WordIndicesIter,
@@ -34,7 +35,7 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ModeContext) {
+    fn on_enter(ctx: &mut ApplicationContext) {
         let state = &mut ctx.editor.mode.command_state;
         state.read_state = ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
         state.completion_index = 0;
@@ -46,15 +47,15 @@ impl ModeState for State {
         ctx.editor.picker.clear();
     }
 
-    fn on_exit(ctx: &mut ModeContext) {
+    fn on_exit(ctx: &mut ApplicationContext) {
         ctx.editor.read_line.input_mut().clear();
         ctx.editor.picker.clear();
     }
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
+    fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
         let state = &mut ctx.editor.mode.command_state;
         match ctx.editor.read_line.poll(
-            ctx.platform,
+            &mut ctx.platform,
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
             keys,
@@ -97,10 +98,8 @@ impl ModeState for State {
 
                 let mut command = ctx.editor.string_pool.acquire_with(input);
                 let flow = CommandManager::eval_and_write_error(
-                    ctx.editor,
-                    ctx.platform,
-                    ctx.clients,
-                    Some(ctx.client_handle),
+                    ctx,
+                    Some(client_handle),
                     &mut command,
                 );
                 ctx.editor.string_pool.release(command);
@@ -117,7 +116,7 @@ impl ModeState for State {
     }
 }
 
-fn apply_completion(ctx: &mut ModeContext, cursor_movement: isize) {
+fn apply_completion(ctx: &mut ApplicationContext, cursor_movement: isize) {
     ctx.editor.picker.move_cursor(cursor_movement);
     if let Some((_, entry)) = ctx.editor.picker.current_entry(&ctx.editor.word_database) {
         let input = ctx.editor.read_line.input_mut();
@@ -126,7 +125,7 @@ fn apply_completion(ctx: &mut ModeContext, cursor_movement: isize) {
     }
 }
 
-fn update_autocomplete_entries(ctx: &mut ModeContext) {
+fn update_autocomplete_entries(ctx: &mut ApplicationContext) {
     let state = &mut ctx.editor.mode.command_state;
 
     let input = ctx.editor.read_line.input();

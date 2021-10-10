@@ -16,7 +16,7 @@ use crate::{
         ServerEvent, TargetClient,
     },
     keymap::{KeyMapCollection, MatchResult},
-    mode::{Mode, ModeContext, ModeKind},
+    mode::{Mode, ModeKind},
     pattern::Pattern,
     picker::Picker,
     platform::{Key, Platform, PlatformRequest},
@@ -380,19 +380,19 @@ impl Editor {
                 };
 
                 if ctx.clients.focus_client(client_handle) {
-                    self.recording_macro = None;
-                    self.buffered_keys.0.clear();
+                    ctx.editor.recording_macro = None;
+                    ctx.editor.buffered_keys.0.clear();
 
-                    if self.mode.kind() == ModeKind::Insert {
+                    if ctx.editor.mode.kind() == ModeKind::Insert {
                         Mode::change_to(ctx, ModeKind::default());
                     }
                 }
 
                 if key != Key::None {
-                    self.status_bar.clear();
+                    ctx.editor.status_bar.clear();
                 }
-                self.buffered_keys.0.push(key);
-                self.execute_keys(
+                ctx.editor.buffered_keys.0.push(key);
+                Self::execute_keys(
                     ctx,
                     client_handle,
                     KeysIterator { index: 0 },
@@ -412,13 +412,13 @@ impl Editor {
                     },
                 };
 
-                let mut command = self.string_pool.acquire_with(command);
+                let mut command = ctx.editor.string_pool.acquire_with(command);
                 let flow = CommandManager::eval_and_write_error(
                     ctx,
                     Some(client_handle),
                     &mut command,
                 );
-                self.string_pool.release(command);
+                ctx.editor.string_pool.release(command);
                 flow
             }
             ClientEvent::StdinInput(target, bytes) => {
@@ -430,7 +430,7 @@ impl Editor {
                     },
                 };
 
-                ctx.clients.get_mut(client_handle).on_stdin_input(self, bytes);
+                ctx.clients.get_mut(client_handle).on_stdin_input(&mut ctx.editor, bytes);
                 ctx.trigger_event_handlers();
                 EditorControlFlow::Continue
             }

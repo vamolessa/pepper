@@ -189,7 +189,7 @@ mod sys;
 #[path = "platforms/bsd.rs"]
 mod sys;
 
-pub fn run(ctx: application::ApplicationContext) {
+pub fn run(config: application::ApplicationConfig) {
     use std::{fs, io, mem::MaybeUninit, panic};
 
     static mut ORIGINAL_PANIC_HOOK: MaybeUninit<Box<dyn Fn(&panic::PanicInfo) + Sync + Send>> =
@@ -197,7 +197,7 @@ pub fn run(ctx: application::ApplicationContext) {
     unsafe { ORIGINAL_PANIC_HOOK = MaybeUninit::new(panic::take_hook()) };
 
     static mut ON_PANIC_CONFIG: MaybeUninit<application::OnPanicConfig> = MaybeUninit::uninit();
-    unsafe { ON_PANIC_CONFIG = MaybeUninit::new(ctx.on_panic_config) };
+    unsafe { ON_PANIC_CONFIG = MaybeUninit::new(config.on_panic_config) };
 
     panic::set_hook(Box::new(|info| unsafe {
         let config = ON_PANIC_CONFIG.assume_init_ref();
@@ -217,5 +217,5 @@ pub fn run(ctx: application::ApplicationContext) {
         hook(info);
     }));
 
-    sys::main(ctx);
+    sys::main(config);
 }
