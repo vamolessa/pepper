@@ -72,14 +72,14 @@ pub fn register_commands(commands: &mut CommandManager) {
         if ctx.clients.iter().count() == 1 {
             io.assert_can_discard_all_buffers(ctx)?;
         }
-        ctx.flow = EditorControlFlow::Quit;
+        io.flow = EditorControlFlow::Quit;
         Ok(())
     });
 
     r("quit-all", &[], |ctx, io| {
         io.args.assert_empty()?;
         io.assert_can_discard_all_buffers(ctx)?;
-        ctx.flow = EditorControlFlow::QuitAll;
+        io.flow = EditorControlFlow::QuitAll;
         Ok(())
     });
 

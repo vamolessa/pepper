@@ -283,10 +283,12 @@ fn update_completions(ctx: &mut ApplicationContext, buffer_view_handle: BufferVi
         last_char: '\0',
     };
 
+    /*
     for plugin in ctx.editor.plugins.iter_mut() {
         //match plugin.on_completion_flow(
         //
     }
+    */
 
     /*
     if word.position > main_completion_position {

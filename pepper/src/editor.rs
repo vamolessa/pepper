@@ -152,7 +152,7 @@ impl ApplicationContext {
                         self.editor.buffers
                             .remove_from_editor_event_handler(handle, &mut self.editor.word_database);
                         for client in self.clients.iter_mut() {
-                            client.on_buffer_close(self, handle);
+                            client.on_buffer_close(&mut self.editor, handle);
                         }
                         self.editor.buffer_views.remove_buffer_views(handle);
                     }
