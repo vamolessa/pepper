@@ -1,16 +1,11 @@
 use std::{
     any::Any,
     ops::{Deref, DerefMut},
-    process::Command,
 };
 
 use crate::{
-    buffer::BufferHandle,
-    buffer_position::BufferPosition,
-    buffer_view::BufferViewHandle,
-    editor::EditorContext,
-    help,
-    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
+    buffer::BufferHandle, buffer_position::BufferPosition, buffer_view::BufferViewHandle,
+    editor::EditorContext, help, platform::PlatformProcessHandle,
 };
 
 pub trait PluginDefinition {
@@ -146,9 +141,15 @@ impl PluginCollection {
         PluginGuard { plugin, handle }
     }
 
-    pub fn release<T>(&mut self, guard: PluginGuard<T>) {
-        std::mem::forget(guard);
-        //std::mem::swap(&mut
+    pub fn release<T>(&mut self, mut plugin: PluginGuard<T>)
+    where
+        T: Plugin,
+    {
+        let index = plugin.handle.0 as usize;
+        let raw = plugin.plugin.deref_mut() as *mut dyn Plugin;
+        std::mem::forget(plugin);
+        let plugin = unsafe { Box::from_raw(raw) };
+        self.plugins[index] = plugin;
     }
 
     pub(crate) fn on_editor_events(ctx: &mut EditorContext) {
