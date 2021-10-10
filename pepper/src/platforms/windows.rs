@@ -66,7 +66,7 @@ use winapi::{
 };
 
 use crate::{
-    application::{ApplicationContext, ClientApplication, ServerApplication},
+    application::{ApplicationConfig, ClientApplication, ServerApplication},
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
@@ -150,12 +150,12 @@ pub fn try_launching_debugger() {
     unsafe { DebugBreak() };
 }
 
-pub fn main(ctx: ApplicationContext) {
+pub fn main(config: ApplicationConfig) {
     CtrlCEvent::set_ctrl_handler();
 
     let mut pipe_path = Vec::new();
     let mut hash_buf = [0u8; 16];
-    let session_name = match &ctx.args.session {
+    let session_name = match &config.args.session {
         Some(name) => name.as_str(),
         None => {
             use io::Write;
@@ -184,14 +184,14 @@ pub fn main(ctx: ApplicationContext) {
     pipe_path.extend(session_name.encode_utf16());
     pipe_path.push(0);
 
-    if ctx.args.print_session {
+    if config.args.print_session {
         print!("{}{}", PIPE_PREFIX, session_name);
         return;
     }
 
-    if ctx.args.server {
+    if config.args.server {
         if !pipe_exists(&pipe_path) {
-            let _ = run_server(ctx, &pipe_path);
+            let _ = run_server(config, &pipe_path);
         }
     } else {
         if !pipe_exists(&pipe_path) {
@@ -201,7 +201,7 @@ pub fn main(ctx: ApplicationContext) {
             }
         }
 
-        run_client(ctx.args, &pipe_path);
+        run_client(config.args, &pipe_path);
     }
 }
 
@@ -985,17 +985,18 @@ impl EventListener {
     }
 }
 
-fn run_server(ctx: ApplicationContext, pipe_path: &[u16]) {
+fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
     let mut event_listener = EventListener::new();
     let mut listener =
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
-    let mut application = match ServerApplication::new(ctx) {
+    let mut application = match ServerApplication::new(config) {
         Some(application) => application,
         None => return,
     };
 
     application
+        .ctx
         .platform
         .set_clipboard_api(read_from_clipboard, write_to_clipboard);
 
@@ -1038,22 +1039,22 @@ fn run_server(ctx: ApplicationContext, pipe_path: &[u16]) {
                 }
 
                 application.update(events.drain(..));
-                let mut requests = application.platform.requests.drain();
+                let mut requests = application.ctx.platform.requests.drain();
                 while let Some(request) = requests.next() {
                     match request {
                         PlatformRequest::Quit => {
                             for connection in client_connections.iter_mut().flatten() {
-                                connection.dispose(&mut application.platform.buf_pool);
+                                connection.dispose(&mut application.ctx.platform.buf_pool);
                             }
                             for process in processes.iter_mut().flatten() {
-                                process.dispose(&mut application.platform.buf_pool);
+                                process.dispose(&mut application.ctx.platform.buf_pool);
                                 process.kill();
                             }
                             for request in requests {
                                 if let PlatformRequest::WriteToClient { buf, .. }
                                 | PlatformRequest::WriteToProcess { buf, .. } = request
                                 {
-                                    application.platform.buf_pool.release(buf);
+                                    application.ctx.platform.buf_pool.release(buf);
                                 }
                             }
                             return;
@@ -1062,18 +1063,18 @@ fn run_server(ctx: ApplicationContext, pipe_path: &[u16]) {
                         PlatformRequest::WriteToClient { handle, buf } => {
                             if let Some(connection) = &mut client_connections[handle.into_index()] {
                                 if !connection.write(buf.as_bytes()) {
-                                    connection.dispose(&mut application.platform.buf_pool);
+                                    connection.dispose(&mut application.ctx.platform.buf_pool);
                                     client_connections[handle.into_index()] = None;
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
                             }
-                            application.platform.buf_pool.release(buf);
+                            application.ctx.platform.buf_pool.release(buf);
                         }
                         PlatformRequest::CloseClient { handle } => {
                             if let Some(mut connection) =
                                 client_connections[handle.into_index()].take()
                             {
-                                connection.dispose(&mut application.platform.buf_pool)
+                                connection.dispose(&mut application.ctx.platform.buf_pool)
                             }
                             events.push(PlatformEvent::ConnectionClose { handle });
                         }
@@ -1104,13 +1105,13 @@ fn run_server(ctx: ApplicationContext, pipe_path: &[u16]) {
                             if let Some(process) = &mut processes[handle.0 as usize] {
                                 if !process.write(buf.as_bytes()) {
                                     let tag = process.tag;
-                                    process.dispose(&mut application.platform.buf_pool);
+                                    process.dispose(&mut application.ctx.platform.buf_pool);
                                     process.kill();
                                     processes[handle.0 as usize] = None;
                                     events.push(PlatformEvent::ProcessExit { tag });
                                 }
                             }
-                            application.platform.buf_pool.release(buf);
+                            application.ctx.platform.buf_pool.release(buf);
                         }
                         PlatformRequest::CloseProcessInput { handle } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
@@ -1120,7 +1121,7 @@ fn run_server(ctx: ApplicationContext, pipe_path: &[u16]) {
                         PlatformRequest::KillProcess { handle } => {
                             if let Some(process) = &mut processes[handle.0 as usize] {
                                 let tag = process.tag;
-                                process.dispose(&mut application.platform.buf_pool);
+                                process.dispose(&mut application.ctx.platform.buf_pool);
                                 process.kill();
                                 processes[handle.0 as usize] = None;
                                 events.push(PlatformEvent::ProcessExit { tag });
@@ -1155,7 +1156,7 @@ fn run_server(ctx: ApplicationContext, pipe_path: &[u16]) {
                     let handle = ClientHandle::from_index(i).unwrap();
                     match connection.read_async(
                         ServerApplication::connection_buffer_len(),
-                        &mut application.platform.buf_pool,
+                        &mut application.ctx.platform.buf_pool,
                     ) {
                         Ok(None) => (),
                         Ok(Some(buf)) => {
@@ -1172,7 +1173,7 @@ fn run_server(ctx: ApplicationContext, pipe_path: &[u16]) {
                 if let Some(process) = &mut processes[i] {
                     if let Some(pipe) = &mut process.stdout {
                         let tag = process.tag;
-                        match pipe.read_async(&mut application.platform.buf_pool) {
+                        match pipe.read_async(&mut application.ctx.platform.buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
                             Err(()) => {

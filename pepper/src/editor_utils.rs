@@ -3,7 +3,7 @@ use std::{fmt, process::Command};
 use crate::{
     client::ClientManager,
     command::{CommandManager, CommandTokenizer},
-    editor::{BufferedKeys, Editor, EditorControlFlow, KeysIterator},
+    editor::{ApplicationContext, BufferedKeys, Editor, EditorControlFlow, KeysIterator},
     platform::{Key, Platform},
     word_database::{WordIter, WordKind},
 };
@@ -245,9 +245,7 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
 }
 
 pub fn load_config(
-    editor: &mut Editor,
-    platform: &mut Platform,
-    clients: &mut ClientManager,
+    ctx: &mut ApplicationContext,
     config_name: &str,
     config_content: &str,
 ) -> EditorControlFlow {
@@ -256,9 +254,9 @@ pub fn load_config(
             continue;
         }
 
-        let mut command = editor.string_pool.acquire_with(line);
-        let result = CommandManager::try_eval(editor, platform, clients, None, &mut command);
-        editor.string_pool.release(command);
+        let mut command = ctx.editor.string_pool.acquire_with(line);
+        let result = CommandManager::try_eval(ctx, None, &mut command);
+        ctx.editor.string_pool.release(command);
 
         match result {
             Ok(flow) => match flow {
@@ -266,7 +264,7 @@ pub fn load_config(
                 _ => return flow,
             },
             Err(error) => {
-                editor
+                ctx.editor
                     .status_bar
                     .write(MessageKind::Error)
                     .fmt(format_args!(

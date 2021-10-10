@@ -5,13 +5,13 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::{ClientHandle, ClientManager},
     config::ParseConfigError,
-    editor::{Editor, EditorControlFlow},
+    editor::{ApplicationContext, Editor, EditorControlFlow},
     editor_utils::MessageKind,
     glob::InvalidGlobError,
     keymap::ParseKeyMapError,
     pattern::PatternError,
     platform::Platform,
-    plugin::PluginHandle,
+    plugin::{PluginCollection, PluginHandle},
 };
 
 mod builtin;
@@ -88,18 +88,16 @@ impl<'command> CommandArgs<'command> {
     }
 }
 
-pub struct CommandContext<'state, 'command> {
-    pub editor: &'state mut Editor,
-    pub platform: &'state mut Platform,
-    pub clients: &'state mut ClientManager,
+// TODO: rename to CommandIO
+pub struct CommandContext<'a> {
     client_handle: Option<ClientHandle>,
     plugin_handle: Option<PluginHandle>,
 
-    pub args: CommandArgs<'command>,
+    pub args: CommandArgs<'a>,
     pub bang: bool,
     pub flow: EditorControlFlow,
 }
-impl<'state, 'command> CommandContext<'state, 'command> {
+impl<'a> CommandContext<'a> {
     pub fn client_handle(&self) -> Result<ClientHandle, CommandError> {
         match self.client_handle {
             Some(handle) => Ok(handle),
@@ -111,17 +109,17 @@ impl<'state, 'command> CommandContext<'state, 'command> {
         self.plugin_handle.unwrap()
     }
 
-    pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError> {
+    pub fn current_buffer_view_handle(&self, ctx: &ApplicationContext) -> Result<BufferViewHandle, CommandError> {
         let client_handle = self.client_handle()?;
-        match self.clients.get(client_handle).buffer_view_handle() {
+        match ctx.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => Ok(handle),
             None => Err(CommandError::NoBufferOpened),
         }
     }
 
-    pub fn current_buffer_handle(&self) -> Result<BufferHandle, CommandError> {
-        let buffer_view_handle = self.current_buffer_view_handle()?;
-        let buffer_handle = self
+    pub fn current_buffer_handle(&self, ctx: &ApplicationContext) -> Result<BufferHandle, CommandError> {
+        let buffer_view_handle = self.current_buffer_view_handle(ctx)?;
+        let buffer_handle = ctx
             .editor
             .buffer_views
             .get(buffer_view_handle)
@@ -129,16 +127,16 @@ impl<'state, 'command> CommandContext<'state, 'command> {
         Ok(buffer_handle)
     }
 
-    pub fn assert_can_discard_all_buffers(&self) -> Result<(), CommandError> {
-        if self.bang || !self.editor.buffers.iter().any(Buffer::needs_save) {
+    pub fn assert_can_discard_all_buffers(&self, ctx: &ApplicationContext) -> Result<(), CommandError> {
+        if self.bang || !ctx.editor.buffers.iter().any(Buffer::needs_save) {
             Ok(())
         } else {
             Err(CommandError::UnsavedChanges)
         }
     }
 
-    pub fn assert_can_discard_buffer(&self, handle: BufferHandle) -> Result<(), CommandError> {
-        if self.bang || !self.editor.buffers.get(handle).needs_save() {
+    pub fn assert_can_discard_buffer(&self, ctx: &ApplicationContext, handle: BufferHandle) -> Result<(), CommandError> {
+        if self.bang || !ctx.editor.buffers.get(handle).needs_save() {
             Ok(())
         } else {
             Err(CommandError::UnsavedChanges)
@@ -232,7 +230,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
     }
 }
 
-pub type CommandFn = fn(ctx: &mut CommandContext) -> Result<(), CommandError>;
+pub type CommandFn = fn(ctx: &mut ApplicationContext, io: &mut CommandContext) -> Result<(), CommandError>;
 
 pub struct Command {
     plugin_handle: Option<PluginHandle>,
@@ -379,16 +377,14 @@ impl CommandManager {
     }
 
     pub fn eval_and_write_error(
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
+        ctx: &mut ApplicationContext,
         client_handle: Option<ClientHandle>,
         command: &mut String,
     ) -> EditorControlFlow {
-        match Self::try_eval(editor, platform, clients, client_handle, command) {
+        match Self::try_eval(ctx, client_handle, command) {
             Ok(flow) => flow,
             Err(error) => {
-                editor
+                ctx.editor
                     .status_bar
                     .write(MessageKind::Error)
                     .fmt(format_args!("{}", error));
@@ -398,28 +394,24 @@ impl CommandManager {
     }
 
     pub fn try_eval(
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
+        ctx: &mut ApplicationContext,
         client_handle: Option<ClientHandle>,
         command: &mut String,
     ) -> Result<EditorControlFlow, CommandError> {
         if let Some(alias) = CommandTokenizer(command).next() {
             let alias = alias.trim_end_matches('!');
-            if let Some(aliased) = editor.commands.aliases.find(alias) {
+            if let Some(aliased) = ctx.editor.commands.aliases.find(alias) {
                 let start = alias.as_ptr() as usize - command.as_ptr() as usize;
                 let end = start + alias.len();
                 command.replace_range(start..end, aliased);
             }
         }
 
-        Self::eval(editor, platform, clients, client_handle, command)
+        Self::eval(ctx, client_handle, command)
     }
 
     fn eval(
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
+        ctx: &mut ApplicationContext,
         client_handle: Option<ClientHandle>,
         command: &str,
     ) -> Result<EditorControlFlow, CommandError> {
@@ -432,23 +424,20 @@ impl CommandManager {
             Some(command) => (command, true),
             None => (command, false),
         };
-        let (plugin_handle, command_fn) = match editor.commands.find_command(command) {
+        let (plugin_handle, command_fn) = match ctx.editor.commands.find_command(command) {
             Some(command) => (command.plugin_handle, command.command_fn),
             None => return Err(CommandError::NoSuchCommand),
         };
 
-        let mut ctx = CommandContext {
-            editor,
-            platform,
-            clients,
+        let mut io = CommandContext {
             client_handle,
             plugin_handle,
             args: CommandArgs(tokenizer),
             bang,
             flow: EditorControlFlow::Continue,
         };
-        command_fn(&mut ctx)?;
-        Ok(ctx.flow)
+        command_fn(ctx, &mut io)?;
+        Ok(io.flow)
     }
 }
 

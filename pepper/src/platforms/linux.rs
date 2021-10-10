@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    application::{ApplicationContext, ClientApplication, ServerApplication},
+    application::{ApplicationConfig, ClientApplication, ServerApplication},
     client::ClientHandle,
     platform::{Key, PlatformEvent, PlatformProcessHandle, PlatformRequest},
     Args,
@@ -25,8 +25,8 @@ const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn try_launching_debugger() {}
 
-pub fn main(ctx: ApplicationContext) {
-    run(ctx, run_server, run_client);
+pub fn main(config: ApplicationConfig) {
+    run(config, run_server, run_client);
 }
 
 fn errno() -> libc::c_int {
@@ -138,12 +138,12 @@ impl Drop for Epoll {
     }
 }
 
-fn run_server(ctx: ApplicationContext, listener: UnixListener) {
+fn run_server(config: ApplicationConfig, listener: UnixListener) {
     use io::Write;
 
     const NONE_PROCESS: Option<Process> = None;
 
-    let mut application = match ServerApplication::new(ctx) {
+    let mut application = match ServerApplication::new(config) {
         Some(application) => application,
         None => return,
     };
@@ -198,7 +198,7 @@ fn run_server(ctx: ApplicationContext, listener: UnixListener) {
                         let handle = ClientHandle::from_index(index).unwrap();
                         match read_from_connection(
                             connection,
-                            &mut application.platform.buf_pool,
+                            &mut application.ctx.platform.buf_pool,
                             ServerApplication::connection_buffer_len(),
                         ) {
                             Ok(buf) => events.push(PlatformEvent::ConnectionOutput { handle, buf }),
@@ -214,7 +214,7 @@ fn run_server(ctx: ApplicationContext, listener: UnixListener) {
                     let index = event_index - PROCESSES_START_INDEX;
                     if let Some(ref mut process) = processes[index] {
                         let tag = process.tag();
-                        match process.read(&mut application.platform.buf_pool) {
+                        match process.read(&mut application.ctx.platform.buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
                             Err(()) => {
@@ -233,7 +233,7 @@ fn run_server(ctx: ApplicationContext, listener: UnixListener) {
         }
 
         application.update(events.drain(..));
-        let mut requests = application.platform.requests.drain();
+        let mut requests = application.ctx.platform.requests.drain();
         while let Some(request) = requests.next() {
             match request {
                 PlatformRequest::Quit => {
@@ -241,7 +241,7 @@ fn run_server(ctx: ApplicationContext, listener: UnixListener) {
                         if let PlatformRequest::WriteToClient { buf, .. }
                         | PlatformRequest::WriteToProcess { buf, .. } = request
                         {
-                            application.platform.buf_pool.release(buf);
+                            application.ctx.platform.buf_pool.release(buf);
                         }
                     }
                     return;
@@ -256,7 +256,7 @@ fn run_server(ctx: ApplicationContext, listener: UnixListener) {
                             events.push(PlatformEvent::ConnectionClose { handle });
                         }
                     }
-                    application.platform.buf_pool.release(buf);
+                    application.ctx.platform.buf_pool.release(buf);
                 }
                 PlatformRequest::CloseClient { handle } => {
                     let index = handle.into_index();
@@ -305,7 +305,7 @@ fn run_server(ctx: ApplicationContext, listener: UnixListener) {
                             events.push(PlatformEvent::ProcessExit { tag });
                         }
                     }
-                    application.platform.buf_pool.release(buf);
+                    application.ctx.platform.buf_pool.release(buf);
                 }
                 PlatformRequest::CloseProcessInput { handle } => {
                     if let Some(ref mut process) = processes[handle.0 as usize] {

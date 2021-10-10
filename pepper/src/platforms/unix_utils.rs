@@ -12,15 +12,15 @@ use std::{
 };
 
 use crate::{
-    application::{ApplicationContext, ClientApplication},
+    application::{ApplicationConfig, ClientApplication},
     editor_utils::hash_bytes,
     platform::{BufPool, Key, PooledBuf, ProcessTag},
     Args,
 };
 
 pub fn run(
-    ctx: ApplicationContext,
-    server_fn: fn(ApplicationContext, UnixListener),
+    config: ApplicationConfig,
+    server_fn: fn(ApplicationConfig, UnixListener),
     client_fn: fn(Args, UnixStream),
 ) {
     let mut session_path = String::new();
@@ -28,7 +28,7 @@ pub fn run(
     session_path.push_str(env!("CARGO_PKG_NAME"));
     session_path.push('/');
 
-    match ctx.args.session {
+    match config.args.session {
         Some(ref name) => session_path.push_str(name),
         None => {
             use io::Write;
@@ -46,7 +46,7 @@ pub fn run(
         }
     }
 
-    if ctx.args.print_session {
+    if config.args.print_session {
         print!("{}", session_path);
         return;
     }
@@ -64,22 +64,22 @@ pub fn run(
         UnixListener::bind(session_path).expect("could not start unix domain socket server")
     }
 
-    if ctx.args.server {
-        server_fn(ctx, start_server(session_path));
+    if config.args.server {
+        server_fn(config, start_server(session_path));
         let _ = fs::remove_file(session_path);
     } else {
         match UnixStream::connect(session_path) {
-            Ok(stream) => client_fn(ctx.args, stream),
+            Ok(stream) => client_fn(config.args, stream),
             Err(_) => match unsafe { libc::fork() } {
                 -1 => panic!("could not start server"),
                 0 => {
-                    server_fn(ctx, start_server(session_path));
+                    server_fn(config, start_server(session_path));
                     let _ = fs::remove_file(session_path);
                 }
                 _ => loop {
                     match UnixStream::connect(session_path) {
                         Ok(stream) => {
-                            client_fn(ctx.args, stream);
+                            client_fn(config.args, stream);
                             break;
                         }
                         Err(_) => std::thread::sleep(Duration::from_millis(100)),

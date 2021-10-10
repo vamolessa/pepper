@@ -1,7 +1,8 @@
 use crate::{
     client::{ClientHandle, ClientManager},
-    editor::{Editor, EditorControlFlow, KeysIterator},
+    editor::{ApplicationContext, Editor, EditorControlFlow, KeysIterator},
     platform::Platform,
+    plugin::PluginCollection,
 };
 
 mod command;
@@ -10,17 +11,10 @@ mod normal;
 pub(crate) mod picker;
 pub(crate) mod read_line;
 
-pub struct ModeContext<'a> {
-    pub editor: &'a mut Editor,
-    pub platform: &'a mut Platform,
-    pub clients: &'a mut ClientManager,
-    pub client_handle: ClientHandle,
-}
-
 pub(crate) trait ModeState {
-    fn on_enter(ctx: &mut ModeContext);
-    fn on_exit(ctx: &mut ModeContext);
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow>;
+    fn on_enter(ctx: &mut ApplicationContext);
+    fn on_exit(ctx: &mut ApplicationContext);
+    fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -54,7 +48,7 @@ impl Mode {
         self.kind
     }
 
-    pub fn change_to(ctx: &mut ModeContext, next: ModeKind) {
+    pub fn change_to(ctx: &mut ApplicationContext, next: ModeKind) {
         if ctx.editor.mode.kind == next {
             return;
         }
@@ -79,15 +73,16 @@ impl Mode {
     }
 
     pub(crate) fn on_client_keys(
-        ctx: &mut ModeContext,
+        ctx: &mut ApplicationContext,
+        client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow> {
         match ctx.editor.mode.kind {
-            ModeKind::Normal => normal::State::on_client_keys(ctx, keys),
-            ModeKind::Insert => insert::State::on_client_keys(ctx, keys),
-            ModeKind::Command => command::State::on_client_keys(ctx, keys),
-            ModeKind::ReadLine => read_line::State::on_client_keys(ctx, keys),
-            ModeKind::Picker => picker::State::on_client_keys(ctx, keys),
+            ModeKind::Normal => normal::State::on_client_keys(ctx, client_handle, keys),
+            ModeKind::Insert => insert::State::on_client_keys(ctx, client_handle, keys),
+            ModeKind::Command => command::State::on_client_keys(ctx, client_handle, keys),
+            ModeKind::ReadLine => read_line::State::on_client_keys(ctx, client_handle, keys),
+            ModeKind::Picker => picker::State::on_client_keys(ctx, client_handle, keys),
         }
     }
 }

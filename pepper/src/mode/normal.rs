@@ -1,14 +1,15 @@
 use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
+    client::ClientHandle,
     buffer::{find_path_and_position_at, parse_path_and_position, BufferContent, BufferProperties},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     cursor::{Cursor, CursorCollection},
-    editor::{Editor, EditorControlFlow, KeysIterator},
+    editor::{ApplicationContext, Editor, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, MessageKind},
     help::HELP_PREFIX,
-    mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeState},
+    mode::{picker, read_line, Mode, ModeKind, ModeState},
     navigation_history::{NavigationHistory, NavigationMovement},
     pattern::PatternEscaper,
     platform::Key,
@@ -74,7 +75,7 @@ impl State {
     }
 
     fn on_client_keys_with_buffer_view(
-        ctx: &mut ModeContext,
+        ctx: &mut ApplicationContext,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
     ) -> Option<EditorControlFlow> {
@@ -119,17 +120,17 @@ impl State {
             ),
             Key::Char('n') => {
                 let count = state.count.max(1);
-                move_to_search_match(ctx, |len, r| {
+                move_to_search_match(ctx, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index + count as usize,
                         Err(index) => index + count as usize - 1,
                     };
-                    index % len
+                    index % len, client_handle: ClientHandle
                 });
             }
             Key::Char('p') => {
                 let count = state.count.max(1) as usize;
-                move_to_search_match(ctx, |len, r| {
+                move_to_search_match(ctx, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
@@ -138,7 +139,7 @@ impl State {
                 });
             }
             Key::Char('N') => {
-                search_word_or_move_to_it(ctx, |len, r| {
+                search_word_or_move_to_it(ctx, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index + 1,
                         Err(index) => index,
@@ -147,7 +148,7 @@ impl State {
                 });
             }
             Key::Char('P') => {
-                search_word_or_move_to_it(ctx, |len, r| {
+                search_word_or_move_to_it(ctx, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
@@ -552,7 +553,7 @@ impl State {
                     Key::None => return None,
                     Key::Char(ch) => {
                         state.last_char_jump = CharJump::Inclusive(ch);
-                        find_char(ctx, false);
+                        find_char(ctx, client_handle, false);
                     }
                     _ => (),
                 },
@@ -560,7 +561,7 @@ impl State {
                     Key::None => return None,
                     Key::Char(ch) => {
                         state.last_char_jump = CharJump::Exclusive(ch);
-                        find_char(ctx, false);
+                        find_char(ctx, client_handle, false);
                     }
                     _ => (),
                 },
@@ -572,7 +573,7 @@ impl State {
                     Key::None => return None,
                     Key::Char(ch) => {
                         state.last_char_jump = CharJump::Exclusive(ch);
-                        find_char(ctx, true);
+                        find_char(ctx, client_handle, true);
                     }
                     _ => (),
                 },
@@ -580,17 +581,17 @@ impl State {
                     Key::None => return None,
                     Key::Char(ch) => {
                         state.last_char_jump = CharJump::Inclusive(ch);
-                        find_char(ctx, true);
+                        find_char(ctx, client_handle, true);
                     }
                     _ => (),
                 },
                 _ => (),
             },
             Key::Char('{') => {
-                find_char(ctx, false);
+                find_char(ctx, client_handle, false);
             }
             Key::Char('}') => {
-                find_char(ctx, true);
+                find_char(ctx, client_handle, true);
             }
             Key::Char('v') => {
                 state.movement_kind = match state.movement_kind {
@@ -1032,10 +1033,10 @@ impl State {
             Key::Char('r') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return None,
                 Key::Char('n') => {
-                    move_to_diagnostic(ctx, true);
+                    move_to_diagnostic(ctx, client_handle, true);
                 }
                 Key::Char('p') => {
-                    move_to_diagnostic(ctx, false);
+                    move_to_diagnostic(ctx, client_handle, false);
                 }
                 _ => (),
             },
@@ -1152,18 +1153,18 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ModeContext) {
+    fn on_enter(ctx: &mut ApplicationContext) {
         let state = &mut ctx.editor.mode.normal_state;
         state.movement_kind = CursorMovementKind::PositionAndAnchor;
         state.is_recording_auto_macro = false;
         state.count = 0;
     }
 
-    fn on_exit(_: &mut ModeContext) {}
+    fn on_exit(_: &mut ApplicationContext) {}
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
-        fn show_hovered_diagnostic(ctx: &mut ModeContext) {
-            let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+    fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
+        fn show_hovered_diagnostic(ctx: &mut ApplicationContext) {
+            let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
                 Some(handle) => handle,
                 None => return,
             };
@@ -1225,10 +1226,9 @@ impl ModeState for State {
                             for _ in 0..state.count.max(1) {
                                 let keys = ctx.editor.registers.get(key);
                                 match ctx.editor.buffered_keys.parse(keys) {
-                                    Ok(keys) => match ctx.editor.execute_keys(
-                                        ctx.platform,
-                                        ctx.clients,
-                                        ctx.client_handle,
+                                    Ok(keys) => match Editor::execute_keys(
+                                        ctx,
+                                        client_handle,
                                         keys,
                                     ) {
                                         EditorControlFlow::Continue => (),
@@ -1256,13 +1256,13 @@ impl ModeState for State {
                         let (path, position) = parse_path_and_position(register);
                         let path = ctx.editor.string_pool.acquire_with(path);
                         match ctx.editor.buffer_view_handle_from_path(
-                            ctx.client_handle,
+                            client_handle,
                             Path::new(&path),
                             BufferProperties::text(),
                             false,
                         ) {
                             Ok(handle) => {
-                                let client = ctx.clients.get_mut(ctx.client_handle);
+                                let client = ctx.clients.get_mut(client_handle);
                                 client.set_buffer_view_handle(
                                     Some(handle),
                                     &ctx.editor.buffer_views,
@@ -1308,7 +1308,7 @@ impl ModeState for State {
                         Key::Char('b') => {
                             handled_keys = true;
                             NavigationHistory::move_to_previous_buffer(
-                                ctx.clients.get_mut(ctx.client_handle),
+                                ctx.clients.get_mut(client_handle),
                                 ctx.editor,
                             );
                         }
@@ -1332,7 +1332,7 @@ impl ModeState for State {
                                 &mut ctx.editor.events,
                             );
 
-                            let client = ctx.clients.get_mut(ctx.client_handle);
+                            let client = ctx.clients.get_mut(client_handle);
                             client.set_buffer_view_handle_no_history(
                                 buffer_view_handle,
                                 &mut ctx.editor.events,
@@ -1345,7 +1345,7 @@ impl ModeState for State {
             Key::Ctrl('n') => {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 NavigationHistory::move_in_history(
-                    ctx.clients.get_mut(ctx.client_handle),
+                    ctx.clients.get_mut(client_handle),
                     ctx.editor,
                     NavigationMovement::Forward,
                 );
@@ -1354,7 +1354,7 @@ impl ModeState for State {
             Key::Ctrl('p') => {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 NavigationHistory::move_in_history(
-                    ctx.clients.get_mut(ctx.client_handle),
+                    ctx.clients.get_mut(client_handle),
                     ctx.editor,
                     NavigationMovement::Backward,
                 );
@@ -1375,7 +1375,7 @@ impl ModeState for State {
             state.count = 0;
             Some(EditorControlFlow::Continue)
         } else {
-            match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+            match ctx.clients.get(client_handle).buffer_view_handle() {
                 Some(buffer_view_handle) => {
                     keys.index = previous_index;
                     let op = Self::on_client_keys_with_buffer_view(ctx, keys, buffer_view_handle);
@@ -1388,7 +1388,7 @@ impl ModeState for State {
     }
 }
 
-fn copy_text(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle, text: &mut String) {
+fn copy_text(ctx: &mut ApplicationContext, buffer_view_handle: BufferViewHandle, text: &mut String) {
     let state = &mut ctx.editor.mode.normal_state;
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     let mut text_ranges = [(0, 0); CursorCollection::capacity()];
@@ -1404,7 +1404,7 @@ fn copy_text(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle, text: 
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
 
-fn paste_text(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle, text: &str) {
+fn paste_text(ctx: &mut ApplicationContext, buffer_view_handle: BufferViewHandle, text: &str) {
     let state = &mut ctx.editor.mode.normal_state;
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     buffer_view.delete_text_in_cursor_ranges(
@@ -1416,7 +1416,7 @@ fn paste_text(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle, text:
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
     state.is_recording_auto_macro = false;
 
-    ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
+    ctx.trigger_event_handlers();
 
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     let hash = ctx.editor.mode.normal_state.last_copy_hash;
@@ -1449,7 +1449,7 @@ fn paste_text(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle, text:
         .commit_edits();
 }
 
-fn find_char(ctx: &mut ModeContext, forward: bool) {
+fn find_char(ctx: &mut ApplicationContext, client_handle: ClientHandle, forward: bool) {
     let state = &ctx.editor.mode.normal_state;
     let skip;
     let ch;
@@ -1468,7 +1468,7 @@ fn find_char(ctx: &mut ModeContext, forward: bool) {
         }
     };
 
-    let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+    let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
         Some(handle) => handle,
         None => return,
     };
@@ -1507,16 +1507,16 @@ fn find_char(ctx: &mut ModeContext, forward: bool) {
     }
 }
 
-fn move_to_search_match<F>(ctx: &mut ModeContext, index_selector: F)
+fn move_to_search_match<F>(ctx: &mut ApplicationContext, client_handle: ClientHandle, index_selector: F)
 where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
     NavigationHistory::save_snapshot(
-        ctx.clients.get_mut(ctx.client_handle),
+        ctx.clients.get_mut(client_handle),
         &ctx.editor.buffer_views,
     );
 
-    let handle = match ctx.clients.get_mut(ctx.client_handle).buffer_view_handle() {
+    let handle = match ctx.clients.get_mut(client_handle).buffer_view_handle() {
         Some(handle) => handle,
         None => return,
     };
@@ -1568,10 +1568,11 @@ where
 }
 
 fn search_word_or_move_to_it(
-    ctx: &mut ModeContext,
+    ctx: &mut ApplicationContext,
+    client_handle: ClientHandle,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
 ) {
-    let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+    let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
         Some(handle) => handle,
         None => return,
     };
@@ -1627,7 +1628,7 @@ fn search_word_or_move_to_it(
         buffer.set_search(&ctx.editor.aux_pattern);
     } else {
         NavigationHistory::save_snapshot(
-            ctx.clients.get_mut(ctx.client_handle),
+            ctx.clients.get_mut(client_handle),
             &ctx.editor.buffer_views,
         );
 
@@ -1658,8 +1659,8 @@ fn search_word_or_move_to_it(
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
 
-fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
-    let handle = match ctx.clients.get(ctx.client_handle).buffer_view_handle() {
+fn move_to_diagnostic(ctx: &mut ApplicationContext, client_handle: ClientHandle, forward: bool) {
+    let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
         Some(handle) => handle,
         None => return,
     };
@@ -1686,7 +1687,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     };
 
     NavigationHistory::save_snapshot(
-        ctx.clients.get_mut(ctx.client_handle),
+        ctx.clients.get_mut(client_handle),
         &ctx.editor.buffer_views,
     );
 

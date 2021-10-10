@@ -19,7 +19,7 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind},
     pattern::Pattern,
     picker::Picker,
-    platform::{Key, Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
+    platform::{Key, Platform, PlatformRequest},
     plugin::PluginCollection,
     register::{RegisterCollection, RegisterKey},
     syntax::{HighlightResult, SyntaxCollection},
@@ -83,6 +83,20 @@ impl BufferedKeys {
     }
 }
 
+// TODO: rename to EditorContext
+pub struct ApplicationContext {
+    pub editor: Editor,
+    pub platform: Platform,
+    pub clients: ClientManager,
+    pub plugins: PluginCollection,
+}
+impl ApplicationContext {
+    pub fn trigger_event_handlers(&mut self) {
+        // TODO: move that code into here
+        self.editor.trigger_event_handlers(&mut self.platform, &mut self.clients, &mut self.plugins);
+    }
+}
+
 pub struct Editor {
     pub current_directory: PathBuf,
     pub config: Config,
@@ -106,7 +120,6 @@ pub struct Editor {
     pub aux_pattern: Pattern,
 
     pub commands: CommandManager,
-    pub plugins: PluginCollection,
     pub events: EditorEventQueue,
 }
 impl Editor {
@@ -135,7 +148,6 @@ impl Editor {
             aux_pattern: Pattern::new(),
 
             commands: CommandManager::new(),
-            plugins: PluginCollection::default(),
             events: EditorEventQueue::default(),
         }
     }
@@ -178,64 +190,61 @@ impl Editor {
     }
 
     pub fn execute_keys(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
+        ctx: &mut ApplicationContext,
         client_handle: ClientHandle,
         mut keys: KeysIterator,
     ) -> EditorControlFlow {
         let start_index = keys.index;
 
-        match self
+        match ctx.editor
             .keymaps
-            .matches(self.mode.kind(), &self.buffered_keys.0[start_index..])
+            .matches(ctx.editor.mode.kind(), &ctx.editor.buffered_keys.0[start_index..])
         {
             MatchResult::None => (),
             MatchResult::Prefix => return EditorControlFlow::Continue,
             MatchResult::ReplaceWith(replaced_keys) => {
-                self.buffered_keys.0.truncate(start_index);
-                self.buffered_keys.0.extend_from_slice(replaced_keys);
+                ctx.editor.buffered_keys.0.truncate(start_index);
+                ctx.editor.buffered_keys.0.extend_from_slice(replaced_keys);
             }
         }
 
         loop {
-            if keys.index == self.buffered_keys.0.len() {
+            if keys.index == ctx.editor.buffered_keys.0.len() {
                 break;
             }
-            let from_index = self.recording_macro.map(|_| keys.index);
+            let from_index = ctx.editor.recording_macro.map(|_| keys.index);
 
-            let mut ctx = ModeContext {
-                editor: self,
-                platform,
-                clients,
-                client_handle,
-            };
-            match Mode::on_client_keys(&mut ctx, &mut keys) {
+            match Mode::on_client_keys(ctx, client_handle, &mut keys) {
                 None => return EditorControlFlow::Continue,
                 Some(EditorControlFlow::Continue) => (),
                 Some(flow) => {
-                    Mode::change_to(&mut ctx, ModeKind::default());
-                    self.buffered_keys.0.truncate(start_index);
+                    Mode::change_to(ctx, ModeKind::default());
+                    ctx.editor.buffered_keys.0.truncate(start_index);
                     return flow;
                 }
             }
 
-            if let (Some(from_index), Some(register_key)) = (from_index, self.recording_macro) {
-                for key in &self.buffered_keys.0[from_index..keys.index] {
+            if let (Some(from_index), Some(register_key)) = (from_index, ctx.editor.recording_macro) {
+                for key in &ctx.editor.buffered_keys.0[from_index..keys.index] {
                     use fmt::Write;
-                    let register = self.registers.get_mut(register_key);
+                    let register = ctx.editor.registers.get_mut(register_key);
                     let _ = write!(register, "{}", key);
                 }
             }
 
-            self.trigger_event_handlers(platform, clients);
+            ctx.trigger_event_handlers();
         }
 
-        self.buffered_keys.0.truncate(start_index);
+        ctx.editor.buffered_keys.0.truncate(start_index);
         EditorControlFlow::Continue
     }
 
-    pub fn trigger_event_handlers(&mut self, platform: &mut Platform, clients: &mut ClientManager) {
+    pub fn trigger_event_handlers(
+        &mut self,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        plugins: &mut PluginCollection,
+    ) {
         loop {
             self.events.flip();
             let mut events = EditorEventIter::new();
@@ -243,7 +252,7 @@ impl Editor {
                 return;
             }
 
-            PluginCollection::on_editor_events(self, platform, clients);
+            plugins.on_editor_events(self, platform, clients);
 
             let mut events = EditorEventIter::new();
             while let Some(event) = events.next(&self.events) {
@@ -356,9 +365,7 @@ impl Editor {
     }
 
     pub(crate) fn on_client_event(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
+        ctx: &mut ApplicationContext,
         client_handle: ClientHandle,
         event: ClientEvent,
     ) -> EditorControlFlow {
@@ -366,24 +373,18 @@ impl Editor {
             ClientEvent::Key(target, key) => {
                 let client_handle = match target {
                     TargetClient::Sender => client_handle,
-                    TargetClient::Focused => match clients.focused_client() {
+                    TargetClient::Focused => match ctx.clients.focused_client() {
                         Some(handle) => handle,
                         None => return EditorControlFlow::Continue,
                     },
                 };
 
-                if clients.focus_client(client_handle) {
+                if ctx.clients.focus_client(client_handle) {
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
 
                     if self.mode.kind() == ModeKind::Insert {
-                        let mut ctx = ModeContext {
-                            editor: self,
-                            platform,
-                            clients,
-                            client_handle,
-                        };
-                        Mode::change_to(&mut ctx, ModeKind::default());
+                        Mode::change_to(ctx, ModeKind::default());
                     }
                 }
 
@@ -391,17 +392,21 @@ impl Editor {
                     self.status_bar.clear();
                 }
                 self.buffered_keys.0.push(key);
-                self.execute_keys(platform, clients, client_handle, KeysIterator { index: 0 })
+                self.execute_keys(
+                    ctx,
+                    client_handle,
+                    KeysIterator { index: 0 },
+                )
             }
             ClientEvent::Resize(width, height) => {
-                let client = clients.get_mut(client_handle);
+                let client = ctx.clients.get_mut(client_handle);
                 client.viewport_size = (width, height);
                 EditorControlFlow::Continue
             }
             ClientEvent::Command(target, command) => {
                 let client_handle = match target {
                     TargetClient::Sender => client_handle,
-                    TargetClient::Focused => match clients.focused_client() {
+                    TargetClient::Focused => match ctx.clients.focused_client() {
                         Some(handle) => handle,
                         None => return EditorControlFlow::Continue,
                     },
@@ -409,9 +414,7 @@ impl Editor {
 
                 let mut command = self.string_pool.acquire_with(command);
                 let flow = CommandManager::eval_and_write_error(
-                    self,
-                    platform,
-                    clients,
+                    ctx,
                     Some(client_handle),
                     &mut command,
                 );
@@ -421,87 +424,21 @@ impl Editor {
             ClientEvent::StdinInput(target, bytes) => {
                 let client_handle = match target {
                     TargetClient::Sender => client_handle,
-                    TargetClient::Focused => match clients.focused_client() {
+                    TargetClient::Focused => match ctx.clients.focused_client() {
                         Some(handle) => handle,
                         None => return EditorControlFlow::Continue,
                     },
                 };
 
-                clients.get_mut(client_handle).on_stdin_input(self, bytes);
-                self.trigger_event_handlers(platform, clients);
+                ctx.clients.get_mut(client_handle).on_stdin_input(self, bytes);
+                ctx.trigger_event_handlers();
                 EditorControlFlow::Continue
             }
         }
     }
 
-    pub(crate) fn on_idle(&mut self, clients: &mut ClientManager, platform: &mut Platform) {
+    pub(crate) fn on_idle(&mut self) {
         self.events.enqueue(EditorEvent::Idle);
-        self.trigger_event_handlers(platform, clients);
-    }
-
-    pub(crate) fn on_process_spawned(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        tag: ProcessTag,
-        handle: PlatformProcessHandle,
-    ) {
-        match tag {
-            ProcessTag::Buffer(index) => self.buffers.on_process_spawned(platform, index, handle),
-            ProcessTag::FindFiles => (),
-            ProcessTag::Plugin(index) => {
-                PluginCollection::on_process_spawned(self, platform, clients, index, handle)
-            }
-        }
-    }
-
-    pub(crate) fn on_process_output(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        tag: ProcessTag,
-        bytes: &[u8],
-    ) {
-        match tag {
-            ProcessTag::Buffer(index) => self.buffers.on_process_output(
-                &mut self.word_database,
-                index,
-                bytes,
-                &mut self.events,
-            ),
-            ProcessTag::FindFiles => {
-                self.mode
-                    .picker_state
-                    .on_process_output(&mut self.picker, &self.read_line, bytes)
-            }
-            ProcessTag::Plugin(index) => {
-                PluginCollection::on_process_output(self, platform, clients, index, bytes)
-            }
-        }
-
-        self.trigger_event_handlers(platform, clients);
-    }
-
-    pub(crate) fn on_process_exit(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        tag: ProcessTag,
-    ) {
-        match tag {
-            ProcessTag::Buffer(index) => {
-                self.buffers
-                    .on_process_exit(&mut self.word_database, index, &mut self.events)
-            }
-            ProcessTag::FindFiles => self
-                .mode
-                .picker_state
-                .on_process_exit(&mut self.picker, &self.read_line),
-            ProcessTag::Plugin(index) => {
-                PluginCollection::on_process_exit(self, platform, clients, index)
-            }
-        }
-
-        self.trigger_event_handlers(platform, clients);
     }
 }
+

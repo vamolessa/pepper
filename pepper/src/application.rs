@@ -2,12 +2,12 @@ use std::{env, fs, io, mem::ManuallyDrop, panic, path::Path, time::Duration};
 
 use crate::{
     client::ClientManager,
-    editor::{Editor, EditorControlFlow},
+    editor::{ApplicationContext, Editor, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     help,
-    platform::{Key, Platform, PlatformEvent, PlatformRequest},
-    plugin::{PluginContext, PluginDefinition},
+    platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
+    plugin::{PluginCollection, PluginContext, PluginDefinition},
     serialization::{DeserializeError, Serialize},
     ui, Args, ResourceFile,
 };
@@ -18,13 +18,14 @@ pub struct OnPanicConfig {
     pub try_attaching_debugger: bool,
 }
 
-pub struct ApplicationContext {
+// TODO: rename bake to ApplicationContext
+pub struct ApplicationConfig {
     pub args: Args,
     pub configs: Vec<ResourceFile>,
     pub plugin_definitions: Vec<&'static dyn PluginDefinition>,
     pub on_panic_config: OnPanicConfig,
 }
-impl Default for ApplicationContext {
+impl Default for ApplicationConfig {
     fn default() -> Self {
         Self {
             args: Args::parse(),
@@ -38,10 +39,8 @@ impl Default for ApplicationContext {
     }
 }
 
-pub struct ServerApplication {
-    editor: Editor,
-    pub platform: Platform,
-    clients: ClientManager,
+pub(crate) struct ServerApplication {
+    pub ctx: ApplicationContext,
     client_event_receiver: ClientEventReceiver,
 }
 impl ServerApplication {
@@ -53,53 +52,49 @@ impl ServerApplication {
         Duration::from_secs(1)
     }
 
-    pub fn new(ctx: ApplicationContext) -> Option<Self> {
+    pub fn new(config: ApplicationConfig) -> Option<Self> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
-        let mut editor = Editor::new(current_dir);
-        let mut platform = Platform::default();
-        let mut clients = ClientManager::default();
+        let mut ctx = ApplicationContext {
+            editor: Editor::new(current_dir),
+            platform: Platform::default(),
+            clients: ClientManager::default(),
+            plugins: PluginCollection::default(),
+        };
 
-        for definition in ctx.plugin_definitions {
+        for definition in config.plugin_definitions {
             help::add_help_pages(definition.help_pages());
 
-            let plugin_handle = editor.plugins.next_handle();
-            let mut ctx = PluginContext {
-                editor: &mut editor,
-                platform: &mut platform,
-                clients: &mut clients,
-                plugin_handle,
-            };
-            let plugin = definition.instantiate(&mut ctx);
-            editor.plugins.add(plugin);
+            let plugin_handle = ctx.plugins.next_handle();
+            let plugin = definition.instantiate(&mut ctx, plugin_handle);
+            ctx.plugins.add(plugin);
         }
 
-        for config in &ctx.configs {
-            load_config(
-                &mut editor,
-                &mut platform,
-                &mut clients,
+        for config in &config.configs {
+            match load_config(
+                &mut ctx,
                 config.name,
                 config.content,
-            );
+            ) {
+                EditorControlFlow::Continue => (),
+                _ => return None,
+            };
         }
 
-        for config in ctx.args.configs {
+        for config in config.args.configs {
             let path = Path::new(&config.path);
             if config.suppress_file_not_found && !path.exists() {
                 continue;
             }
             match fs::read_to_string(path) {
                 Ok(source) => match load_config(
-                    &mut editor,
-                    &mut platform,
-                    &mut clients,
+                    &mut ctx,
                     &config.path,
                     &source,
                 ) {
                     EditorControlFlow::Continue => (),
                     _ => return None,
                 },
-                Err(_) => editor
+                Err(_) => ctx.editor
                     .status_bar
                     .write(MessageKind::Error)
                     .fmt(format_args!("could not load config '{}'", config.path)),
@@ -107,9 +102,7 @@ impl ServerApplication {
         }
 
         Some(Self {
-            editor,
-            platform,
-            clients,
+            ctx,
             client_event_receiver: ClientEventReceiver::default(),
         })
     }
@@ -120,12 +113,15 @@ impl ServerApplication {
     {
         for event in events {
             match event {
-                PlatformEvent::Idle => self.editor.on_idle(&mut self.clients, &mut self.platform),
-                PlatformEvent::ConnectionOpen { handle } => self.clients.on_client_joined(handle),
+                PlatformEvent::Idle => {
+                    self.ctx.editor.on_idle();
+                    self.ctx.trigger_event_handlers();
+                }
+                PlatformEvent::ConnectionOpen { handle } => self.ctx.clients.on_client_joined(handle),
                 PlatformEvent::ConnectionClose { handle } => {
-                    self.clients.on_client_left(handle);
-                    if self.clients.iter().next().is_none() {
-                        self.platform.requests.enqueue(PlatformRequest::Quit);
+                    self.ctx.clients.on_client_left(handle);
+                    if self.ctx.clients.iter().next().is_none() {
+                        self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
                         break;
                     }
                 }
@@ -133,75 +129,110 @@ impl ServerApplication {
                     let mut events = self
                         .client_event_receiver
                         .receive_events(handle, buf.as_bytes());
-                    self.platform.buf_pool.release(buf);
+                    self.ctx.platform.buf_pool.release(buf);
 
                     while let Some(event) = events.next(&self.client_event_receiver) {
-                        match self.editor.on_client_event(
-                            &mut self.platform,
-                            &mut self.clients,
+                        match Editor::on_client_event(
+                            &mut self.ctx,
                             handle,
                             event,
                         ) {
                             EditorControlFlow::Continue => (),
                             EditorControlFlow::Suspend => {
-                                let mut buf = self.platform.buf_pool.acquire();
+                                let mut buf = self.ctx.platform.buf_pool.acquire();
                                 ServerEvent::Suspend.serialize(buf.write());
-                                self.platform
+                                self.ctx.platform
                                     .requests
                                     .enqueue(PlatformRequest::WriteToClient { handle, buf });
                             }
                             EditorControlFlow::Quit => {
-                                self.platform
+                                self.ctx.platform
                                     .requests
                                     .enqueue(PlatformRequest::CloseClient { handle });
                                 break;
                             }
                             EditorControlFlow::QuitAll => {
-                                self.platform.requests.enqueue(PlatformRequest::Quit);
+                                self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
                                 break;
                             }
                         }
                     }
                     events.finish(&mut self.client_event_receiver);
                 }
-                PlatformEvent::ProcessSpawned { tag, handle } => self.editor.on_process_spawned(
-                    &mut self.platform,
-                    &mut self.clients,
-                    tag,
-                    handle,
-                ),
+                PlatformEvent::ProcessSpawned { tag, handle } => {
+                    match tag {
+                        ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_spawned(&mut self.ctx.platform, id, handle),
+                        ProcessTag::FindFiles => (),
+                        ProcessTag::Plugin(id) => {
+                            self.ctx.plugins.on_process_spawned(&mut self.ctx, id, handle)
+                        }
+                    }
+                    self.ctx.trigger_event_handlers();
+                }
                 PlatformEvent::ProcessOutput { tag, buf } => {
-                    self.editor.on_process_output(
-                        &mut self.platform,
-                        &mut self.clients,
-                        tag,
-                        buf.as_bytes(),
-                    );
-                    self.platform.buf_pool.release(buf);
+                    let bytes = buf.as_bytes();
+                    match tag {
+                        ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_output(
+                            &mut self.ctx.editor.word_database,
+                            id,
+                            bytes.,
+                            &mut self.ctx.editor.events,
+                        ),
+                        ProcessTag::FindFiles => {
+                            self.ctx.editor.mode
+                                .picker_state
+                                .on_process_output(&mut self.ctx.editor.picker, &self.ctx.editor.read_line, bytes)
+                        }
+                        ProcessTag::Plugin(id) => {
+                            self.ctx.plugins.on_process_output(
+                                &mut self.ctx,
+                                tag,
+                                bytes,
+                            )
+                        }
+                    }
+                    self.ctx.trigger_event_handlers();
+                    self.ctx.platform.buf_pool.release(buf);
                 }
                 PlatformEvent::ProcessExit { tag } => {
-                    self.editor
-                        .on_process_exit(&mut self.platform, &mut self.clients, tag)
+                    match tag {
+                        ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_exit(
+                            &mut self.ctx.editor.word_database,
+                            id,
+                            &mut self.ctx.editor.events,
+                        ),
+                        ProcessTag::FindFiles => self
+                            .ctx
+                            .editor
+                            .mode
+                            .picker_state
+                            .on_process_exit(&mut self.ctx.editor.picker, &self.ctx.editor.read_line),
+                        ProcessTag::Plugin(id) => self.plugins.on_process_exit(
+                            &mut self.ctx,
+                            id,
+                        ),
+                    }
+                    self.ctx.trigger_event_handlers();
                 }
             }
         }
 
-        let needs_redraw = self.editor.on_pre_render(&mut self.clients);
+        let needs_redraw = self.ctx.editor.on_pre_render(&mut self.ctx.clients);
         if needs_redraw {
-            self.platform.requests.enqueue(PlatformRequest::Redraw);
+            self.ctx.platform.requests.enqueue(PlatformRequest::Redraw);
         }
 
-        let focused_client_handle = self.clients.focused_client();
-        for c in self.clients.iter() {
+        let focused_client_handle = self.ctx.clients.focused_client();
+        for c in self.ctx.clients.iter() {
             if !c.has_ui() {
                 continue;
             }
 
-            let mut buf = self.platform.buf_pool.acquire();
+            let mut buf = self.ctx.platform.buf_pool.acquire();
             let write = buf.write_with_len(ServerEvent::bytes_variant_header_len());
             let ctx = ui::RenderContext {
-                editor: &self.editor,
-                clients: &self.clients,
+                editor: &self.ctx.editor,
+                clients: &self.ctx.clients,
                 viewport_size: c.viewport_size,
                 scroll: c.scroll,
                 draw_height: c.height,
@@ -211,14 +242,14 @@ impl ServerApplication {
             ServerEvent::Display(&[]).serialize_bytes_variant_header(write);
 
             let handle = c.handle();
-            self.platform
+            self.ctx.platform
                 .requests
                 .enqueue(PlatformRequest::WriteToClient { handle, buf });
         }
     }
 }
 
-pub struct ClientApplication {
+pub(crate) struct ClientApplication {
     target_client: TargetClient,
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
@@ -364,3 +395,4 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
+

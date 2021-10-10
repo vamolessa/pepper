@@ -6,6 +6,8 @@ use std::{
 
 use crate::{
     buffer::BufferHandle,
+    buffer_position::BufferPosition,
+    buffer_view::BufferViewHandle,
     client::ClientManager,
     editor::Editor,
     help,
@@ -24,6 +26,18 @@ pub trait PluginDefinition {
     fn help_pages(&self) -> &'static help::HelpPages;
 }
 
+pub enum CompletionFlow {
+    ForceCompletion,
+    Cancel,
+}
+
+pub struct CompletionContext {
+    pub buffer_handle: BufferHandle,
+    pub buffer_view_handle: BufferViewHandle,
+    pub position: BufferPosition,
+    pub last_char: char,
+}
+
 pub trait Plugin: 'static + AsAny {
     fn on_editor_events(&mut self, _: &mut PluginContext) {}
 
@@ -39,9 +53,15 @@ pub trait Plugin: 'static + AsAny {
 
     fn on_process_exit(&mut self, _: &mut PluginContext, _: ProcessId) {}
 
-    fn on_insert_char(&mut self, _: &mut PluginContext, _: char) {}
+    fn on_completion_flow(
+        &mut self,
+        _: &mut PluginContext,
+        _: &CompletionContext,
+    ) -> Option<CompletionFlow> {
+        None
+    }
 
-    fn on_completion(&mut self, _: &mut PluginContext, _: BufferHandle) -> bool {
+    fn on_completion(&mut self, _: &mut PluginContext, _: &CompletionContext) -> bool {
         false
     }
 }
@@ -60,33 +80,6 @@ where
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct PluginHandle(u32);
-
-pub struct PluginGuard<T> {
-    handle: PluginHandle,
-    plugin: Box<T>,
-}
-impl<T> Deref for PluginGuard<T>
-where
-    T: Plugin,
-{
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.plugin
-    }
-}
-impl<T> DerefMut for PluginGuard<T>
-where
-    T: Plugin,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.plugin
-    }
-}
-impl<T> Drop for PluginGuard<T> {
-    fn drop(&mut self) {
-        panic!("forgot to call 'release' on PluginCollection");
-    }
-}
 
 struct DummyPlugin;
 impl DummyPlugin {
@@ -115,10 +108,26 @@ impl PluginCollection {
         self.plugins.push(plugin);
     }
 
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut dyn Plugin> {
+        self.plugins.iter_mut().map(DerefMut::deref_mut)
+    }
+
     pub fn get_mut(&mut self, handle: PluginHandle) -> &mut dyn Plugin {
         self.plugins[handle.0 as usize].deref_mut()
     }
+    
+    pub fn get_mut_as<T>(&mut self, handle: PluginHandle) -> &mut T where T: Plugin {
+        match self.plugins[handle.0 as usize].as_any().downcast_mut::<T>() {
+            Some(plugin) => plugin,
+            None => panic!(
+                "plugin with handle {} was not of type '{}'",
+                handle.0,
+                std::any::type_name::<T>()
+            ),
+        }
+    }
 
+    /*
     pub fn acquire<T>(&mut self, handle: PluginHandle) -> PluginGuard<T>
     where
         T: Plugin,
@@ -141,19 +150,7 @@ impl PluginCollection {
 
         PluginGuard { plugin, handle }
     }
-
-    pub fn release<T>(&mut self, mut plugin: PluginGuard<T>)
-    where
-        T: Plugin,
-    {
-        let index = plugin.handle.0 as usize;
-        let plugin = unsafe {
-            let raw = plugin.plugin.deref_mut() as *mut dyn Plugin;
-            std::mem::forget(plugin);
-            Box::from_raw(raw)
-        };
-        self.plugins[index] = plugin;
-    }
+    */
 
     pub fn spawn_process(
         &mut self,
@@ -194,6 +191,7 @@ impl PluginCollection {
     }
 
     pub(crate) fn on_editor_events(
+        &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
@@ -214,6 +212,7 @@ impl PluginCollection {
     }
 
     pub(crate) fn on_process_spawned(
+        &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
@@ -226,6 +225,7 @@ impl PluginCollection {
     }
 
     pub(crate) fn on_process_output(
+        &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
@@ -238,6 +238,7 @@ impl PluginCollection {
     }
 
     pub(crate) fn on_process_exit(
+        &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
@@ -276,3 +277,4 @@ fn access_plugin_from_process<A>(
         &mut editor.plugins.plugins[plugin_handle.0 as usize],
     );
 }
+

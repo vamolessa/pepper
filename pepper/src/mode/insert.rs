@@ -7,7 +7,7 @@ use crate::{
     editor::{Editor, EditorControlFlow, KeysIterator},
     mode::{Mode, ModeContext, ModeKind, ModeState},
     platform::Key,
-    plugin::{PluginCollection, PluginHandle},
+    plugin::{CompletionContext, PluginContext, PluginCollection, PluginHandle},
     register::AUTO_MACRO_REGISTER,
     word_database::{WordIndicesIter, WordKind},
 };
@@ -266,6 +266,34 @@ fn cancel_completion(editor: &mut Editor) {
 }
 
 fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle) {
+    let state = &mut ctx.editor.mode.insert_state;
+
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+    let content = buffer.content();
+
+    let main_cursor_position = buffer_view.cursors.main_cursor().position;
+    let word = content.word_at(content.position_before(main_cursor_position));
+
+    let completion_ctx = CompletionContext {
+        buffer_handle: buffer.handle(),
+        buffer_view_handle,
+        position: main_cursor_position,
+        last_char: '\0',
+    };
+
+    for plugin in ctx.editor.plugins.iter_mut() {
+        //match plugin.on_completion_flow(
+        //
+    }
+
+    /*
+    if word.position > main_completion_position {
+        cancel_completion(ctx.editor);
+        return;
+    }
+    */
+
     /*
     let state = &mut ctx.editor.mode.insert_state;
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
@@ -302,7 +330,8 @@ fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandl
     let main_completion_position = match state.completion_positions.get(main_cursor_index) {
         Some(&position) => {
             if main_cursor_position < position {
-                return cancel_completion(ctx.editor);
+                cancel_completion(ctx.editor);
+                return;
             }
 
             position
@@ -312,7 +341,8 @@ fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandl
                 && (word.kind != WordKind::Identifier
                     || word.text.len() < ctx.editor.config.completion_min_len as _)
             {
-                return cancel_completion(ctx.editor);
+                cancel_completion(ctx.editor);
+                return;
             }
 
             state.completion_positions.clear();
@@ -348,7 +378,8 @@ fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandl
     };
 
     if word.position > main_completion_position {
-        return cancel_completion(ctx.editor);
+        cancel_completion(ctx.editor);
+        return;
     }
 
     match ctx.editor.mode.insert_state.lsp_client_handle {
@@ -425,3 +456,4 @@ fn apply_completion(
         ctx.editor.string_pool.release(completion);
     */
 }
+
