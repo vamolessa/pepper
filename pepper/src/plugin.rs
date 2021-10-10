@@ -1,8 +1,4 @@
-use std::{
-    any::Any,
-    ops::{Deref, DerefMut},
-    process::Command,
-};
+use std::{any::Any, ops::DerefMut, process::Command};
 
 use crate::{
     buffer::BufferHandle,

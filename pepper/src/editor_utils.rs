@@ -1,9 +1,8 @@
 use std::{fmt, process::Command};
 
 use crate::{
-    client::ClientManager,
     command::{CommandManager, CommandTokenizer},
-    editor::{ApplicationContext, BufferedKeys, Editor, EditorControlFlow, KeysIterator},
+    editor::{ApplicationContext, BufferedKeys, EditorControlFlow, KeysIterator},
     platform::{Key, Platform},
     word_database::{WordIter, WordKind},
 };

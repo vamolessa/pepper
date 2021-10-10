@@ -1,8 +1,6 @@
 use crate::{
-    client::{ClientHandle, ClientManager},
-    editor::{ApplicationContext, Editor, EditorControlFlow, KeysIterator},
-    platform::Platform,
-    plugin::PluginCollection,
+    client::ClientHandle,
+    editor::{ApplicationContext, EditorControlFlow, KeysIterator},
 };
 
 mod command;

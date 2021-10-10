@@ -3,15 +3,14 @@ use std::{collections::VecDeque, fmt};
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
     buffer_view::BufferViewHandle,
-    client::{ClientHandle, ClientManager},
+    client::ClientHandle,
     config::ParseConfigError,
-    editor::{ApplicationContext, Editor, EditorControlFlow},
+    editor::{ApplicationContext, EditorControlFlow},
     editor_utils::MessageKind,
     glob::InvalidGlobError,
     keymap::ParseKeyMapError,
     pattern::PatternError,
-    platform::Platform,
-    plugin::{PluginCollection, PluginHandle},
+    plugin::PluginHandle,
 };
 
 mod builtin;
