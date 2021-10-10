@@ -27,8 +27,12 @@ pub mod ui;
 pub mod word_database;
 
 pub const DEFAULT_BINDINGS_CONFIG: ResourceFile = ResourceFile {
-    name: "default_config.pp",
-    content: include_str!("../rc/default_config.pp"),
+    name: "default_bindings.pp",
+    content: include_str!("../rc/default_bindings.pp"),
+};
+pub const DEFAULT_ALIASES_CONFIG: ResourceFile = ResourceFile {
+    name: "default_aliases.pp",
+    content: include_str!("../rc/default_aliases.pp"),
 };
 pub const DEFAULT_SYNTAXES_CONFIG: ResourceFile = ResourceFile {
     name: "default_syntaxes.pp",

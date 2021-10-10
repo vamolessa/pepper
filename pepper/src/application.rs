@@ -5,7 +5,6 @@ use crate::{
     editor::{Editor, EditorContext, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
-    help,
     platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
     serialization::{DeserializeError, Serialize},
@@ -21,7 +20,7 @@ pub struct OnPanicConfig {
 pub struct ApplicationConfig {
     pub args: Args,
     pub static_configs: Vec<ResourceFile>,
-    pub plugin_definitions: Vec<&'static dyn PluginDefinition>,
+    pub plugin_definitions: Vec<PluginDefinition>,
     pub on_panic_config: OnPanicConfig,
 }
 impl Default for ApplicationConfig {
@@ -30,6 +29,7 @@ impl Default for ApplicationConfig {
             args: Args::parse(),
             static_configs: vec![
                 crate::DEFAULT_BINDINGS_CONFIG,
+                crate::DEFAULT_ALIASES_CONFIG,
                 crate::DEFAULT_SYNTAXES_CONFIG,
             ],
             plugin_definitions: Vec::new(),
@@ -61,11 +61,7 @@ impl ServerApplication {
         };
 
         for definition in config.plugin_definitions {
-            help::add_help_pages(definition.help_pages());
-
-            let plugin_handle = ctx.plugins.next_handle();
-            let plugin = definition.instantiate(&mut ctx, plugin_handle);
-            ctx.plugins.add(plugin);
+            PluginCollection::add(&mut ctx, definition);
         }
 
         for config in &config.static_configs {
