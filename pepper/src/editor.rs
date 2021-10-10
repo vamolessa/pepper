@@ -91,9 +91,97 @@ pub struct ApplicationContext {
     pub plugins: PluginCollection,
 }
 impl ApplicationContext {
-    pub fn trigger_event_handlers(&mut self) {
-        // TODO: move that code into here
-        self.editor.trigger_event_handlers(&mut self.platform, &mut self.clients, &mut self.plugins);
+    pub fn trigger_event_handlers(
+        &mut self,
+    ) {
+        loop {
+            self.editor.events.flip();
+            let mut events = EditorEventIter::new();
+            if events.next(&self.editor.events).is_none() {
+                return;
+            }
+
+            PluginCollection::on_editor_events(self);
+
+            let mut events = EditorEventIter::new();
+            while let Some(event) = events.next(&self.editor.events) {
+                match *event {
+                    EditorEvent::Idle => (),
+                    EditorEvent::BufferRead { handle } => {
+                        let buffer = self.editor.buffers.get_mut(handle);
+                        buffer.refresh_syntax(&self.editor.syntaxes);
+                        self.editor.buffer_views.on_buffer_load(buffer);
+                    }
+                    EditorEvent::BufferInsertText { handle, range, .. } => {
+                        // TODO: fix lints
+                        self.editor.buffer_views.on_buffer_insert_text(handle, range);
+                    }
+                    EditorEvent::BufferDeleteText { handle, range } => {
+                        // TODO: fix lints
+                        self.editor.buffer_views.on_buffer_delete_text(handle, range);
+                    }
+                    EditorEvent::BufferWrite { handle, new_path } => {
+                        let buffer = self.editor.buffers.get_mut(handle);
+                        if new_path {
+                            buffer.refresh_syntax(&self.editor.syntaxes);
+                        }
+
+                        for client in self.clients.iter() {
+                            if client.stdin_buffer_handle() == Some(buffer.handle()) {
+                                let mut buf = self.platform.buf_pool.acquire();
+                                let write =
+                                    buf.write_with_len(ServerEvent::bytes_variant_header_len());
+                                let content = buffer.content();
+                                let range =
+                                    BufferRange::between(BufferPosition::zero(), content.end());
+                                for text in content.text_range(range) {
+                                    write.extend_from_slice(text.as_bytes());
+                                }
+                                ServerEvent::StdoutOutput(&[])
+                                    .serialize_bytes_variant_header(write);
+
+                                let handle = client.handle();
+                                self.platform
+                                    .requests
+                                    .enqueue(PlatformRequest::WriteToClient { handle, buf });
+                                break;
+                            }
+                        }
+                    }
+                    EditorEvent::BufferClose { handle } => {
+                        self.editor.buffers
+                            .remove_from_editor_event_handler(handle, &mut self.editor.word_database);
+                        for client in self.clients.iter_mut() {
+                            client.on_buffer_close(self, handle);
+                        }
+                        self.editor.buffer_views.remove_buffer_views(handle);
+                    }
+                    EditorEvent::FixCursors { handle, cursors } => {
+                        let mut view_cursors =
+                            self.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                        view_cursors.clear();
+                        for &cursor in cursors.as_cursors(&self.editor.events) {
+                            view_cursors.add(cursor);
+                        }
+                    }
+                    EditorEvent::BufferViewLostFocus { handle } => {
+                        let buffer_view = self.editor.buffer_views.get(handle);
+                        let buffer_handle = buffer_view.buffer_handle;
+                        let buffer = self.editor.buffers.get(buffer_handle);
+                        let should_close = buffer.properties.auto_close && !buffer.needs_save();
+                        let any_view = !self.clients
+                            .iter()
+                            .filter_map(Client::buffer_view_handle)
+                            .map(|h| self.editor.buffer_views.get(h))
+                            .any(|v| v.buffer_handle == buffer_handle);
+
+                        if should_close && !any_view {
+                            self.editor.buffers.defer_remove(buffer_handle, &mut self.editor.events);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -196,10 +284,10 @@ impl Editor {
     ) -> EditorControlFlow {
         let start_index = keys.index;
 
-        match ctx.editor
-            .keymaps
-            .matches(ctx.editor.mode.kind(), &ctx.editor.buffered_keys.0[start_index..])
-        {
+        match ctx.editor.keymaps.matches(
+            ctx.editor.mode.kind(),
+            &ctx.editor.buffered_keys.0[start_index..],
+        ) {
             MatchResult::None => (),
             MatchResult::Prefix => return EditorControlFlow::Continue,
             MatchResult::ReplaceWith(replaced_keys) => {
@@ -224,7 +312,8 @@ impl Editor {
                 }
             }
 
-            if let (Some(from_index), Some(register_key)) = (from_index, ctx.editor.recording_macro) {
+            if let (Some(from_index), Some(register_key)) = (from_index, ctx.editor.recording_macro)
+            {
                 for key in &ctx.editor.buffered_keys.0[from_index..keys.index] {
                     use fmt::Write;
                     let register = ctx.editor.registers.get_mut(register_key);
@@ -237,102 +326,6 @@ impl Editor {
 
         ctx.editor.buffered_keys.0.truncate(start_index);
         EditorControlFlow::Continue
-    }
-
-    pub fn trigger_event_handlers(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        plugins: &mut PluginCollection,
-    ) {
-        loop {
-            self.events.flip();
-            let mut events = EditorEventIter::new();
-            if events.next(&self.events).is_none() {
-                return;
-            }
-
-            plugins.on_editor_events(self, platform, clients);
-
-            let mut events = EditorEventIter::new();
-            while let Some(event) = events.next(&self.events) {
-                match *event {
-                    EditorEvent::Idle => (),
-                    EditorEvent::BufferRead { handle } => {
-                        let buffer = self.buffers.get_mut(handle);
-                        buffer.refresh_syntax(&self.syntaxes);
-                        self.buffer_views.on_buffer_load(buffer);
-                    }
-                    EditorEvent::BufferInsertText { handle, range, .. } => {
-                        // TODO: fix lints
-                        self.buffer_views.on_buffer_insert_text(handle, range);
-                    }
-                    EditorEvent::BufferDeleteText { handle, range } => {
-                        // TODO: fix lints
-                        self.buffer_views.on_buffer_delete_text(handle, range);
-                    }
-                    EditorEvent::BufferWrite { handle, new_path } => {
-                        let buffer = self.buffers.get_mut(handle);
-                        if new_path {
-                            buffer.refresh_syntax(&self.syntaxes);
-                        }
-
-                        for client in clients.iter() {
-                            if client.stdin_buffer_handle() == Some(buffer.handle()) {
-                                let mut buf = platform.buf_pool.acquire();
-                                let write =
-                                    buf.write_with_len(ServerEvent::bytes_variant_header_len());
-                                let content = buffer.content();
-                                let range =
-                                    BufferRange::between(BufferPosition::zero(), content.end());
-                                for text in content.text_range(range) {
-                                    write.extend_from_slice(text.as_bytes());
-                                }
-                                ServerEvent::StdoutOutput(&[])
-                                    .serialize_bytes_variant_header(write);
-
-                                let handle = client.handle();
-                                platform
-                                    .requests
-                                    .enqueue(PlatformRequest::WriteToClient { handle, buf });
-                                break;
-                            }
-                        }
-                    }
-                    EditorEvent::BufferClose { handle } => {
-                        self.buffers
-                            .remove_from_editor_event_handler(handle, &mut self.word_database);
-                        for client in clients.iter_mut() {
-                            client.on_buffer_close(self, handle);
-                        }
-                        self.buffer_views.remove_buffer_views(handle);
-                    }
-                    EditorEvent::FixCursors { handle, cursors } => {
-                        let mut view_cursors =
-                            self.buffer_views.get_mut(handle).cursors.mut_guard();
-                        view_cursors.clear();
-                        for &cursor in cursors.as_cursors(&self.events) {
-                            view_cursors.add(cursor);
-                        }
-                    }
-                    EditorEvent::BufferViewLostFocus { handle } => {
-                        let buffer_view = self.buffer_views.get(handle);
-                        let buffer_handle = buffer_view.buffer_handle;
-                        let buffer = self.buffers.get(buffer_handle);
-                        let should_close = buffer.properties.auto_close && !buffer.needs_save();
-                        let any_view = !clients
-                            .iter()
-                            .filter_map(Client::buffer_view_handle)
-                            .map(|h| self.buffer_views.get(h))
-                            .any(|v| v.buffer_handle == buffer_handle);
-
-                        if should_close && !any_view {
-                            self.buffers.defer_remove(buffer_handle, &mut self.events);
-                        }
-                    }
-                }
-            }
-        }
     }
 
     pub(crate) fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
@@ -392,11 +385,7 @@ impl Editor {
                     ctx.editor.status_bar.clear();
                 }
                 ctx.editor.buffered_keys.0.push(key);
-                Self::execute_keys(
-                    ctx,
-                    client_handle,
-                    KeysIterator { index: 0 },
-                )
+                Self::execute_keys(ctx, client_handle, KeysIterator { index: 0 })
             }
             ClientEvent::Resize(width, height) => {
                 let client = ctx.clients.get_mut(client_handle);
@@ -413,11 +402,8 @@ impl Editor {
                 };
 
                 let mut command = ctx.editor.string_pool.acquire_with(command);
-                let flow = CommandManager::eval_and_write_error(
-                    ctx,
-                    Some(client_handle),
-                    &mut command,
-                );
+                let flow =
+                    CommandManager::eval_and_write_error(ctx, Some(client_handle), &mut command);
                 ctx.editor.string_pool.release(command);
                 flow
             }
@@ -430,7 +416,9 @@ impl Editor {
                     },
                 };
 
-                ctx.clients.get_mut(client_handle).on_stdin_input(&mut ctx.editor, bytes);
+                ctx.clients
+                    .get_mut(client_handle)
+                    .on_stdin_input(&mut ctx.editor, bytes);
                 ctx.trigger_event_handlers();
                 EditorControlFlow::Continue
             }

@@ -9,7 +9,7 @@ use crate::{
     buffer_position::BufferPosition,
     buffer_view::BufferViewHandle,
     client::ClientManager,
-    editor::Editor,
+    editor::{ApplicationContext, Editor},
     help,
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessId, ProcessTag},
 };
@@ -81,14 +81,6 @@ where
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct PluginHandle(u32);
 
-struct DummyPlugin;
-impl DummyPlugin {
-    pub fn new() -> Box<dyn Plugin> {
-        Box::new(DummyPlugin)
-    }
-}
-impl Plugin for DummyPlugin {}
-
 struct PluginProcess {
     pub alive: bool,
     pub plugin_handle: PluginHandle,
@@ -112,10 +104,10 @@ impl PluginCollection {
         self.plugins.iter_mut().map(DerefMut::deref_mut)
     }
 
-    pub fn get_mut(&mut self, handle: PluginHandle) -> &mut dyn Plugin {
+    fn get_mut(&mut self, handle: PluginHandle) -> &mut dyn Plugin {
         self.plugins[handle.0 as usize].deref_mut()
     }
-    
+
     pub fn get_mut_as<T>(&mut self, handle: PluginHandle) -> &mut T where T: Plugin {
         match self.plugins[handle.0 as usize].as_any().downcast_mut::<T>() {
             Some(plugin) => plugin,
@@ -190,91 +182,59 @@ impl PluginCollection {
         id
     }
 
-    pub(crate) fn on_editor_events(
-        &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-    ) {
-        let mut plugin = DummyPlugin::new();
-        let mut ctx = PluginContext {
-            editor,
-            platform,
-            clients,
-            plugin_handle: PluginHandle(0),
-        };
-        for i in 0..ctx.editor.plugins.plugins.len() {
-            std::mem::swap(&mut plugin, &mut ctx.editor.plugins.plugins[i]);
+    pub(crate) fn on_editor_events(ctx: &mut ApplicationContext) {
+        let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
+        for (i, plugin) in plugins.iter_mut().enumerate() {
             ctx.plugin_handle = PluginHandle(i as _);
             plugin.on_editor_events(&mut ctx);
-            std::mem::swap(&mut plugin, &mut ctx.editor.plugins.plugins[i]);
         }
     }
 
+    fn plugin_handle_form_process(&mut self, process_id: ProcessId) -> PluginHandle {
+        self.processes[process_id.0 as usize].plugin_handle
+    }
+
     pub(crate) fn on_process_spawned(
-        &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
+        ctx: &mut ApplicationContext,
         process_id: ProcessId,
         process_handle: PlatformProcessHandle,
     ) {
-        access_plugin_from_process(editor, platform, clients, process_id, move |plugin, ctx| {
-            plugin.on_process_spawned(ctx, process_id, process_handle);
-        });
+        let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
+        ctx.plugin_handle = plugins.plugin_handle_form_process(process_id);
+        let plugin = plugins.get_mut(ctx.plugin_handle);
+        plugin.on_process_spawned(&mut ctx, process_id, process_handle);
     }
 
     pub(crate) fn on_process_output(
-        &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
+        ctx: &mut ApplicationContext,
         process_id: ProcessId,
         bytes: &[u8],
     ) {
-        access_plugin_from_process(editor, platform, clients, process_id, move |plugin, ctx| {
-            plugin.on_process_output(ctx, process_id, bytes);
-        });
+        let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
+        ctx.plugin_handle = plugins.plugin_handle_form_process(process_id);
+        let plugin = plugins.get_mut(ctx.plugin_handle);
+        plugin.on_process_output(&mut ctx, process_id, bytes);
     }
 
     pub(crate) fn on_process_exit(
-        &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
+        ctx: &mut ApplicationContext,
         process_id: ProcessId,
     ) {
-        access_plugin_from_process(editor, platform, clients, process_id, move |plugin, ctx| {
-            plugin.on_process_exit(ctx, process_id);
-        });
+        let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
+        ctx.plugin_handle = plugins.plugin_handle_form_process(process_id);
+        let plugin = plugins.get_mut(ctx.plugin_handle);
+        plugin.on_process_exit(&mut ctx, process_id);
     }
 }
 
-fn access_plugin_from_process<A>(
-    editor: &mut Editor,
-    platform: &mut Platform,
-    clients: &mut ClientManager,
-    process_id: ProcessId,
-    accessor: A,
-) where
-    A: FnOnce(&mut dyn Plugin, &mut PluginContext),
-{
-    let plugin_handle = editor.plugins.processes[process_id.0 as usize].plugin_handle;
-    let mut plugin = DummyPlugin::new();
-    std::mem::swap(
-        &mut plugin,
-        &mut editor.plugins.plugins[plugin_handle.0 as usize],
-    );
-    let mut ctx = PluginContext {
-        editor,
-        platform,
-        clients,
-        plugin_handle,
+fn get_plugins_and_ctx(ctx: &mut ApplicationContext) -> (&mut PluginCollection, PluginContext) {
+    let plugins = &mut ctx.plugins;
+    let ctx = PluginContext {
+        editor: &mut ctx.editor,
+        platform: &mut ctx.platform,
+        clients: &mut ctx.clients,
+        plugin_handle: PluginHandle(0),
     };
-    accessor(plugin.deref_mut(), &mut ctx);
-    std::mem::swap(
-        &mut plugin,
-        &mut editor.plugins.plugins[plugin_handle.0 as usize],
-    );
+    (plugins, ctx)
 }
 

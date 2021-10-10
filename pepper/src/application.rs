@@ -65,7 +65,13 @@ impl ServerApplication {
             help::add_help_pages(definition.help_pages());
 
             let plugin_handle = ctx.plugins.next_handle();
-            let plugin = definition.instantiate(&mut ctx, plugin_handle);
+            let mut plugin_ctx = PluginContext {
+                editor: &mut ctx.editor,
+                platform: &mut ctx.platform,
+                clients: &mut ctx.clients,
+                plugin_handle,
+            };
+            let plugin = definition.instantiate(&mut plugin_ctx);
             ctx.plugins.add(plugin);
         }
 
@@ -164,7 +170,7 @@ impl ServerApplication {
                         ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_spawned(&mut self.ctx.platform, id, handle),
                         ProcessTag::FindFiles => (),
                         ProcessTag::Plugin(id) => {
-                            self.ctx.plugins.on_process_spawned(&mut self.ctx, id, handle)
+                            PluginCollection::on_process_spawned(&mut self.ctx, id, handle)
                         }
                     }
                     self.ctx.trigger_event_handlers();
@@ -184,9 +190,9 @@ impl ServerApplication {
                                 .on_process_output(&mut self.ctx.editor.picker, &self.ctx.editor.read_line, bytes)
                         }
                         ProcessTag::Plugin(id) => {
-                            self.ctx.plugins.on_process_output(
+                            PluginCollection::on_process_output(
                                 &mut self.ctx,
-                                tag,
+                                id,
                                 bytes,
                             )
                         }
@@ -207,7 +213,7 @@ impl ServerApplication {
                             .mode
                             .picker_state
                             .on_process_exit(&mut self.ctx.editor.picker, &self.ctx.editor.read_line),
-                        ProcessTag::Plugin(id) => self.plugins.on_process_exit(
+                        ProcessTag::Plugin(id) => PluginCollection::on_process_exit(
                             &mut self.ctx,
                             id,
                         ),
