@@ -1,24 +1,20 @@
-use std::{any::Any, ops::DerefMut, process::Command};
+use std::{
+    any::Any,
+    ops::{Deref, DerefMut},
+    process::Command,
+};
 
 use crate::{
     buffer::BufferHandle,
     buffer_position::BufferPosition,
     buffer_view::BufferViewHandle,
-    client::ClientManager,
-    editor::{Editor, EditorContext},
+    editor::EditorContext,
     help,
-    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessId, ProcessTag},
+    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
 };
 
-pub struct PluginContext<'a> {
-    pub editor: &'a mut Editor,
-    pub platform: &'a mut Platform,
-    pub clients: &'a mut ClientManager,
-    pub plugin_handle: PluginHandle,
-}
-
 pub trait PluginDefinition {
-    fn instantiate(&self, _: &mut PluginContext) -> Box<dyn Plugin>;
+    fn instantiate(&self, ctx: &mut EditorContext, plugin_handle: PluginHandle) -> Box<dyn Plugin>;
     fn help_pages(&self) -> &'static help::HelpPages;
 }
 
@@ -35,29 +31,36 @@ pub struct CompletionContext {
 }
 
 pub trait Plugin: 'static + AsAny {
-    fn on_editor_events(&mut self, _: &mut PluginContext) {}
+    fn on_editor_events(&mut self, _: &mut EditorContext, _: PluginHandle) {}
 
     fn on_process_spawned(
         &mut self,
-        _: &mut PluginContext,
-        _: ProcessId,
+        _: &mut EditorContext,
+        _: PluginHandle,
+        _: u32,
         _: PlatformProcessHandle,
     ) {
     }
 
-    fn on_process_output(&mut self, _: &mut PluginContext, _: ProcessId, _: &[u8]) {}
+    fn on_process_output(&mut self, _: &mut EditorContext, _: PluginHandle, _: u32, _: &[u8]) {}
 
-    fn on_process_exit(&mut self, _: &mut PluginContext, _: ProcessId) {}
+    fn on_process_exit(&mut self, _: &mut EditorContext, _: PluginHandle, _: u32) {}
 
     fn on_completion_flow(
         &mut self,
-        _: &mut PluginContext,
+        _: &mut EditorContext,
+        _: PluginHandle,
         _: &CompletionContext,
     ) -> Option<CompletionFlow> {
         None
     }
 
-    fn on_completion(&mut self, _: &mut PluginContext, _: &CompletionContext) -> bool {
+    fn on_completion(
+        &mut self,
+        _: &mut EditorContext,
+        _: PluginHandle,
+        _: &CompletionContext,
+    ) -> bool {
         false
     }
 }
@@ -74,18 +77,41 @@ where
     }
 }
 
+pub struct PluginGuard<T> {
+    plugin: Box<T>,
+    handle: PluginHandle,
+}
+impl<T> Deref for PluginGuard<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.plugin
+    }
+}
+impl<T> DerefMut for PluginGuard<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.plugin
+    }
+}
+impl<T> Drop for PluginGuard<T> {
+    fn drop(&mut self) {
+        panic!("forgot to call 'release' on PluginCollection");
+    }
+}
+
+struct DummyPlugin;
+impl DummyPlugin {
+    pub fn new() -> Box<dyn Plugin> {
+        Box::new(Self)
+    }
+}
+impl Plugin for DummyPlugin {}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct PluginHandle(u32);
-
-struct PluginProcess {
-    pub alive: bool,
-    pub plugin_handle: PluginHandle,
-}
 
 #[derive(Default)]
 pub struct PluginCollection {
     plugins: Vec<Box<dyn Plugin>>,
-    processes: Vec<PluginProcess>,
 }
 impl PluginCollection {
     pub(crate) fn next_handle(&self) -> PluginHandle {
@@ -96,34 +122,12 @@ impl PluginCollection {
         self.plugins.push(plugin);
     }
 
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut dyn Plugin> {
-        self.plugins.iter_mut().map(DerefMut::deref_mut)
-    }
-
-    fn get_mut(&mut self, handle: PluginHandle) -> &mut dyn Plugin {
-        self.plugins[handle.0 as usize].deref_mut()
-    }
-
-    pub fn get_mut_as<T>(&mut self, handle: PluginHandle) -> &mut T
-    where
-        T: Plugin,
-    {
-        match self.plugins[handle.0 as usize].as_any().downcast_mut::<T>() {
-            Some(plugin) => plugin,
-            None => panic!(
-                "plugin with handle {} was not of type '{}'",
-                handle.0,
-                std::any::type_name::<T>()
-            ),
-        }
-    }
-
-    /*
     pub fn acquire<T>(&mut self, handle: PluginHandle) -> PluginGuard<T>
     where
         T: Plugin,
     {
-        if !self.plugins[handle.0 as usize].as_any().is::<T>() {
+        let slot = &mut self.plugins[handle.0 as usize];
+        if !slot.as_any().is::<T>() {
             panic!(
                 "plugin with handle {} was not of type '{}'",
                 handle.0,
@@ -132,7 +136,7 @@ impl PluginCollection {
         }
 
         let mut plugin = DummyPlugin::new();
-        std::mem::swap(&mut plugin, &mut self.plugins[handle.0 as usize]);
+        std::mem::swap(&mut plugin, slot);
 
         let plugin = unsafe {
             let raw = Box::into_raw(plugin);
@@ -141,91 +145,73 @@ impl PluginCollection {
 
         PluginGuard { plugin, handle }
     }
-    */
 
-    pub fn spawn_process(
-        &mut self,
-        platform: &mut Platform,
-        command: Command,
-        plugin_handle: PluginHandle,
-        buf_len: usize,
-    ) -> ProcessId {
-        let mut index = None;
-        for (i, process) in self.processes.iter_mut().enumerate() {
-            if !process.alive {
-                process.alive = true;
-                process.plugin_handle = plugin_handle;
-                index = Some(i);
-                break;
-            }
-        }
-        let index = match index {
-            Some(index) => index,
-            None => {
-                let index = self.processes.len();
-                self.processes.push(PluginProcess {
-                    alive: true,
-                    plugin_handle,
-                });
-                index
-            }
-        };
-
-        let id = ProcessId(index as _);
-        platform.requests.enqueue(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::Plugin(id),
-            command,
-            buf_len,
-        });
-
-        id
+    pub fn release<T>(&mut self, guard: PluginGuard<T>) {
+        std::mem::forget(guard);
+        //std::mem::swap(&mut
     }
 
     pub(crate) fn on_editor_events(ctx: &mut EditorContext) {
-        let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
-        for (i, plugin) in plugins.iter_mut().enumerate() {
-            ctx.plugin_handle = PluginHandle(i as _);
-            plugin.on_editor_events(&mut ctx);
+        let mut plugin = DummyPlugin::new();
+        for i in 0..ctx.plugins.plugins.len() {
+            let plugin_handle = PluginHandle(i as _);
+            std::mem::swap(&mut plugin, &mut ctx.plugins.plugins[i]);
+            plugin.on_editor_events(ctx, plugin_handle);
+            std::mem::swap(&mut plugin, &mut ctx.plugins.plugins[i]);
         }
-    }
-
-    fn plugin_handle_form_process(&mut self, process_id: ProcessId) -> PluginHandle {
-        self.processes[process_id.0 as usize].plugin_handle
     }
 
     pub(crate) fn on_process_spawned(
         ctx: &mut EditorContext,
-        process_id: ProcessId,
+        plugin_handle: PluginHandle,
+        process_id: u32,
         process_handle: PlatformProcessHandle,
     ) {
-        let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
-        ctx.plugin_handle = plugins.plugin_handle_form_process(process_id);
-        let plugin = plugins.get_mut(ctx.plugin_handle);
-        plugin.on_process_spawned(&mut ctx, process_id, process_handle);
+        let mut plugin = DummyPlugin::new();
+        std::mem::swap(
+            &mut plugin,
+            &mut ctx.plugins.plugins[plugin_handle.0 as usize],
+        );
+        plugin.on_process_spawned(ctx, plugin_handle, process_id, process_handle);
+        std::mem::swap(
+            &mut plugin,
+            &mut ctx.plugins.plugins[plugin_handle.0 as usize],
+        );
     }
 
-    pub(crate) fn on_process_output(ctx: &mut EditorContext, process_id: ProcessId, bytes: &[u8]) {
-        let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
-        ctx.plugin_handle = plugins.plugin_handle_form_process(process_id);
-        let plugin = plugins.get_mut(ctx.plugin_handle);
-        plugin.on_process_output(&mut ctx, process_id, bytes);
+    pub(crate) fn on_process_output(
+        ctx: &mut EditorContext,
+        plugin_handle: PluginHandle,
+        process_id: u32,
+        bytes: &[u8],
+    ) {
+        let mut plugin = DummyPlugin::new();
+        std::mem::swap(
+            &mut plugin,
+            &mut ctx.plugins.plugins[plugin_handle.0 as usize],
+        );
+        plugin.on_process_output(ctx, plugin_handle, process_id, bytes);
+        std::mem::swap(
+            &mut plugin,
+            &mut ctx.plugins.plugins[plugin_handle.0 as usize],
+        );
     }
 
-    pub(crate) fn on_process_exit(ctx: &mut EditorContext, process_id: ProcessId) {
-        let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
-        ctx.plugin_handle = plugins.plugin_handle_form_process(process_id);
-        let plugin = plugins.get_mut(ctx.plugin_handle);
-        plugin.on_process_exit(&mut ctx, process_id);
+    pub(crate) fn on_process_exit(
+        ctx: &mut EditorContext,
+        plugin_handle: PluginHandle,
+        process_id: u32,
+    ) {
+        let mut plugin = DummyPlugin::new();
+        std::mem::swap(
+            &mut plugin,
+            &mut ctx.plugins.plugins[plugin_handle.0 as usize],
+        );
+        plugin.on_process_exit(ctx, plugin_handle, process_id);
+        std::mem::swap(
+            &mut plugin,
+            &mut ctx.plugins.plugins[plugin_handle.0 as usize],
+        );
     }
 }
 
-fn get_plugins_and_ctx(ctx: &mut EditorContext) -> (&mut PluginCollection, PluginContext) {
-    let plugins = &mut ctx.plugins;
-    let ctx = PluginContext {
-        editor: &mut ctx.editor,
-        platform: &mut ctx.platform,
-        clients: &mut ctx.clients,
-        plugin_handle: PluginHandle(0),
-    };
-    (plugins, ctx)
-}

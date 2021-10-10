@@ -7,7 +7,7 @@ use crate::{
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     help,
     platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
-    plugin::{PluginCollection, PluginContext, PluginDefinition},
+    plugin::{PluginCollection, PluginDefinition},
     serialization::{DeserializeError, Serialize},
     ui, Args, ResourceFile,
 };
@@ -64,13 +64,7 @@ impl ServerApplication {
             help::add_help_pages(definition.help_pages());
 
             let plugin_handle = ctx.plugins.next_handle();
-            let mut plugin_ctx = PluginContext {
-                editor: &mut ctx.editor,
-                platform: &mut ctx.platform,
-                clients: &mut ctx.clients,
-                plugin_handle,
-            };
-            let plugin = definition.instantiate(&mut plugin_ctx);
+            let plugin = definition.instantiate(&mut ctx, plugin_handle);
             ctx.plugins.add(plugin);
         }
 
@@ -159,24 +153,30 @@ impl ServerApplication {
                 }
                 PlatformEvent::ProcessSpawned { tag, handle } => {
                     match tag {
-                        ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_spawned(
+                        ProcessTag::Buffer(index) => self.ctx.editor.buffers.on_process_spawned(
                             &mut self.ctx.platform,
-                            id,
+                            index,
                             handle,
                         ),
                         ProcessTag::FindFiles => (),
-                        ProcessTag::Plugin(id) => {
-                            PluginCollection::on_process_spawned(&mut self.ctx, id, handle)
-                        }
+                        ProcessTag::Plugin {
+                            plugin_handle,
+                            process_id,
+                        } => PluginCollection::on_process_spawned(
+                            &mut self.ctx,
+                            plugin_handle,
+                            process_id,
+                            handle,
+                        ),
                     }
                     self.ctx.trigger_event_handlers();
                 }
                 PlatformEvent::ProcessOutput { tag, buf } => {
                     let bytes = buf.as_bytes();
                     match tag {
-                        ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_output(
+                        ProcessTag::Buffer(index) => self.ctx.editor.buffers.on_process_output(
                             &mut self.ctx.editor.word_database,
-                            id,
+                            index,
                             bytes,
                             &mut self.ctx.editor.events,
                         ),
@@ -187,27 +187,38 @@ impl ServerApplication {
                                 bytes,
                             )
                         }
-                        ProcessTag::Plugin(id) => {
-                            PluginCollection::on_process_output(&mut self.ctx, id, bytes)
-                        }
+                        ProcessTag::Plugin {
+                            plugin_handle,
+                            process_id,
+                        } => PluginCollection::on_process_output(
+                            &mut self.ctx,
+                            plugin_handle,
+                            process_id,
+                            bytes,
+                        ),
                     }
                     self.ctx.trigger_event_handlers();
                     self.ctx.platform.buf_pool.release(buf);
                 }
                 PlatformEvent::ProcessExit { tag } => {
                     match tag {
-                        ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_exit(
+                        ProcessTag::Buffer(index) => self.ctx.editor.buffers.on_process_exit(
                             &mut self.ctx.editor.word_database,
-                            id,
+                            index,
                             &mut self.ctx.editor.events,
                         ),
                         ProcessTag::FindFiles => self.ctx.editor.mode.picker_state.on_process_exit(
                             &mut self.ctx.editor.picker,
                             &self.ctx.editor.read_line,
                         ),
-                        ProcessTag::Plugin(id) => {
-                            PluginCollection::on_process_exit(&mut self.ctx, id)
-                        }
+                        ProcessTag::Plugin {
+                            plugin_handle,
+                            process_id,
+                        } => PluginCollection::on_process_exit(
+                            &mut self.ctx,
+                            plugin_handle,
+                            process_id,
+                        ),
                     }
                     self.ctx.trigger_event_handlers();
                 }

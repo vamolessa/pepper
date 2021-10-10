@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{client::ClientHandle, editor_utils::parse_process_command};
+use crate::{client::ClientHandle, editor_utils::parse_process_command, plugin::PluginHandle};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -80,14 +80,14 @@ pub enum PlatformRequest {
     },
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ProcessId(pub(crate) u32);
-
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
-    Buffer(ProcessId),
+    Buffer(u32),
     FindFiles,
-    Plugin(ProcessId),
+    Plugin {
+        plugin_handle: PluginHandle,
+        process_id: u32,
+    },
 }
 
 #[derive(Clone, Copy)]

@@ -8,7 +8,7 @@ use crate::{
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     mode::{Mode, ModeKind, ModeState},
     platform::Key,
-    plugin::{CompletionContext, PluginCollection, PluginContext, PluginHandle},
+    plugin::{CompletionContext, PluginCollection, PluginHandle},
     register::AUTO_MACRO_REGISTER,
     word_database::{WordIndicesIter, WordKind},
 };
