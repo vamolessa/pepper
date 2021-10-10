@@ -83,14 +83,13 @@ impl BufferedKeys {
     }
 }
 
-// TODO: rename to EditorContext
-pub struct ApplicationContext {
+pub struct EditorContext {
     pub editor: Editor,
     pub platform: Platform,
     pub clients: ClientManager,
     pub plugins: PluginCollection,
 }
-impl ApplicationContext {
+impl EditorContext {
     pub fn trigger_event_handlers(&mut self) {
         loop {
             self.editor.events.flip();
@@ -285,7 +284,7 @@ impl Editor {
     }
 
     pub fn execute_keys(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         mut keys: KeysIterator,
     ) -> EditorControlFlow {
@@ -365,7 +364,7 @@ impl Editor {
     }
 
     pub(crate) fn on_client_event(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         event: ClientEvent,
     ) -> EditorControlFlow {

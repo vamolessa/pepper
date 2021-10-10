@@ -2,7 +2,7 @@ use std::{fmt, process::Command};
 
 use crate::{
     command::{CommandManager, CommandTokenizer},
-    editor::{ApplicationContext, BufferedKeys, EditorControlFlow, KeysIterator},
+    editor::{BufferedKeys, EditorContext, EditorControlFlow, KeysIterator},
     platform::{Key, Platform},
     word_database::{WordIter, WordKind},
 };
@@ -244,7 +244,7 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
 }
 
 pub fn load_config(
-    ctx: &mut ApplicationContext,
+    ctx: &mut EditorContext,
     config_name: &str,
     config_content: &str,
 ) -> EditorControlFlow {

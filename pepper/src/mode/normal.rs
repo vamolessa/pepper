@@ -6,7 +6,7 @@ use crate::{
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
-    editor::{ApplicationContext, Editor, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, MessageKind},
     help::HELP_PREFIX,
     mode::{picker, read_line, Mode, ModeKind, ModeState},
@@ -75,7 +75,7 @@ impl State {
     }
 
     fn on_client_keys_with_buffer_view(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
@@ -1154,21 +1154,21 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ApplicationContext) {
+    fn on_enter(ctx: &mut EditorContext) {
         let state = &mut ctx.editor.mode.normal_state;
         state.movement_kind = CursorMovementKind::PositionAndAnchor;
         state.is_recording_auto_macro = false;
         state.count = 0;
     }
 
-    fn on_exit(_: &mut ApplicationContext) {}
+    fn on_exit(_: &mut EditorContext) {}
 
     fn on_client_keys(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow> {
-        fn show_hovered_diagnostic(ctx: &mut ApplicationContext, client_handle: ClientHandle) {
+        fn show_hovered_diagnostic(ctx: &mut EditorContext, client_handle: ClientHandle) {
             let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
                 Some(handle) => handle,
                 None => return,
@@ -1402,11 +1402,7 @@ impl ModeState for State {
     }
 }
 
-fn copy_text(
-    ctx: &mut ApplicationContext,
-    buffer_view_handle: BufferViewHandle,
-    text: &mut String,
-) {
+fn copy_text(ctx: &mut EditorContext, buffer_view_handle: BufferViewHandle, text: &mut String) {
     let state = &mut ctx.editor.mode.normal_state;
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     let mut text_ranges = [(0, 0); CursorCollection::capacity()];
@@ -1422,7 +1418,7 @@ fn copy_text(
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
 
-fn paste_text(ctx: &mut ApplicationContext, buffer_view_handle: BufferViewHandle, text: &str) {
+fn paste_text(ctx: &mut EditorContext, buffer_view_handle: BufferViewHandle, text: &str) {
     let state = &mut ctx.editor.mode.normal_state;
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     buffer_view.delete_text_in_cursor_ranges(
@@ -1467,7 +1463,7 @@ fn paste_text(ctx: &mut ApplicationContext, buffer_view_handle: BufferViewHandle
         .commit_edits();
 }
 
-fn find_char(ctx: &mut ApplicationContext, client_handle: ClientHandle, forward: bool) {
+fn find_char(ctx: &mut EditorContext, client_handle: ClientHandle, forward: bool) {
     let state = &ctx.editor.mode.normal_state;
     let skip;
     let ch;
@@ -1525,11 +1521,8 @@ fn find_char(ctx: &mut ApplicationContext, client_handle: ClientHandle, forward:
     }
 }
 
-fn move_to_search_match<F>(
-    ctx: &mut ApplicationContext,
-    client_handle: ClientHandle,
-    index_selector: F,
-) where
+fn move_to_search_match<F>(ctx: &mut EditorContext, client_handle: ClientHandle, index_selector: F)
+where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
     NavigationHistory::save_snapshot(ctx.clients.get_mut(client_handle), &ctx.editor.buffer_views);
@@ -1586,7 +1579,7 @@ fn move_to_search_match<F>(
 }
 
 fn search_word_or_move_to_it(
-    ctx: &mut ApplicationContext,
+    ctx: &mut EditorContext,
     client_handle: ClientHandle,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
 ) {
@@ -1677,7 +1670,7 @@ fn search_word_or_move_to_it(
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
 
-fn move_to_diagnostic(ctx: &mut ApplicationContext, client_handle: ClientHandle, forward: bool) {
+fn move_to_diagnostic(ctx: &mut EditorContext, client_handle: ClientHandle, forward: bool) {
     let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
         Some(handle) => handle,
         None => return,

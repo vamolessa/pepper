@@ -5,7 +5,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::ClientHandle,
     config::ParseConfigError,
-    editor::{ApplicationContext, EditorControlFlow},
+    editor::{EditorContext, EditorControlFlow},
     editor_utils::MessageKind,
     glob::InvalidGlobError,
     keymap::ParseKeyMapError,
@@ -110,7 +110,7 @@ impl<'a> CommandContext<'a> {
 
     pub fn current_buffer_view_handle(
         &self,
-        ctx: &ApplicationContext,
+        ctx: &EditorContext,
     ) -> Result<BufferViewHandle, CommandError> {
         let client_handle = self.client_handle()?;
         match ctx.clients.get(client_handle).buffer_view_handle() {
@@ -119,10 +119,7 @@ impl<'a> CommandContext<'a> {
         }
     }
 
-    pub fn current_buffer_handle(
-        &self,
-        ctx: &ApplicationContext,
-    ) -> Result<BufferHandle, CommandError> {
+    pub fn current_buffer_handle(&self, ctx: &EditorContext) -> Result<BufferHandle, CommandError> {
         let buffer_view_handle = self.current_buffer_view_handle(ctx)?;
         let buffer_handle = ctx
             .editor
@@ -132,10 +129,7 @@ impl<'a> CommandContext<'a> {
         Ok(buffer_handle)
     }
 
-    pub fn assert_can_discard_all_buffers(
-        &self,
-        ctx: &ApplicationContext,
-    ) -> Result<(), CommandError> {
+    pub fn assert_can_discard_all_buffers(&self, ctx: &EditorContext) -> Result<(), CommandError> {
         if self.bang || !ctx.editor.buffers.iter().any(Buffer::needs_save) {
             Ok(())
         } else {
@@ -145,7 +139,7 @@ impl<'a> CommandContext<'a> {
 
     pub fn assert_can_discard_buffer(
         &self,
-        ctx: &ApplicationContext,
+        ctx: &EditorContext,
         handle: BufferHandle,
     ) -> Result<(), CommandError> {
         if self.bang || !ctx.editor.buffers.get(handle).needs_save() {
@@ -243,7 +237,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
 }
 
 pub type CommandFn =
-    fn(ctx: &mut ApplicationContext, io: &mut CommandContext) -> Result<(), CommandError>;
+    fn(ctx: &mut EditorContext, io: &mut CommandContext) -> Result<(), CommandError>;
 
 pub struct Command {
     plugin_handle: Option<PluginHandle>,
@@ -390,7 +384,7 @@ impl CommandManager {
     }
 
     pub fn eval_and_write_error(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &mut String,
     ) -> EditorControlFlow {
@@ -407,7 +401,7 @@ impl CommandManager {
     }
 
     pub fn try_eval(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &mut String,
     ) -> Result<EditorControlFlow, CommandError> {
@@ -424,7 +418,7 @@ impl CommandManager {
     }
 
     fn eval(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &str,
     ) -> Result<EditorControlFlow, CommandError> {

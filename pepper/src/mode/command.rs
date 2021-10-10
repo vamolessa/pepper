@@ -3,7 +3,7 @@ use std::fs;
 use crate::{
     client::ClientHandle,
     command::{CommandManager, CommandTokenizer, CompletionSource},
-    editor::{ApplicationContext, EditorControlFlow, KeysIterator},
+    editor::{EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{Mode, ModeKind, ModeState},
     picker::Picker,
@@ -35,7 +35,7 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ApplicationContext) {
+    fn on_enter(ctx: &mut EditorContext) {
         let state = &mut ctx.editor.mode.command_state;
         state.read_state = ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
         state.completion_index = 0;
@@ -47,13 +47,13 @@ impl ModeState for State {
         ctx.editor.picker.clear();
     }
 
-    fn on_exit(ctx: &mut ApplicationContext) {
+    fn on_exit(ctx: &mut EditorContext) {
         ctx.editor.read_line.input_mut().clear();
         ctx.editor.picker.clear();
     }
 
     fn on_client_keys(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow> {
@@ -117,7 +117,7 @@ impl ModeState for State {
     }
 }
 
-fn apply_completion(ctx: &mut ApplicationContext, cursor_movement: isize) {
+fn apply_completion(ctx: &mut EditorContext, cursor_movement: isize) {
     ctx.editor.picker.move_cursor(cursor_movement);
     if let Some((_, entry)) = ctx.editor.picker.current_entry(&ctx.editor.word_database) {
         let input = ctx.editor.read_line.input_mut();
@@ -126,7 +126,7 @@ fn apply_completion(ctx: &mut ApplicationContext, cursor_movement: isize) {
     }
 }
 
-fn update_autocomplete_entries(ctx: &mut ApplicationContext) {
+fn update_autocomplete_entries(ctx: &mut EditorContext) {
     let state = &mut ctx.editor.mode.command_state;
 
     let input = ctx.editor.read_line.input();

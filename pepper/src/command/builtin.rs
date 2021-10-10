@@ -6,7 +6,7 @@ use crate::{
     command::{CommandContext, CommandError, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
-    editor::{ApplicationContext, EditorControlFlow},
+    editor::{EditorContext, EditorControlFlow},
     editor_utils::MessageKind,
     help,
     mode::{picker, ModeKind},
@@ -354,7 +354,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 }
 
 fn map(
-    ctx: &mut ApplicationContext,
+    ctx: &mut EditorContext,
     io: &mut CommandContext,
     mode: ModeKind,
 ) -> Result<(), CommandError> {
@@ -369,7 +369,7 @@ fn map(
 }
 
 fn syntax_pattern(
-    ctx: &mut ApplicationContext,
+    ctx: &mut EditorContext,
     io: &mut CommandContext,
     token_kind: TokenKind,
 ) -> Result<(), CommandError> {

@@ -202,8 +202,8 @@ pub fn run(config: application::ApplicationConfig) {
     panic::set_hook(Box::new(|info| unsafe {
         let config = ON_PANIC_CONFIG.assume_init_ref();
 
-        if config.write_info_to_file {
-            if let Ok(mut file) = fs::File::create("pepper-crash.txt") {
+        if let Some(path) = config.write_info_to_file {
+            if let Ok(mut file) = fs::File::create(path) {
                 use io::Write;
                 let _ = writeln!(file, "{}", info);
             }

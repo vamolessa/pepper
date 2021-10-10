@@ -2,7 +2,7 @@ use std::{env, fs, io, mem::ManuallyDrop, panic, path::Path, time::Duration};
 
 use crate::{
     client::ClientManager,
-    editor::{ApplicationContext, Editor, EditorControlFlow},
+    editor::{Editor, EditorContext, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     help,
@@ -14,14 +14,13 @@ use crate::{
 
 #[derive(Default, Clone, Copy)]
 pub struct OnPanicConfig {
-    pub write_info_to_file: bool,
+    pub write_info_to_file: Option<&'static Path>,
     pub try_attaching_debugger: bool,
 }
 
-// TODO: rename bake to ApplicationContext
 pub struct ApplicationConfig {
     pub args: Args,
-    pub configs: Vec<ResourceFile>,
+    pub static_configs: Vec<ResourceFile>,
     pub plugin_definitions: Vec<&'static dyn PluginDefinition>,
     pub on_panic_config: OnPanicConfig,
 }
@@ -29,7 +28,7 @@ impl Default for ApplicationConfig {
     fn default() -> Self {
         Self {
             args: Args::parse(),
-            configs: vec![
+            static_configs: vec![
                 crate::DEFAULT_BINDINGS_CONFIG,
                 crate::DEFAULT_SYNTAXES_CONFIG,
             ],
@@ -40,7 +39,7 @@ impl Default for ApplicationConfig {
 }
 
 pub(crate) struct ServerApplication {
-    pub ctx: ApplicationContext,
+    pub ctx: EditorContext,
     client_event_receiver: ClientEventReceiver,
 }
 impl ServerApplication {
@@ -54,7 +53,7 @@ impl ServerApplication {
 
     pub fn new(config: ApplicationConfig) -> Option<Self> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
-        let mut ctx = ApplicationContext {
+        let mut ctx = EditorContext {
             editor: Editor::new(current_dir),
             platform: Platform::default(),
             clients: ClientManager::default(),
@@ -75,7 +74,7 @@ impl ServerApplication {
             ctx.plugins.add(plugin);
         }
 
-        for config in &config.configs {
+        for config in &config.static_configs {
             match load_config(&mut ctx, config.name, config.content) {
                 EditorControlFlow::Continue => (),
                 _ => return None,

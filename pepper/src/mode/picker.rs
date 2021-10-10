@@ -3,7 +3,7 @@ use std::process::Stdio;
 use crate::{
     buffer::BufferProperties,
     client::ClientHandle,
-    editor::{ApplicationContext, EditorControlFlow, KeysIterator},
+    editor::{EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
     mode::{Mode, ModeKind, ModeState},
     picker::Picker,
@@ -14,7 +14,7 @@ use crate::{
 
 pub struct State {
     pub on_client_keys: fn(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         ClientHandle,
         &mut KeysIterator,
         ReadLinePoll,
@@ -95,18 +95,18 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ApplicationContext) {
+    fn on_enter(ctx: &mut EditorContext) {
         ctx.editor.read_line.input_mut().clear();
     }
 
-    fn on_exit(ctx: &mut ApplicationContext) {
+    fn on_exit(ctx: &mut EditorContext) {
         ctx.editor.mode.picker_state.find_file_waiting_for_process = false;
         ctx.editor.read_line.input_mut().clear();
         ctx.editor.picker.clear();
     }
 
     fn on_client_keys(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow> {
@@ -168,9 +168,9 @@ pub mod opened_buffers {
 
     use std::path::Path;
 
-    pub fn enter_mode(ctx: &mut ApplicationContext) {
+    pub fn enter_mode(ctx: &mut EditorContext) {
         fn on_client_keys(
-            ctx: &mut ApplicationContext,
+            ctx: &mut EditorContext,
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -239,9 +239,9 @@ pub mod find_file {
 
     use std::path::Path;
 
-    pub fn enter_mode(ctx: &mut ApplicationContext, command: &str) {
+    pub fn enter_mode(ctx: &mut EditorContext, command: &str) {
         fn on_client_keys(
-            ctx: &mut ApplicationContext,
+            ctx: &mut EditorContext,
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,

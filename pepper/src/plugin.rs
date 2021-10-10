@@ -5,7 +5,7 @@ use crate::{
     buffer_position::BufferPosition,
     buffer_view::BufferViewHandle,
     client::ClientManager,
-    editor::{ApplicationContext, Editor},
+    editor::{Editor, EditorContext},
     help,
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessId, ProcessTag},
 };
@@ -181,7 +181,7 @@ impl PluginCollection {
         id
     }
 
-    pub(crate) fn on_editor_events(ctx: &mut ApplicationContext) {
+    pub(crate) fn on_editor_events(ctx: &mut EditorContext) {
         let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
         for (i, plugin) in plugins.iter_mut().enumerate() {
             ctx.plugin_handle = PluginHandle(i as _);
@@ -194,7 +194,7 @@ impl PluginCollection {
     }
 
     pub(crate) fn on_process_spawned(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         process_id: ProcessId,
         process_handle: PlatformProcessHandle,
     ) {
@@ -204,18 +204,14 @@ impl PluginCollection {
         plugin.on_process_spawned(&mut ctx, process_id, process_handle);
     }
 
-    pub(crate) fn on_process_output(
-        ctx: &mut ApplicationContext,
-        process_id: ProcessId,
-        bytes: &[u8],
-    ) {
+    pub(crate) fn on_process_output(ctx: &mut EditorContext, process_id: ProcessId, bytes: &[u8]) {
         let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
         ctx.plugin_handle = plugins.plugin_handle_form_process(process_id);
         let plugin = plugins.get_mut(ctx.plugin_handle);
         plugin.on_process_output(&mut ctx, process_id, bytes);
     }
 
-    pub(crate) fn on_process_exit(ctx: &mut ApplicationContext, process_id: ProcessId) {
+    pub(crate) fn on_process_exit(ctx: &mut EditorContext, process_id: ProcessId) {
         let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
         ctx.plugin_handle = plugins.plugin_handle_form_process(process_id);
         let plugin = plugins.get_mut(ctx.plugin_handle);
@@ -223,7 +219,7 @@ impl PluginCollection {
     }
 }
 
-fn get_plugins_and_ctx(ctx: &mut ApplicationContext) -> (&mut PluginCollection, PluginContext) {
+fn get_plugins_and_ctx(ctx: &mut EditorContext) -> (&mut PluginCollection, PluginContext) {
     let plugins = &mut ctx.plugins;
     let ctx = PluginContext {
         editor: &mut ctx.editor,

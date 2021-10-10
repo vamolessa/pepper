@@ -1,6 +1,6 @@
 use crate::{
     client::ClientHandle,
-    editor::{ApplicationContext, EditorControlFlow, KeysIterator},
+    editor::{EditorContext, EditorControlFlow, KeysIterator},
 };
 
 mod command;
@@ -10,10 +10,10 @@ pub(crate) mod picker;
 pub(crate) mod read_line;
 
 pub(crate) trait ModeState {
-    fn on_enter(ctx: &mut ApplicationContext);
-    fn on_exit(ctx: &mut ApplicationContext);
+    fn on_enter(ctx: &mut EditorContext);
+    fn on_exit(ctx: &mut EditorContext);
     fn on_client_keys(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow>;
@@ -50,7 +50,7 @@ impl Mode {
         self.kind
     }
 
-    pub fn change_to(ctx: &mut ApplicationContext, next: ModeKind) {
+    pub fn change_to(ctx: &mut EditorContext, next: ModeKind) {
         if ctx.editor.mode.kind == next {
             return;
         }
@@ -75,7 +75,7 @@ impl Mode {
     }
 
     pub(crate) fn on_client_keys(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow> {

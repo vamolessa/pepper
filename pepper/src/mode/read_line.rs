@@ -3,7 +3,7 @@ use crate::{
     buffer_view::CursorMovementKind,
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
-    editor::{ApplicationContext, EditorControlFlow, KeysIterator},
+    editor::{EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll},
     mode::{Mode, ModeKind, ModeState},
     pattern::Pattern,
@@ -13,7 +13,7 @@ use crate::{
 
 pub struct State {
     pub on_client_keys: fn(
-        &mut ApplicationContext,
+        &mut EditorContext,
         ClientHandle,
         &mut KeysIterator,
         ReadLinePoll,
@@ -33,17 +33,17 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ApplicationContext) {
+    fn on_enter(ctx: &mut EditorContext) {
         ctx.editor.read_line.input_mut().clear();
     }
 
-    fn on_exit(ctx: &mut ApplicationContext) {
+    fn on_exit(ctx: &mut EditorContext) {
         ctx.editor.mode.read_line_state.plugin_handle = None;
         ctx.editor.read_line.input_mut().clear();
     }
 
     fn on_client_keys(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow> {
@@ -63,9 +63,9 @@ pub mod search {
 
     use crate::register::SEARCH_REGISTER;
 
-    pub fn enter_mode(ctx: &mut ApplicationContext, client_handle: ClientHandle) {
+    pub fn enter_mode(ctx: &mut EditorContext, client_handle: ClientHandle) {
         fn on_client_keys(
-            ctx: &mut ApplicationContext,
+            ctx: &mut EditorContext,
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -117,7 +117,7 @@ pub mod search {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 
-    fn update_search(ctx: &mut ApplicationContext, client_handle: ClientHandle) {
+    fn update_search(ctx: &mut EditorContext, client_handle: ClientHandle) {
         let handle = match ctx.clients.get_mut(client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => return,
@@ -165,10 +165,10 @@ pub mod search {
 }
 
 fn on_submitted(
-    ctx: &mut ApplicationContext,
+    ctx: &mut EditorContext,
     client_handle: ClientHandle,
     poll: ReadLinePoll,
-    proc: fn(&mut ApplicationContext, ClientHandle),
+    proc: fn(&mut EditorContext, ClientHandle),
 ) {
     match poll {
         ReadLinePoll::Pending => (),
@@ -188,7 +188,7 @@ pub mod filter_cursors {
         register::SEARCH_REGISTER,
     };
 
-    pub fn enter_filter_mode(ctx: &mut ApplicationContext) {
+    pub fn enter_filter_mode(ctx: &mut EditorContext) {
         ctx.editor.read_line.set_prompt("filter:");
         ctx.editor.mode.read_line_state.on_client_keys = |ctx, client_handle, _, poll| {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
@@ -199,7 +199,7 @@ pub mod filter_cursors {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 
-    pub fn enter_except_mode(ctx: &mut ApplicationContext) {
+    pub fn enter_except_mode(ctx: &mut EditorContext) {
         ctx.editor.read_line.set_prompt("except:");
         ctx.editor.mode.read_line_state.on_client_keys = |ctx, client_handle, _, poll| {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
@@ -211,7 +211,7 @@ pub mod filter_cursors {
     }
 
     fn on_event_impl(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keep_if_contains_pattern: bool,
     ) {
@@ -309,7 +309,7 @@ pub mod split_cursors {
 
     use crate::{buffer_position::BufferPosition, cursor::Cursor, register::SEARCH_REGISTER};
 
-    pub fn enter_by_pattern_mode(ctx: &mut ApplicationContext) {
+    pub fn enter_by_pattern_mode(ctx: &mut EditorContext) {
         fn add_matches(
             cursors: &mut [Cursor],
             mut cursors_len: usize,
@@ -344,7 +344,7 @@ pub mod split_cursors {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 
-    pub fn enter_by_separators_mode(ctx: &mut ApplicationContext) {
+    pub fn enter_by_separators_mode(ctx: &mut EditorContext) {
         fn add_matches(
             cursors: &mut [Cursor],
             mut cursors_len: usize,
@@ -402,7 +402,7 @@ pub mod split_cursors {
     }
 
     fn on_event_impl(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         add_matches: fn(&mut [Cursor], usize, &str, &Pattern, BufferPosition) -> usize,
     ) {
@@ -511,9 +511,9 @@ pub mod goto {
 
     use crate::{buffer_position::BufferPosition, cursor::Cursor, word_database::WordKind};
 
-    pub fn enter_mode(ctx: &mut ApplicationContext, client_handle: ClientHandle) {
+    pub fn enter_mode(ctx: &mut EditorContext, client_handle: ClientHandle) {
         fn on_client_keys(
-            ctx: &mut ApplicationContext,
+            ctx: &mut EditorContext,
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -564,9 +564,9 @@ pub mod goto {
 pub mod process {
     use super::*;
 
-    pub fn enter_replace_mode(ctx: &mut ApplicationContext) {
+    pub fn enter_replace_mode(ctx: &mut EditorContext) {
         fn on_client_keys(
-            ctx: &mut ApplicationContext,
+            ctx: &mut EditorContext,
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -590,9 +590,9 @@ pub mod process {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 
-    pub fn enter_insert_mode(ctx: &mut ApplicationContext) {
+    pub fn enter_insert_mode(ctx: &mut EditorContext) {
         fn on_client_keys(
-            ctx: &mut ApplicationContext,
+            ctx: &mut EditorContext,
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -616,7 +616,7 @@ pub mod process {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 
-    fn spawn_process(ctx: &mut ApplicationContext, client_handle: ClientHandle, pipe: bool) {
+    fn spawn_process(ctx: &mut EditorContext, client_handle: ClientHandle, pipe: bool) {
         let buffer_view_handle = match ctx.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => return,
@@ -668,7 +668,7 @@ pub mod process {
     }
 }
 
-fn save_current_position(ctx: &mut ApplicationContext, client_handle: ClientHandle) {
+fn save_current_position(ctx: &mut EditorContext, client_handle: ClientHandle) {
     let buffer_view_handle = match ctx.clients.get(client_handle).buffer_view_handle() {
         Some(handle) => handle,
         None => return,
@@ -677,7 +677,7 @@ fn save_current_position(ctx: &mut ApplicationContext, client_handle: ClientHand
     ctx.editor.mode.read_line_state.previous_position = buffer_view.cursors.main_cursor().position;
 }
 
-fn restore_saved_position(ctx: &mut ApplicationContext, client_handle: ClientHandle) {
+fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) {
     let buffer_view_handle = match ctx.clients.get(client_handle).buffer_view_handle() {
         Some(handle) => handle,
         None => return,

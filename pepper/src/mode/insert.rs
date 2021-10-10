@@ -5,7 +5,7 @@ use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::ClientHandle,
-    editor::{ApplicationContext, Editor, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     mode::{Mode, ModeKind, ModeState},
     platform::Key,
     plugin::{CompletionContext, PluginCollection, PluginContext, PluginHandle},
@@ -71,16 +71,16 @@ impl State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ApplicationContext) {
+    fn on_enter(ctx: &mut EditorContext) {
         cancel_completion(&mut ctx.editor);
     }
 
-    fn on_exit(ctx: &mut ApplicationContext) {
+    fn on_exit(ctx: &mut EditorContext) {
         cancel_completion(&mut ctx.editor);
     }
 
     fn on_client_keys(
-        ctx: &mut ApplicationContext,
+        ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow> {
@@ -270,7 +270,7 @@ fn cancel_completion(editor: &mut Editor) {
     editor.mode.insert_state.completion_positions.clear();
 }
 
-fn update_completions(ctx: &mut ApplicationContext, buffer_view_handle: BufferViewHandle) {
+fn update_completions(ctx: &mut EditorContext, buffer_view_handle: BufferViewHandle) {
     let state = &mut ctx.editor.mode.insert_state;
 
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
@@ -410,7 +410,7 @@ fn update_completions(ctx: &mut ApplicationContext, buffer_view_handle: BufferVi
 }
 
 fn apply_completion(
-    ctx: &mut ApplicationContext,
+    ctx: &mut EditorContext,
     buffer_view_handle: BufferViewHandle,
     cursor_movement: isize,
 ) {
