@@ -88,7 +88,7 @@ impl<'command> CommandArgs<'command> {
 }
 
 // TODO: rename to CommandIO
-pub struct CommandContext<'a> {
+pub struct CommandIO<'a> {
     client_handle: Option<ClientHandle>,
     plugin_handle: Option<PluginHandle>,
 
@@ -96,7 +96,7 @@ pub struct CommandContext<'a> {
     pub bang: bool,
     pub flow: EditorControlFlow,
 }
-impl<'a> CommandContext<'a> {
+impl<'a> CommandIO<'a> {
     pub fn client_handle(&self) -> Result<ClientHandle, CommandError> {
         match self.client_handle {
             Some(handle) => Ok(handle),
@@ -236,8 +236,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
     }
 }
 
-pub type CommandFn =
-    fn(ctx: &mut EditorContext, io: &mut CommandContext) -> Result<(), CommandError>;
+pub type CommandFn = fn(ctx: &mut EditorContext, io: &mut CommandIO) -> Result<(), CommandError>;
 
 pub struct Command {
     plugin_handle: Option<PluginHandle>,
@@ -436,7 +435,7 @@ impl CommandManager {
             None => return Err(CommandError::NoSuchCommand),
         };
 
-        let mut io = CommandContext {
+        let mut io = CommandIO {
             client_handle,
             plugin_handle,
             args: CommandArgs(tokenizer),

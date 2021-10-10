@@ -17,7 +17,6 @@ use pepper::{
     editor_utils::{MessageKind, StatusBar},
     events::{EditorEvent, EditorEventIter},
     glob::Glob,
-    mode::ModeContext,
     navigation_history::NavigationHistory,
     platform::{Platform, ProcessId},
     plugin::PluginHandle,

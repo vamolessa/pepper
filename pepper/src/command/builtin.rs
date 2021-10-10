@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{
     buffer::{parse_path_and_position, BufferProperties},
     buffer_position::BufferPosition,
-    command::{CommandContext, CommandError, CommandManager, CompletionSource},
+    command::{CommandError, CommandIO, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
     editor::{EditorContext, EditorControlFlow},
@@ -353,11 +353,7 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 }
 
-fn map(
-    ctx: &mut EditorContext,
-    io: &mut CommandContext,
-    mode: ModeKind,
-) -> Result<(), CommandError> {
+fn map(ctx: &mut EditorContext, io: &mut CommandIO, mode: ModeKind) -> Result<(), CommandError> {
     let from = io.args.next()?;
     let to = io.args.next()?;
     io.args.assert_empty()?;
@@ -370,7 +366,7 @@ fn map(
 
 fn syntax_pattern(
     ctx: &mut EditorContext,
-    io: &mut CommandContext,
+    io: &mut CommandIO,
     token_kind: TokenKind,
 ) -> Result<(), CommandError> {
     let pattern = io.args.next()?;
