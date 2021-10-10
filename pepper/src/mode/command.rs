@@ -52,7 +52,11 @@ impl ModeState for State {
         ctx.editor.picker.clear();
     }
 
-    fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
+    fn on_client_keys(
+        ctx: &mut ApplicationContext,
+        client_handle: ClientHandle,
+        keys: &mut KeysIterator,
+    ) -> Option<EditorControlFlow> {
         let state = &mut ctx.editor.mode.command_state;
         match ctx.editor.read_line.poll(
             &mut ctx.platform,
@@ -97,11 +101,8 @@ impl ModeState for State {
                 ctx.editor.commands.add_to_history(input);
 
                 let mut command = ctx.editor.string_pool.acquire_with(input);
-                let flow = CommandManager::eval_and_write_error(
-                    ctx,
-                    Some(client_handle),
-                    &mut command,
-                );
+                let flow =
+                    CommandManager::eval_and_write_error(ctx, Some(client_handle), &mut command);
                 ctx.editor.string_pool.release(command);
 
                 if ctx.editor.mode.kind() == ModeKind::Command {

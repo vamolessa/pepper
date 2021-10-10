@@ -1,8 +1,8 @@
 use std::process::Stdio;
 
 use crate::{
-    client::ClientHandle,
     buffer::BufferProperties,
+    client::ClientHandle,
     editor::{ApplicationContext, EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
     mode::{Mode, ModeKind, ModeState},
@@ -13,8 +13,12 @@ use crate::{
 };
 
 pub struct State {
-    pub on_client_keys:
-        fn(ctx: &mut ApplicationContext, ClientHandle, &mut KeysIterator, ReadLinePoll) -> Option<EditorControlFlow>,
+    pub on_client_keys: fn(
+        ctx: &mut ApplicationContext,
+        ClientHandle,
+        &mut KeysIterator,
+        ReadLinePoll,
+    ) -> Option<EditorControlFlow>,
     pub plugin_handle: Option<PluginHandle>,
     find_file_waiting_for_process: bool,
     find_file_buf: Vec<u8>, // TODO: move to plugin
@@ -101,7 +105,11 @@ impl ModeState for State {
         ctx.editor.picker.clear();
     }
 
-    fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
+    fn on_client_keys(
+        ctx: &mut ApplicationContext,
+        client_handle: ClientHandle,
+        keys: &mut KeysIterator,
+    ) -> Option<EditorControlFlow> {
         let this = &mut ctx.editor.mode.picker_state;
         let poll = ctx.editor.read_line.poll(
             &mut ctx.platform,

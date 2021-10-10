@@ -108,7 +108,10 @@ impl PluginCollection {
         self.plugins[handle.0 as usize].deref_mut()
     }
 
-    pub fn get_mut_as<T>(&mut self, handle: PluginHandle) -> &mut T where T: Plugin {
+    pub fn get_mut_as<T>(&mut self, handle: PluginHandle) -> &mut T
+    where
+        T: Plugin,
+    {
         match self.plugins[handle.0 as usize].as_any().downcast_mut::<T>() {
             Some(plugin) => plugin,
             None => panic!(
@@ -216,10 +219,7 @@ impl PluginCollection {
         plugin.on_process_output(&mut ctx, process_id, bytes);
     }
 
-    pub(crate) fn on_process_exit(
-        ctx: &mut ApplicationContext,
-        process_id: ProcessId,
-    ) {
+    pub(crate) fn on_process_exit(ctx: &mut ApplicationContext, process_id: ProcessId) {
         let (plugins, mut ctx) = get_plugins_and_ctx(ctx);
         ctx.plugin_handle = plugins.plugin_handle_form_process(process_id);
         let plugin = plugins.get_mut(ctx.plugin_handle);
@@ -237,4 +237,3 @@ fn get_plugins_and_ctx(ctx: &mut ApplicationContext) -> (&mut PluginCollection, 
     };
     (plugins, ctx)
 }
-

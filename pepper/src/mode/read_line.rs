@@ -691,4 +691,3 @@ fn restore_saved_position(ctx: &mut ApplicationContext, client_handle: ClientHan
         position,
     });
 }
-

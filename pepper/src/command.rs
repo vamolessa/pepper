@@ -109,7 +109,10 @@ impl<'a> CommandContext<'a> {
         self.plugin_handle.unwrap()
     }
 
-    pub fn current_buffer_view_handle(&self, ctx: &ApplicationContext) -> Result<BufferViewHandle, CommandError> {
+    pub fn current_buffer_view_handle(
+        &self,
+        ctx: &ApplicationContext,
+    ) -> Result<BufferViewHandle, CommandError> {
         let client_handle = self.client_handle()?;
         match ctx.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => Ok(handle),
@@ -117,7 +120,10 @@ impl<'a> CommandContext<'a> {
         }
     }
 
-    pub fn current_buffer_handle(&self, ctx: &ApplicationContext) -> Result<BufferHandle, CommandError> {
+    pub fn current_buffer_handle(
+        &self,
+        ctx: &ApplicationContext,
+    ) -> Result<BufferHandle, CommandError> {
         let buffer_view_handle = self.current_buffer_view_handle(ctx)?;
         let buffer_handle = ctx
             .editor
@@ -127,7 +133,10 @@ impl<'a> CommandContext<'a> {
         Ok(buffer_handle)
     }
 
-    pub fn assert_can_discard_all_buffers(&self, ctx: &ApplicationContext) -> Result<(), CommandError> {
+    pub fn assert_can_discard_all_buffers(
+        &self,
+        ctx: &ApplicationContext,
+    ) -> Result<(), CommandError> {
         if self.bang || !ctx.editor.buffers.iter().any(Buffer::needs_save) {
             Ok(())
         } else {
@@ -135,7 +144,11 @@ impl<'a> CommandContext<'a> {
         }
     }
 
-    pub fn assert_can_discard_buffer(&self, ctx: &ApplicationContext, handle: BufferHandle) -> Result<(), CommandError> {
+    pub fn assert_can_discard_buffer(
+        &self,
+        ctx: &ApplicationContext,
+        handle: BufferHandle,
+    ) -> Result<(), CommandError> {
         if self.bang || !ctx.editor.buffers.get(handle).needs_save() {
             Ok(())
         } else {
@@ -230,7 +243,8 @@ impl<'a> Iterator for CommandTokenizer<'a> {
     }
 }
 
-pub type CommandFn = fn(ctx: &mut ApplicationContext, io: &mut CommandContext) -> Result<(), CommandError>;
+pub type CommandFn =
+    fn(ctx: &mut ApplicationContext, io: &mut CommandContext) -> Result<(), CommandError>;
 
 pub struct Command {
     plugin_handle: Option<PluginHandle>,

@@ -1,14 +1,14 @@
 use std::{fmt::Write, path::Path};
 
 use crate::{
-    client::ClientHandle,
     buffer::{Buffer, BufferHandle},
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
+    client::ClientHandle,
     editor::{ApplicationContext, Editor, EditorControlFlow, KeysIterator},
     mode::{Mode, ModeKind, ModeState},
     platform::Key,
-    plugin::{CompletionContext, PluginContext, PluginCollection, PluginHandle},
+    plugin::{CompletionContext, PluginCollection, PluginContext, PluginHandle},
     register::AUTO_MACRO_REGISTER,
     word_database::{WordIndicesIter, WordKind},
 };
@@ -79,7 +79,11 @@ impl ModeState for State {
         cancel_completion(&mut ctx.editor);
     }
 
-    fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow> {
+    fn on_client_keys(
+        ctx: &mut ApplicationContext,
+        client_handle: ClientHandle,
+        keys: &mut KeysIterator,
+    ) -> Option<EditorControlFlow> {
         let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => {
@@ -459,4 +463,3 @@ fn apply_completion(
         ctx.editor.string_pool.release(completion);
     */
 }
-

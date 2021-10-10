@@ -91,9 +91,7 @@ pub struct ApplicationContext {
     pub plugins: PluginCollection,
 }
 impl ApplicationContext {
-    pub fn trigger_event_handlers(
-        &mut self,
-    ) {
+    pub fn trigger_event_handlers(&mut self) {
         loop {
             self.editor.events.flip();
             let mut events = EditorEventIter::new();
@@ -114,11 +112,15 @@ impl ApplicationContext {
                     }
                     EditorEvent::BufferInsertText { handle, range, .. } => {
                         // TODO: fix lints
-                        self.editor.buffer_views.on_buffer_insert_text(handle, range);
+                        self.editor
+                            .buffer_views
+                            .on_buffer_insert_text(handle, range);
                     }
                     EditorEvent::BufferDeleteText { handle, range } => {
                         // TODO: fix lints
-                        self.editor.buffer_views.on_buffer_delete_text(handle, range);
+                        self.editor
+                            .buffer_views
+                            .on_buffer_delete_text(handle, range);
                     }
                     EditorEvent::BufferWrite { handle, new_path } => {
                         let buffer = self.editor.buffers.get_mut(handle);
@@ -149,8 +151,10 @@ impl ApplicationContext {
                         }
                     }
                     EditorEvent::BufferClose { handle } => {
-                        self.editor.buffers
-                            .remove_from_editor_event_handler(handle, &mut self.editor.word_database);
+                        self.editor.buffers.remove_from_editor_event_handler(
+                            handle,
+                            &mut self.editor.word_database,
+                        );
                         for client in self.clients.iter_mut() {
                             client.on_buffer_close(&mut self.editor, handle);
                         }
@@ -169,14 +173,17 @@ impl ApplicationContext {
                         let buffer_handle = buffer_view.buffer_handle;
                         let buffer = self.editor.buffers.get(buffer_handle);
                         let should_close = buffer.properties.auto_close && !buffer.needs_save();
-                        let any_view = !self.clients
+                        let any_view = !self
+                            .clients
                             .iter()
                             .filter_map(Client::buffer_view_handle)
                             .map(|h| self.editor.buffer_views.get(h))
                             .any(|v| v.buffer_handle == buffer_handle);
 
                         if should_close && !any_view {
-                            self.editor.buffers.defer_remove(buffer_handle, &mut self.editor.events);
+                            self.editor
+                                .buffers
+                                .defer_remove(buffer_handle, &mut self.editor.events);
                         }
                     }
                 }
@@ -429,4 +436,3 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
-

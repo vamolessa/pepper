@@ -290,7 +290,9 @@ pub fn register_commands(commands: &mut CommandManager) {
     r("map-normal", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
     r("map-insert", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
     r("map-command", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
-    r("map-readline", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
+    r("map-readline", &[], |ctx, io| {
+        map(ctx, io, ModeKind::Normal)
+    });
     r("map-picker", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
 
     static ALIAS_COMPLETIONS: &[CompletionSource] =
@@ -351,7 +353,11 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 }
 
-fn map(ctx: &mut ApplicationContext, io: &mut CommandContext, mode: ModeKind) -> Result<(), CommandError> {
+fn map(
+    ctx: &mut ApplicationContext,
+    io: &mut CommandContext,
+    mode: ModeKind,
+) -> Result<(), CommandError> {
     let from = io.args.next()?;
     let to = io.args.next()?;
     io.args.assert_empty()?;
@@ -362,7 +368,11 @@ fn map(ctx: &mut ApplicationContext, io: &mut CommandContext, mode: ModeKind) ->
     }
 }
 
-fn syntax_pattern(ctx: &mut ApplicationContext, io: &mut CommandContext, token_kind: TokenKind) -> Result<(), CommandError> {
+fn syntax_pattern(
+    ctx: &mut ApplicationContext,
+    io: &mut CommandContext,
+    token_kind: TokenKind,
+) -> Result<(), CommandError> {
     let pattern = io.args.next()?;
     io.args.assert_empty()?;
     match ctx

@@ -76,11 +76,7 @@ impl ServerApplication {
         }
 
         for config in &config.configs {
-            match load_config(
-                &mut ctx,
-                config.name,
-                config.content,
-            ) {
+            match load_config(&mut ctx, config.name, config.content) {
                 EditorControlFlow::Continue => (),
                 _ => return None,
             };
@@ -92,15 +88,12 @@ impl ServerApplication {
                 continue;
             }
             match fs::read_to_string(path) {
-                Ok(source) => match load_config(
-                    &mut ctx,
-                    &config.path,
-                    &source,
-                ) {
+                Ok(source) => match load_config(&mut ctx, &config.path, &source) {
                     EditorControlFlow::Continue => (),
                     _ => return None,
                 },
-                Err(_) => ctx.editor
+                Err(_) => ctx
+                    .editor
                     .status_bar
                     .write(MessageKind::Error)
                     .fmt(format_args!("could not load config '{}'", config.path)),
@@ -123,7 +116,9 @@ impl ServerApplication {
                     self.ctx.editor.on_idle();
                     self.ctx.trigger_event_handlers();
                 }
-                PlatformEvent::ConnectionOpen { handle } => self.ctx.clients.on_client_joined(handle),
+                PlatformEvent::ConnectionOpen { handle } => {
+                    self.ctx.clients.on_client_joined(handle)
+                }
                 PlatformEvent::ConnectionClose { handle } => {
                     self.ctx.clients.on_client_left(handle);
                     if self.ctx.clients.iter().next().is_none() {
@@ -138,21 +133,19 @@ impl ServerApplication {
                     self.ctx.platform.buf_pool.release(buf);
 
                     while let Some(event) = events.next(&self.client_event_receiver) {
-                        match Editor::on_client_event(
-                            &mut self.ctx,
-                            handle,
-                            event,
-                        ) {
+                        match Editor::on_client_event(&mut self.ctx, handle, event) {
                             EditorControlFlow::Continue => (),
                             EditorControlFlow::Suspend => {
                                 let mut buf = self.ctx.platform.buf_pool.acquire();
                                 ServerEvent::Suspend.serialize(buf.write());
-                                self.ctx.platform
+                                self.ctx
+                                    .platform
                                     .requests
                                     .enqueue(PlatformRequest::WriteToClient { handle, buf });
                             }
                             EditorControlFlow::Quit => {
-                                self.ctx.platform
+                                self.ctx
+                                    .platform
                                     .requests
                                     .enqueue(PlatformRequest::CloseClient { handle });
                                 break;
@@ -167,7 +160,11 @@ impl ServerApplication {
                 }
                 PlatformEvent::ProcessSpawned { tag, handle } => {
                     match tag {
-                        ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_spawned(&mut self.ctx.platform, id, handle),
+                        ProcessTag::Buffer(id) => self.ctx.editor.buffers.on_process_spawned(
+                            &mut self.ctx.platform,
+                            id,
+                            handle,
+                        ),
                         ProcessTag::FindFiles => (),
                         ProcessTag::Plugin(id) => {
                             PluginCollection::on_process_spawned(&mut self.ctx, id, handle)
@@ -185,16 +182,14 @@ impl ServerApplication {
                             &mut self.ctx.editor.events,
                         ),
                         ProcessTag::FindFiles => {
-                            self.ctx.editor.mode
-                                .picker_state
-                                .on_process_output(&mut self.ctx.editor.picker, &self.ctx.editor.read_line, bytes)
-                        }
-                        ProcessTag::Plugin(id) => {
-                            PluginCollection::on_process_output(
-                                &mut self.ctx,
-                                id,
+                            self.ctx.editor.mode.picker_state.on_process_output(
+                                &mut self.ctx.editor.picker,
+                                &self.ctx.editor.read_line,
                                 bytes,
                             )
+                        }
+                        ProcessTag::Plugin(id) => {
+                            PluginCollection::on_process_output(&mut self.ctx, id, bytes)
                         }
                     }
                     self.ctx.trigger_event_handlers();
@@ -207,16 +202,13 @@ impl ServerApplication {
                             id,
                             &mut self.ctx.editor.events,
                         ),
-                        ProcessTag::FindFiles => self
-                            .ctx
-                            .editor
-                            .mode
-                            .picker_state
-                            .on_process_exit(&mut self.ctx.editor.picker, &self.ctx.editor.read_line),
-                        ProcessTag::Plugin(id) => PluginCollection::on_process_exit(
-                            &mut self.ctx,
-                            id,
+                        ProcessTag::FindFiles => self.ctx.editor.mode.picker_state.on_process_exit(
+                            &mut self.ctx.editor.picker,
+                            &self.ctx.editor.read_line,
                         ),
+                        ProcessTag::Plugin(id) => {
+                            PluginCollection::on_process_exit(&mut self.ctx, id)
+                        }
                     }
                     self.ctx.trigger_event_handlers();
                 }
@@ -248,7 +240,8 @@ impl ServerApplication {
             ServerEvent::Display(&[]).serialize_bytes_variant_header(write);
 
             let handle = c.handle();
-            self.ctx.platform
+            self.ctx
+                .platform
                 .requests
                 .enqueue(PlatformRequest::WriteToClient { handle, buf });
         }
@@ -401,4 +394,3 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
-

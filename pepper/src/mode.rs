@@ -14,7 +14,11 @@ pub(crate) mod read_line;
 pub(crate) trait ModeState {
     fn on_enter(ctx: &mut ApplicationContext);
     fn on_exit(ctx: &mut ApplicationContext);
-    fn on_client_keys(ctx: &mut ApplicationContext, client_handle: ClientHandle, keys: &mut KeysIterator) -> Option<EditorControlFlow>;
+    fn on_client_keys(
+        ctx: &mut ApplicationContext,
+        client_handle: ClientHandle,
+        keys: &mut KeysIterator,
+    ) -> Option<EditorControlFlow>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
