@@ -93,6 +93,8 @@ impl<T> Drop for PluginGuard<T> {
     }
 }
 
+// TODO: make PluginIterGuard or something
+
 struct DummyPlugin;
 impl DummyPlugin {
     pub fn new() -> Box<dyn Plugin> {
