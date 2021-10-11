@@ -215,11 +215,7 @@ impl LspPlugin {
     pub(crate) fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
         match &mut self.entries[handle.0 as usize] {
             ClientEntry::Occupied(client) => Some(client.deref_mut()),
-            d => {
-                let d = std::mem::discriminant(d);
-                eprintln!("lsp.get_mut discriminant: {:?}", d);
-                None
-            }
+            _ => None,
         }
     }
 
@@ -257,7 +253,6 @@ impl LspPlugin {
         match op {
             ClientOperation::None => (),
             ClientOperation::EnteredReadLineMode => {
-                eprintln!("set entered readline mode");
                 self.read_line_client_handle = Some(client_handle);
             }
             ClientOperation::EnteredPickerMode => {
@@ -387,7 +382,11 @@ fn on_process_output(
                         client.respond(platform, request_id, Err(ResponseError::parse_error()));
                     }
                     Err(ProtocolError::MethodNotFound) => {
-                        client.respond(platform, request_id, Err(ResponseError::method_not_found()));
+                        client.respond(
+                            platform,
+                            request_id,
+                            Err(ResponseError::method_not_found()),
+                        );
                     }
                 }
             }

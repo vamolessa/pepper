@@ -789,8 +789,8 @@ pub(crate) fn on_response(
             Ok(ClientOperation::None)
         }
         "textDocument/codeAction" => {
-            let client_handle = match client.request_state {
-                RequestState::CodeAction { client_handle } => client_handle,
+            match client.request_state {
+                RequestState::CodeAction => (),
                 _ => return Ok(ClientOperation::None),
             };
             client.request_state = RequestState::Idle;
@@ -822,11 +822,8 @@ pub(crate) fn on_response(
             Ok(op)
         }
         "textDocument/documentSymbol" => {
-            let (client_handle, buffer_view_handle) = match client.request_state {
-                RequestState::DocumentSymbols {
-                    client_handle,
-                    buffer_view_handle,
-                } => (client_handle, buffer_view_handle),
+            let buffer_view_handle = match client.request_state {
+                RequestState::DocumentSymbols { buffer_view_handle } => buffer_view_handle,
                 _ => return Ok(ClientOperation::None),
             };
             client.request_state = RequestState::Idle;
@@ -876,8 +873,8 @@ pub(crate) fn on_response(
             Ok(op)
         }
         "workspace/symbol" => {
-            let client_handle = match client.request_state {
-                RequestState::WorkspaceSymbols { client_handle } => client_handle,
+            match client.request_state {
+                RequestState::WorkspaceSymbols => (),
                 _ => return Ok(ClientOperation::None),
             };
             client.request_state = RequestState::Idle;

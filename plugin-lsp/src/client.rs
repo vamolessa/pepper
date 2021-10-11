@@ -398,20 +398,15 @@ pub(crate) enum RequestState {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
     },
-    CodeAction {
-        client_handle: client::ClientHandle,
-    },
+    CodeAction,
     FinishCodeAction,
     DocumentSymbols {
-        client_handle: client::ClientHandle,
         buffer_view_handle: BufferViewHandle,
     },
     FinishDocumentSymbols {
         buffer_view_handle: BufferViewHandle,
     },
-    WorkspaceSymbols {
-        client_handle: client::ClientHandle,
-    },
+    WorkspaceSymbols,
     FinishWorkspaceSymbols,
     Formatting {
         buffer_handle: BufferHandle,
@@ -755,7 +750,6 @@ impl Client {
     }
 
     pub(crate) fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform) {
-        eprintln!("finish rename");
         let (buffer_handle, buffer_position) = match self.request_state {
             RequestState::FinishRename {
                 buffer_handle,
@@ -792,7 +786,6 @@ impl Client {
         editor: &Editor,
         platform: &mut Platform,
         plugin_handle: PluginHandle,
-        client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         range: BufferRange,
     ) -> ClientOperation {
@@ -843,7 +836,7 @@ impl Client {
         );
         params.set("context".into(), context.into(), &mut self.json);
 
-        self.request_state = RequestState::CodeAction { client_handle };
+        self.request_state = RequestState::CodeAction;
         self.request(platform, "textDocument/codeAction", params);
 
         ClientOperation::None
@@ -879,7 +872,6 @@ impl Client {
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        client_handle: client::ClientHandle,
         buffer_view_handle: BufferViewHandle,
     ) -> ClientOperation {
         if !self.server_capabilities.document_symbol_provider.0 || !self.request_state.is_idle() {
@@ -895,10 +887,7 @@ impl Client {
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
 
-        self.request_state = RequestState::DocumentSymbols {
-            client_handle,
-            buffer_view_handle,
-        };
+        self.request_state = RequestState::DocumentSymbols { buffer_view_handle };
         self.request(platform, "textDocument/documentSymbol", params);
 
         ClientOperation::None
@@ -968,7 +957,6 @@ impl Client {
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        client_handle: client::ClientHandle,
         query: &str,
     ) -> ClientOperation {
         if !self.server_capabilities.workspace_symbol_provider.0 || !self.request_state.is_idle() {
@@ -981,7 +969,7 @@ impl Client {
         let mut params = JsonObject::default();
         params.set("query".into(), query.into(), &mut self.json);
 
-        self.request_state = RequestState::WorkspaceSymbols { client_handle };
+        self.request_state = RequestState::WorkspaceSymbols;
         self.request(platform, "workspace/symbol", params);
 
         ClientOperation::None
