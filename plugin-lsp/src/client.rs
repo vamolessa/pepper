@@ -422,7 +422,6 @@ impl RequestState {
 }
 
 #[must_use]
-#[derive(Debug)] // TODO: remove
 pub enum ClientOperation {
     None,
     EnteredReadLineMode,

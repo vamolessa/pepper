@@ -110,7 +110,7 @@ pub fn enter_code_action_mode(
             ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.picker_state.plugin_handle {
-                    let lsp = ctx.plugins.get::<LspPlugin>(handle);
+                    let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) =
                         lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
                     {
@@ -128,7 +128,7 @@ pub fn enter_code_action_mode(
             }
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.picker_state.plugin_handle {
-                    let lsp = ctx.plugins.get::<LspPlugin>(handle);
+                    let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) =
                         lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
                     {
@@ -173,7 +173,7 @@ pub fn enter_document_symbol_mode(
             ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.picker_state.plugin_handle {
-                    let lsp = ctx.plugins.get::<LspPlugin>(handle);
+                    let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) =
                         lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
                     {
@@ -196,7 +196,7 @@ pub fn enter_document_symbol_mode(
             }
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.picker_state.plugin_handle {
-                    let lsp = ctx.plugins.get::<LspPlugin>(handle);
+                    let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) =
                         lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
                     {
@@ -241,7 +241,7 @@ pub fn enter_workspace_symbol_mode(
             ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.picker_state.plugin_handle {
-                    let lsp = ctx.plugins.get::<LspPlugin>(handle);
+                    let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) =
                         lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
                     {
@@ -264,7 +264,7 @@ pub fn enter_workspace_symbol_mode(
             }
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.picker_state.plugin_handle {
-                    let lsp = ctx.plugins.get::<LspPlugin>(handle);
+                    let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) =
                         lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
                     {

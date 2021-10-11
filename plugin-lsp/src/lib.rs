@@ -270,7 +270,7 @@ impl LspPlugin {
 }
 
 fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
-    let lsp = ctx.plugins.get::<LspPlugin>(plugin_handle);
+    let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
 
     let mut events = EditorEventIter::new();
     while let Some(event) = events.next(&ctx.editor.events) {
@@ -339,7 +339,7 @@ fn on_process_spawned(
     process_handle: PlatformProcessHandle,
 ) {
     if let ClientEntry::Occupied(client) =
-        &mut ctx.plugins.get::<LspPlugin>(handle).entries[client_index as usize]
+        &mut ctx.plugins.get_as::<LspPlugin>(handle).entries[client_index as usize]
     {
         client.protocol.set_process_handle(process_handle);
         client.initialize(&mut ctx.platform);
@@ -352,7 +352,7 @@ fn on_process_output(
     client_index: u32,
     bytes: &[u8],
 ) {
-    let lsp = ctx.plugins.get::<LspPlugin>(plugin_handle);
+    let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
     let mut client_guard = match lsp.acquire(ClientHandle(client_index as _)) {
         Some(client) => client,
         None => return,
@@ -423,7 +423,7 @@ fn on_process_exit(handle: PluginHandle, ctx: &mut EditorContext, client_index: 
         lints.clear();
     }
 
-    let lsp = ctx.plugins.get::<LspPlugin>(handle);
+    let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
     if let ClientEntry::Occupied(client) = &mut lsp.entries[client_index as usize] {
         client.write_to_log_file(|buf, _| {
             use io::Write;

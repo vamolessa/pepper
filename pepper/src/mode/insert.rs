@@ -1,50 +1,25 @@
-use std::{fmt::Write, path::Path};
+use std::fmt::Write;
 
 use crate::{
-    buffer::{Buffer, BufferHandle},
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::ClientHandle,
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     mode::{ModeKind, ModeState},
     platform::Key,
-    plugin::{CompletionContext, PluginCollection, PluginHandle},
+    plugin::{CompletionContext, CompletionFlow, PluginHandle},
     register::AUTO_MACRO_REGISTER,
     word_database::{WordIndicesIter, WordKind},
 };
 
-struct CompletionState {
-    pub buffer_handle: BufferHandle,
-    pub plugin_handle: PluginHandle,
-}
-
 #[derive(Default)]
 pub struct State {
     completion_positions: Vec<BufferPosition>,
-    completion_state: Option<CompletionState>,
+    completing_plugin_handle: Option<PluginHandle>,
 }
 
 // TODO: make completions work again
 impl State {
-    /*
-    fn get_completion_plugin_handle(
-        &mut self,
-        plugins: &PluginCollection,
-        buffer: &Buffer,
-    ) -> Option<PluginHandle> {
-        match &self.completion_state {
-            Some(state) => {
-            //
-            }
-        }
-        //if buffer.handle()
-
-        if let Some(plugin) = self.completion_plugin_handle.map(|h| plugins.get(h)) {
-            //
-        }
-    }
-    */
-
     /*
     fn get_lsp_client_handle(
         &mut self,
@@ -268,6 +243,7 @@ impl ModeState for State {
 fn cancel_completion(editor: &mut Editor) {
     editor.picker.clear();
     editor.mode.insert_state.completion_positions.clear();
+    editor.mode.insert_state.completing_plugin_handle = None;
 }
 
 fn update_completions(ctx: &mut EditorContext, buffer_view_handle: BufferViewHandle) {
@@ -280,26 +256,81 @@ fn update_completions(ctx: &mut EditorContext, buffer_view_handle: BufferViewHan
     let main_cursor_position = buffer_view.cursors.main_cursor().position;
     let word = content.word_at(content.position_before(main_cursor_position));
 
-    let completion_ctx = CompletionContext {
-        buffer_handle: buffer.handle(),
-        buffer_view_handle,
-        position: main_cursor_position,
-        last_char: '\0',
-    };
+    let main_cursor_index = buffer_view.cursors.main_cursor_index();
+    match state.completion_positions.get(main_cursor_index) {
+        Some(&position) => {
+            if main_cursor_position < position {
+                cancel_completion(&mut ctx.editor);
+                return;
+            }
+            if position != word.position {
+                cancel_completion(&mut ctx.editor);
+                return;
+            }
+        }
+        None => {
+            let mut info = CompletionContext {
+                buffer,
+                word: &word,
+                cursor_position: main_cursor_position,
+                completion_requested: (word.kind != WordKind::Identifier
+                    || word.text.len() < ctx.editor.config.completion_min_len as _),
 
-    /*
-    for plugin in ctx.editor.plugins.iter_mut() {
-        //match plugin.on_completion_flow(
-        //
-    }
-    */
+                picker: &mut ctx.editor.picker,
+                platform: &mut ctx.platform,
+                plugins: &mut ctx.plugins,
+            };
 
-    /*
-    if word.position > main_completion_position {
-        cancel_completion(ctx.editor);
-        return;
+            for plugin_handle in info.plugins.handles() {
+                let on_completion = info.plugins.get(plugin_handle).on_completion;
+                match on_completion(plugin_handle, &mut info) {
+                    Some(CompletionFlow::Completing) => {
+                        state.completing_plugin_handle = Some(plugin_handle);
+                        break;
+                    }
+                    Some(CompletionFlow::Cancel) => {
+                        cancel_completion(&mut ctx.editor);
+                        return;
+                    }
+                    None => (),
+                }
+            }
+
+            if !info.completion_requested && state.completing_plugin_handle.is_none() {
+                cancel_completion(&mut ctx.editor);
+                return;
+            }
+
+            state.completion_positions.clear();
+            for cursor in &buffer_view.cursors[..] {
+                let word = content.word_at(content.position_before(cursor.position));
+                let position = match word.kind {
+                    WordKind::Identifier => word.position,
+                    _ => cursor.position,
+                };
+                state.completion_positions.push(position);
+            }
+        }
     }
-    */
+
+    match state.completing_plugin_handle {
+        Some(_) => {
+            ctx.editor
+                .picker
+                .filter(WordIndicesIter::empty(), word.text);
+        }
+        None => {
+            ctx.editor
+                .picker
+                .filter(ctx.editor.word_database.word_indices(), word.text);
+            if ctx.editor.picker.cursor().is_none() {
+                ctx.editor.picker.move_cursor(0);
+            }
+            if ctx.editor.picker.len() == 1 {
+                ctx.editor.picker.clear();
+            }
+        }
+    }
 
     /*
     let state = &mut ctx.editor.mode.insert_state;
@@ -414,52 +445,53 @@ fn apply_completion(
     buffer_view_handle: BufferViewHandle,
     cursor_movement: isize,
 ) {
-    /*
-        let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
 
-        ctx.editor.picker.move_cursor(cursor_movement);
-        let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
-            Some((_, entry)) => entry,
-            None => {
-                let buffer_handle = buffer_view.buffer_handle;
-                let buffer = ctx.editor.buffers.get(buffer_handle);
-                let state = &mut ctx.editor.mode.insert_state;
-                let lsp_client_handle = match state.get_lsp_client_handle(&ctx.editor.lsp, &buffer.path)
-                {
-                    Some(handle) => handle,
-                    None => return,
+    ctx.editor.picker.move_cursor(cursor_movement);
+    let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
+        Some((_, entry)) => entry,
+        None => {
+            /*
+            let buffer_handle = buffer_view.buffer_handle;
+            let buffer = ctx.editor.buffers.get(buffer_handle);
+            let state = &mut ctx.editor.mode.insert_state;
+            let lsp_client_handle = match state.get_lsp_client_handle(&ctx.editor.lsp, &buffer.path)
+            {
+                Some(handle) => handle,
+                None => return,
+            };
+
+            let content = buffer.content();
+            state.completion_positions.clear();
+            for cursor in &buffer_view.cursors[..] {
+                let word = content.word_at(content.position_before(cursor.position));
+                let position = match word.kind {
+                    WordKind::Identifier => word.position,
+                    _ => cursor.position,
                 };
-
-                let content = buffer.content();
-                state.completion_positions.clear();
-                for cursor in &buffer_view.cursors[..] {
-                    let word = content.word_at(content.position_before(cursor.position));
-                    let position = match word.kind {
-                        WordKind::Identifier => word.position,
-                        _ => cursor.position,
-                    };
-                    state.completion_positions.push(position);
-                }
-
-                let platform = &mut *ctx.platform;
-                let client_handle = ctx.client_handle;
-                let buffer_position = buffer_view.cursors.main_cursor().position;
-                lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
-                    c.completion(e, platform, client_handle, buffer_handle, buffer_position)
-                });
-
-                return;
+                state.completion_positions.push(position);
             }
-        };
 
-        let completion = ctx.editor.string_pool.acquire_with(entry);
-        buffer_view.apply_completion(
-            &mut ctx.editor.buffers,
-            &mut ctx.editor.word_database,
-            &completion,
-            &ctx.editor.mode.insert_state.completion_positions,
-            &mut ctx.editor.events,
-        );
-        ctx.editor.string_pool.release(completion);
-    */
+            let platform = &mut *ctx.platform;
+            let client_handle = ctx.client_handle;
+            let buffer_position = buffer_view.cursors.main_cursor().position;
+            lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
+                c.completion(e, platform, client_handle, buffer_handle, buffer_position)
+            });
+            */
+
+            return;
+        }
+    };
+
+    let completion = ctx.editor.string_pool.acquire_with(entry);
+    buffer_view.apply_completion(
+        &mut ctx.editor.buffers,
+        &mut ctx.editor.word_database,
+        &completion,
+        &ctx.editor.mode.insert_state.completion_positions,
+        &mut ctx.editor.events,
+    );
+    ctx.editor.string_pool.release(completion);
 }
+

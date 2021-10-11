@@ -1,8 +1,12 @@
 use std::any::Any;
 
 use crate::{
-    buffer::BufferHandle, buffer_position::BufferPosition, buffer_view::BufferViewHandle,
-    editor::EditorContext, help, platform::PlatformProcessHandle,
+    buffer::{Buffer, WordRefWithPosition},
+    buffer_position::BufferPosition,
+    editor::EditorContext,
+    help,
+    picker::Picker,
+    platform::{Platform, PlatformProcessHandle},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -20,9 +24,7 @@ pub struct Plugin {
     pub on_process_spawned: fn(PluginHandle, &mut EditorContext, u32, PlatformProcessHandle),
     pub on_process_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
     pub on_process_exit: fn(PluginHandle, &mut EditorContext, u32),
-    pub on_completion_flow:
-        fn(PluginHandle, &mut EditorContext, &CompletionContext) -> Option<CompletionFlow>,
-    pub on_completion: fn(PluginHandle, &mut EditorContext, &CompletionContext) -> bool,
+    pub on_completion: fn(PluginHandle, &mut CompletionContext) -> Option<CompletionFlow>,
 }
 impl Default for Plugin {
     fn default() -> Self {
@@ -32,22 +34,25 @@ impl Default for Plugin {
             on_process_spawned: |_, _, _, _| (),
             on_process_output: |_, _, _, _| (),
             on_process_exit: |_, _, _| (),
-            on_completion_flow: |_, _, _| None,
-            on_completion: |_, _, _| false,
+            on_completion: |_, _| None,
         }
     }
 }
 
 pub enum CompletionFlow {
-    ForceCompletion,
+    Completing,
     Cancel,
 }
 
-pub struct CompletionContext {
-    pub buffer_handle: BufferHandle,
-    pub buffer_view_handle: BufferViewHandle,
-    pub position: BufferPosition,
-    pub last_char: char,
+pub struct CompletionContext<'a> {
+    pub buffer: &'a Buffer,
+    pub word: &'a WordRefWithPosition<'a>,
+    pub cursor_position: BufferPosition,
+    pub completion_requested: bool,
+
+    pub picker: &'a mut Picker,
+    pub platform: &'a mut Platform,
+    pub plugins: &'a mut PluginCollection,
 }
 
 #[derive(Default)]
@@ -63,7 +68,7 @@ impl PluginCollection {
         ctx.plugins.plugins.push(plugin);
     }
 
-    pub fn get<T>(&mut self, handle: PluginHandle) -> &mut T
+    pub fn get_as<T>(&mut self, handle: PluginHandle) -> &mut T
     where
         T: Any,
     {
@@ -75,6 +80,17 @@ impl PluginCollection {
                 std::any::type_name::<T>()
             ),
         }
+    }
+
+    pub(crate) fn get(&self, handle: PluginHandle) -> &Plugin {
+        &self.plugins[handle.0 as usize]
+    }
+
+    pub(crate) fn handles(&self) -> impl Iterator<Item = PluginHandle> {
+        std::iter::repeat(())
+            .take(self.plugins.len())
+            .enumerate()
+            .map(|(i, _)| PluginHandle(i as _))
     }
 
     pub(crate) fn on_editor_events(ctx: &mut EditorContext) {
@@ -114,3 +130,4 @@ impl PluginCollection {
         f(plugin_handle, ctx, process_id);
     }
 }
+

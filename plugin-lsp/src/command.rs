@@ -23,7 +23,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     r("lsp-debug", &[], |ctx, io| {
         io.args.assert_empty()?;
 
-        let lsp = ctx.plugins.get::<LspPlugin>(io.plugin_handle());
+        let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
         let mut write = ctx
             .editor
             .status_bar
@@ -43,7 +43,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let log_path = io.args.try_next();
         io.args.assert_empty()?;
 
-        let lsp = ctx.plugins.get::<LspPlugin>(io.plugin_handle());
+        let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
         let result = match lsp.add_recipe(glob, command, None, log_path) {
             Ok(()) => Ok(()),
             Err(error) => Err(CommandError::InvalidGlob(error)),
@@ -92,7 +92,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let root = ctx.editor.current_directory.clone();
 
         let plugin_handle = io.plugin_handle();
-        let lsp = ctx.plugins.get::<LspPlugin>(plugin_handle);
+        let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
         lsp.start(
             &mut ctx.platform,
             plugin_handle,
@@ -107,7 +107,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         io.args.assert_empty()?;
 
         let buffer_handle = io.current_buffer_handle(ctx)?;
-        let lsp = ctx.plugins.get::<LspPlugin>(io.plugin_handle());
+        let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
         match find_lsp_client_for_buffer(lsp, &ctx.editor, buffer_handle) {
             Some(client) => {
                 let handle = client.handle();
@@ -122,7 +122,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     r("lsp-stop-all", &[], |ctx, io| {
         io.args.assert_empty()?;
 
-        let lsp = ctx.plugins.get::<LspPlugin>(io.plugin_handle());
+        let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
         lsp.stop_all(&mut ctx.platform);
         Ok(())
     });
@@ -315,7 +315,7 @@ where
         &mut Client,
     ) -> Result<ClientOperation, CommandError>,
 {
-    let lsp = ctx.plugins.get::<LspPlugin>(io.plugin_handle());
+    let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
     if let Some(mut client) = find_lsp_client_for_buffer(lsp, &ctx.editor, buffer_handle) {
         let op = accessor(
             &mut ctx.editor,
