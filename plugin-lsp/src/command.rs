@@ -38,34 +38,29 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         io.args.assert_empty()?;
         let client_handle = io.client_handle()?;
         let buffer_handle = io.current_buffer_handle(ctx)?;
-        access(
-            ctx,
-            io,
-            buffer_handle,
-            |editor, _, clients, client| {
-                let path = client
-                    .log_file_path()
-                    .ok_or(CommandError::OtherStatic("lsp server is not logging"))?;
+        access(ctx, io, buffer_handle, |editor, _, clients, client| {
+            let path = client
+                .log_file_path()
+                .ok_or(CommandError::OtherStatic("lsp server is not logging"))?;
 
-                let buffer_view_handle = editor
-                    .buffer_view_handle_from_path(
-                        client_handle,
-                        Path::new(path),
-                        BufferProperties::log(),
-                        true,
-                    )
-                    .map_err(CommandError::BufferReadError)?;
+            let buffer_view_handle = editor
+                .buffer_view_handle_from_path(
+                    client_handle,
+                    Path::new(path),
+                    BufferProperties::log(),
+                    true,
+                )
+                .map_err(CommandError::BufferReadError)?;
 
-                let client = clients.get_mut(client_handle);
-                client.set_buffer_view_handle(
-                    Some(buffer_view_handle),
-                    &editor.buffer_views,
-                    &mut editor.events,
-                );
+            let client = clients.get_mut(client_handle);
+            client.set_buffer_view_handle(
+                Some(buffer_view_handle),
+                &editor.buffer_views,
+                &mut editor.events,
+            );
 
-                Ok(ClientOperation::None)
-            },
-        )
+            Ok(ClientOperation::None)
+        })
     });
 
     r("lsp-start", &[], |ctx, io| {
@@ -198,23 +193,17 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(ctx, io)?;
 
         let plugin_handle = io.plugin_handle();
-        access(
-            ctx,
-            io,
-            buffer_handle,
-            |editor, platform, clients, client| {
-                let op = client.rename(
-                    editor,
-                    platform,
-                    clients,
-                    plugin_handle,
-                    client_handle,
-                    buffer_handle,
-                    cursor.position,
-                );
-                Ok(op)
-            },
-        )
+        access(ctx, io, buffer_handle, |editor, platform, _, client| {
+            let op = client.rename(
+                editor,
+                platform,
+                plugin_handle,
+                client_handle,
+                buffer_handle,
+                cursor.position,
+            );
+            Ok(op)
+        })
     });
 
     r("lsp-code-action", &[], |ctx, io| {

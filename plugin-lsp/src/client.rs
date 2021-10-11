@@ -711,7 +711,6 @@ impl Client {
         &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
-        clients: &mut client::ClientManager,
         plugin_handle: PluginHandle,
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
