@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr};
+use std::fmt;
 
 use crate::{
     buffer::{BufferHandle, BufferProperties, CharDisplayDistances},
@@ -41,23 +41,6 @@ impl<'de> Serialize<'de> for ClientHandle {
         D: Deserializer<'de>,
     {
         Ok(Self(u8::deserialize(deserializer)?))
-    }
-}
-
-pub struct ClientHandleFromStrError;
-impl fmt::Display for ClientHandleFromStrError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("could not parse client index")
-    }
-}
-
-impl FromStr for ClientHandle {
-    type Err = ClientHandleFromStrError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.parse() {
-            Ok(i) => Ok(Self(i)),
-            Err(_) => Err(ClientHandleFromStrError),
-        }
     }
 }
 
@@ -316,3 +299,4 @@ impl ClientManager {
         }
     }
 }
+
