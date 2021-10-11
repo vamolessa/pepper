@@ -390,7 +390,6 @@ pub(crate) enum RequestState {
         auto_close_buffer: bool,
     },
     Rename {
-        client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
     },
@@ -708,7 +707,6 @@ impl Client {
         editor: &mut Editor,
         platform: &mut Platform,
         plugin_handle: PluginHandle,
-        client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
     ) -> ClientOperation {
@@ -732,7 +730,6 @@ impl Client {
 
         if self.server_capabilities.rename_provider.prepare_provider {
             self.request_state = RequestState::Rename {
-                client_handle,
                 buffer_handle,
                 buffer_position,
             };
@@ -1504,4 +1501,3 @@ pub(crate) mod util {
         client.notify(platform, "textDocument/didClose", params);
     }
 }
-

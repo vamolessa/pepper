@@ -31,7 +31,6 @@ use crate::{
 pub(crate) fn on_request(
     client: &mut Client,
     editor: &mut Editor,
-    platform: &mut Platform,
     clients: &mut pepper::client::ClientManager,
     request: ServerRequest,
 ) -> Result<JsonValue, ProtocolError> {
@@ -236,8 +235,6 @@ pub(crate) fn on_request(
 pub(crate) fn on_notification(
     client: &mut Client,
     editor: &mut Editor,
-    platform: &mut Platform,
-    clients: &mut pepper::client::ClientManager,
     plugin_handle: PluginHandle,
     notification: ServerNotification,
 ) -> Result<(), ProtocolError> {
@@ -720,12 +717,11 @@ pub(crate) fn on_response(
             Ok(ClientOperation::None)
         }
         "textDocument/prepareRename" => {
-            let (client_handle, buffer_handle, buffer_position) = match client.request_state {
+            let (buffer_handle, buffer_position) = match client.request_state {
                 RequestState::Rename {
-                    client_handle,
                     buffer_handle,
                     buffer_position,
-                } => (client_handle, buffer_handle, buffer_position),
+                } => (buffer_handle, buffer_position),
                 _ => return Ok(ClientOperation::None),
             };
             client.request_state = RequestState::Idle;
@@ -1093,4 +1089,3 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(ClientOperation::None),
     }
 }
-

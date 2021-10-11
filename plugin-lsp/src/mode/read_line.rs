@@ -64,4 +64,3 @@ pub fn enter_rename_mode(
 
     ClientOperation::EnteredReadLineMode
 }
-

@@ -376,7 +376,7 @@ fn on_process_output(
             }
             ServerEvent::Request(request) => {
                 let request_id = request.id.clone();
-                match client_event_handler::on_request(client, editor, platform, clients, request) {
+                match client_event_handler::on_request(client, editor, clients, request) {
                     Ok(value) => client.respond(platform, request_id, Ok(value)),
                     Err(ProtocolError::ParseError) => {
                         client.respond(platform, request_id, Err(ResponseError::parse_error()));
@@ -394,8 +394,6 @@ fn on_process_output(
                 let _ = client_event_handler::on_notification(
                     client,
                     editor,
-                    platform,
-                    clients,
                     plugin_handle,
                     notification,
                 );
@@ -440,4 +438,3 @@ fn on_process_exit(handle: PluginHandle, ctx: &mut EditorContext, client_index: 
         }
     }
 }
-

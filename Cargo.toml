@@ -4,7 +4,7 @@ resolver = "2"
 members = [
     "pepper",
     "plugin-lsp",
-    "my",
+    "mine",
 ]
 
 [profile.release]

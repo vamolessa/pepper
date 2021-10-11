@@ -213,7 +213,6 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     r("lsp-rename", &[], |ctx, io| {
         io.args.assert_empty()?;
 
-        let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(ctx, io)?;
         let plugin_handle = io.plugin_handle();
 
@@ -222,7 +221,6 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
                 editor,
                 platform,
                 plugin_handle,
-                client_handle,
                 buffer_handle,
                 cursor.position,
             );
@@ -332,4 +330,3 @@ where
 
     Ok(())
 }
-
