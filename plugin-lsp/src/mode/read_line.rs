@@ -1,7 +1,8 @@
 use pepper::{
-    editor::{Editor, EditorControlFlow, KeysIterator},
+    client::ClientHandle,
+    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::ReadLinePoll,
-    mode::{ModeContext, ModeKind},
+    mode::ModeKind,
     plugin::PluginHandle,
 };
 
@@ -13,7 +14,8 @@ pub fn enter_rename_mode(
     placeholder: &str,
 ) -> ClientOperation {
     fn on_client_keys(
-        ctx: &mut ModeContext,
+        ctx: &mut EditorContext,
+        _: ClientHandle,
         _: &mut KeysIterator,
         poll: ReadLinePoll,
     ) -> Option<EditorControlFlow> {
@@ -21,15 +23,14 @@ pub fn enter_rename_mode(
             ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.read_line_state.plugin_handle {
-                    let mut lsp = ctx.editor.plugins.acquire::<LspPlugin>(handle);
+                    let lsp = ctx.plugins.get::<LspPlugin>(handle);
                     if let Some(client) = lsp
                         .read_line_client_handle
                         .take()
                         .and_then(|h| lsp.get_mut(h))
                     {
-                        client.finish_rename(ctx.editor, ctx.platform);
+                        client.finish_rename(&mut ctx.editor, &mut ctx.platform);
                     }
-                    ctx.editor.plugins.release(lsp);
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
@@ -37,7 +38,7 @@ pub fn enter_rename_mode(
             }
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.read_line_state.plugin_handle {
-                    let mut lsp = ctx.editor.plugins.acquire::<LspPlugin>(handle);
+                    let lsp = ctx.plugins.get::<LspPlugin>(handle);
                     if let Some(client) = lsp
                         .read_line_client_handle
                         .take()
@@ -45,7 +46,6 @@ pub fn enter_rename_mode(
                     {
                         client.cancel_current_request();
                     }
-                    ctx.editor.plugins.release(lsp);
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
@@ -64,3 +64,4 @@ pub fn enter_rename_mode(
 
     ClientOperation::EnteredReadLineMode
 }
+

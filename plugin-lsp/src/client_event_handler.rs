@@ -5,11 +5,12 @@ use pepper::{
     buffer_position::{BufferPosition, BufferRange},
     client,
     cursor::Cursor,
+    editor::EditorContext,
     editor_utils::MessageKind,
     glob::Glob,
-    mode::{ModeContext, ModeKind},
+    mode::ModeKind,
     picker::Picker,
-    plugin::PluginContext,
+    plugin::PluginHandle,
     word_database::{WordIndicesIter, WordKind},
 };
 
@@ -28,7 +29,7 @@ use crate::{
 
 pub(crate) fn on_request(
     client: &mut Client,
-    ctx: &mut PluginContext,
+    ctx: &mut EditorContext,
     request: ServerRequest,
 ) -> Result<JsonValue, ProtocolError> {
     client.write_to_log_file(|buf, json| {
@@ -231,7 +232,8 @@ pub(crate) fn on_request(
 
 pub(crate) fn on_notification(
     client: &mut Client,
-    ctx: &mut PluginContext,
+    ctx: &mut EditorContext,
+    plugin_handle: PluginHandle,
     notification: ServerNotification,
 ) -> Result<(), ProtocolError> {
     client.write_to_log_file(|buf, json| {
@@ -318,7 +320,7 @@ pub(crate) fn on_notification(
                     .buffers
                     .get_mut(buffer_handle)
                     .lints
-                    .mut_guard(ctx.plugin_handle);
+                    .mut_guard(plugin_handle);
                 lints.clear();
 
                 let diagnostics = client.diagnostics.get_buffer_diagnostics(buffer_handle);
@@ -343,7 +345,8 @@ pub(crate) fn on_notification(
 
 pub(crate) fn on_response(
     client: &mut Client,
-    ctx: &mut PluginContext,
+    ctx: &mut EditorContext,
+    plugin_handle: PluginHandle,
     response: ServerResponse,
 ) -> Result<ClientOperation, ProtocolError> {
     let method = match client.pending_requests.take(response.id) {
@@ -416,10 +419,10 @@ pub(crate) fn on_response(
             }
 
             client.initialized = true;
-            client.notify(ctx.platform, "initialized", JsonObject::default());
+            client.notify(&mut ctx.platform, "initialized", JsonObject::default());
 
             for buffer in ctx.editor.buffers.iter() {
-                util::send_did_open(client, ctx.editor, ctx.platform, buffer.handle());
+                util::send_did_open(client, &ctx.editor, &mut ctx.platform, buffer.handle());
             }
 
             Ok(ClientOperation::None)
@@ -509,21 +512,21 @@ pub(crate) fn on_response(
                 RequestState::Definition { client_handle } => client_handle,
                 _ => return Ok(ClientOperation::None),
             };
-            goto_definition(client, ctx, client_handle, result)
+            goto_definition(client, ctx, plugin_handle, client_handle, result)
         }
         "textDocument/declaration" => {
             let client_handle = match client.request_state {
                 RequestState::Declaration { client_handle } => client_handle,
                 _ => return Ok(ClientOperation::None),
             };
-            goto_definition(client, ctx, client_handle, result)
+            goto_definition(client, ctx, plugin_handle, client_handle, result)
         }
         "textDocument/implementation" => {
             let client_handle = match client.request_state {
                 RequestState::Implementation { client_handle } => client_handle,
                 _ => return Ok(ClientOperation::None),
             };
-            goto_definition(client, ctx, client_handle, result)
+            goto_definition(client, ctx, plugin_handle, client_handle, result)
         }
         "textDocument/references" => {
             let (client_handle, auto_close_buffer, context_len) = match client.request_state {
@@ -680,7 +683,7 @@ pub(crate) fn on_response(
                 &ctx.editor.buffer_views,
                 &mut ctx.editor.events,
             );
-            ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
+            ctx.trigger_event_handlers();
 
             let mut cursors = ctx
                 .editor
@@ -751,14 +754,7 @@ pub(crate) fn on_response(
                 }
             }
 
-            let plugin_handle = ctx.plugin_handle;
-            let mut ctx = ModeContext {
-                editor: ctx.editor,
-                platform: ctx.platform,
-                clients: ctx.clients,
-                client_handle,
-            };
-            let op = read_line::enter_rename_mode(&mut ctx, plugin_handle, &input);
+            let op = read_line::enter_rename_mode(&mut ctx.editor, plugin_handle, &input);
             ctx.editor.string_pool.release(input);
 
             client.request_state = RequestState::FinishRename {
@@ -770,7 +766,7 @@ pub(crate) fn on_response(
         "textDocument/rename" => {
             let edit = WorkspaceEdit::from_json(result, &client.json)?;
             edit.apply(
-                ctx.editor,
+                &mut ctx.editor,
                 &mut client.temp_edits,
                 &client.root,
                 &client.json,
@@ -800,14 +796,7 @@ pub(crate) fn on_response(
                     .add_custom_entry(action.title.as_str(&client.json));
             }
 
-            let plugin_handle = ctx.plugin_handle;
-            let mut ctx = ModeContext {
-                editor: ctx.editor,
-                platform: ctx.platform,
-                clients: ctx.clients,
-                client_handle,
-            };
-            let op = picker::enter_code_action_mode(&mut ctx, plugin_handle, client);
+            let op = picker::enter_code_action_mode(&mut ctx.editor, plugin_handle, client);
 
             client.request_state = RequestState::FinishCodeAction;
             client.request_raw_json.clear();
@@ -861,14 +850,7 @@ pub(crate) fn on_response(
             ctx.editor.picker.clear();
             add_symbols(&mut ctx.editor.picker, 0, symbols.clone(), &client.json);
 
-            let plugin_handle = ctx.plugin_handle;
-            let mut ctx = ModeContext {
-                editor: ctx.editor,
-                platform: ctx.platform,
-                clients: ctx.clients,
-                client_handle,
-            };
-            let op = picker::enter_document_symbol_mode(&mut ctx, plugin_handle, client);
+            let op = picker::enter_document_symbol_mode(&mut ctx.editor, plugin_handle, client);
 
             client.request_state = RequestState::FinishDocumentSymbols { buffer_view_handle };
             client.request_raw_json.clear();
@@ -907,14 +889,7 @@ pub(crate) fn on_response(
                 }
             }
 
-            let plugin_handle = ctx.plugin_handle;
-            let mut ctx = ModeContext {
-                editor: ctx.editor,
-                platform: ctx.platform,
-                clients: ctx.clients,
-                client_handle,
-            };
-            let op = picker::enter_workspace_symbol_mode(&mut ctx, plugin_handle, client);
+            let op = picker::enter_workspace_symbol_mode(&mut ctx.editor, plugin_handle, client);
 
             client.request_state = RequestState::FinishWorkspaceSymbols;
             client.request_raw_json.clear();
@@ -935,7 +910,7 @@ pub(crate) fn on_response(
                 _ => return Ok(ClientOperation::None),
             };
             TextEdit::apply_edits(
-                ctx.editor,
+                &mut ctx.editor,
                 buffer_handle,
                 &mut client.temp_edits,
                 edits,
@@ -1003,7 +978,8 @@ pub(crate) fn on_response(
 
 fn goto_definition(
     client: &mut Client,
-    ctx: &mut PluginContext,
+    ctx: &mut EditorContext,
+    plugin_handle: PluginHandle,
     client_handle: client::ClientHandle,
     result: JsonValue,
 ) -> Result<ClientOperation, ProtocolError> {
@@ -1099,16 +1075,10 @@ fn goto_definition(
                 ));
             }
 
-            let plugin_handle = ctx.plugin_handle;
-            let mut ctx = ModeContext {
-                editor: ctx.editor,
-                platform: ctx.platform,
-                clients: ctx.clients,
-                client_handle,
-            };
-            let op = picker::enter_definition_mode(&mut ctx, plugin_handle);
+            let op = picker::enter_definition_mode(&mut ctx.editor, plugin_handle);
             Ok(op)
         }
         DefinitionLocation::Invalid => Ok(ClientOperation::None),
     }
 }
+

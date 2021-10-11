@@ -475,11 +475,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub(crate) fn new(
-        handle: ClientHandle,
-        root: PathBuf,
-        log_file_path: Option<String>,
-    ) -> Self {
+    pub(crate) fn new(handle: ClientHandle, root: PathBuf, log_file_path: Option<String>) -> Self {
         let (log_file_path, log_file) = match log_file_path {
             Some(path) => match File::create(&path) {
                 Ok(file) => (path, Some(io::BufWriter::new(file))),
@@ -754,13 +750,7 @@ impl Client {
                 buffer_position,
             };
 
-            let mut ctx = ModeContext {
-                editor,
-                platform,
-                clients,
-                client_handle,
-            };
-            read_line::enter_rename_mode(&mut ctx, plugin_handle, "")
+            read_line::enter_rename_mode(editor, plugin_handle, "")
         }
     }
 

@@ -6,7 +6,7 @@ use std::{
 };
 
 use pepper::{
-    editor::{Editor, EditorContext},
+    editor::EditorContext,
     editor_utils::{hash_bytes, parse_process_command, MessageKind},
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
@@ -29,6 +29,7 @@ use protocol::{ProtocolError, ResponseError, ServerEvent};
 
 const SERVER_PROCESS_BUFFER_LEN: usize = 4 * 1024;
 
+static HELP_PAGES: HelpPages = HelpPages::new(&[]);
 pub static DEFINITION: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
         command::register_commands(&mut ctx.editor.commands, handle);
@@ -41,7 +42,7 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
             ..Default::default()
         }
     },
-    help_pages: &HelpPages::new(&[]),
+    help_pages: &HELP_PAGES,
 };
 
 struct ClientRecipe {
@@ -176,7 +177,7 @@ impl LspPlugin {
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Plugin {
                 plugin_handle,
-                id: handle.0,
+                id: handle.0 as _,
             },
             command,
             buf_len: SERVER_PROCESS_BUFFER_LEN,
@@ -211,15 +212,41 @@ impl LspPlugin {
         }
     }
 
+    pub(crate) fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
+        match &mut self.entries[handle.0 as usize] {
+            ClientEntry::Occupied(client) => Some(client.deref_mut()),
+            _ => None,
+        }
+    }
+
     pub(crate) fn acquire(&mut self, handle: ClientHandle) -> Option<ClientGuard> {
         self.entries[handle.0 as usize]
             .reserve_and_take()
             .map(ClientGuard)
     }
 
-    pub(crate) fn release(&mut self, guard: ClientGuard) {
+    pub(crate) fn release(&mut self, mut guard: ClientGuard) {
         let index = guard.handle().0 as usize;
-        self.entries[index] = ClientEntry::Occupied(guard.0);
+        let raw = guard.deref_mut() as *mut _;
+        std::mem::forget(guard);
+        let client = unsafe { Box::from_raw(raw) };
+        self.entries[index] = ClientEntry::Occupied(client);
+    }
+
+    pub(crate) fn find_client<P>(&mut self, mut predicate: P) -> Option<ClientGuard>
+    where
+        P: FnMut(&Client) -> bool,
+    {
+        for entry in &mut self.entries {
+            if let ClientEntry::Occupied(c) = entry {
+                if predicate(c) {
+                    let client = entry.reserve_and_take().unwrap();
+                    return Some(ClientGuard(client));
+                }
+            }
+        }
+
+        None
     }
 
     pub(crate) fn on_client_operation(&mut self, client_handle: ClientHandle, op: ClientOperation) {
@@ -320,19 +347,17 @@ fn on_process_spawned(
 }
 
 fn on_process_output(
-    handle: PluginHandle,
+    plugin_handle: PluginHandle,
     ctx: &mut EditorContext,
     client_index: u32,
     bytes: &[u8],
 ) {
-    let client = match ctx
-        .plugins
-        .get::<LspPlugin>(handle)
-        .get_mut(ClientHandle(client_index as _))
-    {
+    let lsp = ctx.plugins.get::<LspPlugin>(plugin_handle);
+    let mut client_guard = match lsp.acquire(ClientHandle(client_index as _)) {
         Some(client) => client,
         None => return,
     };
+    let client = client_guard.deref_mut();
 
     let mut events = client.protocol.parse_events(bytes);
     while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
@@ -366,14 +391,18 @@ fn on_process_output(
                 }
             }
             ServerEvent::Notification(notification) => {
-                let _ = client_event_handler::on_notification(client, ctx, notification);
+                let _ =
+                    client_event_handler::on_notification(client, ctx, plugin_handle, notification);
             }
             ServerEvent::Response(response) => {
-                let _ = client_event_handler::on_response(client, ctx, response);
+                let _ = client_event_handler::on_response(client, ctx, plugin_handle, response);
             }
         }
     }
     events.finish(&mut client.protocol);
+
+    let lsp = ctx.plugins.get::<LspPlugin>(plugin_handle);
+    lsp.release(client_guard);
 }
 
 fn on_process_exit(handle: PluginHandle, ctx: &mut EditorContext, client_index: u32) {
@@ -383,7 +412,7 @@ fn on_process_exit(handle: PluginHandle, ctx: &mut EditorContext, client_index: 
     }
 
     let lsp = ctx.plugins.get::<LspPlugin>(handle);
-    if let Some(client) = lsp.get_mut(ClientHandle(client_index as _)) {
+    if let ClientEntry::Occupied(client) = &mut lsp.entries[client_index as usize] {
         client.write_to_log_file(|buf, _| {
             use io::Write;
             let _ = write!(buf, "lsp server stopped");
