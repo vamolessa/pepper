@@ -38,7 +38,7 @@ impl ModeState for State {
     }
 
     fn on_exit(editor: &mut Editor) {
-        editor.mode.read_line_state.plugin_handle = None;
+        //editor.mode.read_line_state.plugin_handle = None;
         editor.read_line.input_mut().clear();
     }
 

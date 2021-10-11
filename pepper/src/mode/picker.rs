@@ -100,6 +100,7 @@ impl ModeState for State {
     }
 
     fn on_exit(editor: &mut Editor) {
+        //editor.mode.picker_state.plugin_handle = None;
         editor.mode.picker_state.find_file_waiting_for_process = false;
         editor.read_line.input_mut().clear();
         editor.picker.clear();

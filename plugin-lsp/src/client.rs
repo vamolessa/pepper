@@ -428,6 +428,7 @@ impl RequestState {
 }
 
 #[must_use]
+#[derive(Debug)] // TODO: remove
 pub enum ClientOperation {
     None,
     EnteredReadLineMode,
@@ -754,6 +755,7 @@ impl Client {
     }
 
     pub(crate) fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform) {
+        eprintln!("finish rename");
         let (buffer_handle, buffer_position) = match self.request_state {
             RequestState::FinishRename {
                 buffer_handle,

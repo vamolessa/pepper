@@ -20,6 +20,23 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         commands.register_command(Some(plugin_handle), name, completions, command_fn);
     };
 
+    r("lsp-debug", &[], |ctx, io| {
+        io.args.assert_empty()?;
+
+        let lsp = ctx.plugins.get::<LspPlugin>(io.plugin_handle());
+        let mut write = ctx
+            .editor
+            .status_bar
+            .write(pepper::editor_utils::MessageKind::Info);
+        write.fmt(format_args!("client count: {}\n", lsp.clients().count()));
+        for (i, client) in lsp.clients().enumerate() {
+            let d = std::mem::discriminant(&client.request_state);
+            write.fmt(format_args!("client {}: request_state: {:?}", i, d));
+        }
+
+        Ok(())
+    });
+
     r("lsp", &[], |ctx, io| {
         let command = io.args.next()?;
         let glob = io.args.next()?;
@@ -202,6 +219,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
                 buffer_handle,
                 cursor.position,
             );
+            eprintln!("lsp-rename. op: {:?}", op);
             Ok(op)
         })
     });
@@ -307,7 +325,11 @@ where
         );
         let client_handle = client.handle();
         lsp.release(client);
-        lsp.on_client_operation(client_handle, op?);
+
+        eprintln!("before on_client_operation 1");
+        let op = op?;
+        eprintln!("before on_client_operation 2 op = {:?}", &op);
+        lsp.on_client_operation(client_handle, op);
     }
 
     Ok(())

@@ -22,13 +22,19 @@ pub fn enter_rename_mode(
         match poll {
             ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
             ReadLinePoll::Submitted => {
+                eprintln!("finish rename readline submitted");
                 if let Some(handle) = ctx.editor.mode.read_line_state.plugin_handle {
                     let lsp = ctx.plugins.get::<LspPlugin>(handle);
+                    eprintln!(
+                        "has plugin handle! has readline client handel? {}",
+                        lsp.read_line_client_handle.is_some()
+                    );
                     if let Some(client) = lsp
                         .read_line_client_handle
                         .take()
                         .and_then(|h| lsp.get_mut(h))
                     {
+                        eprintln!("has client");
                         client.finish_rename(&mut ctx.editor, &mut ctx.platform);
                     }
                 }

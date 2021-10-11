@@ -215,7 +215,11 @@ impl LspPlugin {
     pub(crate) fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
         match &mut self.entries[handle.0 as usize] {
             ClientEntry::Occupied(client) => Some(client.deref_mut()),
-            _ => None,
+            d => {
+                let d = std::mem::discriminant(d);
+                eprintln!("lsp.get_mut discriminant: {:?}", d);
+                None
+            }
         }
     }
 
@@ -253,6 +257,7 @@ impl LspPlugin {
         match op {
             ClientOperation::None => (),
             ClientOperation::EnteredReadLineMode => {
+                eprintln!("set entered readline mode");
                 self.read_line_client_handle = Some(client_handle);
             }
             ClientOperation::EnteredPickerMode => {
@@ -359,6 +364,10 @@ fn on_process_output(
     };
     let client = client_guard.deref_mut();
 
+    let editor = &mut ctx.editor;
+    let platform = &mut ctx.platform;
+    let clients = &mut ctx.clients;
+
     let mut events = client.protocol.parse_events(bytes);
     while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
         match event {
@@ -368,40 +377,46 @@ fn on_process_output(
                     let _ = write!(buf, "send parse error\nrequest_id: ");
                     let _ = json.write(buf, &JsonValue::Null);
                 });
-                client.respond(
-                    &mut ctx.platform,
-                    JsonValue::Null,
-                    Err(ResponseError::parse_error()),
-                );
+                client.respond(platform, JsonValue::Null, Err(ResponseError::parse_error()));
             }
             ServerEvent::Request(request) => {
                 let request_id = request.id.clone();
-                match client_event_handler::on_request(client, ctx, request) {
-                    Ok(value) => client.respond(&mut ctx.platform, request_id, Ok(value)),
-                    Err(ProtocolError::ParseError) => client.respond(
-                        &mut ctx.platform,
-                        request_id,
-                        Err(ResponseError::parse_error()),
-                    ),
-                    Err(ProtocolError::MethodNotFound) => client.respond(
-                        &mut ctx.platform,
-                        request_id,
-                        Err(ResponseError::method_not_found()),
-                    ),
+                match client_event_handler::on_request(client, editor, platform, clients, request) {
+                    Ok(value) => client.respond(platform, request_id, Ok(value)),
+                    Err(ProtocolError::ParseError) => {
+                        client.respond(platform, request_id, Err(ResponseError::parse_error()));
+                    }
+                    Err(ProtocolError::MethodNotFound) => {
+                        client.respond(platform, request_id, Err(ResponseError::method_not_found()));
+                    }
                 }
             }
             ServerEvent::Notification(notification) => {
-                let _ =
-                    client_event_handler::on_notification(client, ctx, plugin_handle, notification);
+                let _ = client_event_handler::on_notification(
+                    client,
+                    editor,
+                    platform,
+                    clients,
+                    plugin_handle,
+                    notification,
+                );
             }
             ServerEvent::Response(response) => {
-                let _ = client_event_handler::on_response(client, ctx, plugin_handle, response);
+                if let Ok(op) = client_event_handler::on_response(
+                    client,
+                    editor,
+                    platform,
+                    clients,
+                    plugin_handle,
+                    response,
+                ) {
+                    lsp.on_client_operation(client.handle(), op);
+                }
             }
         }
     }
     events.finish(&mut client.protocol);
 
-    let lsp = ctx.plugins.get::<LspPlugin>(plugin_handle);
     lsp.release(client_guard);
 }
 
