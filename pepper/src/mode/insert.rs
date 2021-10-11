@@ -273,8 +273,8 @@ fn update_completions(ctx: &mut EditorContext, buffer_view_handle: BufferViewHan
                 buffer,
                 word: &word,
                 cursor_position: main_cursor_position,
-                completion_requested: (word.kind != WordKind::Identifier
-                    || word.text.len() < ctx.editor.config.completion_min_len as _),
+                completion_requested: (word.kind == WordKind::Identifier
+                    && word.text.len() >= ctx.editor.config.completion_min_len as _),
 
                 picker: &mut ctx.editor.picker,
                 platform: &mut ctx.platform,
