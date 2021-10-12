@@ -1003,10 +1003,7 @@ impl Client {
             ) {
                 Ok(buffer_view_handle) => {
                     let client = clients.get_mut(client_handle);
-                    client.set_buffer_view_handle(
-                        Some(buffer_view_handle),
-                        &editor.buffer_views,
-                    );
+                    client.set_buffer_view_handle(Some(buffer_view_handle), &editor.buffer_views);
 
                     let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
                     let position = symbol.range.start.into_buffer_position();

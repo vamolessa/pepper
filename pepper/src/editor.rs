@@ -10,7 +10,7 @@ use crate::{
     client::{ClientHandle, ClientManager},
     command::CommandManager,
     config::Config,
-    editor_utils::{ReadLine, StatusBar, StringPool},
+    editor_utils::{ReadLine, RegisterCollection, RegisterKey, StatusBar, StringPool},
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
         ServerEvent, TargetClient,
@@ -21,7 +21,6 @@ use crate::{
     picker::Picker,
     platform::{Key, Platform, PlatformRequest},
     plugin::PluginCollection,
-    register::{RegisterCollection, RegisterKey},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
     word_database::WordDatabase,
@@ -416,4 +415,3 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
-

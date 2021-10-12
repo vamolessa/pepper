@@ -24,8 +24,7 @@ pub struct Plugin {
     pub on_process_spawned: fn(PluginHandle, &mut EditorContext, u32, PlatformProcessHandle),
     pub on_process_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
     pub on_process_exit: fn(PluginHandle, &mut EditorContext, u32),
-    pub on_completion:
-        fn(PluginHandle, &mut EditorContext, &CompletionContext) -> bool,
+    pub on_completion: fn(PluginHandle, &mut EditorContext, &CompletionContext) -> bool,
 }
 impl Default for Plugin {
     fn default() -> Self {
@@ -123,4 +122,3 @@ impl PluginCollection {
         f(plugin_handle, ctx, process_id);
     }
 }
-

@@ -5,10 +5,10 @@ use crate::{
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::ClientHandle,
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    editor_utils::AUTO_MACRO_REGISTER,
     mode::{ModeKind, ModeState},
     platform::Key,
     plugin::{CompletionContext, PluginHandle},
-    register::AUTO_MACRO_REGISTER,
     word_database::{WordIndicesIter, WordKind},
 };
 
@@ -410,4 +410,3 @@ fn apply_completion(
     );
     ctx.editor.string_pool.release(completion);
 }
-

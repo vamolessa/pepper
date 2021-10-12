@@ -114,7 +114,7 @@ impl ModeState for State {
 pub mod search {
     use super::*;
 
-    use crate::register::SEARCH_REGISTER;
+    use crate::editor_utils::SEARCH_REGISTER;
 
     pub fn enter_mode(ctx: &mut EditorContext, client_handle: ClientHandle) {
         fn on_client_keys(
@@ -238,7 +238,7 @@ pub mod filter_cursors {
 
     use crate::{
         buffer::BufferContent, buffer_position::BufferRange, cursor::Cursor,
-        register::SEARCH_REGISTER,
+        editor_utils::SEARCH_REGISTER,
     };
 
     pub fn enter_filter_mode(ctx: &mut EditorContext) {
@@ -360,7 +360,7 @@ pub mod filter_cursors {
 pub mod split_cursors {
     use super::*;
 
-    use crate::{buffer_position::BufferPosition, cursor::Cursor, register::SEARCH_REGISTER};
+    use crate::{buffer_position::BufferPosition, cursor::Cursor, editor_utils::SEARCH_REGISTER};
 
     pub fn enter_by_pattern_mode(ctx: &mut EditorContext) {
         fn add_matches(
@@ -869,4 +869,3 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
         position,
     });
 }
-

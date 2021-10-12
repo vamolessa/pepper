@@ -19,7 +19,6 @@ pub mod pattern;
 pub mod picker;
 pub mod platform;
 pub mod plugin;
-pub mod register;
 pub mod serialization;
 pub mod syntax;
 pub mod theme;
@@ -239,4 +238,3 @@ pub fn run(config: application::ApplicationConfig) {
 
     platform_impl::sys::main(config);
 }
-

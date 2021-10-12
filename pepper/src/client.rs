@@ -182,10 +182,7 @@ impl Client {
 
                 let buffer_view_handle =
                     editor.buffer_views.add_new(self.handle(), buffer.handle());
-                self.set_buffer_view_handle(
-                    Some(buffer_view_handle),
-                    &editor.buffer_views,
-                );
+                self.set_buffer_view_handle(Some(buffer_view_handle), &editor.buffer_views);
 
                 self.stdin_buffer_handle = Some(buffer.handle());
                 buffer.handle()
@@ -287,4 +284,3 @@ impl ClientManager {
         }
     }
 }
-

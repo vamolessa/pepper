@@ -494,4 +494,3 @@ fn on_completion(
 
     false
 }
-

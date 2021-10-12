@@ -693,10 +693,7 @@ pub(crate) fn on_response(
             editor.string_pool.release(text);
 
             let client = clients.get_mut(client_handle);
-            client.set_buffer_view_handle(
-                Some(buffer_view_handle),
-                &editor.buffer_views,
-            );
+            client.set_buffer_view_handle(Some(buffer_view_handle), &editor.buffer_views);
 
             let mut cursors = editor
                 .buffer_views
@@ -1031,10 +1028,7 @@ fn goto_definition(
             ) {
                 Ok(buffer_view_handle) => {
                     let client = clients.get_mut(client_handle);
-                    client.set_buffer_view_handle(
-                        Some(buffer_view_handle),
-                        &editor.buffer_views,
-                    );
+                    client.set_buffer_view_handle(Some(buffer_view_handle), &editor.buffer_views);
 
                     let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
                     let position = location.range.start.into_buffer_position();

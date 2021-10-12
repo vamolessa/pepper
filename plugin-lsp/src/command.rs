@@ -70,10 +70,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
                 .map_err(CommandError::BufferReadError)?;
 
             let client = clients.get_mut(client_handle);
-            client.set_buffer_view_handle(
-                Some(buffer_view_handle),
-                &editor.buffer_views,
-            );
+            client.set_buffer_view_handle(Some(buffer_view_handle), &editor.buffer_views);
 
             Ok(ClientOperation::None)
         })

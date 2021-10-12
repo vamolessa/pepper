@@ -407,4 +407,3 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
-

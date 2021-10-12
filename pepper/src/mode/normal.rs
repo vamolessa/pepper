@@ -10,13 +10,12 @@ use crate::{
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
-    editor_utils::{hash_bytes, MessageKind},
+    editor_utils::{hash_bytes, MessageKind, RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     help::HELP_PREFIX,
     mode::{picker, read_line, ModeKind, ModeState},
     navigation_history::{NavigationHistory, NavigationMovement},
     pattern::PatternEscaper,
     platform::Key,
-    register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
 };
 
@@ -1736,4 +1735,3 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
-
