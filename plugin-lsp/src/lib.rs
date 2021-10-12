@@ -464,6 +464,7 @@ fn on_completion(
                 .and_then(|s| s.chars().next_back())
             {
                 if client.signature_help_triggers().contains(c) {
+                    ctx.editor.picker.clear();
                     let op = client.signature_help(
                         &ctx.editor,
                         &mut ctx.platform,
