@@ -18,7 +18,7 @@ use crate::{
     Args,
 };
 
-pub fn run(
+pub(crate) fn run(
     config: ApplicationConfig,
     server_fn: fn(ApplicationConfig, UnixListener),
     client_fn: fn(Args, UnixStream),
@@ -90,11 +90,11 @@ pub fn run(
     }
 }
 
-pub fn is_pipped(fd: RawFd) -> bool {
+pub(crate) fn is_pipped(fd: RawFd) -> bool {
     unsafe { libc::isatty(fd) != true as _ }
 }
 
-pub struct Terminal {
+pub(crate) struct Terminal {
     fd: RawFd,
     original_state: libc::termios,
 }
@@ -219,7 +219,7 @@ impl Drop for Terminal {
     }
 }
 
-pub fn read(fd: RawFd, buf: &mut [u8]) -> Result<usize, ()> {
+pub(crate) fn read(fd: RawFd, buf: &mut [u8]) -> Result<usize, ()> {
     let len = unsafe { libc::read(fd, buf.as_mut_ptr() as _, buf.len()) };
     if len >= 0 {
         Ok(len as _)
@@ -228,7 +228,7 @@ pub fn read(fd: RawFd, buf: &mut [u8]) -> Result<usize, ()> {
     }
 }
 
-pub fn write_all_bytes(fd: RawFd, mut buf: &[u8]) -> bool {
+pub(crate) fn write_all_bytes(fd: RawFd, mut buf: &[u8]) -> bool {
     while !buf.is_empty() {
         let len = unsafe { libc::write(fd, buf.as_ptr() as _, buf.len()) };
         if len > 0 {
@@ -241,7 +241,7 @@ pub fn write_all_bytes(fd: RawFd, mut buf: &[u8]) -> bool {
     true
 }
 
-pub fn read_from_connection(
+pub(crate) fn read_from_connection(
     connection: &mut UnixStream,
     buf_pool: &mut BufPool,
     len: usize,
@@ -261,7 +261,7 @@ pub fn read_from_connection(
     }
 }
 
-pub struct Process {
+pub(crate) struct Process {
     alive: bool,
     child: Child,
     tag: ProcessTag,
@@ -335,7 +335,7 @@ impl Drop for Process {
     }
 }
 
-pub fn suspend_process(application: &mut ClientApplication, terminal: &Option<Terminal>) {
+pub(crate) fn suspend_process(application: &mut ClientApplication, terminal: &Option<Terminal>) {
     application.restore_screen();
     if let Some(terminal) = terminal {
         terminal.leave_raw_mode();
