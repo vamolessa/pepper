@@ -1,12 +1,11 @@
 use std::any::Any;
 
 use crate::{
-    buffer::{Buffer, WordRefWithPosition},
-    buffer_position::BufferPosition,
+    buffer::BufferHandle,
+    buffer_position::{BufferPosition, BufferRange},
     editor::EditorContext,
     help,
-    picker::Picker,
-    platform::{Platform, PlatformProcessHandle},
+    platform::PlatformProcessHandle,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -24,7 +23,8 @@ pub struct Plugin {
     pub on_process_spawned: fn(PluginHandle, &mut EditorContext, u32, PlatformProcessHandle),
     pub on_process_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
     pub on_process_exit: fn(PluginHandle, &mut EditorContext, u32),
-    pub on_completion: fn(PluginHandle, &mut CompletionContext) -> Option<CompletionFlow>,
+    pub on_completion:
+        fn(PluginHandle, &mut EditorContext, &CompletionContext) -> Option<CompletionFlow>,
 }
 impl Default for Plugin {
     fn default() -> Self {
@@ -34,7 +34,7 @@ impl Default for Plugin {
             on_process_spawned: |_, _, _, _| (),
             on_process_output: |_, _, _, _| (),
             on_process_exit: |_, _, _| (),
-            on_completion: |_, _| None,
+            on_completion: |_, _, _| None,
         }
     }
 }
@@ -44,15 +44,11 @@ pub enum CompletionFlow {
     Cancel,
 }
 
-pub struct CompletionContext<'a> {
-    pub buffer: &'a Buffer,
-    pub word: &'a WordRefWithPosition<'a>,
+pub struct CompletionContext {
+    pub buffer_handle: BufferHandle,
+    pub word_range: BufferRange,
     pub cursor_position: BufferPosition,
     pub completion_requested: bool,
-
-    pub picker: &'a mut Picker,
-    pub platform: &'a mut Platform,
-    pub plugins: &'a mut PluginCollection,
 }
 
 #[derive(Default)]

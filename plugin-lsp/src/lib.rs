@@ -12,7 +12,7 @@ use pepper::{
     glob::{Glob, InvalidGlobError},
     help::HelpPages,
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
-    plugin::{Plugin, PluginDefinition, PluginHandle},
+    plugin::{CompletionContext, CompletionFlow, Plugin, PluginDefinition, PluginHandle},
 };
 
 mod capabilities;
@@ -39,6 +39,7 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
             on_process_spawned,
             on_process_output,
             on_process_exit,
+            //on_completion,
             ..Default::default()
         }
     },
@@ -438,3 +439,38 @@ fn on_process_exit(handle: PluginHandle, ctx: &mut EditorContext, client_index: 
         }
     }
 }
+
+/*
+fn on_completion(handle: PluginHandle, ctx: &mut CompletionContext) -> Option<CompletionFlow> {
+    let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
+    for entry in &mut lsp.entries {
+        let client = match entry {
+            ClientEntry::Occupied(client) => client,
+            _ => continue,
+        };
+
+        let mut should_complete = ctx.completion_requested;
+
+        if !should_complete {
+            if let Some(c) = ctx.word.text.chars().next_back() {
+                if client.signature_help_triggers().contains(c) {
+                    //client.signature_help(
+                    return Some(CompletionFlow::Cancel);
+                }
+                should_complete = client.completion_triggers().contains(c);
+            }
+        }
+
+        if should_complete {
+            ctx.picker.clear();
+            //client.completion(
+            return Some(CompletionFlow::Completing(|h, ctx| {
+                
+            }));
+        }
+    }
+
+    None
+}
+*/
+
