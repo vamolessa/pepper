@@ -18,33 +18,6 @@ pub struct State {
     completing_plugin_handle: Option<PluginHandle>,
 }
 
-// TODO: make completions work again
-impl State {
-    /*
-    fn get_lsp_client_handle(
-        &mut self,
-        lsp_clients: &lsp::ClientManager,
-        buffer_path: &Path,
-    ) -> Option<lsp::ClientHandle> {
-        if self
-            .lsp_client_handle
-            .and_then(|h| lsp_clients.get(h))
-            .is_some()
-        {
-            return self.lsp_client_handle;
-        }
-
-        let buffer_path = buffer_path.to_str()?;
-        let handle = lsp_clients
-            .clients()
-            .find(|c| c.handles_path(buffer_path))
-            .map(|c| c.handle());
-        self.lsp_client_handle = handle;
-        handle
-    }
-    */
-}
-
 impl ModeState for State {
     fn on_enter(editor: &mut Editor) {
         cancel_completion(editor);
