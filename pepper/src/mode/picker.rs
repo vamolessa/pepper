@@ -21,7 +21,7 @@ pub struct State {
     ) -> Option<EditorControlFlow>,
     pub plugin_handle: Option<PluginHandle>,
     find_file_waiting_for_process: bool,
-    find_file_buf: Vec<u8>, // TODO: move to plugin
+    find_file_buf: Vec<u8>,
 }
 
 impl State {
