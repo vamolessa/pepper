@@ -337,14 +337,20 @@ fn update_completions(
         }
     }
 
-    let completion_filter = ctx
+    let completion_filter = match ctx
         .editor
         .buffers
         .get(buffer_handle)
         .content()
         .text_range(word_range)
         .next()
-        .unwrap();
+    {
+        Some(filter) => filter,
+        None => {
+            cancel_completion(&mut ctx.editor);
+            return;
+        }
+    };
 
     match ctx.editor.mode.insert_state.completing_plugin_handle {
         Some(_) => {
