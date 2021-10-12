@@ -1,7 +1,10 @@
 use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
-    buffer::{find_path_and_position_at, parse_path_and_position, BufferContent, BufferProperties},
+    buffer::{
+        find_path_and_position_at, parse_path_and_position, BufferContent, BufferHandle,
+        BufferProperties,
+    },
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::ClientHandle,
@@ -1044,12 +1047,8 @@ impl State {
             },
             Key::Char('r') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return None,
-                Key::Char('n') => {
-                    move_to_diagnostic(ctx, client_handle, true);
-                }
-                Key::Char('p') => {
-                    move_to_diagnostic(ctx, client_handle, false);
-                }
+                Key::Char('n') => move_to_lint(ctx, client_handle, true),
+                Key::Char('p') => move_to_lint(ctx, client_handle, false),
                 _ => (),
             },
             Key::Char('m') => match keys.next(&ctx.editor.buffered_keys) {
@@ -1179,7 +1178,12 @@ impl ModeState for State {
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<EditorControlFlow> {
-        fn show_hovered_diagnostic(ctx: &mut EditorContext, client_handle: ClientHandle) {
+        fn show_hovered_lint(
+            ctx: &mut EditorContext,
+            client_handle: ClientHandle,
+            previous_buffer_handle: BufferHandle,
+            previous_main_position: BufferPosition,
+        ) {
             let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
                 Some(handle) => handle,
                 None => return,
@@ -1192,7 +1196,6 @@ impl ModeState for State {
             let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
             let main_position = buffer_view.cursors.main_cursor().position;
 
-            // TODO: only print diagnostic (lint) if we just moved
             let lints = buffer.lints.all();
             let index = lints.binary_search_by(|l| {
                 if l.range.to < main_position {
@@ -1203,11 +1206,16 @@ impl ModeState for State {
                     Ordering::Equal
                 }
             });
+
             if let Ok(index) = index {
-                ctx.editor
-                    .status_bar
-                    .write(MessageKind::Info)
-                    .str(&lints[index].message);
+                if previous_buffer_handle != buffer.handle()
+                    || previous_main_position != main_position
+                {
+                    ctx.editor
+                        .status_bar
+                        .write(MessageKind::Info)
+                        .str(&lints[index].message);
+                }
             }
         }
 
@@ -1391,13 +1399,23 @@ impl ModeState for State {
             match ctx.clients.get(client_handle).buffer_view_handle() {
                 Some(buffer_view_handle) => {
                     keys.index = previous_index;
+
+                    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+                    let previous_buffer_handle = buffer_view.buffer_handle;
+                    let previous_cursor_position = buffer_view.cursors.main_cursor().position;
+
                     let op = Self::on_client_keys_with_buffer_view(
                         ctx,
                         client_handle,
                         keys,
                         buffer_view_handle,
                     );
-                    show_hovered_diagnostic(ctx, client_handle);
+                    show_hovered_lint(
+                        ctx,
+                        client_handle,
+                        previous_buffer_handle,
+                        previous_cursor_position,
+                    );
                     op
                 }
                 None => Some(EditorControlFlow::Continue),
@@ -1674,7 +1692,7 @@ fn search_word_or_move_to_it(
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
 
-fn move_to_diagnostic(ctx: &mut EditorContext, client_handle: ClientHandle, forward: bool) {
+fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: bool) {
     let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
         Some(handle) => handle,
         None => return,
@@ -1688,12 +1706,18 @@ fn move_to_diagnostic(ctx: &mut EditorContext, client_handle: ClientHandle, forw
     }
 
     let main_position = buffer_view.cursors.main_cursor().position;
+    let mut count = ctx.editor.mode.normal_state.count.max(1) as usize;
     let index = match lints.binary_search_by(|l| l.range.from.cmp(&main_position)) {
         Ok(i) => i,
-        Err(i) => i,
+        Err(i) => {
+            if forward {
+                count = count.saturating_sub(1);
+            }
+
+            i
+        }
     };
 
-    let count = ctx.editor.mode.normal_state.count.max(1) as usize;
     let index = if forward {
         let last_index = lints.len() - 1;
         last_index.min(index + count)
