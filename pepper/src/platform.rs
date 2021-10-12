@@ -84,6 +84,7 @@ pub enum PlatformRequest {
 pub enum ProcessTag {
     Buffer(u32),
     FindFiles,
+    FindPattern,
     Plugin {
         plugin_handle: PluginHandle,
         id: u32,

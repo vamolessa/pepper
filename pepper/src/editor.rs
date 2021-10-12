@@ -364,10 +364,7 @@ impl Editor {
                 if ctx.clients.focus_client(client_handle) {
                     ctx.editor.recording_macro = None;
                     ctx.editor.buffered_keys.0.clear();
-
-                    if ctx.editor.mode.kind() == ModeKind::Insert {
-                        ctx.editor.enter_mode(ModeKind::default());
-                    }
+                    ctx.editor.enter_mode(ModeKind::default());
                 }
 
                 if key != Key::None {

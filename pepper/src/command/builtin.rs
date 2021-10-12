@@ -9,7 +9,7 @@ use crate::{
     editor::{EditorContext, EditorControlFlow},
     editor_utils::MessageKind,
     help,
-    mode::{picker, ModeKind},
+    mode::{picker, read_line, ModeKind},
     syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
 };
@@ -41,10 +41,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         ) {
             Ok(handle) => {
                 let client = ctx.clients.get_mut(client_handle);
-                client.set_buffer_view_handle(
-                    Some(handle),
-                    &ctx.editor.buffer_views,
-                );
+                client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
                 client.scroll.0 = 0;
                 client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
 
@@ -98,10 +95,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         ) {
             Ok(handle) => {
                 let client = ctx.clients.get_mut(client_handle);
-                client.set_buffer_view_handle(
-                    Some(handle),
-                    &ctx.editor.buffer_views,
-                );
+                client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
 
                 if let Some(position) = position {
                     let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
@@ -357,6 +351,13 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("find-pattern", &[], |ctx, io| {
+        let command = io.args.next()?;
+        io.args.assert_empty()?;
+        read_line::find_pattern::enter_mode(ctx, command);
+        Ok(())
+    });
+
     r("pid", &[], |ctx, io| {
         io.args.assert_empty()?;
         ctx.editor
@@ -395,3 +396,4 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
+

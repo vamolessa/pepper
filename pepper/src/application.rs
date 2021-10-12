@@ -5,6 +5,7 @@ use crate::{
     editor::{Editor, EditorContext, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
+    mode::read_line,
     platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
     serialization::{DeserializeError, Serialize},
@@ -156,6 +157,7 @@ impl ServerApplication {
                             handle,
                         ),
                         ProcessTag::FindFiles => (),
+                        ProcessTag::FindPattern => (),
                         ProcessTag::Plugin { plugin_handle, id } => {
                             PluginCollection::on_process_spawned(
                                 &mut self.ctx,
@@ -183,6 +185,9 @@ impl ServerApplication {
                                 bytes,
                             )
                         }
+                        ProcessTag::FindPattern => {
+                            read_line::find_pattern::on_process_output(&mut self.ctx.editor, bytes)
+                        }
                         ProcessTag::Plugin { plugin_handle, id } => {
                             PluginCollection::on_process_output(
                                 &mut self.ctx,
@@ -206,6 +211,9 @@ impl ServerApplication {
                             &mut self.ctx.editor.picker,
                             &self.ctx.editor.read_line,
                         ),
+                        ProcessTag::FindPattern => {
+                            read_line::find_pattern::on_process_exit(&mut self.ctx.editor)
+                        }
                         ProcessTag::Plugin { plugin_handle, id } => {
                             PluginCollection::on_process_exit(&mut self.ctx, plugin_handle, id)
                         }
@@ -394,3 +402,4 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
+

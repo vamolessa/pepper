@@ -586,7 +586,7 @@ pub(crate) fn on_response(
             let buffer_view_handle = editor.buffer_view_handle_from_path(
                 client_handle,
                 Path::new(&buffer_name),
-                BufferProperties::text(),
+                BufferProperties::log(),
                 true,
             );
             editor.string_pool.release(buffer_name);
@@ -608,7 +608,6 @@ pub(crate) fn on_response(
             let buffer = editor.buffers.get_mut(buffer_view.buffer_handle);
 
             buffer.properties = BufferProperties::log();
-
             let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
             buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
 
