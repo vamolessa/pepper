@@ -3,6 +3,7 @@ use std::any::Any;
 use crate::{
     buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
+    client::ClientHandle,
     editor::EditorContext,
     help,
     platform::PlatformProcessHandle,
@@ -45,6 +46,7 @@ pub enum CompletionFlow {
 }
 
 pub struct CompletionContext {
+    pub client_handle: ClientHandle,
     pub buffer_handle: BufferHandle,
     pub word_range: BufferRange,
     pub cursor_position: BufferPosition,

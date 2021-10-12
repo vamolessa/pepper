@@ -39,8 +39,7 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
             on_process_spawned,
             on_process_output,
             on_process_exit,
-            //on_completion,
-            ..Default::default()
+            on_completion,
         }
     },
     help_pages: &HELP_PAGES,
@@ -440,8 +439,11 @@ fn on_process_exit(handle: PluginHandle, ctx: &mut EditorContext, client_index: 
     }
 }
 
-/*
-fn on_completion(handle: PluginHandle, ctx: &mut CompletionContext) -> Option<CompletionFlow> {
+fn on_completion(
+    handle: PluginHandle,
+    ctx: &mut EditorContext,
+    completion_ctx: &CompletionContext,
+) -> Option<CompletionFlow> {
     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
     for entry in &mut lsp.entries {
         let client = match entry {
@@ -449,10 +451,18 @@ fn on_completion(handle: PluginHandle, ctx: &mut CompletionContext) -> Option<Co
             _ => continue,
         };
 
-        let mut should_complete = ctx.completion_requested;
+        let mut should_complete = completion_ctx.completion_requested;
 
         if !should_complete {
-            if let Some(c) = ctx.word.text.chars().next_back() {
+            if let Some(c) = ctx
+                .editor
+                .buffers
+                .get(completion_ctx.buffer_handle)
+                .content()
+                .text_range(completion_ctx.word_range)
+                .next()
+                .and_then(|s| s.chars().next_back())
+            {
                 if client.signature_help_triggers().contains(c) {
                     //client.signature_help(
                     return Some(CompletionFlow::Cancel);
@@ -462,15 +472,20 @@ fn on_completion(handle: PluginHandle, ctx: &mut CompletionContext) -> Option<Co
         }
 
         if should_complete {
-            ctx.picker.clear();
-            //client.completion(
-            return Some(CompletionFlow::Completing(|h, ctx| {
-                
-            }));
+            ctx.editor.picker.clear();
+            let op = client.completion(
+                &ctx.editor,
+                &mut ctx.platform,
+                completion_ctx.client_handle,
+                completion_ctx.buffer_handle,
+                completion_ctx.cursor_position,
+            );
+            let client_handle = client.handle();
+            lsp.on_client_operation(client_handle, op);
+            return Some(CompletionFlow::Completing);
         }
     }
 
     None
 }
-*/
 

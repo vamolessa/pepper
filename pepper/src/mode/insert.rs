@@ -235,7 +235,7 @@ impl ModeState for State {
         };
 
         ctx.trigger_event_handlers();
-        update_completions(ctx, handle);
+        update_completions(ctx, client_handle, handle);
         Some(EditorControlFlow::Continue)
     }
 }
@@ -246,7 +246,11 @@ fn cancel_completion(editor: &mut Editor) {
     editor.mode.insert_state.completing_plugin_handle = None;
 }
 
-fn update_completions(ctx: &mut EditorContext, buffer_view_handle: BufferViewHandle) {
+fn update_completions(
+    ctx: &mut EditorContext,
+    client_handle: ClientHandle,
+    buffer_view_handle: BufferViewHandle,
+) {
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     let buffer_handle = buffer_view.buffer_handle;
     let buffer = ctx.editor.buffers.get(buffer_handle);
@@ -278,6 +282,7 @@ fn update_completions(ctx: &mut EditorContext, buffer_view_handle: BufferViewHan
             let completion_requested = word.kind == WordKind::Identifier
                 && word.text.len() >= ctx.editor.config.completion_min_len as _;
             let completion_ctx = CompletionContext {
+                client_handle,
                 buffer_handle,
                 word_range,
                 cursor_position: main_cursor_position,
@@ -330,7 +335,7 @@ fn update_completions(ctx: &mut EditorContext, buffer_view_handle: BufferViewHan
         }
     }
 
-    let word_text = ctx
+    let completion_filter = ctx
         .editor
         .buffers
         .get(buffer_handle)
@@ -343,12 +348,12 @@ fn update_completions(ctx: &mut EditorContext, buffer_view_handle: BufferViewHan
         Some(_) => {
             ctx.editor
                 .picker
-                .filter(WordIndicesIter::empty(), word_text);
+                .filter(WordIndicesIter::empty(), completion_filter);
         }
         None => {
             ctx.editor
                 .picker
-                .filter(ctx.editor.word_database.word_indices(), word_text);
+                .filter(ctx.editor.word_database.word_indices(), completion_filter);
             if ctx.editor.picker.cursor().is_none() {
                 ctx.editor.picker.move_cursor(0);
             }
