@@ -1187,6 +1187,7 @@ impl ModeState for State {
             if !ctx.editor.status_bar.message().1.is_empty() {
                 return;
             }
+
             let buffer_view = ctx.editor.buffer_views.get(handle);
             let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
             let main_position = buffer_view.cursors.main_cursor().position;
