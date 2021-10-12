@@ -26,19 +26,19 @@ pub mod ui;
 pub mod word_database;
 
 pub const DEFAULT_BINDINGS_CONFIG: ResourceFile = ResourceFile {
-    name: "default_bindings.pp",
-    content: include_str!("../rc/default_bindings.pp"),
+    name: "default_bindings.pepper",
+    content: include_str!("../rc/default_bindings.pepper"),
 };
 pub const DEFAULT_ALIASES_CONFIG: ResourceFile = ResourceFile {
-    name: "default_aliases.pp",
-    content: include_str!("../rc/default_aliases.pp"),
+    name: "default_aliases.pepper",
+    content: include_str!("../rc/default_aliases.pepper"),
 };
 pub const DEFAULT_SYNTAXES_CONFIG: ResourceFile = ResourceFile {
-    name: "default_syntaxes.pp",
-    content: include_str!("../rc/default_syntaxes.pp"),
+    name: "default_syntaxes.pepper",
+    content: include_str!("../rc/default_syntaxes.pepper"),
 };
 pub const DEFAULT_PLATFORM_CONFIG: ResourceFile = ResourceFile {
-    name: "default_platform.pp",
+    name: "default_platform.pepper",
     content: platform_impl::DEFAULT_CONFIG_CONTENT,
 };
 
@@ -176,7 +176,7 @@ impl Args {
 mod platform_impl {
     #[path = "windows.rs"]
     pub mod sys;
-    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_windows.pp");
+    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_windows.pepper");
 }
 
 #[cfg(target_os = "linux")]
@@ -184,7 +184,7 @@ mod platform_impl {
 mod platform_impl {
     #[path = "linux.rs"]
     pub mod sys;
-    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_linux.pp");
+    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_linux.pepper");
 }
 
 #[cfg(target_os = "macos")]
@@ -192,7 +192,7 @@ mod platform_impl {
 mod platform_impl {
     #[path = "bsd.rs"]
     pub mod sys;
-    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_macos.pp");
+    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_macos.pepper");
 }
 
 #[cfg(any(
@@ -205,7 +205,7 @@ mod platform_impl {
 mod platform_impl {
     #[path = "bsd.rs"]
     pub mod sys;
-    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_bsd.pp");
+    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_bsd.pepper");
 }
 
 pub fn run(config: application::ApplicationConfig) {
