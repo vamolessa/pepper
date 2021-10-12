@@ -197,11 +197,11 @@ impl ModeState for State {
                 );
             }
             Key::Ctrl('n') => {
-                apply_completion(ctx, handle, 1);
+                apply_completion(ctx, client_handle, handle, 1);
                 return Some(EditorControlFlow::Continue);
             }
             Key::Ctrl('p') => {
-                apply_completion(ctx, handle, -1);
+                apply_completion(ctx, client_handle, handle, -1);
                 return Some(EditorControlFlow::Continue);
             }
             _ => return Some(EditorControlFlow::Continue),
@@ -347,15 +347,54 @@ fn update_completions(
 
 fn apply_completion(
     ctx: &mut EditorContext,
+    client_handle: ClientHandle,
     buffer_view_handle: BufferViewHandle,
     cursor_movement: isize,
 ) {
-    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
-
     ctx.editor.picker.move_cursor(cursor_movement);
     let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
         Some((_, entry)) => entry,
         None => {
+            cancel_completion(&mut ctx.editor);
+
+            let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+            let buffer_handle = buffer_view.buffer_handle;
+            let cursor_position = buffer_view.cursors.main_cursor().position;
+            let word_range = BufferRange::between(cursor_position, cursor_position);
+            let completion_ctx = CompletionContext {
+                client_handle,
+                buffer_handle,
+                word_range,
+                cursor_position,
+                completion_requested: true,
+            };
+
+            for plugin_handle in ctx.plugins.handles() {
+                let on_completion = ctx.plugins.get(plugin_handle).on_completion;
+                if !on_completion(plugin_handle, ctx, &completion_ctx) {
+                    continue;
+                }
+
+                ctx.editor.mode.insert_state.completing_plugin_handle = Some(plugin_handle);
+
+                let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+                let buffer = ctx.editor.buffers.get(buffer_handle).content();
+                for cursor in &buffer_view.cursors[..] {
+                    let word = buffer.word_at(buffer.position_before(cursor.position));
+                    let position = match word.kind {
+                        WordKind::Identifier => word.position,
+                        _ => cursor.position,
+                    };
+                    ctx.editor
+                        .mode
+                        .insert_state
+                        .completion_positions
+                        .push(position);
+                }
+
+                break;
+            }
+
             /*
             let buffer_handle = buffer_view.buffer_handle;
             let buffer = ctx.editor.buffers.get(buffer_handle);
@@ -390,6 +429,7 @@ fn apply_completion(
     };
 
     let completion = ctx.editor.string_pool.acquire_with(entry);
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
     buffer_view.apply_completion(
         &mut ctx.editor.buffers,
         &mut ctx.editor.word_database,
