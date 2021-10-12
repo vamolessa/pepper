@@ -180,22 +180,25 @@ impl Args {
 }
 
 #[cfg(windows)]
+#[path = "platforms"]
 mod platform_impl {
-    #[path = "../platforms/windows.rs"]
+    #[path = "windows.rs"]
     pub mod sys;
     pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_windows.pp");
 }
 
 #[cfg(target_os = "linux")]
+#[path = "platforms"]
 mod platform_impl {
-    #[path = "../platforms/linux.rs"]
+    #[path = "linux.rs"]
     pub mod sys;
     pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_linux.pp");
 }
 
 #[cfg(target_os = "macos")]
+#[path = "platforms"]
 mod platform_impl {
-    #[path = "../platforms/bsd.rs"]
+    #[path = "bsd.rs"]
     pub mod sys;
     pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_macos.pp");
 }
@@ -206,8 +209,9 @@ mod platform_impl {
     target_os = "openbsd",
     target_os = "dragonfly",
 ))]
+#[path = "platforms"]
 mod platform_impl {
-    #[path = "../platforms/bsd.rs"]
+    #[path = "bsd.rs"]
     pub mod sys;
     pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_bsd.pp");
 }
