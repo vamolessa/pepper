@@ -311,7 +311,7 @@ impl State {
 
                 state.movement_kind = CursorMovementKind::PositionOnly;
             }
-            Key::Char('g') => {
+            Key::Char('g' | 'G') => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return None,
@@ -437,8 +437,8 @@ impl State {
                             }
                         }
                     }
-                    // TODO: make a version that closes the previous buffer
-                    Key::Char('f') => {
+                    Key::Char(c @ ('f' | 'F')) => {
+                        let should_close_current_buffer = c == 'F';
                         let buffer_handle = buffer_view.buffer_handle;
 
                         let mut len = 0;
@@ -505,6 +505,18 @@ impl State {
                                     ctx.editor.mode.normal_state.movement_kind =
                                         CursorMovementKind::PositionAndAnchor;
                                     let client = ctx.clients.get_mut(client_handle);
+                                    if should_close_current_buffer {
+                                        if let Some(buffer_view_handle) =
+                                            client.buffer_view_handle()
+                                        {
+                                            let buffer_view =
+                                                ctx.editor.buffer_views.get(buffer_view_handle);
+                                            ctx.editor.buffers.defer_remove(
+                                                buffer_view.buffer_handle,
+                                                &mut ctx.editor.events,
+                                            );
+                                        }
+                                    }
                                     client.set_buffer_view_handle(
                                         Some(buffer_view_handle),
                                         &ctx.editor.buffer_views,

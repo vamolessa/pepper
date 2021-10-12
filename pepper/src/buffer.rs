@@ -1347,7 +1347,7 @@ impl BufferCollection {
         }
     }
 
-    pub fn remove_from_editor_event_handler(
+    pub(crate) fn remove_now(
         &mut self,
         handle: BufferHandle,
         word_database: &mut WordDatabase,
