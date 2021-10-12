@@ -87,7 +87,6 @@ impl<'command> CommandArgs<'command> {
     }
 }
 
-// TODO: rename to CommandIO
 pub struct CommandIO<'a> {
     client_handle: Option<ClientHandle>,
     plugin_handle: Option<PluginHandle>,
