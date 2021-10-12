@@ -395,35 +395,6 @@ fn apply_completion(
                 break;
             }
 
-            /*
-            let buffer_handle = buffer_view.buffer_handle;
-            let buffer = ctx.editor.buffers.get(buffer_handle);
-            let state = &mut ctx.editor.mode.insert_state;
-            let lsp_client_handle = match state.get_lsp_client_handle(&ctx.editor.lsp, &buffer.path)
-            {
-                Some(handle) => handle,
-                None => return,
-            };
-
-            let content = buffer.content();
-            state.completion_positions.clear();
-            for cursor in &buffer_view.cursors[..] {
-                let word = content.word_at(content.position_before(cursor.position));
-                let position = match word.kind {
-                    WordKind::Identifier => word.position,
-                    _ => cursor.position,
-                };
-                state.completion_positions.push(position);
-            }
-
-            let platform = &mut *ctx.platform;
-            let client_handle = ctx.client_handle;
-            let buffer_position = buffer_view.cursors.main_cursor().position;
-            lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
-                c.completion(e, platform, client_handle, buffer_handle, buffer_position)
-            });
-            */
-
             return;
         }
     };
