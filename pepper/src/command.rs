@@ -7,6 +7,7 @@ use crate::{
     config::ParseConfigError,
     editor::{EditorContext, EditorControlFlow},
     editor_utils::MessageKind,
+    events::KeyParseAllError,
     glob::InvalidGlobError,
     keymap::ParseKeyMapError,
     pattern::PatternError,
@@ -30,6 +31,7 @@ pub enum CommandError {
     NoSuchColor,
     InvalidColorValue,
     KeyMapError(ParseKeyMapError),
+    KeyParseError(KeyParseAllError),
     PatternError(PatternError),
     InvalidGlob(InvalidGlobError),
     OtherStatic(&'static str),
@@ -50,6 +52,7 @@ impl fmt::Display for CommandError {
             Self::NoSuchColor => f.write_str("no such color"),
             Self::InvalidColorValue => f.write_str("invalid color value"),
             Self::KeyMapError(error) => error.fmt(f),
+            Self::KeyParseError(error) => error.fmt(f),
             Self::PatternError(error) => error.fmt(f),
             Self::InvalidGlob(error) => error.fmt(f),
             Self::OtherStatic(error) => f.write_str(error),
@@ -495,3 +498,4 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
+

@@ -344,6 +344,17 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("enqueue-keys", &[], |ctx, io| {
+        let keys = io.args.next()?;
+        io.args.assert_empty()?;
+
+        ctx.editor
+            .buffered_keys
+            .parse(keys)
+            .map_err(|e| CommandError::KeyParseError(e.error))?;
+        Ok(())
+    });
+
     r("find-file", &[], |ctx, io| {
         let command = io.args.next()?;
         io.args.assert_empty()?;
