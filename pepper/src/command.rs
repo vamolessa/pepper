@@ -27,6 +27,7 @@ pub enum CommandError {
     UnsavedChanges,
     BufferReadError(BufferReadError),
     BufferWriteError(BufferWriteError),
+    InvalidBufferMode,
     ConfigError(ParseConfigError),
     NoSuchColor,
     InvalidColorValue,
@@ -48,6 +49,7 @@ impl fmt::Display for CommandError {
             Self::UnsavedChanges => f.write_str("unsaved changes"),
             Self::BufferReadError(error) => error.fmt(f),
             Self::BufferWriteError(error) => error.fmt(f),
+            Self::InvalidBufferMode => f.write_str("invalid buffer mode"),
             Self::ConfigError(error) => error.fmt(f),
             Self::NoSuchColor => f.write_str("no such color"),
             Self::InvalidColorValue => f.write_str("invalid color value"),
@@ -310,6 +312,12 @@ impl AliasCollection {
 
         None
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.aliases
+            .iter()
+            .map(move |a| (a.from(&self.texts), a.to(&self.texts)))
+    }
 }
 
 pub struct CommandManager {
@@ -498,3 +506,4 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
+

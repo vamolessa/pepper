@@ -64,7 +64,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
                 .buffer_view_handle_from_path(
                     client_handle,
                     Path::new(path),
-                    BufferProperties::log(),
+                    BufferProperties::scratch(),
                     true,
                 )
                 .map_err(CommandError::BufferReadError)?;

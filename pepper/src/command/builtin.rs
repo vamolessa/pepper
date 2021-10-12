@@ -36,7 +36,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         match ctx.editor.buffer_view_handle_from_path(
             client_handle,
             Path::new(&buffer_path),
-            BufferProperties::log(),
+            BufferProperties::scratch(),
             true,
         ) {
             Ok(handle) => {
@@ -81,16 +81,23 @@ pub fn register_commands(commands: &mut CommandManager) {
 
     r("open", &[CompletionSource::Files], |ctx, io| {
         let path = io.args.next()?;
+        let mode = io.args.try_next().unwrap_or("");
         io.args.assert_empty()?;
 
         let client_handle = io.client_handle()?;
         let (path, position) = parse_path_and_position(path);
 
+        let properties = match mode {
+            "" | "text" => BufferProperties::text(),
+            "scratch" => BufferProperties::scratch(),
+            _ => return Err(CommandError::InvalidBufferMode),
+        };
+
         let path = Path::new(&path);
         match ctx.editor.buffer_view_handle_from_path(
             client_handle,
             Path::new(path),
-            BufferProperties::text(),
+            properties,
             true,
         ) {
             Ok(handle) => {

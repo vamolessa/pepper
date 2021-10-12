@@ -205,6 +205,9 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
                 for command in ctx.editor.commands.commands() {
                     ctx.editor.picker.add_custom_entry(command.name);
                 }
+                for (from, _) in ctx.editor.commands.aliases.iter() {
+                    ctx.editor.picker.add_custom_entry(from);
+                }
             }
             CompletionSource::Buffers => {
                 for buffer in ctx.editor.buffers.iter() {

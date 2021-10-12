@@ -839,7 +839,7 @@ impl BufferProperties {
         }
     }
 
-    pub fn log() -> Self {
+    pub fn scratch() -> Self {
         Self {
             has_history: false,
             can_save: false,

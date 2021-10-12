@@ -754,7 +754,7 @@ pub mod find_pattern {
             let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
                 client_handle,
                 Path::new(&buffer_name),
-                BufferProperties::log(),
+                BufferProperties::scratch(),
                 true,
             );
             ctx.editor.string_pool.release(buffer_name);
@@ -773,7 +773,7 @@ pub mod find_pattern {
             let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
             let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
-            buffer.properties = BufferProperties::log();
+            buffer.properties = BufferProperties::scratch();
             let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
             buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
 
