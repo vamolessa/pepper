@@ -813,7 +813,6 @@ pub struct BufferProperties {
     pub has_history: bool,
     pub can_save: bool,
     pub uses_word_database: bool,
-    pub auto_close: bool, // TODO: remove
     pub is_file: bool,
 }
 impl BufferProperties {
@@ -821,7 +820,6 @@ impl BufferProperties {
         Self {
             has_history: true,
             can_save: true,
-            auto_close: false,
             uses_word_database: true,
             is_file: true,
         }
@@ -831,7 +829,6 @@ impl BufferProperties {
         Self {
             has_history: false,
             can_save: false,
-            auto_close: false,
             uses_word_database: false,
             is_file: false,
         }

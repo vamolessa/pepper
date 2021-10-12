@@ -44,7 +44,6 @@ pub fn register_commands(commands: &mut CommandManager) {
                 client.set_buffer_view_handle(
                     Some(handle),
                     &ctx.editor.buffer_views,
-                    &mut ctx.editor.events,
                 );
                 client.scroll.0 = 0;
                 client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
@@ -102,7 +101,6 @@ pub fn register_commands(commands: &mut CommandManager) {
                 client.set_buffer_view_handle(
                     Some(handle),
                     &ctx.editor.buffer_views,
-                    &mut ctx.editor.events,
                 );
 
                 if let Some(position) = position {

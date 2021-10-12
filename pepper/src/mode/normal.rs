@@ -508,7 +508,6 @@ impl State {
                                     client.set_buffer_view_handle(
                                         Some(buffer_view_handle),
                                         &ctx.editor.buffer_views,
-                                        &mut ctx.editor.events,
                                     );
 
                                     let buffer_view =
@@ -1266,11 +1265,8 @@ impl ModeState for State {
                         ) {
                             Ok(handle) => {
                                 let client = ctx.clients.get_mut(client_handle);
-                                client.set_buffer_view_handle(
-                                    Some(handle),
-                                    &ctx.editor.buffer_views,
-                                    &mut ctx.editor.events,
-                                );
+                                client
+                                    .set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
 
                                 if let Some(position) = position {
                                     let mut cursors =
@@ -1336,16 +1332,11 @@ impl ModeState for State {
                                 previous_buffer_view_handle = None;
                             }
 
-                            previous_client.set_buffer_view_handle_no_history(
-                                previous_buffer_view_handle,
-                                &mut ctx.editor.events,
-                            );
+                            previous_client
+                                .set_buffer_view_handle_no_history(previous_buffer_view_handle);
 
                             let client = ctx.clients.get_mut(client_handle);
-                            client.set_buffer_view_handle_no_history(
-                                buffer_view_handle,
-                                &mut ctx.editor.events,
-                            );
+                            client.set_buffer_view_handle_no_history(buffer_view_handle);
                         }
                         _ => (),
                     }
@@ -1708,3 +1699,4 @@ fn move_to_diagnostic(ctx: &mut EditorContext, client_handle: ClientHandle, forw
         position,
     });
 }
+

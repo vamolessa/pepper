@@ -119,7 +119,7 @@ impl NavigationHistory {
             position,
         });
 
-        client.set_buffer_view_handle_no_history(Some(buffer_view_handle), &mut editor.events);
+        client.set_buffer_view_handle_no_history(Some(buffer_view_handle));
         client.navigation_history.on_previous_buffer = false;
     }
 
@@ -162,10 +162,7 @@ impl NavigationHistory {
                 let buffer_view_handle = editor
                     .buffer_views
                     .buffer_view_handle_from_buffer_handle(client.handle(), snapshot.buffer_handle);
-                client.set_buffer_view_handle_no_history(
-                    Some(buffer_view_handle),
-                    &mut editor.events,
-                );
+                client.set_buffer_view_handle_no_history(Some(buffer_view_handle));
                 client.navigation_history.current_snapshot_index = i as _;
                 client.navigation_history.on_previous_buffer = true;
                 break;
@@ -215,11 +212,11 @@ mod tests {
             .add_new(client.handle(), BufferHandle(2));
 
         NavigationHistory::save_snapshot(&mut client, &editor.buffer_views);
-        client.set_buffer_view_handle_no_history(Some(view_a), &mut editor.events);
+        client.set_buffer_view_handle_no_history(Some(view_a));
         NavigationHistory::save_snapshot(&mut client, &editor.buffer_views);
-        client.set_buffer_view_handle_no_history(Some(view_b), &mut editor.events);
+        client.set_buffer_view_handle_no_history(Some(view_b));
         NavigationHistory::save_snapshot(&mut client, &editor.buffer_views);
-        client.set_buffer_view_handle_no_history(Some(view_c), &mut editor.events);
+        client.set_buffer_view_handle_no_history(Some(view_c));
 
         (editor, client)
     }
@@ -311,3 +308,4 @@ mod tests {
         assert_eq!(3, client.navigation_history.snapshots.len());
     }
 }
+

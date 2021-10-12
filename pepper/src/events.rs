@@ -57,10 +57,6 @@ pub enum EditorEvent {
         handle: BufferViewHandle,
         cursors: EditorEventCursors,
     },
-    BufferViewLostFocus {
-        // TODO: remove since we won't have `BufferProperties.auto_close` anymore
-        handle: BufferViewHandle,
-    },
 }
 
 #[derive(Default)]

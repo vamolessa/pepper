@@ -7,7 +7,7 @@ use crate::{
     buffer::{BufferCollection, BufferProperties, BufferReadError},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
-    client::{Client, ClientHandle, ClientManager},
+    client::{ClientHandle, ClientManager},
     command::CommandManager,
     config::Config,
     editor_utils::{ReadLine, StatusBar, StringPool},
@@ -165,24 +165,6 @@ impl EditorContext {
                         view_cursors.clear();
                         for &cursor in cursors.as_cursors(&self.editor.events) {
                             view_cursors.add(cursor);
-                        }
-                    }
-                    EditorEvent::BufferViewLostFocus { handle } => {
-                        let buffer_view = self.editor.buffer_views.get(handle);
-                        let buffer_handle = buffer_view.buffer_handle;
-                        let buffer = self.editor.buffers.get(buffer_handle);
-                        let should_close = buffer.properties.auto_close && !buffer.needs_save();
-                        let any_view = !self
-                            .clients
-                            .iter()
-                            .filter_map(Client::buffer_view_handle)
-                            .map(|h| self.editor.buffer_views.get(h))
-                            .any(|v| v.buffer_handle == buffer_handle);
-
-                        if should_close && !any_view {
-                            self.editor
-                                .buffers
-                                .defer_remove(buffer_handle, &mut self.editor.events);
                         }
                     }
                 }

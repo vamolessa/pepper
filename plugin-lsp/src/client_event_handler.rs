@@ -198,7 +198,6 @@ pub(crate) fn on_request(
                             client.set_buffer_view_handle(
                                 Some(buffer_view_handle),
                                 &editor.buffer_views,
-                                &mut editor.events,
                             );
                         }
                         if let Some(range) = params.selection {
@@ -549,12 +548,11 @@ pub(crate) fn on_response(
             )
         }
         "textDocument/references" => {
-            let (client_handle, auto_close_buffer, context_len) = match client.request_state {
+            let (client_handle, context_len) = match client.request_state {
                 RequestState::References {
                     client_handle,
-                    auto_close_buffer,
                     context_len,
-                } => (client_handle, auto_close_buffer, context_len),
+                } => (client_handle, context_len),
                 _ => return Ok(ClientOperation::None),
             };
             client.request_state = RequestState::Idle;
@@ -610,7 +608,6 @@ pub(crate) fn on_response(
             let buffer = editor.buffers.get_mut(buffer_view.buffer_handle);
 
             buffer.properties = BufferProperties::log();
-            buffer.properties.auto_close = auto_close_buffer;
 
             let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
             buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
@@ -700,7 +697,6 @@ pub(crate) fn on_response(
             client.set_buffer_view_handle(
                 Some(buffer_view_handle),
                 &editor.buffer_views,
-                &mut editor.events,
             );
 
             let mut cursors = editor
@@ -1039,7 +1035,6 @@ fn goto_definition(
                     client.set_buffer_view_handle(
                         Some(buffer_view_handle),
                         &editor.buffer_views,
-                        &mut editor.events,
                     );
 
                     let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);

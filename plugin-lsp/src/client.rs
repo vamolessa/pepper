@@ -387,7 +387,6 @@ pub(crate) enum RequestState {
     References {
         client_handle: client::ClientHandle,
         context_len: usize,
-        auto_close_buffer: bool,
     },
     Rename {
         buffer_handle: BufferHandle,
@@ -666,7 +665,6 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
         context_len: usize,
-        auto_close_buffer: bool,
         client_handle: client::ClientHandle,
     ) -> ClientOperation {
         if !self.server_capabilities.references_provider.0 || !self.request_state.is_idle() {
@@ -694,7 +692,6 @@ impl Client {
         self.request_state = RequestState::References {
             client_handle,
             context_len,
-            auto_close_buffer,
         };
         self.request(platform, "textDocument/references", params);
 
@@ -1009,7 +1006,6 @@ impl Client {
                     client.set_buffer_view_handle(
                         Some(buffer_view_handle),
                         &editor.buffer_views,
-                        &mut editor.events,
                     );
 
                     let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
@@ -1156,7 +1152,6 @@ impl Client {
                     util::send_did_close(self, editor, platform, handle);
                 }
                 EditorEvent::FixCursors { .. } => (),
-                EditorEvent::BufferViewLostFocus { .. } => (),
             }
         }
     }

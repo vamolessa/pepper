@@ -201,11 +201,7 @@ pub mod opened_buffers {
                 false,
             ) {
                 let client = ctx.clients.get_mut(client_handle);
-                client.set_buffer_view_handle(
-                    Some(buffer_view_handle),
-                    &ctx.editor.buffer_views,
-                    &mut ctx.editor.events,
-                );
+                client.set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
             }
             ctx.editor.string_pool.release(path);
 
@@ -273,11 +269,8 @@ pub mod find_file {
             ) {
                 Ok(buffer_view_handle) => {
                     let client = ctx.clients.get_mut(client_handle);
-                    client.set_buffer_view_handle(
-                        Some(buffer_view_handle),
-                        &ctx.editor.buffer_views,
-                        &mut ctx.editor.events,
-                    );
+                    client
+                        .set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
                 }
                 Err(error) => ctx
                     .editor
@@ -324,3 +317,4 @@ pub mod find_file {
         ctx.editor.enter_mode(ModeKind::Picker);
     }
 }
+

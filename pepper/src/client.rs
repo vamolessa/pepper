@@ -6,7 +6,6 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     editor_utils::ResidualStrBytes,
-    events::{EditorEvent, EditorEventQueue},
     navigation_history::{NavigationHistory, NavigationMovement},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
@@ -87,27 +86,17 @@ impl Client {
         &mut self,
         handle: Option<BufferViewHandle>,
         buffer_views: &BufferViewCollection,
-        events: &mut EditorEventQueue,
     ) {
         NavigationHistory::save_snapshot(self, buffer_views);
-        self.set_buffer_view_handle_no_history(handle, events);
+        self.set_buffer_view_handle_no_history(handle);
     }
 
     pub fn has_ui(&self) -> bool {
         self.viewport_size.0 != 0 && self.viewport_size.1 != 0
     }
 
-    pub(crate) fn set_buffer_view_handle_no_history(
-        &mut self,
-        handle: Option<BufferViewHandle>,
-        events: &mut EditorEventQueue,
-    ) {
-        if self.buffer_view_handle != handle {
-            if let Some(handle) = self.buffer_view_handle {
-                events.enqueue(EditorEvent::BufferViewLostFocus { handle });
-            }
-            self.buffer_view_handle = handle;
-        }
+    pub(crate) fn set_buffer_view_handle_no_history(&mut self, handle: Option<BufferViewHandle>) {
+        self.buffer_view_handle = handle;
     }
 
     pub(crate) fn update_view(&mut self, editor: &Editor, picker_height: u16) {
@@ -196,7 +185,6 @@ impl Client {
                 self.set_buffer_view_handle(
                     Some(buffer_view_handle),
                     &editor.buffer_views,
-                    &mut editor.events,
                 );
 
                 self.stdin_buffer_handle = Some(buffer.handle());

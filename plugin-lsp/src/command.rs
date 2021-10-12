@@ -73,7 +73,6 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
             client.set_buffer_view_handle(
                 Some(buffer_view_handle),
                 &editor.buffer_views,
-                &mut editor.events,
             );
 
             Ok(ClientOperation::None)
@@ -203,7 +202,6 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
                 buffer_handle,
                 cursor.position,
                 context_len,
-                false,
                 client_handle,
             );
             Ok(op)

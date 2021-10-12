@@ -48,7 +48,6 @@ pub fn enter_definition_mode(editor: &mut Editor, plugin_handle: PluginHandle) -
                             client.set_buffer_view_handle(
                                 Some(buffer_view_handle),
                                 &ctx.editor.buffer_views,
-                                &mut ctx.editor.events,
                             );
 
                             let mut cursors = ctx
