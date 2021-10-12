@@ -464,7 +464,14 @@ fn on_completion(
                 .and_then(|s| s.chars().next_back())
             {
                 if client.signature_help_triggers().contains(c) {
-                    //client.signature_help(
+                    let op = client.signature_help(
+                        &ctx.editor,
+                        &mut ctx.platform,
+                        completion_ctx.buffer_handle,
+                        completion_ctx.cursor_position,
+                    );
+                    let client_handle = client.handle();
+                    lsp.on_client_operation(client_handle, op);
                     return Some(CompletionFlow::Cancel);
                 }
                 should_complete = client.completion_triggers().contains(c);
