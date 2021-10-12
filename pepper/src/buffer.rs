@@ -173,7 +173,21 @@ pub struct BufferLintCollection {
 }
 impl BufferLintCollection {
     pub fn all(&self) -> &[BufferLint] {
-        &self.lints
+        &self.lints[..self.len as usize]
+    }
+
+    fn insert_range(&mut self, range: BufferRange) {
+        for lint in &mut self.lints[..self.len as usize] {
+            lint.range.from = lint.range.from.insert(range);
+            lint.range.to = lint.range.to.insert(range);
+        }
+    }
+
+    fn delete_range(&mut self, range: BufferRange) {
+        for lint in &mut self.lints[..self.len as usize] {
+            lint.range.from = lint.range.from.delete(range);
+            lint.range.to = lint.range.to.delete(range);
+        }
     }
 
     pub fn mut_guard(&mut self, plugin_handle: PluginHandle) -> BufferLintCollectionMutGuard {
@@ -947,6 +961,7 @@ impl Buffer {
         let range = Self::insert_text_no_history(
             &mut self.content,
             &mut self.highlighted,
+            &mut self.lints,
             self.properties.uses_word_database,
             word_database,
             position,
@@ -969,6 +984,7 @@ impl Buffer {
     fn insert_text_no_history(
         content: &mut BufferContent,
         highlighted: &mut HighlightedBuffer,
+        lints: &mut BufferLintCollection,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         position: BufferPosition,
@@ -984,6 +1000,7 @@ impl Buffer {
 
         let range = content.insert_text(position, text);
         highlighted.insert_range(range);
+        lints.insert_range(range);
 
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
@@ -1069,6 +1086,7 @@ impl Buffer {
         Self::delete_range_no_history(
             &mut self.content,
             &mut self.highlighted,
+            &mut self.lints,
             self.properties.uses_word_database,
             word_database,
             range,
@@ -1078,6 +1096,7 @@ impl Buffer {
     fn delete_range_no_history(
         content: &mut BufferContent,
         highlighted: &mut HighlightedBuffer,
+        lints: &mut BufferLintCollection,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         range: BufferRange,
@@ -1106,6 +1125,7 @@ impl Buffer {
         }
 
         highlighted.delete_range(range);
+        lints.delete_range(range);
     }
 
     pub fn commit_edits(&mut self) {
@@ -1143,6 +1163,7 @@ impl Buffer {
 
         let content = &mut self.content;
         let highlighted = &mut self.highlighted;
+        let lints = &mut self.lints;
         let uses_word_database = self.properties.uses_word_database;
 
         let edits = selector(&mut self.history);
@@ -1152,6 +1173,7 @@ impl Buffer {
                     Self::insert_text_no_history(
                         content,
                         highlighted,
+                        lints,
                         uses_word_database,
                         word_database,
                         edit.range.from,
@@ -1163,6 +1185,7 @@ impl Buffer {
                     Self::delete_range_no_history(
                         content,
                         highlighted,
+                        lints,
                         uses_word_database,
                         word_database,
                         edit.range,
@@ -1347,11 +1370,7 @@ impl BufferCollection {
         }
     }
 
-    pub(crate) fn remove_now(
-        &mut self,
-        handle: BufferHandle,
-        word_database: &mut WordDatabase,
-    ) {
+    pub(crate) fn remove_now(&mut self, handle: BufferHandle, word_database: &mut WordDatabase) {
         let buffer = &mut self.buffers[handle.0 as usize];
         if buffer.alive {
             buffer.dispose(word_database);
@@ -2004,3 +2023,4 @@ mod tests {
         );
     }
 }
+

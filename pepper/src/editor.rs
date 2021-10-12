@@ -110,13 +110,11 @@ impl EditorContext {
                         self.editor.buffer_views.on_buffer_load(buffer);
                     }
                     EditorEvent::BufferInsertText { handle, range, .. } => {
-                        // TODO: fix lints
                         self.editor
                             .buffer_views
                             .on_buffer_insert_text(handle, range);
                     }
                     EditorEvent::BufferDeleteText { handle, range } => {
-                        // TODO: fix lints
                         self.editor
                             .buffer_views
                             .on_buffer_delete_text(handle, range);
