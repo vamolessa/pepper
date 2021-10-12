@@ -90,8 +90,8 @@ fn print_help() {
     println!("  --as-focused-client      sends events as if it was the currently focused client");
     println!("  --quit                   sends a `quit` event on start");
     println!("  --server                 only run as server");
-    println!("  -c, --config             sources config file at path (repeatable) (server only)");
-    println!("  --try-config             like `--config` but suppresses the 'file not found' error (repeatable)");
+    println!("  -c, --config[!]          sources config file at path (repeatable) (server only)");
+    println!("                           with `!` will suppress the 'file not found' error");
 }
 
 impl Args {
@@ -139,26 +139,19 @@ impl Args {
                 "--as-focused-client" => parsed.as_focused_client = true,
                 "--quit" => parsed.quit = true,
                 "--server" => parsed.server = true,
-                "-c" | "--config" => match args.next() {
-                    Some(arg) => {
-                        let arg = arg_to_str(&arg);
-                        parsed.configs.push(ArgsConfig {
-                            path: arg.into(),
-                            suppress_file_not_found: false,
-                        });
+                "-c" | "-c!" | "--config" | "--config!" => {
+                    let suppress_file_not_found = arg.ends_with('!');
+                    match args.next() {
+                        Some(arg) => {
+                            let arg = arg_to_str(&arg);
+                            parsed.configs.push(ArgsConfig {
+                                path: arg.into(),
+                                suppress_file_not_found,
+                            });
+                        }
+                        None => error(format_args!("expected config path after {}", arg)),
                     }
-                    None => error(format_args!("expected config path after {}", arg)),
-                },
-                "--try-config" => match args.next() {
-                    Some(arg) => {
-                        let arg = arg_to_str(&arg);
-                        parsed.configs.push(ArgsConfig {
-                            path: arg.into(),
-                            suppress_file_not_found: true,
-                        });
-                    }
-                    None => error(format_args!("expected config path after {}", arg)),
-                },
+                }
                 "--" => {
                     while let Some(arg) = args.next() {
                         let arg = arg_to_str(&arg);
