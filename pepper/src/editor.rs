@@ -155,6 +155,7 @@ impl EditorContext {
                             client.on_buffer_close(&mut self.editor, handle);
                         }
                         self.editor.buffer_views.remove_buffer_views(handle);
+                        self.editor.mode.read_line_state.on_buffer_close(handle);
                     }
                     EditorEvent::FixCursors { handle, cursors } => {
                         let mut view_cursors =

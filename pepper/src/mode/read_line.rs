@@ -26,6 +26,14 @@ pub struct State {
     find_pattern_residual_bytes: ResidualStrBytes,
 }
 
+impl State {
+    pub(crate) fn on_buffer_close(&mut self, buffer_handle: BufferHandle) {
+        if self.find_pattern_buffer_handle == Some(buffer_handle) {
+            self.find_pattern_buffer_handle = None;
+        }
+    }
+}
+
 impl Default for State {
     fn default() -> Self {
         Self {
@@ -803,7 +811,7 @@ pub mod find_pattern {
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
-    pub fn on_process_output(editor: &mut Editor, bytes: &[u8]) {
+    pub(crate) fn on_process_output(editor: &mut Editor, bytes: &[u8]) {
         let state = &mut editor.mode.read_line_state;
         if let Some(buffer_handle) = state.find_pattern_buffer_handle {
             let mut buf = Default::default();
@@ -824,7 +832,7 @@ pub mod find_pattern {
         }
     }
 
-    pub fn on_process_exit(editor: &mut Editor) {
+    pub(crate) fn on_process_exit(editor: &mut Editor) {
         on_process_output(editor, &[]);
 
         let state = &mut editor.mode.read_line_state;
