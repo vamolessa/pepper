@@ -12,7 +12,7 @@ use pepper::{
     glob::{Glob, InvalidGlobError},
     help::HelpPages,
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
-    plugin::{CompletionContext, CompletionFlow, Plugin, PluginDefinition, PluginHandle},
+    plugin::{CompletionContext, Plugin, PluginDefinition, PluginHandle},
 };
 
 mod capabilities;
@@ -443,7 +443,7 @@ fn on_completion(
     handle: PluginHandle,
     ctx: &mut EditorContext,
     completion_ctx: &CompletionContext,
-) -> Option<CompletionFlow> {
+) -> bool {
     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
     for entry in &mut lsp.entries {
         let client = match entry {
@@ -464,7 +464,6 @@ fn on_completion(
                 .and_then(|s| s.chars().next_back())
             {
                 if client.signature_help_triggers().contains(c) {
-                    ctx.editor.picker.clear();
                     let op = client.signature_help(
                         &ctx.editor,
                         &mut ctx.platform,
@@ -473,14 +472,13 @@ fn on_completion(
                     );
                     let client_handle = client.handle();
                     lsp.on_client_operation(client_handle, op);
-                    return Some(CompletionFlow::Cancel);
+                    return true;
                 }
                 should_complete = client.completion_triggers().contains(c);
             }
         }
 
         if should_complete {
-            ctx.editor.picker.clear();
             let op = client.completion(
                 &ctx.editor,
                 &mut ctx.platform,
@@ -490,10 +488,10 @@ fn on_completion(
             );
             let client_handle = client.handle();
             lsp.on_client_operation(client_handle, op);
-            return Some(CompletionFlow::Completing);
+            return true;
         }
     }
 
-    None
+    false
 }
 

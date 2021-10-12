@@ -25,7 +25,7 @@ pub struct Plugin {
     pub on_process_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
     pub on_process_exit: fn(PluginHandle, &mut EditorContext, u32),
     pub on_completion:
-        fn(PluginHandle, &mut EditorContext, &CompletionContext) -> Option<CompletionFlow>,
+        fn(PluginHandle, &mut EditorContext, &CompletionContext) -> bool,
 }
 impl Default for Plugin {
     fn default() -> Self {
@@ -35,14 +35,9 @@ impl Default for Plugin {
             on_process_spawned: |_, _, _, _| (),
             on_process_output: |_, _, _, _| (),
             on_process_exit: |_, _, _| (),
-            on_completion: |_, _, _| None,
+            on_completion: |_, _, _| false,
         }
     }
-}
-
-pub enum CompletionFlow {
-    Completing,
-    Cancel,
 }
 
 pub struct CompletionContext {

@@ -7,7 +7,7 @@ use crate::{
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     mode::{ModeKind, ModeState},
     platform::Key,
-    plugin::{CompletionContext, CompletionFlow, PluginHandle},
+    plugin::{CompletionContext, PluginHandle},
     register::AUTO_MACRO_REGISTER,
     word_database::{WordIndicesIter, WordKind},
 };
@@ -261,76 +261,78 @@ fn update_completions(
     let word_range = BufferRange::between(word.position, word.end_position());
 
     let main_cursor_index = buffer_view.cursors.main_cursor_index();
-    match ctx
-        .editor
-        .mode
-        .insert_state
-        .completion_positions
-        .get(main_cursor_index)
-    {
-        Some(&position) => {
-            if main_cursor_position < position {
-                cancel_completion(&mut ctx.editor);
-                return;
-            }
-            if position != word.position {
-                cancel_completion(&mut ctx.editor);
-                return;
-            }
-        }
-        None => {
-            let completion_requested = word.kind == WordKind::Identifier
-                && word.text.len() >= ctx.editor.config.completion_min_len as _;
-            let completion_ctx = CompletionContext {
-                client_handle,
-                buffer_handle,
-                word_range,
-                cursor_position: main_cursor_position,
-                completion_requested,
-            };
 
-            for plugin_handle in ctx.plugins.handles() {
-                let on_completion = ctx.plugins.get(plugin_handle).on_completion;
-                match on_completion(plugin_handle, ctx, &completion_ctx) {
-                    Some(CompletionFlow::Completing) => {
+    loop {
+        match ctx
+            .editor
+            .mode
+            .insert_state
+            .completion_positions
+            .get(main_cursor_index)
+        {
+            Some(&position) => {
+                if main_cursor_position < position {
+                    cancel_completion(&mut ctx.editor);
+                    return;
+                }
+                if position == word.position {
+                    break;
+                }
+
+                ctx.editor.mode.insert_state.completion_positions.clear();
+            }
+            None => {
+                ctx.editor.picker.clear();
+
+                let completion_requested = word.kind == WordKind::Identifier
+                    && word.text.len() >= ctx.editor.config.completion_min_len as _;
+                let completion_ctx = CompletionContext {
+                    client_handle,
+                    buffer_handle,
+                    word_range,
+                    cursor_position: main_cursor_position,
+                    completion_requested,
+                };
+
+                ctx.editor.mode.insert_state.completing_plugin_handle = None;
+                for plugin_handle in ctx.plugins.handles() {
+                    let on_completion = ctx.plugins.get(plugin_handle).on_completion;
+                    if on_completion(plugin_handle, ctx, &completion_ctx) {
                         ctx.editor.mode.insert_state.completing_plugin_handle = Some(plugin_handle);
                         break;
                     }
-                    Some(CompletionFlow::Cancel) => {
-                        cancel_completion(&mut ctx.editor);
-                        return;
-                    }
-                    None => (),
                 }
-            }
 
-            if !completion_requested
-                && ctx
-                    .editor
-                    .mode
-                    .insert_state
-                    .completing_plugin_handle
-                    .is_none()
-            {
-                cancel_completion(&mut ctx.editor);
-                return;
-            }
+                if !completion_requested
+                    && ctx
+                        .editor
+                        .mode
+                        .insert_state
+                        .completing_plugin_handle
+                        .is_none()
+                {
+                    cancel_completion(&mut ctx.editor);
+                    return;
+                }
 
-            ctx.editor.mode.insert_state.completion_positions.clear();
+                ctx.editor.mode.insert_state.completion_positions.clear();
 
-            let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
-            let buffer = ctx.editor.buffers.get(buffer_handle).content();
-            for cursor in &buffer_view.cursors[..] {
-                let word = buffer.word_at(buffer.position_before(cursor.position));
-                let position = match word.kind {
-                    WordKind::Identifier => word.position,
-                    _ => cursor.position,
-                };
-                ctx.editor
-                    .mode
-                    .insert_state
-                    .completion_positions
-                    .push(position);
+                let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+                let buffer = ctx.editor.buffers.get(buffer_handle).content();
+                for cursor in &buffer_view.cursors[..] {
+                    let word = buffer.word_at(buffer.position_before(cursor.position));
+                    let position = match word.kind {
+                        WordKind::Identifier => word.position,
+                        _ => cursor.position,
+                    };
+                    ctx.editor
+                        .mode
+                        .insert_state
+                        .completion_positions
+                        .push(position);
+                }
+
+                break;
             }
         }
     }
