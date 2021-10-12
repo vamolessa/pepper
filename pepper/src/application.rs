@@ -5,7 +5,6 @@ use crate::{
     editor::{Editor, EditorContext, EditorControlFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
-    mode::read_line,
     platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
     serialization::{DeserializeError, Serialize},
@@ -186,7 +185,12 @@ impl ServerApplication {
                             )
                         }
                         ProcessTag::FindPattern => {
-                            read_line::find_pattern::on_process_output(&mut self.ctx.editor, bytes)
+                            self.ctx.editor.mode.read_line_state.on_process_output(
+                                &mut self.ctx.editor.buffers,
+                                &mut self.ctx.editor.word_database,
+                                &mut self.ctx.editor.events,
+                                bytes,
+                            )
                         }
                         ProcessTag::Plugin { plugin_handle, id } => {
                             PluginCollection::on_process_output(
@@ -212,7 +216,11 @@ impl ServerApplication {
                             &self.ctx.editor.read_line,
                         ),
                         ProcessTag::FindPattern => {
-                            read_line::find_pattern::on_process_exit(&mut self.ctx.editor)
+                            self.ctx.editor.mode.read_line_state.on_process_exit(
+                                &mut self.ctx.editor.buffers,
+                                &mut self.ctx.editor.word_database,
+                                &mut self.ctx.editor.events,
+                            )
                         }
                         ProcessTag::Plugin { plugin_handle, id } => {
                             PluginCollection::on_process_exit(&mut self.ctx, plugin_handle, id)

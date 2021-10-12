@@ -1,5 +1,5 @@
 syntax "**/*.refs"
-syntax-keywords "^{%w/%._-!:}"
+syntax-keywords "^{%w[/\]%._-!:}"
 syntax-symbols ","
 syntax-literals %d{%d}
 syntax-texts {%w-_}

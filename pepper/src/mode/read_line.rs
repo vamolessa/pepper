@@ -1,15 +1,17 @@
 use crate::{
-    buffer::BufferHandle,
+    buffer::{BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferPositionIndex},
     buffer_view::CursorMovementKind,
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll, ResidualStrBytes},
+    events::EditorEventQueue,
     mode::{ModeKind, ModeState},
     pattern::Pattern,
     platform::PooledBuf,
     plugin::PluginHandle,
+    word_database::WordDatabase,
 };
 
 pub struct State {
@@ -31,6 +33,40 @@ impl State {
         if self.find_pattern_buffer_handle == Some(buffer_handle) {
             self.find_pattern_buffer_handle = None;
         }
+    }
+
+    pub(crate) fn on_process_output(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
+        bytes: &[u8],
+    ) {
+        if let Some(buffer_handle) = self.find_pattern_buffer_handle {
+            let mut buf = Default::default();
+            let texts = self
+                .find_pattern_residual_bytes
+                .receive_bytes(&mut buf, bytes);
+
+            let buffer = buffers.get_mut(buffer_handle);
+            for text in texts {
+                let position = buffer.content().end();
+                buffer.insert_text(word_database, position, text, events);
+            }
+        }
+    }
+
+    pub(crate) fn on_process_exit(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
+    ) {
+        self.on_process_output(buffers, word_database, events, &[]);
+
+        self.find_pattern_command.clear();
+        self.find_pattern_buffer_handle = None;
+        self.find_pattern_residual_bytes = ResidualStrBytes::default();
     }
 }
 
@@ -56,8 +92,6 @@ impl ModeState for State {
         let state = &mut editor.mode.read_line_state;
         state.plugin_handle = None;
         state.find_pattern_command.clear();
-        state.find_pattern_buffer_handle = None;
-        state.find_pattern_residual_bytes = ResidualStrBytes::default();
         editor.read_line.input_mut().clear();
     }
 
@@ -751,7 +785,7 @@ pub mod find_pattern {
             if let Some(i) = state.find_pattern_command.find(REPLACE_PATTERN) {
                 state
                     .find_pattern_command
-                    .replace_range(i..REPLACE_PATTERN.len(), ctx.editor.read_line.input());
+                    .replace_range(i..i + REPLACE_PATTERN.len(), ctx.editor.read_line.input());
             }
 
             let command = match parse_process_command(&state.find_pattern_command) {
@@ -809,36 +843,6 @@ pub mod find_pattern {
         state.find_pattern_command.clear();
         state.find_pattern_command.push_str(command);
         ctx.editor.enter_mode(ModeKind::ReadLine);
-    }
-
-    pub(crate) fn on_process_output(editor: &mut Editor, bytes: &[u8]) {
-        let state = &mut editor.mode.read_line_state;
-        if let Some(buffer_handle) = state.find_pattern_buffer_handle {
-            let mut buf = Default::default();
-            let texts = state
-                .find_pattern_residual_bytes
-                .receive_bytes(&mut buf, bytes);
-
-            let buffer = editor.buffers.get_mut(buffer_handle);
-            for text in texts {
-                let position = buffer.content().end();
-                buffer.insert_text(
-                    &mut editor.word_database,
-                    position,
-                    text,
-                    &mut editor.events,
-                );
-            }
-        }
-    }
-
-    pub(crate) fn on_process_exit(editor: &mut Editor) {
-        on_process_output(editor, &[]);
-
-        let state = &mut editor.mode.read_line_state;
-        state.find_pattern_command.clear();
-        state.find_pattern_buffer_handle = None;
-        state.find_pattern_residual_bytes = ResidualStrBytes::default();
     }
 }
 
