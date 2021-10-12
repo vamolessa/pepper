@@ -31,6 +31,7 @@ impl Default for ApplicationConfig {
                 crate::DEFAULT_BINDINGS_CONFIG,
                 crate::DEFAULT_ALIASES_CONFIG,
                 crate::DEFAULT_SYNTAXES_CONFIG,
+                crate::DEFAULT_PLATFORM_CONFIG,
             ],
             plugin_definitions: Vec::new(),
             on_panic_config: OnPanicConfig::default(),

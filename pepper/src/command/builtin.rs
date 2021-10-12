@@ -334,6 +334,22 @@ pub fn register_commands(commands: &mut CommandManager) {
         syntax_pattern(ctx, io, TokenKind::Text)
     });
 
+    r("copy-command", &[], |ctx, io| {
+        let command = io.args.next()?;
+        io.args.assert_empty()?;
+        ctx.platform.copy_command.clear();
+        ctx.platform.copy_command.push_str(command);
+        Ok(())
+    });
+
+    r("paste-command", &[], |ctx, io| {
+        let command = io.args.next()?;
+        io.args.assert_empty()?;
+        ctx.platform.paste_command.clear();
+        ctx.platform.paste_command.push_str(command);
+        Ok(())
+    });
+
     r("find-file", &[], |ctx, io| {
         let command = io.args.next()?;
         io.args.assert_empty()?;

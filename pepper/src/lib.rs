@@ -38,6 +38,10 @@ pub const DEFAULT_SYNTAXES_CONFIG: ResourceFile = ResourceFile {
     name: "default_syntaxes.pp",
     content: include_str!("../rc/default_syntaxes.pp"),
 };
+pub const DEFAULT_PLATFORM_CONFIG: ResourceFile = ResourceFile {
+    name: "default_platform.pp",
+    content: platform_impl::DEFAULT_CONFIG_CONTENT,
+};
 
 #[derive(Clone, Copy)]
 pub struct ResourceFile {
@@ -176,22 +180,37 @@ impl Args {
 }
 
 #[cfg(windows)]
-#[path = "platforms/windows.rs"]
-mod sys;
+mod platform_impl {
+    #[path = "../platforms/windows.rs"]
+    pub mod sys;
+    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_windows.pp");
+}
 
 #[cfg(target_os = "linux")]
-#[path = "platforms/linux.rs"]
-mod sys;
+mod platform_impl {
+    #[path = "../platforms/linux.rs"]
+    pub mod sys;
+    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_linux.pp");
+}
+
+#[cfg(target_os = "macos")]
+mod platform_impl {
+    #[path = "../platforms/bsd.rs"]
+    pub mod sys;
+    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_macos.pp");
+}
 
 #[cfg(any(
-    target_os = "macos",
     target_os = "freebsd",
     target_os = "netbsd",
     target_os = "openbsd",
     target_os = "dragonfly",
 ))]
-#[path = "platforms/bsd.rs"]
-mod sys;
+mod platform_impl {
+    #[path = "../platforms/bsd.rs"]
+    pub mod sys;
+    pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_bsd.pp");
+}
 
 pub fn run(config: application::ApplicationConfig) {
     use std::{fs, io, mem::MaybeUninit, panic};
@@ -214,12 +233,13 @@ pub fn run(config: application::ApplicationConfig) {
         }
 
         if config.try_attaching_debugger {
-            sys::try_launching_debugger();
+            platform_impl::sys::try_launching_debugger();
         }
 
         let hook = ORIGINAL_PANIC_HOOK.assume_init_ref();
         hook(info);
     }));
 
-    sys::main(config);
+    platform_impl::sys::main(config);
 }
+

@@ -604,7 +604,7 @@ fn draw_statusbar(
 
                 let line_count = {
                     let mut x = 0;
-                    let mut line_count = 0;
+                    let mut line_count = 1;
                     for c in message.chars() {
                         if c == '\n' {
                             x = 0;
