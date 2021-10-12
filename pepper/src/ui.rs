@@ -589,15 +589,10 @@ fn draw_statusbar(
                     let mut len = 0;
                     for c in line.chars() {
                         match c {
-                            '\t' => {
-                                buf.extend_from_slice(b"  ");
-                                len += 2;
-                            }
-                            c => {
-                                buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes());
-                                len += 1;
-                            }
-                        };
+                            '\t' => buf.push(b' '),
+                            c => buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes()),
+                        }
+                        len += 1;
                     }
                     len
                 }
@@ -607,7 +602,24 @@ fn draw_statusbar(
                     MessageKind::Error => &b"error:"[..],
                 };
 
-                let line_count = message.lines().count();
+                let line_count = {
+                    let mut x = 0;
+                    let mut line_count = 0;
+                    for c in message.chars() {
+                        if c == '\n' {
+                            x = 0;
+                            line_count += 1;
+                        } else {
+                            x += 1;
+                            if x >= ctx.viewport_size.0 as _ {
+                                x = 0;
+                                line_count += 1;
+                            }
+                        }
+                    }
+                    line_count
+                };
+
                 if line_count > 1 {
                     if prefix.is_empty() {
                         move_cursor_up(buf, line_count - 1);
@@ -625,7 +637,7 @@ fn draw_statusbar(
                     for (i, line) in message.lines().enumerate() {
                         let len = print_line(buf, line);
                         if i < line_count - 1 {
-                            if len < ctx.viewport_size.0 as _ {
+                            if len == 0 || len % ctx.viewport_size.0 as usize > 0 {
                                 clear_until_new_line(buf);
                             }
                             move_cursor_to_next_line(buf);
@@ -733,3 +745,4 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
+
