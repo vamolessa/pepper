@@ -337,7 +337,7 @@ impl CommandManager {
         this
     }
 
-    pub fn register_command(
+    pub fn register(
         &mut self,
         plugin_handle: Option<PluginHandle>,
         name: &'static str,
@@ -506,4 +506,3 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 }
-

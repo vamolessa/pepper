@@ -17,7 +17,7 @@ use crate::{
 
 pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle) {
     let mut r = |name, completions, command_fn| {
-        commands.register_command(Some(plugin_handle), name, completions, command_fn);
+        commands.register(Some(plugin_handle), name, completions, command_fn);
     };
 
     r("lsp-debug", &[], |ctx, io| {
