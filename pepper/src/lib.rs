@@ -44,8 +44,8 @@ pub const DEFAULT_PLATFORM_CONFIG: ResourceFile = ResourceFile {
 
 #[derive(Clone, Copy)]
 pub struct ResourceFile {
-    name: &'static str,
-    content: &'static str,
+    pub name: &'static str,
+    pub content: &'static str,
 }
 
 pub struct ArgsConfig {

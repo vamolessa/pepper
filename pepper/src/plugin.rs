@@ -7,6 +7,7 @@ use crate::{
     editor::EditorContext,
     help,
     platform::PlatformProcessHandle,
+    ResourceFile,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -16,6 +17,7 @@ pub struct PluginHandle(u32);
 pub struct PluginDefinition {
     pub instantiate: fn(PluginHandle, &mut EditorContext) -> Plugin,
     pub help_pages: &'static help::HelpPages,
+    pub static_configs: &'static [ResourceFile],
 }
 
 pub struct Plugin {
@@ -122,3 +124,4 @@ impl PluginCollection {
         f(plugin_handle, ctx, process_id);
     }
 }
+

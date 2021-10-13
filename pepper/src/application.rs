@@ -61,15 +61,22 @@ impl ServerApplication {
             plugins: PluginCollection::default(),
         };
 
-        for definition in config.plugin_definitions {
-            PluginCollection::add(&mut ctx, definition);
-        }
-
         for config in &config.static_configs {
             match load_config(&mut ctx, config.name, config.content) {
                 EditorControlFlow::Continue => (),
                 _ => return None,
             };
+        }
+
+        for definition in config.plugin_definitions {
+            for config in definition.static_configs {
+                match load_config(&mut ctx, config.name, config.content) {
+                    EditorControlFlow::Continue => (),
+                    _ => return None,
+                }
+            }
+
+            PluginCollection::add(&mut ctx, definition);
         }
 
         for config in config.args.configs {
@@ -410,3 +417,4 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
+

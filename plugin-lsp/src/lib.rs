@@ -13,6 +13,7 @@ use pepper::{
     help::HelpPages,
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
     plugin::{CompletionContext, Plugin, PluginDefinition, PluginHandle},
+    ResourceFile,
 };
 
 mod capabilities;
@@ -43,6 +44,10 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
         }
     },
     help_pages: &HELP_PAGES,
+    static_configs: &[ResourceFile {
+        name: "lsp_default_bindings.pepper",
+        content: include_str!("../rc/default_bindings.pepper"),
+    }],
 };
 
 struct ClientRecipe {
@@ -494,3 +499,4 @@ fn on_completion(
 
     false
 }
+
