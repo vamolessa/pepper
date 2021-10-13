@@ -19,8 +19,8 @@ pub struct OnPanicConfig {
 
 pub struct ApplicationConfig {
     pub args: Args,
-    pub static_configs: Vec<ResourceFile>,
     pub plugin_definitions: Vec<PluginDefinition>,
+    pub static_configs: Vec<ResourceFile>,
     pub on_panic_config: OnPanicConfig,
 }
 impl Default for ApplicationConfig {
@@ -61,22 +61,15 @@ impl ServerApplication {
             plugins: PluginCollection::default(),
         };
 
+        for definition in config.plugin_definitions {
+            PluginCollection::add(&mut ctx, definition);
+        }
+
         for config in &config.static_configs {
             match load_config(&mut ctx, config.name, config.content) {
                 EditorControlFlow::Continue => (),
                 _ => return None,
             };
-        }
-
-        for definition in config.plugin_definitions {
-            for config in definition.static_configs {
-                match load_config(&mut ctx, config.name, config.content) {
-                    EditorControlFlow::Continue => (),
-                    _ => return None,
-                }
-            }
-
-            PluginCollection::add(&mut ctx, definition);
         }
 
         for config in config.args.configs {

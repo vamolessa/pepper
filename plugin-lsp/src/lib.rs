@@ -30,24 +30,25 @@ use protocol::{ProtocolError, ResponseError, ServerEvent};
 
 const SERVER_PROCESS_BUFFER_LEN: usize = 4 * 1024;
 
+pub static DEFAULT_BINDINGS_CONFIG: ResourceFile = ResourceFile {
+    name: "lsp_default_bindings.pepper",
+    content: include_str!("../rc/default_bindings.pepper"),
+};
+
 static HELP_PAGES: HelpPages = HelpPages::new(&[]);
 pub static DEFINITION: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
         command::register_commands(&mut ctx.editor.commands, handle);
-        Plugin {
+        Some(Plugin {
             data: Box::new(LspPlugin::new()),
             on_editor_events,
             on_process_spawned,
             on_process_output,
             on_process_exit,
             on_completion,
-        }
+        })
     },
     help_pages: &HELP_PAGES,
-    static_configs: &[ResourceFile {
-        name: "lsp_default_bindings.pepper",
-        content: include_str!("../rc/default_bindings.pepper"),
-    }],
 };
 
 struct ClientRecipe {

@@ -7,7 +7,6 @@ use crate::{
     editor::EditorContext,
     help,
     platform::PlatformProcessHandle,
-    ResourceFile,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -15,9 +14,8 @@ pub struct PluginHandle(u32);
 
 #[derive(Clone, Copy)]
 pub struct PluginDefinition {
-    pub instantiate: fn(PluginHandle, &mut EditorContext) -> Plugin,
+    pub instantiate: fn(PluginHandle, &mut EditorContext) -> Option<Plugin>,
     pub help_pages: &'static help::HelpPages,
-    pub static_configs: &'static [ResourceFile],
 }
 
 pub struct Plugin {
@@ -58,8 +56,9 @@ impl PluginCollection {
         help::add_help_pages(definition.help_pages);
 
         let handle = PluginHandle(ctx.plugins.plugins.len() as _);
-        let plugin = (definition.instantiate)(handle, ctx);
-        ctx.plugins.plugins.push(plugin);
+        if let Some(plugin) = (definition.instantiate)(handle, ctx) {
+            ctx.plugins.plugins.push(plugin);
+        };
     }
 
     pub fn get_as<T>(&mut self, handle: PluginHandle) -> &mut T
