@@ -121,9 +121,9 @@ impl ModeState for State {
         if let ReadLinePoll::Pending = poll {
             keys.index = keys.index.saturating_sub(1);
             match keys.next(&ctx.editor.buffered_keys) {
-                Key::Ctrl('n') | Key::Ctrl('j') | Key::Down => ctx.editor.picker.move_cursor(1),
-                Key::Ctrl('p') | Key::Ctrl('k') | Key::Up => ctx.editor.picker.move_cursor(-1),
-                Key::Ctrl('d') | Key::PageDown => {
+                Key::Ctrl('n') | Key::Down => ctx.editor.picker.move_cursor(1),
+                Key::Ctrl('p') | Key::Up => ctx.editor.picker.move_cursor(-1),
+                Key::Ctrl('j') | Key::PageDown => {
                     let picker_height = ctx
                         .editor
                         .picker
@@ -132,7 +132,7 @@ impl ModeState for State {
                         as isize;
                     ctx.editor.picker.move_cursor(picker_height / 2);
                 }
-                Key::Ctrl('u') | Key::PageUp => {
+                Key::Ctrl('k') | Key::PageUp => {
                     let picker_height = ctx
                         .editor
                         .picker
