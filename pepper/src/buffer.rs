@@ -469,10 +469,10 @@ impl BufferContent {
                 }
                 Ok(_) => {
                     if line.text.ends_with('\n') {
-                        line.text.truncate(line.text.len() - 1);
+                        line.text.pop();
                     }
                     if line.text.ends_with('\r') {
-                        line.text.truncate(line.text.len() - 1);
+                        line.text.pop();
                     }
 
                     self.lines.push(line);
@@ -503,7 +503,7 @@ impl BufferContent {
         W: io::Write,
     {
         for line in &self.lines {
-            writeln!(write, "{}", line.as_str())?;
+            write!(write, "{}\n", line.as_str())?;
         }
         Ok(())
     }
@@ -541,7 +541,7 @@ impl BufferContent {
     }
 
     pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
-        if !text.contains('\n') {
+        if !text.contains(&['\n', '\r'][..]) {
             let line = &mut self.lines[position.line_index as usize];
             let previous_len = line.as_str().len();
             line.insert_text(position.column_byte_index as _, text);
@@ -1457,8 +1457,9 @@ impl BufferCollection {
         handle: PlatformProcessHandle,
     ) {
         let process = &mut self.insert_processes[index as usize];
+        process.handle = Some(handle);
+
         if let Some(buf) = process.input.take() {
-            process.handle = Some(handle);
             platform
                 .requests
                 .enqueue(PlatformRequest::WriteToProcess { handle, buf });

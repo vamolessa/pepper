@@ -151,8 +151,6 @@ pub fn try_launching_debugger() {
 }
 
 pub fn main(config: ApplicationConfig) {
-    CtrlCEvent::set_ctrl_handler();
-
     let mut pipe_path = Vec::new();
     let mut hash_buf = [0u8; 16];
     let session_name = match &config.args.session {
@@ -1282,6 +1280,8 @@ impl ConnectionToServer {
 }
 
 fn run_client(args: Args, pipe_path: &[u16]) {
+    CtrlCEvent::set_ctrl_handler();
+
     let mut connection = ConnectionToServer::connect(pipe_path);
 
     let console_input_handle;
