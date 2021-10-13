@@ -65,7 +65,11 @@ pub fn register_commands(commands: &mut CommandManager) {
 
     r("print", &[], |ctx, io| {
         let mut write = ctx.editor.status_bar.write(MessageKind::Info);
+        if let Some(arg) = io.args.try_next() {
+            write.str(arg);
+        }
         while let Some(arg) = io.args.try_next() {
+            write.str(" ");
             write.str(arg);
         }
         Ok(())
@@ -424,3 +428,4 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
+
