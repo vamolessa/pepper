@@ -4,7 +4,7 @@ syntax-symbols ","
 syntax-literals %d{%d}
 syntax-texts {%w-_}
 
-syntax "**/*.pp"
+syntax "**/*.pepper"
 syntax-keywords ""
 syntax-strings [["{!".}|'{!'.}|%[%[{!(%]%]).}]]
 syntax-comments ^#{.}

@@ -90,7 +90,7 @@ fn print_help() {
     println!("  --quit                   sends a `quit` event on start");
     println!("  --server                 only run as server");
     println!("  -c, --config[!]          sources config file at path (repeatable) (server only)");
-    println!("                           with `!` will suppress the 'file not found' error");
+    println!("                           with `!` it will suppress the 'file not found' error");
 }
 
 impl Args {
