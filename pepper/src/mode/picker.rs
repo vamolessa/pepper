@@ -236,7 +236,7 @@ pub mod find_file {
 
     use std::path::Path;
 
-    pub fn enter_mode(ctx: &mut EditorContext, command: &str) {
+    pub fn enter_mode(ctx: &mut EditorContext, command: &str, prompt: &str) {
         fn on_client_keys(
             ctx: &mut EditorContext,
             client_handle: ClientHandle,
@@ -284,7 +284,7 @@ pub mod find_file {
             Some(EditorControlFlow::Continue)
         }
 
-        ctx.editor.read_line.set_prompt("open:");
+        ctx.editor.read_line.set_prompt(prompt);
         ctx.editor.picker.clear();
 
         let command = match parse_process_command(command) {

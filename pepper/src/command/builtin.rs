@@ -364,15 +364,17 @@ pub fn register_commands(commands: &mut CommandManager) {
 
     r("find-file", &[], |ctx, io| {
         let command = io.args.next()?;
+        let prompt = io.args.try_next().unwrap_or("open:");
         io.args.assert_empty()?;
-        picker::find_file::enter_mode(ctx, command);
+        picker::find_file::enter_mode(ctx, command, prompt);
         Ok(())
     });
 
     r("find-pattern", &[], |ctx, io| {
         let command = io.args.next()?;
+        let prompt = io.args.try_next().unwrap_or("find:");
         io.args.assert_empty()?;
-        read_line::find_pattern::enter_mode(ctx, command);
+        read_line::find_pattern::enter_mode(ctx, command, prompt);
         Ok(())
     });
 

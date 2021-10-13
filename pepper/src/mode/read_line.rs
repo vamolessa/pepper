@@ -732,7 +732,7 @@ pub mod find_pattern {
         platform::{PlatformRequest, ProcessTag},
     };
 
-    pub fn enter_mode(ctx: &mut EditorContext, command: &str) {
+    pub fn enter_mode(ctx: &mut EditorContext, command: &str, prompt: &str) {
         fn on_client_keys(
             ctx: &mut EditorContext,
             client_handle: ClientHandle,
@@ -837,7 +837,7 @@ pub mod find_pattern {
             Some(EditorControlFlow::Continue)
         }
 
-        ctx.editor.read_line.set_prompt("find:");
+        ctx.editor.read_line.set_prompt(prompt);
         let state = &mut ctx.editor.mode.read_line_state;
         state.on_client_keys = on_client_keys;
         state.find_pattern_command.clear();
