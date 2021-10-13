@@ -188,8 +188,8 @@ impl ServerApplication {
                             self.ctx.editor.mode.read_line_state.on_process_output(
                                 &mut self.ctx.editor.buffers,
                                 &mut self.ctx.editor.word_database,
-                                &mut self.ctx.editor.events,
                                 bytes,
+                                &mut self.ctx.editor.events,
                             )
                         }
                         ProcessTag::Plugin { plugin_handle, id } => {

@@ -147,9 +147,11 @@ impl EditorContext {
                         }
                     }
                     EditorEvent::BufferClose { handle } => {
-                        self.editor
-                            .buffers
-                            .remove_now(handle, &mut self.editor.word_database);
+                        self.editor.buffers.remove_now(
+                            &mut self.platform,
+                            handle,
+                            &mut self.editor.word_database,
+                        );
                         for client in self.clients.iter_mut() {
                             client.on_buffer_close(&mut self.editor, handle);
                         }
@@ -415,3 +417,4 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
+

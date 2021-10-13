@@ -39,8 +39,8 @@ impl State {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
         bytes: &[u8],
+        events: &mut EditorEventQueue,
     ) {
         if let Some(buffer_handle) = self.find_pattern_buffer_handle {
             let mut buf = Default::default();
@@ -62,7 +62,7 @@ impl State {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) {
-        self.on_process_output(buffers, word_database, events, &[]);
+        self.on_process_output(buffers, word_database, &[], events);
 
         self.find_pattern_command.clear();
         self.find_pattern_buffer_handle = None;

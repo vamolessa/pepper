@@ -1293,6 +1293,7 @@ pub struct BufferHandle(pub u32);
 
 pub struct InsertProcess {
     pub alive: bool,
+    pub handle: Option<PlatformProcessHandle>,
     pub buffer_handle: BufferHandle,
     pub position: BufferPosition,
     pub input: Option<PooledBuf>,
@@ -1370,10 +1371,27 @@ impl BufferCollection {
         }
     }
 
-    pub(crate) fn remove_now(&mut self, handle: BufferHandle, word_database: &mut WordDatabase) {
+    pub(crate) fn remove_now(
+        &mut self,
+        platform: &mut Platform,
+        handle: BufferHandle,
+        word_database: &mut WordDatabase,
+    ) {
         let buffer = &mut self.buffers[handle.0 as usize];
         if buffer.alive {
             buffer.dispose(word_database);
+        }
+
+        for process in &mut self.insert_processes {
+            if process.buffer_handle != handle {
+                continue;
+            }
+
+            if let Some(handle) = process.handle.take() {
+                platform
+                    .requests
+                    .enqueue(PlatformRequest::KillProcess { handle });
+            }
         }
     }
 
@@ -1398,6 +1416,7 @@ impl BufferCollection {
                 let index = self.insert_processes.len();
                 self.insert_processes.push(InsertProcess {
                     alive: false,
+                    handle: None,
                     buffer_handle,
                     position,
                     input: None,
@@ -1409,6 +1428,7 @@ impl BufferCollection {
 
         let process = &mut self.insert_processes[index];
         process.alive = true;
+        process.handle = None;
         process.buffer_handle = buffer_handle;
         process.position = position;
         process.input = input;
@@ -1436,7 +1456,9 @@ impl BufferCollection {
         index: u32,
         handle: PlatformProcessHandle,
     ) {
-        if let Some(buf) = self.insert_processes[index as usize].input.take() {
+        let process = &mut self.insert_processes[index as usize];
+        if let Some(buf) = process.input.take() {
+            process.handle = Some(handle);
             platform
                 .requests
                 .enqueue(PlatformRequest::WriteToProcess { handle, buf });
@@ -1454,22 +1476,23 @@ impl BufferCollection {
         events: &mut EditorEventQueue,
     ) {
         let process = &mut self.insert_processes[index as usize];
+        if process.handle.is_none() {
+            return;
+        }
 
         let mut buf = Default::default();
         let texts = process.output_residual_bytes.receive_bytes(&mut buf, bytes);
 
         let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
-        if buffer.alive {
-            process.position = buffer.content().saturate_position(process.position);
-            let mut position = process.position;
+        process.position = buffer.content().saturate_position(process.position);
+        let mut position = process.position;
 
-            for text in texts {
-                let insert_range = buffer.insert_text(word_database, position, text, events);
-                position = position.insert(insert_range);
-                for process in &mut self.insert_processes {
-                    if process.buffer_handle == buffer.handle() {
-                        process.position = process.position.insert(insert_range);
-                    }
+        for text in texts {
+            let insert_range = buffer.insert_text(word_database, position, text, events);
+            position = position.insert(insert_range);
+            for process in &mut self.insert_processes {
+                if process.buffer_handle == buffer.handle() {
+                    process.position = process.position.insert(insert_range);
                 }
             }
         }
@@ -1481,27 +1504,10 @@ impl BufferCollection {
         index: u32,
         events: &mut EditorEventQueue,
     ) {
+        self.on_process_output(word_database, index, &[], events);
         let process = &mut self.insert_processes[index as usize];
         process.alive = false;
-
-        let mut buf = Default::default();
-        let texts = process.output_residual_bytes.receive_bytes(&mut buf, &[]);
-
-        let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
-        if buffer.alive {
-            process.position = buffer.content().saturate_position(process.position);
-            let mut position = process.position;
-
-            for text in texts {
-                let insert_range = buffer.insert_text(word_database, position, text, events);
-                position = position.insert(insert_range);
-                for process in &mut self.insert_processes {
-                    if process.buffer_handle == buffer.handle() {
-                        process.position = process.position.insert(insert_range);
-                    }
-                }
-            }
-        }
+        process.handle = None;
     }
 }
 
@@ -2023,3 +2029,4 @@ mod tests {
         );
     }
 }
+
