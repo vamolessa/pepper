@@ -578,7 +578,7 @@ mod tests {
         let range = buffer.insert_text(BufferPosition::zero(), "/*\n*/");
         highlighted.insert_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
-        assert_eq!(buffer.line_count(), highlighted.lines.len());
+        assert_eq!(buffer.lines().len(), highlighted.lines.len());
 
         {
             let mut tokens = highlighted_tokens(&highlighted);
@@ -610,7 +610,7 @@ mod tests {
         let range = buffer.insert_text(BufferPosition::zero(), "/*\n\n\n*/");
         highlighted.insert_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
-        assert_eq!(buffer.line_count(), highlighted.lines.len());
+        assert_eq!(buffer.lines().len(), highlighted.lines.len());
 
         let mut tokens = highlighted_tokens(&highlighted);
         assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
@@ -699,7 +699,7 @@ mod tests {
         let range = buffer.insert_text(BufferPosition::zero(), "a\n/*\nb\nc*/");
         highlighted.insert_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
-        assert_eq!(buffer.line_count(), highlighted.highlighted_len);
+        assert_eq!(buffer.lines().len(), highlighted.highlighted_len);
 
         {
             let mut tokens = highlighted_tokens(&highlighted);
@@ -714,7 +714,7 @@ mod tests {
         buffer.delete_range(range);
         highlighted.delete_range(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
-        assert_eq!(buffer.line_count(), highlighted.highlighted_len);
+        assert_eq!(buffer.lines().len(), highlighted.highlighted_len);
 
         {
             let mut tokens = highlighted_tokens(&highlighted);
