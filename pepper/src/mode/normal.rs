@@ -1289,8 +1289,11 @@ impl ModeState for State {
                                     .set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
 
                                 if let Some(position) = position {
-                                    let mut cursors =
-                                        ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                                    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+                                    let position = buffer.content().saturate_position(position);
+
+                                    let mut cursors = buffer_view.cursors.mut_guard();
                                     cursors.clear();
                                     cursors.add(Cursor {
                                         anchor: position,
@@ -1735,3 +1738,4 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
+
