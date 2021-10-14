@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::{
-    buffer::{BufferHandle, BufferProperties, CharDisplayDistances},
+    buffer::{BufferHandle, BufferProperties},
     buffer_position::BufferPositionIndex,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
@@ -49,7 +49,7 @@ pub struct Client {
     handle: ClientHandle,
 
     pub viewport_size: (u16, u16),
-    pub scroll: (BufferPositionIndex, BufferPositionIndex),
+    pub scroll: BufferPositionIndex,
     pub height: u16,
     pub(crate) navigation_history: NavigationHistory,
 
@@ -63,7 +63,7 @@ impl Client {
         self.active = false;
 
         self.viewport_size = (0, 0);
-        self.scroll = (0, 0);
+        self.scroll = 0;
         self.height = 0;
         self.navigation_history.clear();
 
@@ -115,20 +115,20 @@ impl Client {
             None => return,
         };
 
+        // TODO: remove commented out code
         let buffer_view = editor.buffer_views.get(buffer_view_handle);
-        let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
+        //let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
 
         let position = buffer_view.cursors.main_cursor().position;
 
         let line_index = position.line_index;
-        let line = buffer.line_at(line_index as _).as_str();
-        let column_index = position.column_byte_index;
+        //let line = buffer.line_at(line_index as _).as_str();
+        //let column_index = position.column_byte_index;
 
         let half_height = height / 2;
         let quarter_height = half_height / 2;
 
-        let (mut scroll_x, mut scroll_y) = self.scroll;
-
+        /*
         if column_index < scroll_x {
             scroll_x = column_index
         } else {
@@ -146,18 +146,17 @@ impl Client {
                 scroll_x = scroll_x.max(d.char_index as _);
             }
         }
+        */
 
-        if line_index < scroll_y.saturating_sub(quarter_height) {
-            scroll_y = line_index.saturating_sub(half_height);
-        } else if line_index < scroll_y {
-            scroll_y = line_index;
-        } else if line_index >= scroll_y + height + quarter_height {
-            scroll_y = line_index + 1 - half_height;
-        } else if line_index >= scroll_y + height {
-            scroll_y = line_index + 1 - height;
+        if line_index < self.scroll.saturating_sub(quarter_height) {
+            self.scroll = line_index.saturating_sub(half_height);
+        } else if line_index < self.scroll {
+            self.scroll = line_index;
+        } else if line_index >= self.scroll + height + quarter_height {
+            self.scroll = line_index + 1 - half_height;
+        } else if line_index >= self.scroll + height {
+            self.scroll = line_index + 1 - height;
         }
-
-        self.scroll = (scroll_x, scroll_y);
     }
 
     pub(crate) fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {

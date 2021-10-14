@@ -279,24 +279,24 @@ pub mod filter_cursors {
 
             let search_anchor = pattern.search_anchor();
             if range.from.line_index == range.to.line_index {
-                let selection = &buffer.line_at(range.from.line_index as _).as_str()
+                let selection = &buffer.lines()[range.from.line_index as usize].as_str()
                     [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
                 contains(selection, pattern, search_anchor)
             } else {
-                let selection = &buffer.line_at(range.from.line_index as _).as_str()
+                let selection = &buffer.lines()[range.from.line_index as usize].as_str()
                     [range.from.column_byte_index as usize..];
                 if contains(selection, pattern, search_anchor) {
                     return true;
                 }
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
-                    let selection = buffer.line_at(line_index as _).as_str();
+                    let selection = buffer.lines()[line_index as usize].as_str();
                     if contains(selection, pattern, search_anchor) {
                         return true;
                     }
                 }
 
-                let selection = &buffer.line_at(range.to.line_index as _).as_str()
+                let selection = &buffer.lines()[range.to.line_index as usize].as_str()
                     [..range.to.column_byte_index as usize];
                 contains(selection, pattern, search_anchor)
             }
@@ -496,7 +496,7 @@ pub mod split_cursors {
             let new_cursors_start_index = splitted_cursors_len;
 
             if range.from.line_index == range.to.line_index {
-                let line = &buffer.line_at(range.from.line_index as _).as_str()
+                let line = &buffer.lines()[range.from.line_index as usize].as_str()
                     [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
                 splitted_cursors_len = add_matches(
                     &mut splitted_cursors,
@@ -506,7 +506,7 @@ pub mod split_cursors {
                     range.from,
                 );
             } else {
-                let line = &buffer.line_at(range.from.line_index as _).as_str()
+                let line = &buffer.lines()[range.from.line_index as usize].as_str()
                     [range.from.column_byte_index as usize..];
                 splitted_cursors_len = add_matches(
                     &mut splitted_cursors,
@@ -517,7 +517,7 @@ pub mod split_cursors {
                 );
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
-                    let line = buffer.line_at(line_index as _).as_str();
+                    let line = buffer.lines()[line_index as usize].as_str();
                     splitted_cursors_len = add_matches(
                         &mut splitted_cursors,
                         splitted_cursors_len,
@@ -527,7 +527,7 @@ pub mod split_cursors {
                     );
                 }
 
-                let line = &buffer.line_at(range.to.line_index as _).as_str()
+                let line = &buffer.lines()[range.to.line_index as usize].as_str()
                     [..range.to.column_byte_index as usize];
                 splitted_cursors_len = add_matches(
                     &mut splitted_cursors,

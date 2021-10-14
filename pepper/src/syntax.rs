@@ -388,7 +388,7 @@ impl HighlightedBuffer {
             last_dirty_index = dirty_index;
 
             while index < self.highlighted_len as _ {
-                let bline = buffer.line_at(index as _).as_str();
+                let bline = buffer.lines()[index as usize].as_str();
                 let hline = &mut self.lines[index as usize];
 
                 let previous_state = hline.parse_state;

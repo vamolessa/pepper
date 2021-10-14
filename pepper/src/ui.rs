@@ -1,7 +1,7 @@
 use std::{io, iter};
 
 use crate::{
-    buffer_position::{BufferPosition, BufferRange},
+    buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     client::ClientManager,
     editor::Editor,
@@ -66,7 +66,7 @@ pub struct RenderContext<'a> {
     pub editor: &'a Editor,
     pub clients: &'a ClientManager,
     pub viewport_size: (u16, u16),
-    pub scroll: (u32, u32),
+    pub scroll: BufferPositionIndex,
     pub draw_height: u16,
     pub has_focus: bool,
 }
@@ -174,7 +174,58 @@ fn draw_buffer_view(
     let lints = buffer.lints.all();
     let lints_end_index = lints.len().saturating_sub(1);
 
-    let display_position_offset = BufferPosition::line_col(ctx.scroll.1 as _, ctx.scroll.0 as _);
+    //
+    let mut display_position_offset = BufferPosition::zero();
+    {
+        let tab_size = ctx.editor.config.tab_size.get();
+        let cursor_position = buffer_view.cursors.main_cursor().position;
+        let cursor_distance_to_top = cursor_position.line_index - ctx.scroll;
+
+        let mut total_line_count = 0;
+        for (line_index, line) in buffer_content
+            .lines()
+            .iter()
+            .enumerate()
+            .rev()
+            .skip(buffer_content.lines().len() - cursor_position.line_index as usize - 1)
+        {
+            total_line_count += 1;
+            //
+        }
+
+        for (line_index, line) in buffer_content.lines().iter().enumerate() {
+            total_line_count += 1;
+            let mut x = 0;
+            for (char_index, c) in line.as_str().char_indices() {
+                match c {
+                    '\t' => x += tab_size as usize,
+                    _ => x += 1,
+                }
+
+                if x > ctx.viewport_size.0 as _ {
+                    x -= ctx.viewport_size.0 as usize;
+                    total_line_count += 1;
+                    if total_line_count == ctx.scroll {
+                        display_position_offset.column_byte_index = char_index as _;
+                        break;
+                    }
+                }
+            }
+
+            if total_line_count == ctx.scroll {
+                display_position_offset.line_index = line_index as _;
+                break;
+            }
+        }
+    }
+    eprintln!(
+        "scroll: {}, display_pos_off: {:?}",
+        ctx.scroll, display_position_offset
+    );
+    //
+
+    //let display_position_offset = BufferPosition::line_col(ctx.scroll.1 as _, ctx.scroll.0 as _);
+    //let display_position_offset = BufferPosition::line_col(0, ctx.scroll);
 
     let mut current_cursor_index = cursors.len();
     let mut current_cursor_position = BufferPosition::zero();
@@ -250,9 +301,9 @@ fn draw_buffer_view(
     let mut lines_drawn_count = 0;
     for (line_index, line) in buffer_content
         .lines()
+        .iter()
         .enumerate()
-        .skip(ctx.scroll.1 as _)
-        .take(ctx.draw_height as _)
+        .skip(display_position_offset.line_index as _)
     {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum DrawState {
@@ -262,6 +313,9 @@ fn draw_buffer_view(
             Cursor,
         }
 
+        if lines_drawn_count >= ctx.draw_height {
+            break;
+        }
         lines_drawn_count += 1;
 
         let line = line.as_str();
@@ -281,11 +335,10 @@ fn draw_buffer_view(
         set_foreground_color(buf, ctx.editor.theme.token_text);
 
         for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
-            if char_index < ctx.scroll.0 as _ {
+            if char_index < display_position_offset.column_byte_index as _ {
                 continue;
             }
 
-            let buf_len = buf.len();
             let char_position = BufferPosition::line_col(line_index as _, char_index as _);
 
             let token_kind = if c.is_ascii_whitespace() {
@@ -373,7 +426,6 @@ fn draw_buffer_view(
                 set_foreground_color(buf, text_color);
             }
 
-            let previous_x = x;
             match c {
                 '\n' => {
                     x += 1;
@@ -399,11 +451,14 @@ fn draw_buffer_view(
             }
 
             if x > ctx.viewport_size.0 as _ {
-                x = previous_x;
-                buf.truncate(buf_len);
-                break;
+                x -= ctx.viewport_size.0 as usize;
+                lines_drawn_count += 1;
+                if lines_drawn_count >= ctx.draw_height {
+                    break;
+                }
             }
         }
+        display_position_offset.column_byte_index = 0;
 
         set_background_color(buf, background_color);
 
@@ -745,3 +800,4 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
+

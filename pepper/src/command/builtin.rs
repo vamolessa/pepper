@@ -42,8 +42,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             Ok(handle) => {
                 let client = ctx.clients.get_mut(client_handle);
                 client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
-                client.scroll.0 = 0;
-                client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
+                client.scroll = position.line_index.saturating_sub((client.height / 2) as _);
 
                 let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
                 cursors.clear();
