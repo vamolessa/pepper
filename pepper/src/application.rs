@@ -248,8 +248,7 @@ impl ServerApplication {
                 editor: &self.ctx.editor,
                 clients: &self.ctx.clients,
                 viewport_size: c.viewport_size,
-                scroll: c.scroll,
-                draw_height: c.height,
+                scroll_offset: c.scroll_offset,
                 has_focus: focused_client_handle == Some(c.handle()),
             };
             ui::render(&ctx, c.buffer_view_handle(), write);

@@ -63,7 +63,7 @@ impl Picker {
         };
     }
 
-    pub fn update_scroll(&mut self, max_height: usize) -> usize {
+    pub fn update_scroll(&mut self, max_height: usize) {
         let height = self.len().min(max_height);
         let cursor = self.cursor.unwrap_or(0);
         if cursor < self.scroll {
@@ -74,8 +74,6 @@ impl Picker {
         self.scroll = self
             .scroll
             .min(self.filtered_entries.len().saturating_sub(height));
-
-        height
     }
 
     pub fn clear(&mut self) {

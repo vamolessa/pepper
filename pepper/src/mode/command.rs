@@ -126,6 +126,7 @@ fn apply_completion(ctx: &mut EditorContext, cursor_movement: isize) {
     }
 }
 
+// TODO: make a selection by default
 fn update_autocomplete_entries(ctx: &mut EditorContext) {
     let state = &mut ctx.editor.mode.command_state;
 

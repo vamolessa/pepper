@@ -1,7 +1,7 @@
 use std::{io, iter};
 
 use crate::{
-    buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
+    buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     client::ClientManager,
     editor::Editor,
@@ -66,8 +66,7 @@ pub struct RenderContext<'a> {
     pub editor: &'a Editor,
     pub clients: &'a ClientManager,
     pub viewport_size: (u16, u16),
-    pub scroll: BufferPositionIndex,
-    pub draw_height: u16,
+    pub scroll_offset: BufferPosition,
     pub has_focus: bool,
 }
 
@@ -87,7 +86,7 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
 
     let width = ctx.viewport_size.0 as usize - 1;
     let height = ctx.viewport_size.1 as usize - 1;
-    let draw_height = ctx.draw_height as usize;
+    let draw_height = height.saturating_sub(1);
 
     let margin_top = (height.saturating_sub(message_lines.len())) / 2;
     let margin_bottom = draw_height - margin_top - message_lines.len();
@@ -152,6 +151,17 @@ fn draw_buffer_view(
     let cursors = &buffer_view.cursors[..];
     let active_line_index = buffer_view.cursors.main_cursor().position.line_index as usize;
 
+    let draw_height = if ctx.has_focus {
+        let picker_height = ctx
+            .editor
+            .picker
+            .len()
+            .min(ctx.editor.config.picker_max_height as _);
+        ctx.viewport_size.1.saturating_sub((1 + picker_height) as _)
+    } else {
+        ctx.viewport_size.1.saturating_sub(1)
+    };
+
     let cursor_color = if ctx.has_focus {
         match ctx.editor.mode.kind() {
             ModeKind::Insert => ctx.editor.theme.insert_cursor,
@@ -174,29 +184,70 @@ fn draw_buffer_view(
     let lints = buffer.lints.all();
     let lints_end_index = lints.len().saturating_sub(1);
 
-    //
-    let mut display_position_offset = BufferPosition::zero();
+    //=========================================================================================================
+    let mut display_position_offset = ctx.scroll_offset;
     {
         let tab_size = ctx.editor.config.tab_size.get();
         let cursor_position = buffer_view.cursors.main_cursor().position;
-        let cursor_distance_to_top = cursor_position.line_index - ctx.scroll;
+        //let cursor_distance_to_top = cursor_position.line_index - ctx.scroll + 1;
 
         let mut total_line_count = 0;
-        for (line_index, line) in buffer_content
-            .lines()
+
+        for (line_index, line) in buffer_content.lines()[..=cursor_position.line_index as usize]
             .iter()
             .enumerate()
             .rev()
-            .skip(buffer_content.lines().len() - cursor_position.line_index as usize - 1)
         {
-            total_line_count += 1;
+
             //
         }
 
-        for (line_index, line) in buffer_content.lines().iter().enumerate() {
+        /*
+        {
+            let mut x = 0;
+            let line = buffer_content.lines()[cursor_position.line_index as usize].as_str();
+            for c in line.chars() {
+                match c {
+                    '\t' => x += tab_size as usize,
+                    _ => x += 1,
+                }
+            }
+
+            let line_display_len = x;
+            let line_height = (line_display_len + ctx.viewport_size.1 as usize - 1)
+                / ctx.viewport_size.1 as usize;
+
+            let mut skip_line_count = line_height.saturating_sub(cursor_distance_to_top as _);
+            total_line_count += line_height - skip_line_count;
+
+            if skip_line_count > 0 {
+                x = 0;
+                for (i, c) in line.char_indices() {
+                    match c {
+                        '\t' => x += tab_size as usize,
+                        _ => x += 1,
+                    }
+
+                    if x > ctx.viewport_size.0 as _ {
+                        x -= ctx.viewport_size.0 as usize;
+                        skip_line_count -= 1;
+                        if skip_line_count == 0 {
+                            display_position_offset.column_byte_index = (i + c.len_utf8()) as _;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        for (line_index, line) in buffer_content.lines()[..cursor_position.line_index as usize]
+            .iter()
+            .enumerate()
+            .rev()
+        {
             total_line_count += 1;
             let mut x = 0;
-            for (char_index, c) in line.as_str().char_indices() {
+            for (char_index, c) in line.as_str().char_indices().rev() {
                 match c {
                     '\t' => x += tab_size as usize,
                     _ => x += 1,
@@ -205,24 +256,21 @@ fn draw_buffer_view(
                 if x > ctx.viewport_size.0 as _ {
                     x -= ctx.viewport_size.0 as usize;
                     total_line_count += 1;
-                    if total_line_count == ctx.scroll {
+                    if total_line_count == cursor_distance_to_top as _ {
                         display_position_offset.column_byte_index = char_index as _;
                         break;
                     }
                 }
             }
 
-            if total_line_count == ctx.scroll {
+            if total_line_count == cursor_distance_to_top as _ {
                 display_position_offset.line_index = line_index as _;
                 break;
             }
         }
+        */
     }
-    eprintln!(
-        "scroll: {}, display_pos_off: {:?}",
-        ctx.scroll, display_position_offset
-    );
-    //
+    //=========================================================================================================
 
     //let display_position_offset = BufferPosition::line_col(ctx.scroll.1 as _, ctx.scroll.0 as _);
     //let display_position_offset = BufferPosition::line_col(0, ctx.scroll);
@@ -313,7 +361,7 @@ fn draw_buffer_view(
             Cursor,
         }
 
-        if lines_drawn_count >= ctx.draw_height {
+        if lines_drawn_count >= draw_height {
             break;
         }
         lines_drawn_count += 1;
@@ -453,7 +501,7 @@ fn draw_buffer_view(
             if x > ctx.viewport_size.0 as _ {
                 x -= ctx.viewport_size.0 as usize;
                 lines_drawn_count += 1;
-                if lines_drawn_count >= ctx.draw_height {
+                if lines_drawn_count >= draw_height {
                     break;
                 }
             }
@@ -473,7 +521,7 @@ fn draw_buffer_view(
     set_background_color(buf, ctx.editor.theme.background);
     set_foreground_color(buf, ctx.editor.theme.token_whitespace);
 
-    for _ in lines_drawn_count..ctx.draw_height {
+    for _ in lines_drawn_count..draw_height {
         buf.extend_from_slice(visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);

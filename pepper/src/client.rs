@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::{
     buffer::{BufferHandle, BufferProperties},
-    buffer_position::BufferPositionIndex,
+    buffer_position::BufferPosition,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     editor_utils::ResidualStrBytes,
@@ -10,7 +10,7 @@ use crate::{
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
-#[derive(Default, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ClientHandle(u8);
 
 impl ClientHandle {
@@ -43,14 +43,18 @@ impl<'de> Serialize<'de> for ClientHandle {
     }
 }
 
-#[derive(Default)]
+pub enum ViewAnchor {
+    Top,
+    Center,
+    Bottom,
+}
+
 pub struct Client {
     active: bool,
     handle: ClientHandle,
 
     pub viewport_size: (u16, u16),
-    pub scroll: BufferPositionIndex,
-    pub height: u16,
+    pub scroll_offset: BufferPosition,
     pub(crate) navigation_history: NavigationHistory,
 
     buffer_view_handle: Option<BufferViewHandle>,
@@ -59,12 +63,27 @@ pub struct Client {
 }
 
 impl Client {
+    pub(crate) fn new() -> Self {
+        Self {
+            active: false,
+            handle: ClientHandle(0),
+
+            viewport_size: (0, 0),
+            scroll_offset: BufferPosition::zero(),
+
+            navigation_history: NavigationHistory::default(),
+
+            buffer_view_handle: None,
+            stdin_buffer_handle: None,
+            stdin_residual_bytes: ResidualStrBytes::default(),
+        }
+    }
+
     fn dispose(&mut self) {
         self.active = false;
 
         self.viewport_size = (0, 0);
-        self.scroll = 0;
-        self.height = 0;
+        self.scroll_offset = BufferPosition::zero();
         self.navigation_history.clear();
 
         self.buffer_view_handle = None;
@@ -95,18 +114,32 @@ impl Client {
         self.viewport_size.0 != 0 && self.viewport_size.1 != 0
     }
 
+    pub fn set_view_anchor(&mut self, editor: &Editor, anchor: ViewAnchor) {
+        /*
+        let buffer_view = ctx.editor.buffer_views.get(handle);
+        let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
+        let height = client.height;
+        */
+        match anchor {
+            ViewAnchor::Top => (), //client.scroll = focused_line_index
+            ViewAnchor::Center => (), //client.scroll = focused_line_index.saturating_sub((height / 2) as _)
+            ViewAnchor::Bottom => (), //client.scroll = focused_line_index.saturating_sub(height as _)
+        }
+    }
+
     pub(crate) fn set_buffer_view_handle_no_history(&mut self, handle: Option<BufferViewHandle>) {
         self.buffer_view_handle = handle;
     }
 
-    pub(crate) fn update_view(&mut self, editor: &Editor, picker_height: u16) {
+    pub(crate) fn update_view(&mut self, editor: &Editor) {
+        /*
         self.height = self.viewport_size.1.saturating_sub(1 + picker_height);
 
-        let width = self.viewport_size.0 as BufferPositionIndex;
+        let width = self.viewport_size.0 as usize;
         if width == 0 {
             return;
         }
-        let height = self.height as BufferPositionIndex;
+        let height = self.height as usize;
         if height == 0 {
             return;
         }
@@ -128,7 +161,7 @@ impl Client {
         let half_height = height / 2;
         let quarter_height = half_height / 2;
 
-        /*
+        / *
         if column_index < scroll_x {
             scroll_x = column_index
         } else {
@@ -146,7 +179,7 @@ impl Client {
                 scroll_x = scroll_x.max(d.char_index as _);
             }
         }
-        */
+        * /
 
         if line_index < self.scroll.saturating_sub(quarter_height) {
             self.scroll = line_index.saturating_sub(half_height);
@@ -157,6 +190,7 @@ impl Client {
         } else if line_index >= self.scroll + height {
             self.scroll = line_index + 1 - height;
         }
+        */
     }
 
     pub(crate) fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
@@ -268,7 +302,7 @@ impl ClientManager {
     pub(crate) fn on_client_joined(&mut self, handle: ClientHandle) {
         let min_len = handle.into_index() + 1;
         if min_len > self.clients.len() {
-            self.clients.resize_with(min_len, Client::default);
+            self.clients.resize_with(min_len, Client::new);
         }
 
         let client = &mut self.clients[handle.into_index()];
@@ -283,3 +317,4 @@ impl ClientManager {
         }
     }
 }
+

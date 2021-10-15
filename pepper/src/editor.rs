@@ -325,15 +325,7 @@ impl Editor {
             .update_scroll(self.config.picker_max_height as _);
 
         let mut needs_redraw = false;
-        let focused_handle = clients.focused_client();
-
         for c in clients.iter_mut() {
-            let picker_height = if focused_handle == Some(c.handle()) {
-                picker_height as _
-            } else {
-                0
-            };
-
             if let Some(handle) = c.buffer_view_handle() {
                 let buffer_view = self.buffer_views.get(handle);
                 let buffer = self.buffers.get_mut(buffer_view.buffer_handle);
@@ -341,8 +333,7 @@ impl Editor {
                     needs_redraw = true;
                 }
             }
-
-            c.update_view(self, picker_height);
+            c.update_view(self);
         }
 
         needs_redraw
@@ -417,3 +408,4 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
+
