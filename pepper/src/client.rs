@@ -121,7 +121,7 @@ impl Client {
         let height = client.height;
         */
         match anchor {
-            ViewAnchor::Top => (), //client.scroll = focused_line_index
+            ViewAnchor::Top => (),    //client.scroll = focused_line_index
             ViewAnchor::Center => (), //client.scroll = focused_line_index.saturating_sub((height / 2) as _)
             ViewAnchor::Bottom => (), //client.scroll = focused_line_index.saturating_sub(height as _)
         }
@@ -132,14 +132,11 @@ impl Client {
     }
 
     pub(crate) fn update_view(&mut self, editor: &Editor) {
-        /*
-        self.height = self.viewport_size.1.saturating_sub(1 + picker_height);
-
         let width = self.viewport_size.0 as usize;
         if width == 0 {
             return;
         }
-        let height = self.height as usize;
+        let height = self.viewport_size.1.saturating_sub(1) as usize;
         if height == 0 {
             return;
         }
@@ -148,39 +145,32 @@ impl Client {
             None => return,
         };
 
-        // TODO: remove commented out code
         let buffer_view = editor.buffer_views.get(buffer_view_handle);
-        //let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
+        let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
 
         let position = buffer_view.cursors.main_cursor().position;
 
+        /*
         let line_index = position.line_index;
-        //let line = buffer.line_at(line_index as _).as_str();
-        //let column_index = position.column_byte_index;
+        let line = buffer.lines()[line_index as usize].as_str();
+        let column_index = position.column_byte_index;
+        */
 
         let half_height = height / 2;
         let quarter_height = half_height / 2;
 
-        / *
-        if column_index < scroll_x {
-            scroll_x = column_index
-        } else {
-            let index = column_index as usize;
-            let (width, text) = match line[index..].chars().next() {
-                Some(c) => (width, &line[..index + c.len_utf8()]),
-                None => (width - 1, line),
-            };
-
-            if let Some(d) = CharDisplayDistances::new(text, editor.config.tab_size)
-                .rev()
-                .take_while(|d| d.distance <= width as _)
-                .last()
+        if self.scroll_offset > position {
+            for (i, line) in buffer.lines()[position.line_index as usize..]
+                .iter()
+                .enumerate()
             {
-                scroll_x = scroll_x.max(d.char_index as _);
+                //
             }
+        } else {
+            //
         }
-        * /
 
+        /*
         if line_index < self.scroll.saturating_sub(quarter_height) {
             self.scroll = line_index.saturating_sub(half_height);
         } else if line_index < self.scroll {

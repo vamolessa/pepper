@@ -20,23 +20,6 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         commands.register(Some(plugin_handle), name, completions, command_fn);
     };
 
-    r("lsp-debug", &[], |ctx, io| {
-        io.args.assert_empty()?;
-
-        let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
-        let mut write = ctx
-            .editor
-            .status_bar
-            .write(pepper::editor_utils::MessageKind::Info);
-        write.fmt(format_args!("client count: {}\n", lsp.clients().count()));
-        for (i, client) in lsp.clients().enumerate() {
-            let d = std::mem::discriminant(&client.request_state);
-            write.fmt(format_args!("client {}: request_state: {:?}", i, d));
-        }
-
-        Ok(())
-    });
-
     r("lsp", &[], |ctx, io| {
         let command = io.args.next()?;
         let glob = io.args.next()?;
