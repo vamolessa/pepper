@@ -327,7 +327,10 @@ impl Pattern {
                         .or_else(|| text[..index].chars().next_back());
                     let current_char = rest.chars().next();
                     let at_boundary = match previous_char.zip(current_char) {
-                        Some((p, c)) => !p.is_ascii_alphanumeric() || !c.is_ascii_alphanumeric(),
+                        Some((p, c)) => {
+                            !p.is_ascii_alphanumeric() && p != '_'
+                                || !c.is_ascii_alphanumeric() && c != '_'
+                        }
                         None => true,
                     };
                     op_jump = if at_boundary { okj } else { erj };
@@ -1603,3 +1606,4 @@ mod tests {
         ));
     }
 }
+

@@ -184,96 +184,7 @@ fn draw_buffer_view(
     let lints = buffer.lints.all();
     let lints_end_index = lints.len().saturating_sub(1);
 
-    //=========================================================================================================
     let mut display_position_offset = ctx.scroll_offset;
-    {
-        let tab_size = ctx.editor.config.tab_size.get();
-        let cursor_position = buffer_view.cursors.main_cursor().position;
-        //let cursor_distance_to_top = cursor_position.line_index - ctx.scroll + 1;
-
-        let mut total_line_count = 0;
-
-        for (line_index, line) in buffer_content.lines()[..=cursor_position.line_index as usize]
-            .iter()
-            .enumerate()
-            .rev()
-        {
-
-            //
-        }
-
-        /*
-        {
-            let mut x = 0;
-            let line = buffer_content.lines()[cursor_position.line_index as usize].as_str();
-            for c in line.chars() {
-                match c {
-                    '\t' => x += tab_size as usize,
-                    _ => x += 1,
-                }
-            }
-
-            let line_display_len = x;
-            let line_height = (line_display_len + ctx.viewport_size.1 as usize - 1)
-                / ctx.viewport_size.1 as usize;
-
-            let mut skip_line_count = line_height.saturating_sub(cursor_distance_to_top as _);
-            total_line_count += line_height - skip_line_count;
-
-            if skip_line_count > 0 {
-                x = 0;
-                for (i, c) in line.char_indices() {
-                    match c {
-                        '\t' => x += tab_size as usize,
-                        _ => x += 1,
-                    }
-
-                    if x > ctx.viewport_size.0 as _ {
-                        x -= ctx.viewport_size.0 as usize;
-                        skip_line_count -= 1;
-                        if skip_line_count == 0 {
-                            display_position_offset.column_byte_index = (i + c.len_utf8()) as _;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        for (line_index, line) in buffer_content.lines()[..cursor_position.line_index as usize]
-            .iter()
-            .enumerate()
-            .rev()
-        {
-            total_line_count += 1;
-            let mut x = 0;
-            for (char_index, c) in line.as_str().char_indices().rev() {
-                match c {
-                    '\t' => x += tab_size as usize,
-                    _ => x += 1,
-                }
-
-                if x > ctx.viewport_size.0 as _ {
-                    x -= ctx.viewport_size.0 as usize;
-                    total_line_count += 1;
-                    if total_line_count == cursor_distance_to_top as _ {
-                        display_position_offset.column_byte_index = char_index as _;
-                        break;
-                    }
-                }
-            }
-
-            if total_line_count == cursor_distance_to_top as _ {
-                display_position_offset.line_index = line_index as _;
-                break;
-            }
-        }
-        */
-    }
-    //=========================================================================================================
-
-    //let display_position_offset = BufferPosition::line_col(ctx.scroll.1 as _, ctx.scroll.0 as _);
-    //let display_position_offset = BufferPosition::line_col(0, ctx.scroll);
 
     let mut current_cursor_index = cursors.len();
     let mut current_cursor_position = BufferPosition::zero();
@@ -382,11 +293,11 @@ fn draw_buffer_view(
         set_background_color(buf, background_color);
         set_foreground_color(buf, ctx.editor.theme.token_text);
 
-        for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
-            if char_index < display_position_offset.column_byte_index as _ {
-                continue;
-            }
-
+        for (char_index, c) in line[display_position_offset.column_byte_index as usize..]
+            .char_indices()
+            .chain(iter::once((line.len(), '\n')))
+        {
+            let char_index = char_index + display_position_offset.column_byte_index as usize;
             let char_position = BufferPosition::line_col(line_index as _, char_index as _);
 
             let token_kind = if c.is_ascii_whitespace() {
@@ -474,6 +385,7 @@ fn draw_buffer_view(
                 set_foreground_color(buf, text_color);
             }
 
+            let previous_buf_len = buf.len();
             match c {
                 '\n' => {
                     x += 1;
@@ -502,12 +414,13 @@ fn draw_buffer_view(
                 x -= ctx.viewport_size.0 as usize;
                 lines_drawn_count += 1;
                 if lines_drawn_count >= draw_height {
+                    buf.truncate(previous_buf_len);
                     break;
                 }
             }
         }
-        display_position_offset.column_byte_index = 0;
 
+        display_position_offset.column_byte_index = 0;
         set_background_color(buf, background_color);
 
         if x < ctx.viewport_size.0 as _ {

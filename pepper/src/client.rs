@@ -132,6 +132,48 @@ impl Client {
     }
 
     pub(crate) fn update_view(&mut self, editor: &Editor) {
+        fn find_wrapped_line_start_index(
+            line: &str,
+            viewport_width: usize,
+            tab_size: usize,
+            column_byte_index: usize,
+        ) -> usize {
+            let mut x = 0;
+            let mut y = 0;
+            let mut last_line_start = 0;
+            for (i, c) in line.char_indices() {
+                if i == column_byte_index {
+                    break;
+                }
+                match c {
+                    '\t' => x += tab_size,
+                    _ => x += 1,
+                }
+                if x > viewport_width {
+                    x -= viewport_width;
+                    y += 1;
+                    last_line_start = i;
+                }
+            }
+            last_line_start
+        }
+
+        fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize {
+            let mut x = 0;
+            let mut height = 1;
+            for c in line.chars() {
+                match c {
+                    '\t' => x += tab_size,
+                    _ => x += 1,
+                }
+                if x > viewport_width {
+                    x -= viewport_width;
+                    height += 1;
+                }
+            }
+            height
+        }
+
         let width = self.viewport_size.0 as usize;
         if width == 0 {
             return;
@@ -156,10 +198,19 @@ impl Client {
         let column_index = position.column_byte_index;
         */
 
+        let tab_size = editor.config.tab_size.get() as _;
         let half_height = height / 2;
-        let quarter_height = half_height / 2;
+        //let quarter_height = half_height / 2;
 
         if self.scroll_offset > position {
+            let line = &buffer.lines()[position.line_index as usize].as_str();
+            let start_index = find_wrapped_line_start_index(
+                line,
+                width,
+                tab_size,
+                position.column_byte_index as _,
+            );
+
             for (i, line) in buffer.lines()[position.line_index as usize..]
                 .iter()
                 .enumerate()
@@ -167,7 +218,81 @@ impl Client {
                 //
             }
         } else {
-            //
+            let line = &buffer.lines()[position.line_index as usize].as_str();
+            let start_index = find_wrapped_line_start_index(
+                line,
+                width,
+                tab_size,
+                position.column_byte_index as _,
+            );
+            let line = &line[..start_index];
+            let line_height = find_line_height(line, width, tab_size);
+
+            if line_height < height {
+                let mut available_height = height - line_height;
+                for (line_index, line) in buffer.lines()[..position.line_index as usize]
+                    .iter()
+                    .enumerate()
+                    .rev()
+                {
+                    if line_index == self.scroll_offset.line_index as _ {
+                        return;
+                    }
+
+                    let line = line.as_str();
+
+                    available_height -= 1;
+                    if available_height == 0 {
+                        self.scroll_offset.line_index = line_index as _;
+                        self.scroll_offset.column_byte_index =
+                            find_wrapped_line_start_index(line, width, tab_size, line.len()) as _;
+                        return;
+                    }
+
+                    let mut x = 0;
+                    for (char_index, c) in line.char_indices().rev() {
+                        match c {
+                            '\t' => x += tab_size,
+                            _ => x += 1,
+                        }
+
+                        if x >= width {
+                            x -= width;
+                            available_height -= 1;
+                            if available_height == 0 {
+                                self.scroll_offset.line_index = line_index as _;
+                                self.scroll_offset.column_byte_index = char_index as _;
+                                return;
+                            }
+                        }
+                    }
+                }
+            } else {
+                self.scroll_offset.line_index = position.line_index;
+
+                let mut available_height = height;
+                if available_height == 0 {
+                    self.scroll_offset.column_byte_index = start_index as _;
+                    return;
+                }
+
+                let mut x = 0;
+                for (char_index, c) in line.char_indices().rev() {
+                    match c {
+                        '\t' => x += tab_size,
+                        _ => x += 1,
+                    }
+
+                    if x >= width {
+                        x -= width;
+                        available_height -= 1;
+                        if available_height == 0 {
+                            self.scroll_offset.column_byte_index = char_index as _;
+                            return;
+                        }
+                    }
+                }
+            }
         }
 
         /*
