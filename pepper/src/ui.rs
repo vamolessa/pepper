@@ -414,7 +414,7 @@ fn draw_buffer_view(
             if x > ctx.viewport_size.0 as _ {
                 x -= ctx.viewport_size.0 as usize;
                 lines_drawn_count += 1;
-                if lines_drawn_count == draw_height {
+                if lines_drawn_count > draw_height {
                     buf.truncate(previous_buf_len);
                     x = previous_x;
                     break;
