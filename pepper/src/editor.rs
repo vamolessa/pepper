@@ -320,8 +320,7 @@ impl Editor {
     }
 
     pub(crate) fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
-        let picker_height = self
-            .picker
+        self.picker
             .update_scroll(self.config.picker_max_height as _);
 
         let mut needs_redraw = false;

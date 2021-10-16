@@ -229,43 +229,29 @@ impl Client {
 
         let buffer_view = editor.buffer_views.get(buffer_view_handle);
         let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
-
         let position = buffer_view.cursors.main_cursor().position;
-
-        /*
-        let line_index = position.line_index;
-        let line = buffer.lines()[line_index as usize].as_str();
-        let column_index = position.column_byte_index;
-        */
-
         let tab_size = editor.config.tab_size.get() as _;
-        let half_height = height / 2;
-        //let quarter_height = half_height / 2;
 
-        if self.scroll_offset > position {
-            let line = &buffer.lines()[position.line_index as usize].as_str();
+        if self.scroll_offset >= position {
+            let cursor_line = &buffer.lines()[position.line_index as usize].as_str();
             let wrapped_line_index = find_wrapped_line_start_index(
-                line,
+                cursor_line,
                 width,
                 tab_size,
                 position.column_byte_index as _,
             );
 
-            for (i, line) in buffer.lines()[position.line_index as usize..]
-                .iter()
-                .enumerate()
-            {
-                //
-            }
+            self.scroll_offset.line_index = position.line_index;
+            self.scroll_offset.column_byte_index = wrapped_line_index as _;
         } else {
-            let line = &buffer.lines()[position.line_index as usize].as_str();
+            let cursor_line = &buffer.lines()[position.line_index as usize].as_str();
             let wrapped_line_index = find_wrapped_line_start_index(
-                line,
+                cursor_line,
                 width,
                 tab_size,
                 position.column_byte_index as _,
             );
-            let cursor_line = &line[..wrapped_line_index];
+            let cursor_line = &cursor_line[..wrapped_line_index];
             let line_height = find_line_height(cursor_line, width, tab_size);
 
             if line_height < height {
@@ -480,7 +466,6 @@ fn find_wrapped_line_start_index(
     column_byte_index: usize,
 ) -> usize {
     let mut x = 0;
-    let mut y = 0;
     let mut last_line_start = 0;
     for (i, c) in line.char_indices() {
         if i == column_byte_index {
@@ -492,7 +477,6 @@ fn find_wrapped_line_start_index(
         }
         if x > viewport_width {
             x -= viewport_width;
-            y += 1;
             last_line_start = i;
         }
     }
