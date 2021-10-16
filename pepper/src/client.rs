@@ -115,16 +115,98 @@ impl Client {
     }
 
     pub fn set_view_anchor(&mut self, editor: &Editor, anchor: ViewAnchor) {
-        /*
-        let buffer_view = ctx.editor.buffer_views.get(handle);
-        let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
-        let height = client.height;
-        */
-        match anchor {
-            ViewAnchor::Top => (),    //client.scroll = focused_line_index
-            ViewAnchor::Center => (), //client.scroll = focused_line_index.saturating_sub((height / 2) as _)
-            ViewAnchor::Bottom => (), //client.scroll = focused_line_index.saturating_sub(height as _)
+        let buffer_view_handle = match self.buffer_view_handle {
+            Some(handle) => handle,
+            None => return,
+        };
+
+        let buffer_view = editor.buffer_views.get(buffer_view_handle);
+        let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
+        let position = buffer_view.cursors.main_cursor().position;
+
+        let width = self.viewport_size.0 as usize;
+        let height = self.viewport_size.1.saturating_sub(1) as usize;
+        let tab_size = editor.config.tab_size.get() as usize;
+
+        let cursor_line = buffer.lines()[position.line_index as usize].as_str();
+        let wrapped_line_index = find_wrapped_line_start_index(
+            cursor_line,
+            width,
+            tab_size,
+            position.column_byte_index as _,
+        );
+
+        let line_height = find_line_height(&cursor_line[..wrapped_line_index], width, tab_size);
+
+        let height_on_top = match anchor {
+            ViewAnchor::Top => 0,
+            ViewAnchor::Center => height / 2,
+            ViewAnchor::Bottom => height,
+        };
+
+        if line_height < height_on_top {
+            let mut height_left = height_on_top - line_height;
+            for (line_index, line) in buffer.lines()[..position.line_index as usize]
+                .iter()
+                .enumerate()
+                .rev()
+            {
+                let line = line.as_str();
+
+                height_left -= 1;
+                if height_left == 0 {
+                    self.scroll_offset.line_index = line_index as _;
+                    self.scroll_offset.column_byte_index =
+                        find_wrapped_line_start_index(line, width, tab_size, line.len()) as _;
+                    return;
+                }
+
+                let mut x = 0;
+                for (char_index, c) in line.char_indices().rev() {
+                    match c {
+                        '\t' => x += tab_size,
+                        _ => x += 1,
+                    }
+
+                    if x >= width {
+                        x -= width;
+                        height_left -= 1;
+                        if height_left == 0 {
+                            self.scroll_offset.line_index = line_index as _;
+                            self.scroll_offset.column_byte_index = char_index as _;
+                            return;
+                        }
+                    }
+                }
+            }
+        } else {
+            self.scroll_offset.line_index = position.line_index;
+
+            let mut height_left = height_on_top;
+            if height_left == 0 {
+                self.scroll_offset.column_byte_index = wrapped_line_index as _;
+                return;
+            }
+
+            let mut x = 0;
+            for (char_index, c) in cursor_line.char_indices().rev() {
+                match c {
+                    '\t' => x += tab_size,
+                    _ => x += 1,
+                }
+
+                if x >= width {
+                    x -= width;
+                    height_left -= 1;
+                    if height_left == 0 {
+                        self.scroll_offset.column_byte_index = char_index as _;
+                        return;
+                    }
+                }
+            }
         }
+
+        self.scroll_offset = BufferPosition::zero();
     }
 
     pub(crate) fn set_buffer_view_handle_no_history(&mut self, handle: Option<BufferViewHandle>) {
@@ -132,48 +214,6 @@ impl Client {
     }
 
     pub(crate) fn update_view(&mut self, editor: &Editor) {
-        fn find_wrapped_line_start_index(
-            line: &str,
-            viewport_width: usize,
-            tab_size: usize,
-            column_byte_index: usize,
-        ) -> usize {
-            let mut x = 0;
-            let mut y = 0;
-            let mut last_line_start = 0;
-            for (i, c) in line.char_indices() {
-                if i == column_byte_index {
-                    break;
-                }
-                match c {
-                    '\t' => x += tab_size,
-                    _ => x += 1,
-                }
-                if x > viewport_width {
-                    x -= viewport_width;
-                    y += 1;
-                    last_line_start = i;
-                }
-            }
-            last_line_start
-        }
-
-        fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize {
-            let mut x = 0;
-            let mut height = 1;
-            for c in line.chars() {
-                match c {
-                    '\t' => x += tab_size,
-                    _ => x += 1,
-                }
-                if x > viewport_width {
-                    x -= viewport_width;
-                    height += 1;
-                }
-            }
-            height
-        }
-
         let width = self.viewport_size.0 as usize;
         if width == 0 {
             return;
@@ -204,7 +244,7 @@ impl Client {
 
         if self.scroll_offset > position {
             let line = &buffer.lines()[position.line_index as usize].as_str();
-            let start_index = find_wrapped_line_start_index(
+            let wrapped_line_index = find_wrapped_line_start_index(
                 line,
                 width,
                 tab_size,
@@ -219,14 +259,14 @@ impl Client {
             }
         } else {
             let line = &buffer.lines()[position.line_index as usize].as_str();
-            let start_index = find_wrapped_line_start_index(
+            let wrapped_line_index = find_wrapped_line_start_index(
                 line,
                 width,
                 tab_size,
                 position.column_byte_index as _,
             );
-            let line = &line[..start_index];
-            let line_height = find_line_height(line, width, tab_size);
+            let cursor_line = &line[..wrapped_line_index];
+            let line_height = find_line_height(cursor_line, width, tab_size);
 
             if line_height < height {
                 let mut available_height = height - line_height;
@@ -272,12 +312,12 @@ impl Client {
 
                 let mut available_height = height;
                 if available_height == 0 {
-                    self.scroll_offset.column_byte_index = start_index as _;
+                    self.scroll_offset.column_byte_index = wrapped_line_index as _;
                     return;
                 }
 
                 let mut x = 0;
-                for (char_index, c) in line.char_indices().rev() {
+                for (char_index, c) in cursor_line.char_indices().rev() {
                     match c {
                         '\t' => x += tab_size,
                         _ => x += 1,
@@ -431,5 +471,47 @@ impl ClientManager {
             self.focused_client = None;
         }
     }
+}
+
+fn find_wrapped_line_start_index(
+    line: &str,
+    viewport_width: usize,
+    tab_size: usize,
+    column_byte_index: usize,
+) -> usize {
+    let mut x = 0;
+    let mut y = 0;
+    let mut last_line_start = 0;
+    for (i, c) in line.char_indices() {
+        if i == column_byte_index {
+            break;
+        }
+        match c {
+            '\t' => x += tab_size,
+            _ => x += 1,
+        }
+        if x > viewport_width {
+            x -= viewport_width;
+            y += 1;
+            last_line_start = i;
+        }
+    }
+    last_line_start
+}
+
+fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize {
+    let mut x = 0;
+    let mut height = 1;
+    for c in line.chars() {
+        match c {
+            '\t' => x += tab_size,
+            _ => x += 1,
+        }
+        if x > viewport_width {
+            x -= viewport_width;
+            height += 1;
+        }
+    }
+    height
 }
 
