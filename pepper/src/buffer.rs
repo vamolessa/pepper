@@ -3,7 +3,7 @@ use std::{
     fs::File,
     io,
     num::NonZeroU8,
-    ops::RangeBounds,
+    ops::{Add, RangeBounds, Sub},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     str::CharIndices,
@@ -83,6 +83,48 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
         Some(i) => {
             let position = path[i + 1..].parse().ok();
             (&path[..i], position)
+        }
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct DisplayLen {
+    pub len: u32,
+    pub tab_count: u32,
+}
+impl DisplayLen {
+    pub fn total_len(&self, tab_size: usize) -> usize {
+        self.len as usize + self.tab_count as usize * tab_size
+    }
+}
+impl<'a> From<&'a str> for DisplayLen {
+    fn from(s: &'a str) -> Self {
+        let mut len = 0;
+        let mut tab_count = 0;
+        for c in s.chars() {
+            match c {
+                '\t' => tab_count += 1,
+                _ => len += 1,
+            }
+        }
+        Self { len, tab_count }
+    }
+}
+impl Add for DisplayLen {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        Self {
+            len: self.len + other.len,
+            tab_count: self.tab_count + other.tab_count,
+        }
+    }
+}
+impl Sub for DisplayLen {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        Self {
+            len: self.len - other.len,
+            tab_count: self.tab_count - other.tab_count,
         }
     }
 }
@@ -250,6 +292,7 @@ impl BufferLinePool {
         match self.pool.pop() {
             Some(mut line) => {
                 line.text.clear();
+                line.display_len = DisplayLen::default();
                 line
             }
             None => BufferLine::new(),
@@ -263,17 +306,23 @@ impl BufferLinePool {
 
 pub struct BufferLine {
     text: String,
+    display_len: DisplayLen,
 }
 
 impl BufferLine {
     fn new() -> Self {
         Self {
             text: String::new(),
+            display_len: DisplayLen::default(),
         }
     }
 
     pub fn as_str(&self) -> &str {
         &self.text
+    }
+
+    pub fn display_len(&self) -> DisplayLen {
+        self.display_len
     }
 
     pub fn chars_from<'a>(
@@ -365,24 +414,36 @@ impl BufferLine {
 
     pub fn split_off(&mut self, other: &mut BufferLine, index: usize) {
         other.text.clear();
-        other.push_text(&self.text[index..]);
+        other.text.push_str(&self.text[index..]);
+
+        if index < other.text.len() {
+            let display_len = DisplayLen::from(&self.text[..index]);
+            other.display_len = self.display_len - display_len;
+            self.display_len = display_len;
+        } else {
+            other.display_len = DisplayLen::from(&other.text[..]);
+            self.display_len = self.display_len - other.display_len;
+        }
 
         self.text.truncate(index);
     }
 
     pub fn insert_text(&mut self, index: usize, text: &str) {
         self.text.insert_str(index, text);
+        self.display_len = self.display_len + DisplayLen::from(text);
     }
 
     pub fn push_text(&mut self, text: &str) {
         self.text.push_str(text);
+        self.display_len = self.display_len + DisplayLen::from(text);
     }
 
     pub fn delete_range<R>(&mut self, range: R)
     where
         R: RangeBounds<usize>,
     {
-        self.text.drain(range);
+        let deleted = self.text.drain(range);
+        self.display_len = self.display_len - DisplayLen::from(deleted.as_str());
     }
 }
 

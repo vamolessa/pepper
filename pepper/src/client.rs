@@ -162,6 +162,7 @@ impl Client {
                 }
 
                 let mut x = 0;
+                let mut last_line_end = line.len();
                 for (char_index, c) in line.char_indices().rev() {
                     match c {
                         '\t' => x += tab_size,
@@ -173,22 +174,26 @@ impl Client {
                         height_left -= 1;
                         if height_left == 0 {
                             self.scroll_offset.line_index = line_index as _;
-                            self.scroll_offset.column_byte_index = char_index as _;
+                            self.scroll_offset.column_byte_index =
+                                find_wrapped_line_start_index(line, width, tab_size, last_line_end)
+                                    as _;
                             return;
                         }
+                        last_line_end = char_index;
                     }
                 }
             }
         } else {
             self.scroll_offset.line_index = position.line_index;
 
-            let mut height_left = height_on_top;
+            let mut height_left = height_on_top.saturating_sub(1);
             if height_left == 0 {
                 self.scroll_offset.column_byte_index = wrapped_line_index as _;
                 return;
             }
 
             let mut x = 0;
+            let mut last_line_end = cursor_line.len();
             for (char_index, c) in cursor_line.char_indices().rev() {
                 match c {
                     '\t' => x += tab_size,
@@ -199,9 +204,15 @@ impl Client {
                     x -= width;
                     height_left -= 1;
                     if height_left == 0 {
-                        self.scroll_offset.column_byte_index = char_index as _;
+                        self.scroll_offset.column_byte_index = find_wrapped_line_start_index(
+                            cursor_line,
+                            width,
+                            tab_size,
+                            last_line_end,
+                        ) as _;
                         return;
                     }
+                    last_line_end = char_index;
                 }
             }
         }
@@ -256,15 +267,13 @@ impl Client {
 
             if line_height < height {
                 let mut available_height = height - line_height;
-                for (line_index, line) in buffer.lines()[..position.line_index as usize]
+                for (line_index, line) in buffer.lines()
+                    [self.scroll_offset.line_index as usize..position.line_index as usize]
                     .iter()
                     .enumerate()
                     .rev()
                 {
-                    if line_index == self.scroll_offset.line_index as _ {
-                        return;
-                    }
-
+                    let line_index = line_index + self.scroll_offset.line_index as usize;
                     let line = line.as_str();
 
                     available_height -= 1;
@@ -276,6 +285,7 @@ impl Client {
                     }
 
                     let mut x = 0;
+                    let mut last_line_end = line.len();
                     for (char_index, c) in line.char_indices().rev() {
                         match c {
                             '\t' => x += tab_size,
@@ -287,16 +297,23 @@ impl Client {
                             available_height -= 1;
                             if available_height == 0 {
                                 self.scroll_offset.line_index = line_index as _;
-                                self.scroll_offset.column_byte_index = char_index as _;
+                                self.scroll_offset.column_byte_index = find_wrapped_line_start_index(
+                                    line,
+                                    width,
+                                    tab_size,
+                                    last_line_end,
+                                )
+                                    as _;
                                 return;
                             }
+                            last_line_end = char_index;
                         }
                     }
                 }
             } else {
                 self.scroll_offset.line_index = position.line_index;
 
-                let mut available_height = height;
+                let mut available_height = height.saturating_sub(1);
                 if available_height == 0 {
                     self.scroll_offset.column_byte_index = wrapped_line_index as _;
                     return;
