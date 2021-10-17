@@ -87,6 +87,10 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     }
 }
 
+pub fn char_display_len(_: char) -> u8 {
+    1
+}
+
 #[derive(Default, Clone, Copy)]
 pub struct DisplayLen {
     pub len: u32,
@@ -104,7 +108,7 @@ impl<'a> From<&'a str> for DisplayLen {
         for c in s.chars() {
             match c {
                 '\t' => tab_count += 1,
-                _ => len += 1,
+                _ => len += char_display_len(c) as u32,
             }
         }
         Self { len, tab_count }
@@ -150,8 +154,8 @@ impl<'a> CharDisplayDistances<'a> {
 impl<'a> CharDisplayDistances<'a> {
     fn calc_next(&mut self, char_index: usize, c: char) -> CharDisplayDistance {
         self.len += match c {
-            '\t' => self.tab_size.get() as _,
-            _ => 1,
+            '\t' => self.tab_size.get() as usize,
+            _ => char_display_len(c) as usize,
         };
         CharDisplayDistance {
             distance: self.len,
