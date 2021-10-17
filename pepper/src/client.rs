@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::{
-    buffer::{BufferHandle, BufferProperties},
+    buffer::{char_display_len, BufferHandle, BufferProperties},
     buffer_position::BufferPosition,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
@@ -115,6 +115,10 @@ impl Client {
     }
 
     pub fn set_view_anchor(&mut self, editor: &Editor, anchor: ViewAnchor) {
+        if !self.has_ui() {
+            return;
+        }
+
         let buffer_view_handle = match self.buffer_view_handle {
             Some(handle) => handle,
             None => return,
@@ -166,7 +170,7 @@ impl Client {
                 for (char_index, c) in line.char_indices().rev() {
                     match c {
                         '\t' => x += tab_size,
-                        _ => x += 1,
+                        _ => x += char_display_len(c) as usize,
                     }
 
                     if x >= width {
@@ -197,7 +201,7 @@ impl Client {
             for (char_index, c) in cursor_line.char_indices().rev() {
                 match c {
                     '\t' => x += tab_size,
-                    _ => x += 1,
+                    _ => x += char_display_len(c) as usize,
                 }
 
                 if x >= width {
@@ -224,19 +228,19 @@ impl Client {
         self.buffer_view_handle = handle;
     }
 
-    pub(crate) fn update_view(&mut self, editor: &Editor) {
-        let width = self.viewport_size.0 as usize;
-        if width == 0 {
+    pub(crate) fn update_view(&mut self, editor: &Editor, picker_height: usize) {
+        if !self.has_ui() {
             return;
         }
-        let height = self.viewport_size.1.saturating_sub(1) as usize;
-        if height == 0 {
-            return;
-        }
+
         let buffer_view_handle = match self.buffer_view_handle() {
             Some(handle) => handle,
             None => return,
         };
+
+        let width = self.viewport_size.0 as usize;
+        let height = self.viewport_size.1.saturating_sub(1) as usize;
+        let height = height.saturating_sub(picker_height);
 
         let buffer_view = editor.buffer_views.get(buffer_view_handle);
         let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
@@ -289,7 +293,7 @@ impl Client {
                     for (char_index, c) in line.char_indices().rev() {
                         match c {
                             '\t' => x += tab_size,
-                            _ => x += 1,
+                            _ => x += char_display_len(c) as usize,
                         }
 
                         if x >= width {
@@ -323,7 +327,7 @@ impl Client {
                 for (char_index, c) in cursor_line.char_indices().rev() {
                     match c {
                         '\t' => x += tab_size,
-                        _ => x += 1,
+                        _ => x += char_display_len(c) as usize,
                     }
 
                     if x >= width {
@@ -490,7 +494,7 @@ fn find_wrapped_line_start_index(
         }
         match c {
             '\t' => x += tab_size,
-            _ => x += 1,
+            _ => x += char_display_len(c) as usize,
         }
         if x >= viewport_width {
             x -= viewport_width;
@@ -506,7 +510,7 @@ fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize
     for c in line.chars() {
         match c {
             '\t' => x += tab_size,
-            _ => x += 1,
+            _ => x += char_display_len(c) as usize,
         }
         if x >= viewport_width {
             x -= viewport_width;

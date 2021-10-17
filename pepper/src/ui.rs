@@ -384,6 +384,7 @@ fn draw_buffer_view(
 
             let previous_x = x;
             let previous_buf_len = buf.len();
+
             match c {
                 '\n' => {
                     x += 1;
@@ -412,6 +413,7 @@ fn draw_buffer_view(
                 x -= ctx.viewport_size.0 as usize;
                 lines_drawn_count += 1;
                 if lines_drawn_count > draw_height {
+                    lines_drawn_count = draw_height;
                     buf.truncate(previous_buf_len);
                     x = previous_x;
                     break;

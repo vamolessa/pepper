@@ -320,8 +320,10 @@ impl Editor {
     }
 
     pub(crate) fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
-        self.picker
+        let picker_height = self
+            .picker
             .update_scroll(self.config.picker_max_height as _);
+        let focused_client = clients.focused_client();
 
         let mut needs_redraw = false;
         for c in clients.iter_mut() {
@@ -332,7 +334,8 @@ impl Editor {
                     needs_redraw = true;
                 }
             }
-            c.update_view(self);
+            let is_focused = focused_client == Some(c.handle());
+            c.update_view(self, if is_focused { picker_height } else { 0 });
         }
 
         needs_redraw
