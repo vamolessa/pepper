@@ -277,7 +277,7 @@ fn draw_buffer_view(
         }
         lines_drawn_count += 1;
 
-        let line = line.as_str();
+        let line = &line.as_str()[display_position_offset.column_byte_index as usize..];
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut was_inside_lint_range = false;
         let mut x = 0;
@@ -293,10 +293,7 @@ fn draw_buffer_view(
         set_background_color(buf, background_color);
         set_foreground_color(buf, ctx.editor.theme.token_text);
 
-        for (char_index, c) in line[display_position_offset.column_byte_index as usize..]
-            .char_indices()
-            .chain(iter::once((line.len(), '\n')))
-        {
+        for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
             let char_index = char_index + display_position_offset.column_byte_index as usize;
             let char_position = BufferPosition::line_col(line_index as _, char_index as _);
 
