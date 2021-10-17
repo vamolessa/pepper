@@ -91,6 +91,7 @@ pub fn char_display_len(_: char) -> u8 {
     1
 }
 
+// TODO: maybe not needed afterall
 #[derive(Default, Clone, Copy)]
 pub struct DisplayLen {
     pub len: u32,
@@ -529,6 +530,7 @@ impl BufferContent {
                     if line.text.ends_with('\r') {
                         line.text.pop();
                     }
+                    line.display_len = DisplayLen::from(&line.text[..]);
 
                     self.lines.push(line);
                 }
@@ -546,8 +548,8 @@ impl BufferContent {
             self.lines.push(self.line_pool.acquire());
         }
 
-        if self.lines[0].text.as_bytes().starts_with(b"\xef\xbb\xbf") {
-            self.lines[0].text.drain(..3);
+        if self.lines[0].as_str().as_bytes().starts_with(b"\xef\xbb\xbf") {
+            self.lines[0].delete_range(..3);
         }
 
         Ok(())

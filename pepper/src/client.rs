@@ -247,7 +247,7 @@ impl Client {
         let position = buffer_view.cursors.main_cursor().position;
         let tab_size = editor.config.tab_size.get() as _;
 
-        if self.scroll_offset >= position {
+        if position <= self.scroll_offset {
             let cursor_line = &buffer.lines()[position.line_index as usize].as_str();
             let wrapped_line_index = find_wrapped_line_start_index(
                 cursor_line,
