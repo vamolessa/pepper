@@ -136,13 +136,13 @@ impl Client {
             position.column_byte_index as _,
         );
 
-        let line_height = find_line_height(&cursor_line[..wrapped_line_index], width, tab_size);
-
         let height_on_top = match anchor {
             ViewAnchor::Top => 0,
             ViewAnchor::Center => height / 2,
             ViewAnchor::Bottom => height,
         };
+
+        let line_height = find_line_height(&cursor_line[..wrapped_line_index], width, tab_size);
 
         if line_height < height_on_top {
             let mut height_left = height_on_top - line_height;
@@ -475,9 +475,9 @@ fn find_wrapped_line_start_index(
             '\t' => x += tab_size,
             _ => x += 1,
         }
-        if x > viewport_width {
+        if x >= viewport_width {
             x -= viewport_width;
-            last_line_start = i;
+            last_line_start = i + c.len_utf8();
         }
     }
     last_line_start
@@ -491,11 +491,43 @@ fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize
             '\t' => x += tab_size,
             _ => x += 1,
         }
-        if x > viewport_width {
+        if x >= viewport_width {
             x -= viewport_width;
             height += 1;
         }
     }
     height
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_wrapped_line_start_index_test() {
+        let f = |s, column_index| find_wrapped_line_start_index(s, 4, 2, column_index);
+
+        assert_eq!(0, f("", 0));
+        assert_eq!(0, f("abc", 2));
+        assert_eq!(0, f("abc", 3));
+        assert_eq!(0, f("abcd", 3));
+        assert_eq!(4, f("abcd", 4));
+        assert_eq!(4, f("abc\t", 4));
+        assert_eq!(4, f("abcdef", 4));
+        assert_eq!(4, f("abcdef", 5));
+        assert_eq!(4, f("abcdef", 6));
+        assert_eq!(4, f("abcdefghij", 6));
+    }
+
+    #[test]
+    fn find_line_height_test() {
+        let f = |s| find_line_height(s, 4, 2);
+
+        assert_eq!(1, f(""));
+        assert_eq!(1, f("abc"));
+        assert_eq!(2, f("abcd"));
+        assert_eq!(2, f("abcdefg"));
+        assert_eq!(3, f("abcdefgh"));
+    }
 }
 

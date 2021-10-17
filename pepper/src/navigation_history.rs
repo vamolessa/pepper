@@ -191,7 +191,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn setup() -> (Editor, Client) {
-        let mut client = Client::default();
+        let mut client = Client::new();
         let mut editor = Editor::new(PathBuf::new());
 
         let buffer_a = editor.buffers.add_new();
