@@ -130,11 +130,11 @@ impl Client {
         let height_offset = match anchor {
             ViewAnchor::Top => 0,
             ViewAnchor::Center => height / 2,
-            ViewAnchor::Bottom => height,
+            ViewAnchor::Bottom => height.saturating_sub(1),
         };
 
         let main_cursor_height = self.find_main_cursor_height(editor);
-        self.scroll = (main_cursor_height + height_offset) as _;
+        self.scroll = main_cursor_height.saturating_sub(height_offset) as _;
     }
 
     pub(crate) fn set_buffer_view_handle_no_history(&mut self, handle: Option<BufferViewHandle>) {
