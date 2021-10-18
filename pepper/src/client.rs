@@ -226,14 +226,41 @@ impl Client {
             }
         }
 
-        for line in lines[..position.line_index as usize].iter().rev() {
+        for (line_index, line) in lines[..position.line_index as usize]
+            .iter()
+            .enumerate()
+            .rev()
+        {
             let line_height = line.display_len().total_len(tab_size) / width;
             if line_height < height_diff {
                 height_diff -= line_height;
                 continue;
             }
 
-            // TODO: finish
+            self.scroll_offset.line_index = line_index as _;
+            self.scroll_offset.column_byte_index = 0;
+
+            height_diff = line_height - height_diff;
+            if height_diff == 0 {
+                break;
+            }
+
+            let mut x = 0;
+            for (i, c) in line.as_str().char_indices() {
+                match c {
+                    '\t' => x += tab_size,
+                    _ => x += char_display_len(c) as usize,
+                }
+                if x >= width {
+                    x -= width;
+                    height_diff -= 1;
+                    if height_diff == 0 {
+                        self.scroll_offset.column_byte_index = (i + c.len_utf8()) as _;
+                        break;
+                    }
+                }
+            }
+
             break;
         }
     }
@@ -407,30 +434,4 @@ fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize
     }
     height
 }
-
-//*
-fn find_wrapped_line_start_index(
-    line: &str,
-    viewport_width: usize,
-    tab_size: usize,
-    column_byte_index: usize,
-) -> usize {
-    let mut x = 0;
-    let mut last_line_start = 0;
-    for (i, c) in line.char_indices() {
-        if i == column_byte_index {
-            break;
-        }
-        match c {
-            '\t' => x += tab_size,
-            _ => x += char_display_len(c) as usize,
-        }
-        if x >= viewport_width {
-            x -= viewport_width;
-            last_line_start = i + c.len_utf8();
-        }
-    }
-    last_line_start
-}
-// */
 
