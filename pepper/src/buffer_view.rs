@@ -66,6 +66,7 @@ impl BufferView {
             Err(n)
         }
 
+        let tab_size = tab_size.get() as _;
         let buffer = buffers.get(self.buffer_handle).content();
 
         let mut cursors = self.cursors.mut_guard();

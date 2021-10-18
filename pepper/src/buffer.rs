@@ -2,7 +2,6 @@ use std::{
     fmt,
     fs::File,
     io,
-    num::NonZeroU8,
     ops::{Add, RangeBounds, Sub},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -141,10 +140,10 @@ pub struct CharDisplayDistance {
 pub struct CharDisplayDistances<'a> {
     char_indices: CharIndices<'a>,
     len: usize,
-    tab_size: NonZeroU8,
+    tab_size: usize,
 }
 impl<'a> CharDisplayDistances<'a> {
-    pub fn new(text: &'a str, tab_size: NonZeroU8) -> Self {
+    pub fn new(text: &'a str, tab_size: usize) -> Self {
         Self {
             char_indices: text.char_indices(),
             len: 0,
@@ -155,8 +154,8 @@ impl<'a> CharDisplayDistances<'a> {
 impl<'a> CharDisplayDistances<'a> {
     fn calc_next(&mut self, char_index: usize, c: char) -> CharDisplayDistance {
         self.len += match c {
-            '\t' => self.tab_size.get() as usize,
-            _ => char_display_len(c) as usize,
+            '\t' => self.tab_size,
+            _ => char_display_len(c) as _,
         };
         CharDisplayDistance {
             distance: self.len,
@@ -548,7 +547,11 @@ impl BufferContent {
             self.lines.push(self.line_pool.acquire());
         }
 
-        if self.lines[0].as_str().as_bytes().starts_with(b"\xef\xbb\xbf") {
+        if self.lines[0]
+            .as_str()
+            .as_bytes()
+            .starts_with(b"\xef\xbb\xbf")
+        {
             self.lines[0].delete_range(..3);
         }
 
@@ -1714,8 +1717,7 @@ mod tests {
     #[test]
     fn display_distance() {
         fn display_len(text: &str) -> usize {
-            let tab_size = NonZeroU8::new(4).unwrap();
-            CharDisplayDistances::new(text, tab_size)
+            CharDisplayDistances::new(text, 4)
                 .last()
                 .map(|d| d.distance)
                 .unwrap_or(0)
@@ -2079,6 +2081,43 @@ mod tests {
             )),
             buffer.find_balanced_chars_at(BufferPosition::line_col(4, 2), '(', ')')
         );
+    }
+
+    #[test]
+    fn buffer_display_len() {
+        fn len(buffer: &BufferContent, line: usize) -> usize {
+            buffer.lines()[line].display_len().total_len(4)
+        }
+
+        let mut buffer = buffer_from_str("abc\tdef");
+
+        assert_eq!(10, len(&buffer, 0));
+
+        buffer.insert_text(BufferPosition::line_col(0, 3), "\n");
+
+        assert_eq!(3, len(&buffer, 0));
+        assert_eq!(7, len(&buffer, 1));
+
+        buffer.insert_text(BufferPosition::line_col(1, 3), "\n");
+
+        assert_eq!(3, len(&buffer, 0));
+        assert_eq!(6, len(&buffer, 1));
+        assert_eq!(1, len(&buffer, 2));
+
+        buffer.insert_text(BufferPosition::line_col(2, 0), "xx");
+
+        assert_eq!(3, len(&buffer, 0));
+        assert_eq!(6, len(&buffer, 1));
+        assert_eq!(3, len(&buffer, 2));
+
+        buffer.delete_range(BufferRange::between(
+            BufferPosition::zero(),
+            BufferPosition::line_col(0, 3),
+        ));
+
+        assert_eq!(0, len(&buffer, 0));
+        assert_eq!(6, len(&buffer, 1));
+        assert_eq!(3, len(&buffer, 2));
     }
 }
 
