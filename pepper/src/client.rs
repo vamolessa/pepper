@@ -163,6 +163,79 @@ impl Client {
         } else if main_cursor_height >= scroll + height {
             self.scroll = (main_cursor_height + 1 - height) as _;
         }
+
+        let buffer_view_handle = match self.buffer_view_handle() {
+            Some(handle) => handle,
+            None => return,
+        };
+
+        let tab_size = editor.config.tab_size.get() as usize;
+        let width = self.viewport_size.0 as usize;
+
+        let buffer_view = editor.buffer_views.get(buffer_view_handle);
+        let position = buffer_view.cursors.main_cursor().position;
+        let lines = editor
+            .buffers
+            .get(buffer_view.buffer_handle)
+            .content()
+            .lines();
+
+        // calculate scroll_offset ============================================================
+        let mut height_diff = main_cursor_height - self.scroll as usize;
+        let cursor_line = lines[position.line_index as usize].as_str();
+
+        let mut cursor_wrapped_line_start_index = 0;
+        let mut x = 0;
+        for (i, c) in cursor_line.char_indices() {
+            if i == position.column_byte_index as _ {
+                break;
+            }
+            match c {
+                '\t' => x += tab_size,
+                _ => x += char_display_len(c) as usize,
+            }
+            if x >= width {
+                x -= width;
+                cursor_wrapped_line_start_index = i + c.len_utf8();
+            }
+        }
+
+        if height_diff == 0 {
+            self.scroll_offset.line_index = position.line_index;
+            self.scroll_offset.column_byte_index = cursor_wrapped_line_start_index as _;
+            return;
+        }
+
+        let mut x = 0;
+        for (i, c) in cursor_line[..cursor_wrapped_line_start_index]
+            .char_indices()
+            .rev()
+        {
+            match c {
+                '\t' => x += tab_size,
+                _ => x += char_display_len(c) as usize,
+            }
+            if x >= width {
+                x -= width;
+                height_diff -= 1;
+                if height_diff == 0 {
+                    self.scroll_offset.line_index = position.line_index;
+                    self.scroll_offset.column_byte_index = i as _;
+                    return;
+                }
+            }
+        }
+
+        for line in lines[..position.line_index as usize].iter().rev() {
+            let line_height = line.display_len().total_len(tab_size) / width;
+            if line_height < height_diff {
+                height_diff -= line_height;
+                continue;
+            }
+
+            // TODO: finish
+            break;
+        }
     }
 
     pub(crate) fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
@@ -242,18 +315,15 @@ impl Client {
             .content()
             .lines();
 
-        let mut position_height = 0;
+        let mut height = 0;
         for line in &lines[..position.line_index as usize] {
-            position_height += 1 + line.display_len().total_len(tab_size) / width;
+            height += 1 + line.display_len().total_len(tab_size) / width;
         }
-        let cursor_line = lines[position.line_index as usize].as_str();
-        position_height += find_line_height(
-            &cursor_line[..position.column_byte_index as usize],
-            width,
-            tab_size,
-        );
 
-        position_height
+        let cursor_line = lines[position.line_index as usize].as_str();
+        height += find_line_height(cursor_line, width, tab_size);
+
+        height
     }
 }
 
@@ -322,7 +392,23 @@ impl ClientManager {
     }
 }
 
-/*
+fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize {
+    let mut x = 0;
+    let mut height = 1;
+    for c in line.chars() {
+        match c {
+            '\t' => x += tab_size,
+            _ => x += char_display_len(c) as usize,
+        }
+        if x >= viewport_width {
+            x -= viewport_width;
+            height += 1;
+        }
+    }
+    height
+}
+
+//*
 fn find_wrapped_line_start_index(
     line: &str,
     viewport_width: usize,
@@ -346,55 +432,5 @@ fn find_wrapped_line_start_index(
     }
     last_line_start
 }
-*/
-
-fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize {
-    let mut x = 0;
-    let mut height = 1;
-    for c in line.chars() {
-        match c {
-            '\t' => x += tab_size,
-            _ => x += char_display_len(c) as usize,
-        }
-        if x >= viewport_width {
-            x -= viewport_width;
-            height += 1;
-        }
-    }
-    height
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /*
-        #[test]
-        fn find_wrapped_line_start_index_test() {
-            let f = |s, column_index| find_wrapped_line_start_index(s, 4, 2, column_index);
-
-            assert_eq!(0, f("", 0));
-            assert_eq!(0, f("abc", 2));
-            assert_eq!(0, f("abc", 3));
-            assert_eq!(0, f("abcd", 3));
-            assert_eq!(4, f("abcd", 4));
-            assert_eq!(4, f("abc\t", 4));
-            assert_eq!(4, f("abcdef", 4));
-            assert_eq!(4, f("abcdef", 5));
-            assert_eq!(4, f("abcdef", 6));
-            assert_eq!(4, f("abcdefghij", 6));
-        }
-    */
-
-    #[test]
-    fn find_line_height_test() {
-        let f = |s| find_line_height(s, 4, 2);
-
-        assert_eq!(1, f(""));
-        assert_eq!(1, f("abc"));
-        assert_eq!(2, f("abcd"));
-        assert_eq!(2, f("abcdefg"));
-        assert_eq!(3, f("abcdefgh"));
-    }
-}
+// */
 
