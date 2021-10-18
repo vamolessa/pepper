@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::{
     buffer::{char_display_len, BufferHandle, BufferProperties},
-    buffer_position::BufferPosition,
+    buffer_position::{BufferPosition, BufferPositionIndex},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     editor_utils::ResidualStrBytes,
@@ -54,8 +54,10 @@ pub struct Client {
     handle: ClientHandle,
 
     pub viewport_size: (u16, u16),
-    pub scroll_offset: BufferPosition,
     pub(crate) navigation_history: NavigationHistory,
+
+    pub scroll_offset: BufferPosition,
+    scroll: BufferPositionIndex,
 
     buffer_view_handle: Option<BufferViewHandle>,
     stdin_buffer_handle: Option<BufferHandle>,
@@ -69,9 +71,10 @@ impl Client {
             handle: ClientHandle(0),
 
             viewport_size: (0, 0),
-            scroll_offset: BufferPosition::zero(),
-
             navigation_history: NavigationHistory::default(),
+
+            scroll_offset: BufferPosition::zero(),
+            scroll: 0,
 
             buffer_view_handle: None,
             stdin_buffer_handle: None,
@@ -83,10 +86,14 @@ impl Client {
         self.active = false;
 
         self.viewport_size = (0, 0);
-        self.scroll_offset = BufferPosition::zero();
         self.navigation_history.clear();
 
+        self.scroll_offset = BufferPosition::zero();
+        self.scroll = 0;
+
         self.buffer_view_handle = None;
+        self.stdin_buffer_handle = None;
+        self.stdin_residual_bytes = ResidualStrBytes::default();
     }
 
     pub fn handle(&self) -> ClientHandle {
@@ -119,240 +126,43 @@ impl Client {
             return;
         }
 
-        let buffer_view_handle = match self.buffer_view_handle {
-            Some(handle) => handle,
-            None => return,
-        };
-
-        let buffer_view = editor.buffer_views.get(buffer_view_handle);
-        let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
-        let position = buffer_view.cursors.main_cursor().position;
-
-        let width = self.viewport_size.0 as usize;
         let height = self.viewport_size.1.saturating_sub(1) as usize;
-        let tab_size = editor.config.tab_size.get() as usize;
-
-        let cursor_line = buffer.lines()[position.line_index as usize].as_str();
-        let wrapped_line_index = find_wrapped_line_start_index(
-            cursor_line,
-            width,
-            tab_size,
-            position.column_byte_index as _,
-        );
-
-        let height_on_top = match anchor {
+        let height_offset = match anchor {
             ViewAnchor::Top => 0,
             ViewAnchor::Center => height / 2,
             ViewAnchor::Bottom => height,
         };
 
-        let line_height = find_line_height(&cursor_line[..wrapped_line_index], width, tab_size);
-
-        if line_height < height_on_top {
-            let mut height_left = height_on_top - line_height;
-            for (line_index, line) in buffer.lines()[..position.line_index as usize]
-                .iter()
-                .enumerate()
-                .rev()
-            {
-                let line = line.as_str();
-
-                height_left -= 1;
-                if height_left == 0 {
-                    self.scroll_offset.line_index = line_index as _;
-                    self.scroll_offset.column_byte_index =
-                        find_wrapped_line_start_index(line, width, tab_size, line.len()) as _;
-                    return;
-                }
-
-                let mut x = 0;
-                let mut last_line_end = line.len();
-                for (char_index, c) in line.char_indices().rev() {
-                    match c {
-                        '\t' => x += tab_size,
-                        _ => x += char_display_len(c) as usize,
-                    }
-
-                    if x >= width {
-                        x -= width;
-                        height_left -= 1;
-                        if height_left == 0 {
-                            self.scroll_offset.line_index = line_index as _;
-                            self.scroll_offset.column_byte_index =
-                                find_wrapped_line_start_index(line, width, tab_size, last_line_end)
-                                    as _;
-                            return;
-                        }
-                        last_line_end = char_index;
-                    }
-                }
-            }
-        } else {
-            self.scroll_offset.line_index = position.line_index;
-
-            let mut height_left = height_on_top.saturating_sub(1);
-            if height_left == 0 {
-                self.scroll_offset.column_byte_index = wrapped_line_index as _;
-                return;
-            }
-
-            let mut x = 0;
-            let mut last_line_end = cursor_line.len();
-            for (char_index, c) in cursor_line.char_indices().rev() {
-                match c {
-                    '\t' => x += tab_size,
-                    _ => x += char_display_len(c) as usize,
-                }
-
-                if x >= width {
-                    x -= width;
-                    height_left -= 1;
-                    if height_left == 0 {
-                        self.scroll_offset.column_byte_index = find_wrapped_line_start_index(
-                            cursor_line,
-                            width,
-                            tab_size,
-                            last_line_end,
-                        ) as _;
-                        return;
-                    }
-                    last_line_end = char_index;
-                }
-            }
-        }
-
-        self.scroll_offset = BufferPosition::zero();
+        let main_cursor_height = self.find_main_cursor_height(editor);
+        self.scroll = (main_cursor_height + height_offset) as _;
     }
 
     pub(crate) fn set_buffer_view_handle_no_history(&mut self, handle: Option<BufferViewHandle>) {
         self.buffer_view_handle = handle;
     }
 
-    pub(crate) fn update_view(&mut self, editor: &Editor, picker_height: usize) {
+    pub(crate) fn update_view(&mut self, editor: &Editor, margin_bottom: usize) {
         if !self.has_ui() {
             return;
         }
 
-        let buffer_view_handle = match self.buffer_view_handle() {
-            Some(handle) => handle,
-            None => return,
-        };
-
-        let width = self.viewport_size.0 as usize;
         let height = self.viewport_size.1.saturating_sub(1) as usize;
-        let height = height.saturating_sub(picker_height);
+        let height = height.saturating_sub(margin_bottom);
+        let half_height = height / 2;
+        let quarter_height = half_height / 2;
 
-        let buffer_view = editor.buffer_views.get(buffer_view_handle);
-        let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
-        let position = buffer_view.cursors.main_cursor().position;
-        let tab_size = editor.config.tab_size.get() as _;
+        let main_cursor_height = self.find_main_cursor_height(editor);
 
-        if position <= self.scroll_offset {
-            let cursor_line = &buffer.lines()[position.line_index as usize].as_str();
-            let wrapped_line_index = find_wrapped_line_start_index(
-                cursor_line,
-                width,
-                tab_size,
-                position.column_byte_index as _,
-            );
-
-            self.scroll_offset.line_index = position.line_index;
-            self.scroll_offset.column_byte_index = wrapped_line_index as _;
-        } else {
-            let cursor_line = &buffer.lines()[position.line_index as usize].as_str();
-            let wrapped_line_index = find_wrapped_line_start_index(
-                cursor_line,
-                width,
-                tab_size,
-                position.column_byte_index as _,
-            );
-            let cursor_line = &cursor_line[..wrapped_line_index];
-            let line_height = find_line_height(cursor_line, width, tab_size);
-
-            if line_height < height {
-                let mut available_height = height - line_height;
-                for (line_index, line) in buffer.lines()
-                    [self.scroll_offset.line_index as usize..position.line_index as usize]
-                    .iter()
-                    .enumerate()
-                    .rev()
-                {
-                    let line_index = line_index + self.scroll_offset.line_index as usize;
-                    let line = line.as_str();
-
-                    available_height -= 1;
-                    if available_height == 0 {
-                        self.scroll_offset.line_index = line_index as _;
-                        self.scroll_offset.column_byte_index =
-                            find_wrapped_line_start_index(line, width, tab_size, line.len()) as _;
-                        return;
-                    }
-
-                    let mut x = 0;
-                    let mut last_line_end = line.len();
-                    for (char_index, c) in line.char_indices().rev() {
-                        match c {
-                            '\t' => x += tab_size,
-                            _ => x += char_display_len(c) as usize,
-                        }
-
-                        if x >= width {
-                            x -= width;
-                            available_height -= 1;
-                            if available_height == 0 {
-                                self.scroll_offset.line_index = line_index as _;
-                                self.scroll_offset.column_byte_index = find_wrapped_line_start_index(
-                                    line,
-                                    width,
-                                    tab_size,
-                                    last_line_end,
-                                )
-                                    as _;
-                                return;
-                            }
-                            last_line_end = char_index;
-                        }
-                    }
-                }
-            } else {
-                self.scroll_offset.line_index = position.line_index;
-
-                let mut available_height = height.saturating_sub(1);
-                if available_height == 0 {
-                    self.scroll_offset.column_byte_index = wrapped_line_index as _;
-                    return;
-                }
-
-                let mut x = 0;
-                for (char_index, c) in cursor_line.char_indices().rev() {
-                    match c {
-                        '\t' => x += tab_size,
-                        _ => x += char_display_len(c) as usize,
-                    }
-
-                    if x >= width {
-                        x -= width;
-                        available_height -= 1;
-                        if available_height == 0 {
-                            self.scroll_offset.column_byte_index = char_index as _;
-                            return;
-                        }
-                    }
-                }
-            }
+        let scroll = self.scroll as usize;
+        if main_cursor_height < scroll.saturating_sub(quarter_height) {
+            self.scroll = main_cursor_height.saturating_sub(half_height) as _;
+        } else if main_cursor_height < scroll {
+            self.scroll = main_cursor_height as _;
+        } else if main_cursor_height >= scroll + height + quarter_height {
+            self.scroll = (main_cursor_height + 1 - half_height) as _;
+        } else if main_cursor_height >= scroll + height {
+            self.scroll = (main_cursor_height + 1 - height) as _;
         }
-
-        /*
-        if line_index < self.scroll.saturating_sub(quarter_height) {
-            self.scroll = line_index.saturating_sub(half_height);
-        } else if line_index < self.scroll {
-            self.scroll = line_index;
-        } else if line_index >= self.scroll + height + quarter_height {
-            self.scroll = line_index + 1 - half_height;
-        } else if line_index >= self.scroll + height {
-            self.scroll = line_index + 1 - height;
-        }
-        */
     }
 
     pub(crate) fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
@@ -412,6 +222,38 @@ impl Client {
         if self.stdin_buffer_handle == Some(buffer_handle) {
             self.stdin_buffer_handle = None;
         }
+    }
+
+    // TODO: cache cumulative display lengths
+    fn find_main_cursor_height(&mut self, editor: &Editor) -> usize {
+        let buffer_view_handle = match self.buffer_view_handle() {
+            Some(handle) => handle,
+            None => return 0,
+        };
+
+        let tab_size = editor.config.tab_size.get() as usize;
+        let width = self.viewport_size.0 as usize;
+
+        let buffer_view = editor.buffer_views.get(buffer_view_handle);
+        let position = buffer_view.cursors.main_cursor().position;
+        let lines = editor
+            .buffers
+            .get(buffer_view.buffer_handle)
+            .content()
+            .lines();
+
+        let mut position_height = 0;
+        for line in &lines[..position.line_index as usize] {
+            position_height += 1 + line.display_len().total_len(tab_size) / width;
+        }
+        let cursor_line = lines[position.line_index as usize].as_str();
+        position_height += find_line_height(
+            &cursor_line[..position.column_byte_index as usize],
+            width,
+            tab_size,
+        );
+
+        position_height
     }
 }
 
@@ -480,6 +322,7 @@ impl ClientManager {
     }
 }
 
+/*
 fn find_wrapped_line_start_index(
     line: &str,
     viewport_width: usize,
@@ -503,6 +346,7 @@ fn find_wrapped_line_start_index(
     }
     last_line_start
 }
+*/
 
 fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize {
     let mut x = 0;
@@ -524,21 +368,23 @@ fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize
 mod tests {
     use super::*;
 
-    #[test]
-    fn find_wrapped_line_start_index_test() {
-        let f = |s, column_index| find_wrapped_line_start_index(s, 4, 2, column_index);
+    /*
+        #[test]
+        fn find_wrapped_line_start_index_test() {
+            let f = |s, column_index| find_wrapped_line_start_index(s, 4, 2, column_index);
 
-        assert_eq!(0, f("", 0));
-        assert_eq!(0, f("abc", 2));
-        assert_eq!(0, f("abc", 3));
-        assert_eq!(0, f("abcd", 3));
-        assert_eq!(4, f("abcd", 4));
-        assert_eq!(4, f("abc\t", 4));
-        assert_eq!(4, f("abcdef", 4));
-        assert_eq!(4, f("abcdef", 5));
-        assert_eq!(4, f("abcdef", 6));
-        assert_eq!(4, f("abcdefghij", 6));
-    }
+            assert_eq!(0, f("", 0));
+            assert_eq!(0, f("abc", 2));
+            assert_eq!(0, f("abc", 3));
+            assert_eq!(0, f("abcd", 3));
+            assert_eq!(4, f("abcd", 4));
+            assert_eq!(4, f("abc\t", 4));
+            assert_eq!(4, f("abcdef", 4));
+            assert_eq!(4, f("abcdef", 5));
+            assert_eq!(4, f("abcdef", 6));
+            assert_eq!(4, f("abcdefghij", 6));
+        }
+    */
 
     #[test]
     fn find_line_height_test() {
