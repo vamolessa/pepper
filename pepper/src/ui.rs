@@ -84,12 +84,22 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
         "or `:help<enter>` for help",
     ];
 
-    let width = ctx.viewport_size.0 as usize - 1;
-    let height = ctx.viewport_size.1 as usize - 1;
-    let draw_height = height.saturating_sub(1);
+    let width = ctx.viewport_size.0 as usize;
+    let height = ctx.viewport_size.1.saturating_sub(1) as usize;
 
     let margin_top = (height.saturating_sub(message_lines.len())) / 2;
-    let margin_bottom = draw_height - margin_top - message_lines.len();
+    let margin_bottom = height - margin_top - message_lines.len();
+
+    let margin_bottom = if ctx.has_focus {
+        let picker_height = ctx
+            .editor
+            .picker
+            .len()
+            .min(ctx.editor.config.picker_max_height as _);
+        margin_bottom.saturating_sub(picker_height)
+    } else {
+        margin_bottom
+    };
 
     let mut visual_empty = [0; 4];
     let visual_empty = ctx
@@ -151,15 +161,16 @@ fn draw_buffer_view(
     let cursors = &buffer_view.cursors[..];
     let active_line_index = buffer_view.cursors.main_cursor().position.line_index as usize;
 
+    let draw_height = ctx.viewport_size.1.saturating_sub(1);
     let draw_height = if ctx.has_focus {
         let picker_height = ctx
             .editor
             .picker
             .len()
             .min(ctx.editor.config.picker_max_height as _);
-        ctx.viewport_size.1.saturating_sub((1 + picker_height) as _)
+        draw_height.saturating_sub(picker_height as _)
     } else {
-        ctx.viewport_size.1.saturating_sub(1)
+        draw_height
     };
 
     let cursor_color = if ctx.has_focus {
