@@ -133,7 +133,7 @@ impl Client {
             ViewAnchor::Bottom => height.saturating_sub(1),
         };
 
-        let main_cursor_height = self.find_main_cursor_height(editor);
+        let main_cursor_height = self.find_main_cursor_padding_top(editor);
         self.scroll = main_cursor_height.saturating_sub(height_offset) as _;
     }
 
@@ -151,19 +151,22 @@ impl Client {
         let half_height = height / 2;
         let quarter_height = half_height / 2;
 
-        let main_cursor_height = self.find_main_cursor_height(editor);
+        let main_cursor_padding_top = self.find_main_cursor_padding_top(editor);
 
-        let scroll = self.scroll as usize;
-        if main_cursor_height < scroll.saturating_sub(quarter_height) {
-            self.scroll = main_cursor_height.saturating_sub(half_height) as _;
-        } else if main_cursor_height < scroll {
-            self.scroll = main_cursor_height as _;
-        } else if main_cursor_height >= scroll + height + quarter_height {
-            self.scroll = (main_cursor_height + 1 - half_height) as _;
-        } else if main_cursor_height >= scroll + height {
-            self.scroll = (main_cursor_height + 1 - height) as _;
+        {
+            let scroll = self.scroll as usize;
+            if main_cursor_padding_top < scroll.saturating_sub(quarter_height) {
+                self.scroll = main_cursor_padding_top.saturating_sub(half_height) as _;
+            } else if main_cursor_padding_top < scroll {
+                self.scroll = main_cursor_padding_top as _;
+            } else if main_cursor_padding_top >= scroll + height + quarter_height {
+                self.scroll = (main_cursor_padding_top + 1 - half_height) as _;
+            } else if main_cursor_padding_top >= scroll + height {
+                self.scroll = (main_cursor_padding_top + 1 - height) as _;
+            }
         }
 
+        // calculate scroll_offset ============================================================
         let buffer_view_handle = match self.buffer_view_handle() {
             Some(handle) => handle,
             None => return,
@@ -172,35 +175,67 @@ impl Client {
         let tab_size = editor.config.tab_size.get() as usize;
         let width = self.viewport_size.0 as usize;
 
-        let buffer_view = editor.buffer_views.get(buffer_view_handle);
-        let position = buffer_view.cursors.main_cursor().position;
-        let lines = editor
-            .buffers
-            .get(buffer_view.buffer_handle)
-            .content()
-            .lines();
+        let buffer_handle = editor.buffer_views.get(buffer_view_handle).buffer_handle;
+        let lines = editor.buffers.get(buffer_handle).content().lines();
 
-        // calculate scroll_offset ============================================================
-        let mut height_diff = main_cursor_height - self.scroll as usize;
+        self.scroll_offset = BufferPosition::zero();
+
+        let mut scroll_padding_top = self.scroll as usize;
+        for (line_index, line) in lines.iter().enumerate() {
+            self.scroll_offset.line_index = line_index as _;
+
+            if scroll_padding_top == 0 {
+                break;
+            }
+
+            let line_height = 1 + line.display_len().total_len(tab_size) / width;
+            if line_height <= scroll_padding_top {
+                scroll_padding_top -= line_height;
+                continue;
+            }
+
+            let mut x = 0;
+            for (char_index, c) in line.as_str().char_indices() {
+                match c {
+                    '\t' => x += tab_size,
+                    _ => x += char_display_len(c) as usize,
+                }
+                if x >= width {
+                    x -= width;
+                    scroll_padding_top -= 1;
+                    if scroll_padding_top == 0 {
+                        self.scroll_offset.column_byte_index = (char_index + c.len_utf8()) as _;
+                        break;
+                    }
+                }
+            }
+
+            break;
+        }
+
+        /*
+        let mut padding_top_diff = main_cursor_padding_top - self.scroll as usize;
         let cursor_line = lines[position.line_index as usize].as_str();
 
         let mut cursor_wrapped_line_start_index = 0;
-        let mut x = 0;
-        for (i, c) in cursor_line.char_indices() {
-            if i == position.column_byte_index as _ {
-                break;
-            }
-            match c {
-                '\t' => x += tab_size,
-                _ => x += char_display_len(c) as usize,
-            }
-            if x >= width {
-                x -= width;
-                cursor_wrapped_line_start_index = i + c.len_utf8();
+        {
+            let mut x = 0;
+            for (i, c) in cursor_line.char_indices() {
+                if i == position.column_byte_index as _ {
+                    break;
+                }
+                match c {
+                    '\t' => x += tab_size,
+                    _ => x += char_display_len(c) as usize,
+                }
+                if x >= width {
+                    x -= width;
+                    cursor_wrapped_line_start_index = i + c.len_utf8();
+                }
             }
         }
 
-        if height_diff == 0 {
+        if padding_top_diff == 0 {
             self.scroll_offset.line_index = position.line_index;
             self.scroll_offset.column_byte_index = cursor_wrapped_line_start_index as _;
             return;
@@ -217,8 +252,8 @@ impl Client {
             }
             if x >= width {
                 x -= width;
-                height_diff -= 1;
-                if height_diff == 0 {
+                padding_top_diff -= 1;
+                if padding_top_diff == 0 {
                     self.scroll_offset.line_index = position.line_index;
                     self.scroll_offset.column_byte_index = i as _;
                     return;
@@ -231,18 +266,18 @@ impl Client {
             .enumerate()
             .rev()
         {
-            let line_height = line.display_len().total_len(tab_size) / width;
-            if line_height < height_diff {
-                height_diff -= line_height;
+            let line_height = 1 + line.display_len().total_len(tab_size) / width;
+            if line_height < padding_top_diff {
+                padding_top_diff -= line_height;
                 continue;
             }
 
             self.scroll_offset.line_index = line_index as _;
             self.scroll_offset.column_byte_index = 0;
 
-            height_diff = line_height - height_diff;
-            if height_diff == 0 {
-                break;
+            padding_top_diff = line_height - padding_top_diff;
+            if padding_top_diff == 0 {
+                return;
             }
 
             let mut x = 0;
@@ -253,16 +288,17 @@ impl Client {
                 }
                 if x >= width {
                     x -= width;
-                    height_diff -= 1;
-                    if height_diff == 0 {
+                    padding_top_diff -= 1;
+                    if padding_top_diff == 0 {
                         self.scroll_offset.column_byte_index = (i + c.len_utf8()) as _;
-                        break;
+                        return;
                     }
                 }
             }
 
-            break;
+            unreachable!();
         }
+        */
     }
 
     pub(crate) fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
@@ -325,7 +361,7 @@ impl Client {
     }
 
     // TODO: cache cumulative display lengths
-    fn find_main_cursor_height(&mut self, editor: &Editor) -> usize {
+    fn find_main_cursor_padding_top(&mut self, editor: &Editor) -> usize {
         let buffer_view_handle = match self.buffer_view_handle() {
             Some(handle) => handle,
             None => return 0,
@@ -348,7 +384,7 @@ impl Client {
         }
 
         let cursor_line = lines[position.line_index as usize].as_str();
-        height += find_line_height(cursor_line, width, tab_size);
+        height += find_line_height(cursor_line, width, tab_size) - 1;
 
         height
     }
