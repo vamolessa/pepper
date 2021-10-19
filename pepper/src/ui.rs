@@ -2,7 +2,7 @@ use std::{io, iter};
 
 use crate::{
     buffer::CharDisplayDistances,
-    buffer_position::{BufferPosition, BufferRange, BufferPositionIndex},
+    buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     editor::Editor,
     editor_utils::MessageKind,
@@ -799,4 +799,3 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
-

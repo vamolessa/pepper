@@ -129,7 +129,9 @@ impl BufferView {
                             } else {
                                 c.position.line_index -= 1;
                                 c.position.column_byte_index =
-                                    buffer.lines()[c.position.line_index as usize].as_str().len() as _;
+                                    buffer.lines()[c.position.line_index as usize]
+                                        .as_str()
+                                        .len() as _;
                             }
                         }
                         Err(mut n) => {
@@ -152,8 +154,8 @@ impl BufferView {
                                             c.position.column_byte_index = 0;
                                         } else {
                                             c.position.line_index -= 1;
-                                            c.position.column_byte_index = buffer
-                                                .lines()[c.position.line_index as usize]
+                                            c.position.column_byte_index = buffer.lines()
+                                                [c.position.line_index as usize]
                                                 .as_str()
                                                 .len()
                                                 as _;
@@ -173,7 +175,8 @@ impl BufferView {
                     let saved_display_distance = cursors.get_saved_display_distance(i);
                     let c = &mut cursors[i];
                     c.position.line_index = buffer
-                        .lines().len()
+                        .lines()
+                        .len()
                         .saturating_sub(1)
                         .min(c.position.line_index as usize + n)
                         as _;
@@ -302,8 +305,9 @@ impl BufferView {
             }
             CursorMovement::End => {
                 for c in &mut cursors[..] {
-                    c.position.column_byte_index =
-                        buffer.lines()[c.position.line_index as usize].as_str().len() as _;
+                    c.position.column_byte_index = buffer.lines()[c.position.line_index as usize]
+                        .as_str()
+                        .len() as _;
                 }
             }
             CursorMovement::FirstLine => {

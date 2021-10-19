@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use crate::{
-    client::ViewAnchor,
     buffer::{parse_path_and_position, BufferProperties},
     buffer_position::BufferPosition,
+    client::ViewAnchor,
     command::{CommandError, CommandIO, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
@@ -428,4 +428,3 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
-
