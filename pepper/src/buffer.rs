@@ -1720,7 +1720,7 @@ mod tests {
         fn display_len(text: &str) -> usize {
             CharDisplayDistances::new(text, 4)
                 .last()
-                .map(|d| d.distance)
+                .map(|d| d.distance as _)
                 .unwrap_or(0)
         }
 
