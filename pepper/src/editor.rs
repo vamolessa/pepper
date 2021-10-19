@@ -109,8 +109,7 @@ impl EditorContext {
             }
 
             let has_focus = focused_client == Some(c.handle());
-            let scroll_offset =
-                c.calculate_scroll_offset(&self.editor, if has_focus { picker_height } else { 0 });
+            c.scroll_to_main_cursor(&self.editor, if has_focus { picker_height } else { 0 });
 
             if !c.has_ui() {
                 continue;
@@ -121,7 +120,7 @@ impl EditorContext {
             let ctx = ui::RenderContext {
                 editor: &self.editor,
                 viewport_size: c.viewport_size,
-                scroll_offset,
+                scroll: c.scroll,
                 has_focus,
             };
             ui::render(&ctx, c.buffer_view_handle(), write);
@@ -155,7 +154,7 @@ impl EditorContext {
                     EditorEvent::BufferRead { handle } => {
                         let buffer = self.editor.buffers.get_mut(handle);
                         buffer.refresh_syntax(&self.editor.syntaxes);
-                        self.editor.buffer_views.on_buffer_load(buffer);
+                        self.editor.buffer_views.on_buffer_read(buffer);
                     }
                     EditorEvent::BufferInsertText { handle, range, .. } => {
                         self.editor

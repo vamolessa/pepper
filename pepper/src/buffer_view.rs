@@ -561,7 +561,7 @@ impl BufferViewCollection {
         }
     }
 
-    pub(crate) fn on_buffer_load(&mut self, buffer: &Buffer) {
+    pub(crate) fn on_buffer_read(&mut self, buffer: &Buffer) {
         let buffer_handle = buffer.handle();
         let buffer = buffer.content();
 

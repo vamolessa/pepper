@@ -1,8 +1,8 @@
 use std::fmt;
 
 use crate::{
-    buffer::{BufferHandle, BufferProperties, CharDisplayDistances, DisplayLen},
-    buffer_position::{BufferPosition, BufferPositionIndex},
+    buffer::{BufferHandle, BufferProperties, CharDisplayDistances},
+    buffer_position::BufferPositionIndex,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     editor_utils::ResidualStrBytes,
@@ -54,8 +54,7 @@ pub struct Client {
     handle: ClientHandle,
 
     pub viewport_size: (u16, u16),
-    scroll: BufferPositionIndex,
-    cumulative_display_len: Vec<DisplayLen>,
+    pub(crate) scroll: BufferPositionIndex,
 
     pub(crate) navigation_history: NavigationHistory,
 
@@ -72,7 +71,6 @@ impl Client {
 
             viewport_size: (0, 0),
             scroll: 0,
-            cumulative_display_len: Vec::new(),
 
             navigation_history: NavigationHistory::default(),
 
@@ -116,6 +114,10 @@ impl Client {
         self.set_buffer_view_handle_no_history(handle);
     }
 
+    pub(crate) fn set_buffer_view_handle_no_history(&mut self, handle: Option<BufferViewHandle>) {
+        self.buffer_view_handle = handle;
+    }
+
     pub fn has_ui(&self) -> bool {
         self.viewport_size.0 != 0 && self.viewport_size.1 != 0
     }
@@ -136,17 +138,9 @@ impl Client {
         self.scroll = main_cursor_padding_top.saturating_sub(height_offset) as _;
     }
 
-    pub(crate) fn set_buffer_view_handle_no_history(&mut self, handle: Option<BufferViewHandle>) {
-        self.buffer_view_handle = handle;
-    }
-
-    pub(crate) fn calculate_scroll_offset(
-        &mut self,
-        editor: &Editor,
-        margin_bottom: usize,
-    ) -> BufferPosition {
+    pub(crate) fn scroll_to_main_cursor(&mut self, editor: &Editor, margin_bottom: usize) {
         if !self.has_ui() {
-            return BufferPosition::zero();
+            return;
         }
 
         let height = self.viewport_size.1.saturating_sub(1) as usize;
@@ -165,47 +159,6 @@ impl Client {
         } else if main_cursor_padding_top >= scroll + height {
             self.scroll = (main_cursor_padding_top + 1 - height) as _;
         }
-
-        let buffer_view_handle = match self.buffer_view_handle() {
-            Some(handle) => handle,
-            None => return BufferPosition::zero(),
-        };
-
-        let tab_size = editor.config.tab_size.get();
-        let width = self.viewport_size.0 as usize;
-
-        let buffer_handle = editor.buffer_views.get(buffer_view_handle).buffer_handle;
-        let lines = editor.buffers.get(buffer_handle).content().lines();
-
-        let mut scroll_offset = BufferPosition::zero();
-
-        let mut scroll_padding_top = self.scroll as usize;
-        for (line_index, line) in lines.iter().enumerate() {
-            scroll_offset.line_index = line_index as _;
-
-            if scroll_padding_top == 0 {
-                break;
-            }
-
-            let line_height = 1 + line.display_len().total_len(tab_size) / width;
-            if line_height <= scroll_padding_top {
-                scroll_padding_top -= line_height;
-                continue;
-            }
-
-            let target_display_len = (scroll_padding_top * width) as _;
-            for d in CharDisplayDistances::new(line.as_str(), tab_size) {
-                if d.distance >= target_display_len {
-                    let index = d.char_index as usize + d.char.len_utf8();
-                    scroll_offset.column_byte_index = index as _;
-                    break;
-                }
-            }
-
-            break;
-        }
-
-        scroll_offset
     }
 
     pub(crate) fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
@@ -267,7 +220,6 @@ impl Client {
         }
     }
 
-    // TODO: cache cumulative display lengths
     fn find_main_cursor_padding_top(&mut self, editor: &Editor) -> usize {
         let buffer_view_handle = match self.buffer_view_handle() {
             Some(handle) => handle,
@@ -285,9 +237,9 @@ impl Client {
             .content()
             .lines();
 
-        let mut height = 0;
+        let mut height = position.line_index as usize;
         for line in &lines[..position.line_index as usize] {
-            height += 1 + line.display_len().total_len(tab_size) / width;
+            height += line.display_len().total_len(tab_size) / width;
         }
 
         let cursor_line = lines[position.line_index as usize].as_str();

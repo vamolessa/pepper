@@ -1,7 +1,8 @@
 use std::{io, iter};
 
 use crate::{
-    buffer_position::{BufferPosition, BufferRange},
+    buffer::CharDisplayDistances,
+    buffer_position::{BufferPosition, BufferRange, BufferPositionIndex},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     editor::Editor,
     editor_utils::MessageKind,
@@ -64,8 +65,18 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
 pub struct RenderContext<'a> {
     pub editor: &'a Editor,
     pub viewport_size: (u16, u16),
-    pub scroll_offset: BufferPosition,
+    pub scroll: BufferPositionIndex,
     pub has_focus: bool,
+}
+
+pub fn render(
+    ctx: &RenderContext,
+    buffer_view_handle: Option<BufferViewHandle>,
+    buf: &mut Vec<u8>,
+) {
+    draw_buffer_view(ctx, buffer_view_handle, buf);
+    draw_picker(ctx, buf);
+    draw_statusbar(ctx, buffer_view_handle, buf);
 }
 
 fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
@@ -131,16 +142,6 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     }
 }
 
-pub fn render(
-    ctx: &RenderContext,
-    buffer_view_handle: Option<BufferViewHandle>,
-    buf: &mut Vec<u8>,
-) {
-    draw_buffer_view(ctx, buffer_view_handle, buf);
-    draw_picker(ctx, buf);
-    draw_statusbar(ctx, buffer_view_handle, buf);
-}
-
 fn draw_buffer_view(
     ctx: &RenderContext,
     buffer_view_handle: Option<BufferViewHandle>,
@@ -159,6 +160,9 @@ fn draw_buffer_view(
     let cursors = &buffer_view.cursors[..];
     let active_line_index = buffer_view.cursors.main_cursor().position.line_index as usize;
 
+    let tab_size = ctx.editor.config.tab_size.get();
+
+    let draw_width = ctx.viewport_size.0 as usize;
     let draw_height = ctx.viewport_size.1.saturating_sub(1);
     let draw_height = if ctx.has_focus {
         let picker_height = ctx
@@ -193,14 +197,39 @@ fn draw_buffer_view(
     let lints = buffer.lints.all();
     let lints_end_index = lints.len().saturating_sub(1);
 
-    let mut display_position_offset = ctx.scroll_offset;
+    let mut scroll_offset = BufferPosition::zero();
+    let mut scroll_padding_top = ctx.scroll as usize;
+    for (line_index, line) in buffer_content.lines().iter().enumerate() {
+        scroll_offset.line_index = line_index as _;
+
+        if scroll_padding_top == 0 {
+            break;
+        }
+
+        let line_height = 1 + line.display_len().total_len(tab_size) / draw_width;
+        if line_height <= scroll_padding_top {
+            scroll_padding_top -= line_height;
+            continue;
+        }
+
+        let target_display_len = (scroll_padding_top * draw_width) as _;
+        for d in CharDisplayDistances::new(line.as_str(), tab_size) {
+            if d.distance >= target_display_len {
+                let index = d.char_index as usize + d.char.len_utf8();
+                scroll_offset.column_byte_index = index as _;
+                break;
+            }
+        }
+
+        break;
+    }
 
     let mut current_cursor_index = cursors.len();
     let mut current_cursor_position = BufferPosition::zero();
     let mut current_cursor_range = BufferRange::zero();
     for (i, cursor) in cursors.iter().enumerate() {
         let range = cursor.to_range();
-        if display_position_offset <= range.to {
+        if scroll_offset <= range.to {
             current_cursor_index = i;
             current_cursor_position = cursor.position;
             current_cursor_range = range;
@@ -211,7 +240,7 @@ fn draw_buffer_view(
     let mut current_search_range_index = search_ranges.len();
     let mut current_search_range = BufferRange::zero();
     for (i, &range) in search_ranges.iter().enumerate() {
-        if display_position_offset < range.to {
+        if scroll_offset < range.to {
             current_search_range_index = i;
             current_search_range = range;
             break;
@@ -221,7 +250,7 @@ fn draw_buffer_view(
     let mut current_lint_index = lints.len();
     let mut current_lint_range = BufferRange::zero();
     for (i, lint) in lints.iter().enumerate() {
-        if display_position_offset < lint.range.to {
+        if scroll_offset < lint.range.to {
             current_lint_index = i;
             current_lint_range = lint.range;
             break;
@@ -271,7 +300,7 @@ fn draw_buffer_view(
         .lines()
         .iter()
         .enumerate()
-        .skip(display_position_offset.line_index as _)
+        .skip(scroll_offset.line_index as _)
     {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum DrawState {
@@ -286,7 +315,7 @@ fn draw_buffer_view(
         }
         lines_drawn_count += 1;
 
-        let line = &line.as_str()[display_position_offset.column_byte_index as usize..];
+        let line = &line.as_str()[scroll_offset.column_byte_index as usize..];
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut was_inside_lint_range = false;
         let mut x = 0;
@@ -303,7 +332,7 @@ fn draw_buffer_view(
         set_foreground_color(buf, ctx.editor.theme.token_text);
 
         for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
-            let char_index = char_index + display_position_offset.column_byte_index as usize;
+            let char_index = char_index + scroll_offset.column_byte_index as usize;
             let char_position = BufferPosition::line_col(line_index as _, char_index as _);
 
             let token_kind = if c.is_ascii_whitespace() {
@@ -404,8 +433,7 @@ fn draw_buffer_view(
                     buf.extend_from_slice(visual_space);
                 }
                 '\t' => {
-                    let tab_size = ctx.editor.config.tab_size.get() as usize;
-                    x += tab_size;
+                    x += tab_size as usize;
 
                     buf.extend_from_slice(visual_tab_first);
                     for _ in 0..tab_size - 1 {
@@ -430,7 +458,7 @@ fn draw_buffer_view(
             }
         }
 
-        display_position_offset.column_byte_index = 0;
+        scroll_offset.column_byte_index = 0;
         set_background_color(buf, background_color);
 
         if x < ctx.viewport_size.0 as _ {
