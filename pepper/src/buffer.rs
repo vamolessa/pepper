@@ -90,7 +90,6 @@ pub fn char_display_len(_: char) -> u8 {
     1
 }
 
-// TODO: maybe not needed afterall
 #[derive(Default, Clone, Copy)]
 pub struct DisplayLen {
     pub len: u32,

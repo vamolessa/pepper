@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::{
-    buffer::{char_display_len, BufferHandle, BufferProperties},
+    buffer::{char_display_len, BufferHandle, BufferProperties, CharDisplayDistances},
     buffer_position::{BufferPosition, BufferPositionIndex},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
@@ -130,8 +130,8 @@ impl Client {
             ViewAnchor::Bottom => height.saturating_sub(1),
         };
 
-        let main_cursor_height = self.find_main_cursor_padding_top(editor);
-        self.scroll = main_cursor_height.saturating_sub(height_offset) as _;
+        let main_cursor_padding_top = self.find_main_cursor_padding_top(editor);
+        self.scroll = main_cursor_padding_top.saturating_sub(height_offset) as _;
     }
 
     pub(crate) fn set_buffer_view_handle_no_history(&mut self, handle: Option<BufferViewHandle>) {
@@ -383,12 +383,10 @@ impl Client {
         }
 
         let cursor_line = lines[position.line_index as usize].as_str();
-        height += find_line_height(
-            &cursor_line[..position.column_byte_index as usize],
-            width,
-            tab_size,
-        );
-        height -= 1;
+        let cursor_line = &cursor_line[..position.column_byte_index as usize];
+        if let Some(d) = CharDisplayDistances::new(cursor_line, tab_size).last() {
+            height += d.distance / width;
+        }
 
         height
     }
@@ -457,21 +455,5 @@ impl ClientManager {
             self.focused_client = None;
         }
     }
-}
-
-fn find_line_height(line: &str, viewport_width: usize, tab_size: usize) -> usize {
-    let mut x = 0;
-    let mut height = 1;
-    for c in line.chars() {
-        match c {
-            '\t' => x += tab_size,
-            _ => x += char_display_len(c) as usize,
-        }
-        if x >= viewport_width {
-            x -= viewport_width;
-            height += 1;
-        }
-    }
-    height
 }
 
