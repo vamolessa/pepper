@@ -303,7 +303,7 @@ impl BufferLinePool {
     pub fn acquire(&mut self) -> BufferLine {
         match self.pool.pop() {
             Some(mut line) => {
-                line.text.clear();
+                line.0.clear();
                 line
             }
             None => BufferLine::new(),
@@ -315,19 +315,15 @@ impl BufferLinePool {
     }
 }
 
-pub struct BufferLine {
-    text: String,
-}
+pub struct BufferLine(String);
 
 impl BufferLine {
     fn new() -> Self {
-        Self {
-            text: String::new(),
-        }
+        Self(String::new())
     }
 
     pub fn as_str(&self) -> &str {
-        &self.text
+        &self.0
     }
 
     pub fn chars_from<'a>(
@@ -337,7 +333,7 @@ impl BufferLine {
         impl 'a + Iterator<Item = (usize, char)>,
         impl 'a + Iterator<Item = (usize, char)>,
     ) {
-        let (left, right) = self.text.split_at(index);
+        let (left, right) = self.0.split_at(index);
         let left_chars = left.char_indices().rev();
         let right_chars = right.char_indices().map(move |(i, c)| (index + i, c));
         (left_chars, right_chars)
@@ -355,8 +351,8 @@ impl BufferLine {
         let mid_start_index = mid_word.index;
         let mid_end_index = mid_start_index + mid_word.text.len();
 
-        let left = &self.text[..mid_start_index];
-        let right = &self.text[mid_end_index..];
+        let left = &self.0[..mid_start_index];
+        let right = &self.0[mid_end_index..];
 
         let mut left_column_index = mid_start_index;
         let left_words = WordIter(left).rev().map(move |w| {
@@ -383,7 +379,7 @@ impl BufferLine {
     }
 
     pub fn word_at(&self, index: usize) -> WordRefWithIndex {
-        let (before, after) = self.text.split_at(index);
+        let (before, after) = self.0.split_at(index);
         match WordIter(after).next() {
             Some(right) => match WordIter(before).next_back() {
                 Some(left) => {
@@ -392,7 +388,7 @@ impl BufferLine {
                         let index = index - left.text.len();
                         WordRefWithIndex {
                             kind: left.kind,
-                            text: &self.text[index..end_index],
+                            text: &self.0[index..end_index],
                             index,
                         }
                     } else {
@@ -424,28 +420,28 @@ impl BufferLine {
         other_display_len: &mut DisplayLen,
         index: usize,
     ) {
-        other.text.clear();
-        other.text.push_str(&self.text[index..]);
+        other.0.clear();
+        other.0.push_str(&self.0[index..]);
 
-        if index < other.text.len() {
-            let display_len = DisplayLen::from(&self.text[..index]);
+        if index < other.0.len() {
+            let display_len = DisplayLen::from(&self.0[..index]);
             *other_display_len = *self_display_len - display_len;
             *self_display_len = display_len;
         } else {
-            *other_display_len = DisplayLen::from(&other.text[..]);
+            *other_display_len = DisplayLen::from(&other.0[..]);
             *self_display_len = *self_display_len - *other_display_len;
         }
 
-        self.text.truncate(index);
+        self.0.truncate(index);
     }
 
     pub fn insert_text(&mut self, display_len: &mut DisplayLen, index: usize, text: &str) {
-        self.text.insert_str(index, text);
+        self.0.insert_str(index, text);
         *display_len = *display_len + DisplayLen::from(text);
     }
 
     pub fn push_text(&mut self, display_len: &mut DisplayLen, text: &str) {
-        self.text.push_str(text);
+        self.0.push_str(text);
         *display_len = *display_len + DisplayLen::from(text);
     }
 
@@ -453,7 +449,7 @@ impl BufferLine {
     where
         R: RangeBounds<usize>,
     {
-        let deleted = self.text.drain(range);
+        let deleted = self.0.drain(range);
         *display_len = *display_len - DisplayLen::from(deleted.as_str());
     }
 }
@@ -531,19 +527,19 @@ impl BufferContent {
 
         loop {
             let mut line = self.line_pool.acquire();
-            match read.read_line(&mut line.text) {
+            match read.read_line(&mut line.0) {
                 Ok(0) => {
                     self.line_pool.release(line);
                     break;
                 }
                 Ok(_) => {
-                    if line.text.ends_with('\n') {
-                        line.text.pop();
+                    if line.0.ends_with('\n') {
+                        line.0.pop();
                     }
-                    if line.text.ends_with('\r') {
-                        line.text.pop();
+                    if line.0.ends_with('\r') {
+                        line.0.pop();
                     }
-                    let display_len = DisplayLen::from(&line.text[..]);
+                    let display_len = DisplayLen::from(&line.0[..]);
 
                     self.lines.push(line);
                     self.line_display_lens.push(display_len);
