@@ -230,19 +230,15 @@ impl Client {
         let width = self.viewport_size.0 as usize;
 
         let buffer_view = editor.buffer_views.get(buffer_view_handle);
+        let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
         let position = buffer_view.cursors.main_cursor().position;
-        let lines = editor
-            .buffers
-            .get(buffer_view.buffer_handle)
-            .content()
-            .lines();
 
         let mut height = position.line_index as usize;
-        for line in &lines[..position.line_index as usize] {
-            height += line.display_len().total_len(tab_size) / width;
+        for display_len in &buffer.line_display_lens()[..position.line_index as usize] {
+            height += display_len.total_len(tab_size) / width;
         }
 
-        let cursor_line = lines[position.line_index as usize].as_str();
+        let cursor_line = buffer.lines()[position.line_index as usize].as_str();
         let cursor_line = &cursor_line[..position.column_byte_index as usize];
         if let Some(d) = CharDisplayDistances::new(cursor_line, tab_size).last() {
             height += d.distance as usize / width;
@@ -316,3 +312,4 @@ impl ClientManager {
         }
     }
 }
+

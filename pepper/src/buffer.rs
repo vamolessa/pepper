@@ -90,12 +90,19 @@ pub fn char_display_len(_: char) -> u8 {
     1
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct DisplayLen {
     pub len: u32,
     pub tab_count: u32,
 }
 impl DisplayLen {
+    pub const fn zero() -> Self {
+        Self {
+            len: 0,
+            tab_count: 0,
+        }
+    }
+
     pub fn total_len(&self, tab_size: u8) -> usize {
         self.len as usize + self.tab_count as usize * tab_size as usize
     }
@@ -297,7 +304,6 @@ impl BufferLinePool {
         match self.pool.pop() {
             Some(mut line) => {
                 line.text.clear();
-                line.display_len = DisplayLen::default();
                 line
             }
             None => BufferLine::new(),
@@ -311,23 +317,17 @@ impl BufferLinePool {
 
 pub struct BufferLine {
     text: String,
-    display_len: DisplayLen,
 }
 
 impl BufferLine {
     fn new() -> Self {
         Self {
             text: String::new(),
-            display_len: DisplayLen::default(),
         }
     }
 
     pub fn as_str(&self) -> &str {
         &self.text
-    }
-
-    pub fn display_len(&self) -> DisplayLen {
-        self.display_len
     }
 
     pub fn chars_from<'a>(
@@ -417,38 +417,44 @@ impl BufferLine {
         }
     }
 
-    pub fn split_off(&mut self, other: &mut BufferLine, index: usize) {
+    pub fn split_off(
+        &mut self,
+        self_display_len: &mut DisplayLen,
+        other: &mut BufferLine,
+        other_display_len: &mut DisplayLen,
+        index: usize,
+    ) {
         other.text.clear();
         other.text.push_str(&self.text[index..]);
 
         if index < other.text.len() {
             let display_len = DisplayLen::from(&self.text[..index]);
-            other.display_len = self.display_len - display_len;
-            self.display_len = display_len;
+            *other_display_len = *self_display_len - display_len;
+            *self_display_len = display_len;
         } else {
-            other.display_len = DisplayLen::from(&other.text[..]);
-            self.display_len = self.display_len - other.display_len;
+            *other_display_len = DisplayLen::from(&other.text[..]);
+            *self_display_len = *self_display_len - *other_display_len;
         }
 
         self.text.truncate(index);
     }
 
-    pub fn insert_text(&mut self, index: usize, text: &str) {
+    pub fn insert_text(&mut self, display_len: &mut DisplayLen, index: usize, text: &str) {
         self.text.insert_str(index, text);
-        self.display_len = self.display_len + DisplayLen::from(text);
+        *display_len = *display_len + DisplayLen::from(text);
     }
 
-    pub fn push_text(&mut self, text: &str) {
+    pub fn push_text(&mut self, display_len: &mut DisplayLen, text: &str) {
         self.text.push_str(text);
-        self.display_len = self.display_len + DisplayLen::from(text);
+        *display_len = *display_len + DisplayLen::from(text);
     }
 
-    pub fn delete_range<R>(&mut self, range: R)
+    pub fn delete_range<R>(&mut self, display_len: &mut DisplayLen, range: R)
     where
         R: RangeBounds<usize>,
     {
         let deleted = self.text.drain(range);
-        self.display_len = self.display_len - DisplayLen::from(deleted.as_str());
+        *display_len = *display_len - DisplayLen::from(deleted.as_str());
     }
 }
 
@@ -485,6 +491,7 @@ impl<'a> Iterator for TextRangeIter<'a> {
 
 pub struct BufferContent {
     lines: Vec<BufferLine>,
+    line_display_lens: Vec<DisplayLen>,
     line_pool: BufferLinePool,
 }
 
@@ -492,12 +499,17 @@ impl BufferContent {
     pub fn new() -> Self {
         Self {
             lines: vec![BufferLine::new()],
+            line_display_lens: vec![DisplayLen::zero()],
             line_pool: BufferLinePool::new(),
         }
     }
 
     pub fn lines(&self) -> &[BufferLine] {
         &self.lines
+    }
+
+    pub fn line_display_lens(&self) -> &[DisplayLen] {
+        &self.line_display_lens
     }
 
     pub fn end(&self) -> BufferPosition {
@@ -515,6 +527,7 @@ impl BufferContent {
         for line in self.lines.drain(..) {
             self.line_pool.release(line);
         }
+        self.line_display_lens.clear();
 
         loop {
             let mut line = self.line_pool.acquire();
@@ -530,15 +543,18 @@ impl BufferContent {
                     if line.text.ends_with('\r') {
                         line.text.pop();
                     }
-                    line.display_len = DisplayLen::from(&line.text[..]);
+                    let display_len = DisplayLen::from(&line.text[..]);
 
                     self.lines.push(line);
+                    self.line_display_lens.push(display_len);
                 }
                 Err(e) => {
                     for line in self.lines.drain(..) {
                         self.line_pool.release(line);
                     }
                     self.lines.push(self.line_pool.acquire());
+                    self.line_display_lens.clear();
+                    self.line_display_lens.push(DisplayLen::zero());
                     return Err(e);
                 }
             }
@@ -546,6 +562,7 @@ impl BufferContent {
 
         if self.lines.is_empty() {
             self.lines.push(self.line_pool.acquire());
+            self.line_display_lens.push(DisplayLen::zero());
         }
 
         if self.lines[0]
@@ -553,7 +570,7 @@ impl BufferContent {
             .as_bytes()
             .starts_with(b"\xef\xbb\xbf")
         {
-            self.lines[0].delete_range(..3);
+            self.lines[0].delete_range(&mut self.line_display_lens[0], ..3);
         }
 
         Ok(())
@@ -604,8 +621,10 @@ impl BufferContent {
     pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
         if !text.contains(&['\n', '\r'][..]) {
             let line = &mut self.lines[position.line_index as usize];
+            let display_len = &mut self.line_display_lens[position.line_index as usize];
+
             let previous_len = line.as_str().len();
-            line.insert_text(position.column_byte_index as _, text);
+            line.insert_text(display_len, position.column_byte_index as _, text);
             let len_diff = line.as_str().len() - previous_len;
 
             let end_position = BufferPosition::line_col(
@@ -615,34 +634,53 @@ impl BufferContent {
             BufferRange::between(position, end_position)
         } else {
             let mut split_line = self.line_pool.acquire();
-            self.lines[position.line_index as usize]
-                .split_off(&mut split_line, position.column_byte_index as _);
+            let mut split_display_len = DisplayLen::zero();
+
+            let position_line = &mut self.lines[position.line_index as usize];
+            let position_display_len = &mut self.line_display_lens[position.line_index as usize];
+
+            position_line.split_off(
+                position_display_len,
+                &mut split_line,
+                &mut split_display_len,
+                position.column_byte_index as _,
+            );
 
             let mut line_count = 0 as BufferPositionIndex;
             let mut lines = text.lines();
             if let Some(line) = lines.next() {
-                self.lines[position.line_index as usize].push_text(&line);
+                position_line.push_text(position_display_len, &line);
             }
             for line_text in lines {
                 line_count += 1;
 
                 let mut line = self.line_pool.acquire();
-                line.push_text(line_text);
-                self.lines
-                    .insert((position.line_index + line_count) as _, line);
+                let mut display_len = DisplayLen::zero();
+                line.push_text(&mut display_len, line_text);
+
+                let insert_index = (position.line_index + line_count) as _;
+                self.lines.insert(insert_index, line);
+                self.line_display_lens.insert(insert_index, display_len);
             }
 
             let end_position = if text.ends_with('\n') {
                 line_count += 1;
-                self.lines
-                    .insert((position.line_index + line_count) as usize, split_line);
+
+                let insert_index = (position.line_index + line_count) as _;
+                self.lines.insert(insert_index, split_line);
+                self.line_display_lens
+                    .insert(insert_index, split_display_len);
 
                 BufferPosition::line_col(position.line_index + line_count, 0)
             } else {
-                let line = &mut self.lines[(position.line_index + line_count) as usize];
-                let column_byte_index = line.as_str().len() as _;
-                line.push_text(split_line.as_str());
+                let index = (position.line_index + line_count) as usize;
+                let line = &mut self.lines[index];
+                let display_len = &mut self.line_display_lens[index];
 
+                let column_byte_index = line.as_str().len() as _;
+                line.push_text(display_len, split_line.as_str());
+
+                self.line_pool.release(split_line);
                 BufferPosition::line_col(position.line_index + line_count, column_byte_index)
             };
 
@@ -656,20 +694,37 @@ impl BufferContent {
 
         if from.line_index == to.line_index {
             let line = &mut self.lines[from.line_index as usize];
-            line.delete_range(from.column_byte_index as usize..to.column_byte_index as usize);
+            let display_len = &mut self.line_display_lens[from.line_index as usize];
+
+            line.delete_range(
+                display_len,
+                from.column_byte_index as usize..to.column_byte_index as usize,
+            );
         } else {
-            self.lines[from.line_index as usize].delete_range(from.column_byte_index as usize..);
+            let from_line = &mut self.lines[from.line_index as usize];
+            let from_display_len = &mut self.line_display_lens[from.line_index as usize];
+            from_line.delete_range(from_display_len, from.column_byte_index as usize..);
+
             let lines_range = (from.line_index as usize + 1)..to.line_index as usize;
             if lines_range.start < lines_range.end {
-                for line in self.lines.drain(lines_range) {
+                for line in self.lines.drain(lines_range.clone()) {
                     self.line_pool.release(line);
                 }
+                self.line_display_lens.drain(lines_range);
             }
-            let to_line_index = from.line_index + 1;
-            if (to_line_index as usize) < self.lines.len() {
-                let to_line = self.lines.remove(to_line_index as _);
-                self.lines[from.line_index as usize]
-                    .push_text(&to_line.as_str()[to.column_byte_index as usize..]);
+
+            let to_line_index = from.line_index as usize + 1;
+            if to_line_index < self.lines.len() {
+                let to_line = self.lines.remove(to_line_index);
+                self.line_display_lens.remove(to_line_index);
+
+                let from_line = &mut self.lines[from.line_index as usize];
+                let from_display_len = &mut self.line_display_lens[from.line_index as usize];
+
+                from_line.push_text(
+                    from_display_len,
+                    &to_line.as_str()[to.column_byte_index as usize..],
+                );
             }
         }
     }
@@ -679,6 +734,8 @@ impl BufferContent {
             self.line_pool.release(line);
         }
         self.lines.push(self.line_pool.acquire());
+        self.line_display_lens.clear();
+        self.line_display_lens.push(DisplayLen::zero());
     }
 
     pub fn words_from(
@@ -2087,7 +2144,7 @@ mod tests {
     #[test]
     fn buffer_display_len() {
         fn len(buffer: &BufferContent, line: usize) -> usize {
-            buffer.lines()[line].display_len().total_len(4)
+            buffer.line_display_lens()[line].total_len(4)
         }
 
         let mut buffer = buffer_from_str("abc\tdef");
@@ -2121,3 +2178,4 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
+

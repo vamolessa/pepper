@@ -199,21 +199,22 @@ fn draw_buffer_view(
 
     let mut scroll_offset = BufferPosition::zero();
     let mut scroll_padding_top = ctx.scroll as usize;
-    for (line_index, line) in buffer_content.lines().iter().enumerate() {
+    for (line_index, display_len) in buffer_content.line_display_lens().iter().enumerate() {
         scroll_offset.line_index = line_index as _;
 
         if scroll_padding_top == 0 {
             break;
         }
 
-        let line_height = 1 + line.display_len().total_len(tab_size) / draw_width;
+        let line_height = 1 + display_len.total_len(tab_size) / draw_width;
         if line_height <= scroll_padding_top {
             scroll_padding_top -= line_height;
             continue;
         }
 
+        let line = buffer_content.lines()[line_index].as_str();
         let target_display_len = (scroll_padding_top * draw_width) as _;
-        for d in CharDisplayDistances::new(line.as_str(), tab_size) {
+        for d in CharDisplayDistances::new(line, tab_size) {
             if d.distance >= target_display_len {
                 let index = d.char_index as usize + d.char.len_utf8();
                 scroll_offset.column_byte_index = index as _;
@@ -799,3 +800,4 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
+
