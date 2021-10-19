@@ -74,7 +74,6 @@ impl Picker {
         self.scroll = self
             .scroll
             .min(self.filtered_entries.len().saturating_sub(height));
-
         height
     }
 

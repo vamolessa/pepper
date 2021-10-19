@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::{
     buffer::{parse_path_and_position, BufferProperties},
     buffer_position::BufferPosition,
+    client::ViewAnchor,
     command::{CommandError, CommandIO, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
@@ -42,8 +43,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             Ok(handle) => {
                 let client = ctx.clients.get_mut(client_handle);
                 client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
-                client.scroll.0 = 0;
-                client.scroll.1 = position.line_index.saturating_sub((client.height / 2) as _);
+                client.set_view_anchor(&ctx.editor, ViewAnchor::Center);
 
                 let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
                 cursors.clear();
@@ -428,4 +428,3 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
-

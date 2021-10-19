@@ -1,9 +1,9 @@
 use std::{io, iter};
 
 use crate::{
-    buffer_position::{BufferPosition, BufferRange},
+    buffer::CharDisplayDistances,
+    buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
-    client::ClientManager,
     editor::Editor,
     editor_utils::MessageKind,
     mode::ModeKind,
@@ -64,11 +64,19 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
 
 pub struct RenderContext<'a> {
     pub editor: &'a Editor,
-    pub clients: &'a ClientManager,
     pub viewport_size: (u16, u16),
-    pub scroll: (u32, u32),
-    pub draw_height: u16,
+    pub scroll: BufferPositionIndex,
     pub has_focus: bool,
+}
+
+pub fn render(
+    ctx: &RenderContext,
+    buffer_view_handle: Option<BufferViewHandle>,
+    buf: &mut Vec<u8>,
+) {
+    draw_buffer_view(ctx, buffer_view_handle, buf);
+    draw_picker(ctx, buf);
+    draw_statusbar(ctx, buffer_view_handle, buf);
 }
 
 fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
@@ -85,12 +93,22 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
         "or `:help<enter>` for help",
     ];
 
-    let width = ctx.viewport_size.0 as usize - 1;
-    let height = ctx.viewport_size.1 as usize - 1;
-    let draw_height = ctx.draw_height as usize;
+    let width = ctx.viewport_size.0 as usize;
+    let height = ctx.viewport_size.1.saturating_sub(1) as usize;
 
     let margin_top = (height.saturating_sub(message_lines.len())) / 2;
-    let margin_bottom = draw_height - margin_top - message_lines.len();
+    let margin_bottom = height - margin_top - message_lines.len();
+
+    let margin_bottom = if ctx.has_focus {
+        let picker_height = ctx
+            .editor
+            .picker
+            .len()
+            .min(ctx.editor.config.picker_max_height as _);
+        margin_bottom.saturating_sub(picker_height)
+    } else {
+        margin_bottom
+    };
 
     let mut visual_empty = [0; 4];
     let visual_empty = ctx
@@ -124,16 +142,6 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     }
 }
 
-pub fn render(
-    ctx: &RenderContext,
-    buffer_view_handle: Option<BufferViewHandle>,
-    buf: &mut Vec<u8>,
-) {
-    draw_buffer_view(ctx, buffer_view_handle, buf);
-    draw_picker(ctx, buf);
-    draw_statusbar(ctx, buffer_view_handle, buf);
-}
-
 fn draw_buffer_view(
     ctx: &RenderContext,
     buffer_view_handle: Option<BufferViewHandle>,
@@ -151,6 +159,21 @@ fn draw_buffer_view(
     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
     let cursors = &buffer_view.cursors[..];
     let active_line_index = buffer_view.cursors.main_cursor().position.line_index as usize;
+
+    let tab_size = ctx.editor.config.tab_size.get();
+
+    let draw_width = ctx.viewport_size.0 as usize;
+    let draw_height = ctx.viewport_size.1.saturating_sub(1);
+    let draw_height = if ctx.has_focus {
+        let picker_height = ctx
+            .editor
+            .picker
+            .len()
+            .min(ctx.editor.config.picker_max_height as _);
+        draw_height.saturating_sub(picker_height as _)
+    } else {
+        draw_height
+    };
 
     let cursor_color = if ctx.has_focus {
         match ctx.editor.mode.kind() {
@@ -174,14 +197,39 @@ fn draw_buffer_view(
     let lints = buffer.lints.all();
     let lints_end_index = lints.len().saturating_sub(1);
 
-    let display_position_offset = BufferPosition::line_col(ctx.scroll.1 as _, ctx.scroll.0 as _);
+    let mut scroll_offset = BufferPosition::zero();
+    let mut scroll_padding_top = ctx.scroll as usize;
+    for (line_index, line) in buffer_content.lines().iter().enumerate() {
+        scroll_offset.line_index = line_index as _;
+
+        if scroll_padding_top == 0 {
+            break;
+        }
+
+        let line_height = 1 + line.display_len().total_len(tab_size) / draw_width;
+        if line_height <= scroll_padding_top {
+            scroll_padding_top -= line_height;
+            continue;
+        }
+
+        let target_display_len = (scroll_padding_top * draw_width) as _;
+        for d in CharDisplayDistances::new(line.as_str(), tab_size) {
+            if d.distance >= target_display_len {
+                let index = d.char_index as usize + d.char.len_utf8();
+                scroll_offset.column_byte_index = index as _;
+                break;
+            }
+        }
+
+        break;
+    }
 
     let mut current_cursor_index = cursors.len();
     let mut current_cursor_position = BufferPosition::zero();
     let mut current_cursor_range = BufferRange::zero();
     for (i, cursor) in cursors.iter().enumerate() {
         let range = cursor.to_range();
-        if display_position_offset <= range.to {
+        if scroll_offset <= range.to {
             current_cursor_index = i;
             current_cursor_position = cursor.position;
             current_cursor_range = range;
@@ -192,7 +240,7 @@ fn draw_buffer_view(
     let mut current_search_range_index = search_ranges.len();
     let mut current_search_range = BufferRange::zero();
     for (i, &range) in search_ranges.iter().enumerate() {
-        if display_position_offset < range.to {
+        if scroll_offset < range.to {
             current_search_range_index = i;
             current_search_range = range;
             break;
@@ -202,7 +250,7 @@ fn draw_buffer_view(
     let mut current_lint_index = lints.len();
     let mut current_lint_range = BufferRange::zero();
     for (i, lint) in lints.iter().enumerate() {
-        if display_position_offset < lint.range.to {
+        if scroll_offset < lint.range.to {
             current_lint_index = i;
             current_lint_range = lint.range;
             break;
@@ -250,9 +298,9 @@ fn draw_buffer_view(
     let mut lines_drawn_count = 0;
     for (line_index, line) in buffer_content
         .lines()
+        .iter()
         .enumerate()
-        .skip(ctx.scroll.1 as _)
-        .take(ctx.draw_height as _)
+        .skip(scroll_offset.line_index as _)
     {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum DrawState {
@@ -262,9 +310,12 @@ fn draw_buffer_view(
             Cursor,
         }
 
+        if lines_drawn_count == draw_height {
+            break;
+        }
         lines_drawn_count += 1;
 
-        let line = line.as_str();
+        let line = &line.as_str()[scroll_offset.column_byte_index as usize..];
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut was_inside_lint_range = false;
         let mut x = 0;
@@ -281,11 +332,7 @@ fn draw_buffer_view(
         set_foreground_color(buf, ctx.editor.theme.token_text);
 
         for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
-            if char_index < ctx.scroll.0 as _ {
-                continue;
-            }
-
-            let buf_len = buf.len();
+            let char_index = char_index + scroll_offset.column_byte_index as usize;
             let char_position = BufferPosition::line_col(line_index as _, char_index as _);
 
             let token_kind = if c.is_ascii_whitespace() {
@@ -374,6 +421,8 @@ fn draw_buffer_view(
             }
 
             let previous_x = x;
+            let previous_buf_len = buf.len();
+
             match c {
                 '\n' => {
                     x += 1;
@@ -384,8 +433,7 @@ fn draw_buffer_view(
                     buf.extend_from_slice(visual_space);
                 }
                 '\t' => {
-                    let tab_size = ctx.editor.config.tab_size.get() as usize;
-                    x += tab_size;
+                    x += tab_size as usize;
 
                     buf.extend_from_slice(visual_tab_first);
                     for _ in 0..tab_size - 1 {
@@ -399,12 +447,18 @@ fn draw_buffer_view(
             }
 
             if x > ctx.viewport_size.0 as _ {
-                x = previous_x;
-                buf.truncate(buf_len);
-                break;
+                x -= ctx.viewport_size.0 as usize;
+                lines_drawn_count += 1;
+                if lines_drawn_count > draw_height {
+                    lines_drawn_count = draw_height;
+                    buf.truncate(previous_buf_len);
+                    x = previous_x;
+                    break;
+                }
             }
         }
 
+        scroll_offset.column_byte_index = 0;
         set_background_color(buf, background_color);
 
         if x < ctx.viewport_size.0 as _ {
@@ -418,7 +472,7 @@ fn draw_buffer_view(
     set_background_color(buf, ctx.editor.theme.background);
     set_foreground_color(buf, ctx.editor.theme.token_whitespace);
 
-    for _ in lines_drawn_count..ctx.draw_height {
+    for _ in lines_drawn_count..draw_height {
         buf.extend_from_slice(visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);

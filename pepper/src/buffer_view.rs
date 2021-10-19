@@ -66,14 +66,15 @@ impl BufferView {
             Err(n)
         }
 
+        let tab_size = tab_size.get();
         let buffer = buffers.get(self.buffer_handle).content();
 
         let mut cursors = self.cursors.mut_guard();
         match movement {
             CursorMovement::ColumnsForward(n) => {
-                let last_line_index = buffer.line_count() - 1;
+                let last_line_index = buffer.lines().len() - 1;
                 for c in &mut cursors[..] {
-                    let line = buffer.line_at(c.position.line_index as _).as_str();
+                    let line = buffer.lines()[c.position.line_index as usize].as_str();
                     match try_nth(
                         line[c.position.column_byte_index as usize..].char_indices(),
                         n,
@@ -85,12 +86,12 @@ impl BufferView {
                             loop {
                                 if c.position.line_index == last_line_index as _ {
                                     c.position.column_byte_index =
-                                        buffer.line_at(last_line_index).as_str().len() as _;
+                                        buffer.lines()[last_line_index].as_str().len() as _;
                                     break;
                                 }
 
                                 c.position.line_index += 1;
-                                let line = buffer.line_at(c.position.line_index as _).as_str();
+                                let line = buffer.lines()[c.position.line_index as usize].as_str();
                                 match try_nth(line.char_indices(), n) {
                                     Ok((i, _)) => {
                                         c.position.column_byte_index = i as _;
@@ -114,7 +115,7 @@ impl BufferView {
                 let n = n - 1;
 
                 for c in &mut cursors[..] {
-                    let line = buffer.line_at(c.position.line_index as _).as_str();
+                    let line = buffer.lines()[c.position.line_index as usize].as_str();
                     match try_nth(
                         line[..c.position.column_byte_index as usize]
                             .char_indices()
@@ -128,7 +129,9 @@ impl BufferView {
                             } else {
                                 c.position.line_index -= 1;
                                 c.position.column_byte_index =
-                                    buffer.line_at(c.position.line_index as _).as_str().len() as _;
+                                    buffer.lines()[c.position.line_index as usize]
+                                        .as_str()
+                                        .len() as _;
                             }
                         }
                         Err(mut n) => {
@@ -140,7 +143,7 @@ impl BufferView {
                                 }
 
                                 c.position.line_index -= 1;
-                                let line = buffer.line_at(c.position.line_index as _).as_str();
+                                let line = buffer.lines()[c.position.line_index as usize].as_str();
                                 match try_nth(line.char_indices().rev(), n) {
                                     Ok((i, _)) => {
                                         c.position.column_byte_index = i as _;
@@ -151,8 +154,8 @@ impl BufferView {
                                             c.position.column_byte_index = 0;
                                         } else {
                                             c.position.line_index -= 1;
-                                            c.position.column_byte_index = buffer
-                                                .line_at(c.position.line_index as _)
+                                            c.position.column_byte_index = buffer.lines()
+                                                [c.position.line_index as usize]
                                                 .as_str()
                                                 .len()
                                                 as _;
@@ -172,15 +175,16 @@ impl BufferView {
                     let saved_display_distance = cursors.get_saved_display_distance(i);
                     let c = &mut cursors[i];
                     c.position.line_index = buffer
-                        .line_count()
+                        .lines()
+                        .len()
                         .saturating_sub(1)
                         .min(c.position.line_index as usize + n)
                         as _;
                     if let Some(distance) = saved_display_distance {
-                        let line = buffer.line_at(c.position.line_index as _).as_str();
+                        let line = buffer.lines()[c.position.line_index as usize].as_str();
                         c.position.column_byte_index = CharDisplayDistances::new(line, tab_size)
                             .find(|d| d.distance > distance as _)
-                            .map(|d| d.char_index)
+                            .map(|d| d.char_index as usize)
                             .unwrap_or(line.len())
                             as _;
                     }
@@ -194,10 +198,10 @@ impl BufferView {
                     let c = &mut cursors[i];
                     c.position.line_index = c.position.line_index.saturating_sub(n as _);
                     if let Some(distance) = saved_display_distance {
-                        let line = buffer.line_at(c.position.line_index as _).as_str();
+                        let line = buffer.lines()[c.position.line_index as usize].as_str();
                         c.position.column_byte_index = CharDisplayDistances::new(line, tab_size)
                             .find(|d| d.distance > distance as _)
-                            .map(|d| d.char_index)
+                            .map(|d| d.char_index as usize)
                             .unwrap_or(line.len())
                             as _;
                     }
@@ -205,10 +209,10 @@ impl BufferView {
                 }
             }
             CursorMovement::WordsForward(n) => {
-                let last_line_index = buffer.line_count() - 1;
+                let last_line_index = buffer.lines().len() - 1;
                 for c in &mut cursors[..] {
                     let mut n = n;
-                    let mut line = buffer.line_at(c.position.line_index as _).as_str();
+                    let mut line = buffer.lines()[c.position.line_index as usize].as_str();
 
                     while n > 0 {
                         if c.position.column_byte_index == line.len() as _ {
@@ -218,7 +222,7 @@ impl BufferView {
 
                             c.position.line_index += 1;
                             c.position.column_byte_index = 0;
-                            line = buffer.line_at(c.position.line_index as _).as_str();
+                            line = buffer.lines()[c.position.line_index as usize].as_str();
                             n -= 1;
                             continue;
                         }
@@ -247,7 +251,7 @@ impl BufferView {
             CursorMovement::WordsBackward(n) => {
                 for c in &mut cursors[..] {
                     let mut n = n;
-                    let mut line = &buffer.line_at(c.position.line_index as _).as_str()
+                    let mut line = &buffer.lines()[c.position.line_index as usize].as_str()
                         [..c.position.column_byte_index as usize];
 
                     while n > 0 {
@@ -277,7 +281,7 @@ impl BufferView {
                         }
 
                         c.position.line_index -= 1;
-                        line = buffer.line_at(c.position.line_index as _).as_str();
+                        line = buffer.lines()[c.position.line_index as usize].as_str();
                         c.position.column_byte_index = line.len() as _;
                         n -= 1;
                     }
@@ -290,7 +294,7 @@ impl BufferView {
             }
             CursorMovement::HomeNonWhitespace => {
                 for c in &mut cursors[..] {
-                    let first_word = buffer.line_at(c.position.line_index as _).word_at(0);
+                    let first_word = buffer.lines()[c.position.line_index as usize].word_at(0);
                     match first_word.kind {
                         WordKind::Whitespace => {
                             c.position.column_byte_index = first_word.text.len() as _
@@ -301,8 +305,9 @@ impl BufferView {
             }
             CursorMovement::End => {
                 for c in &mut cursors[..] {
-                    c.position.column_byte_index =
-                        buffer.line_at(c.position.line_index as _).as_str().len() as _;
+                    c.position.column_byte_index = buffer.lines()[c.position.line_index as usize]
+                        .as_str()
+                        .len() as _;
                 }
             }
             CursorMovement::FirstLine => {
@@ -313,7 +318,7 @@ impl BufferView {
             }
             CursorMovement::LastLine => {
                 for c in &mut cursors[..] {
-                    c.position.line_index = (buffer.line_count() - 1) as _;
+                    c.position.line_index = (buffer.lines().len() - 1) as _;
                     c.position = buffer.saturate_position(c.position);
                 }
             }
@@ -560,7 +565,7 @@ impl BufferViewCollection {
         }
     }
 
-    pub(crate) fn on_buffer_load(&mut self, buffer: &Buffer) {
+    pub(crate) fn on_buffer_read(&mut self, buffer: &Buffer) {
         let buffer_handle = buffer.handle();
         let buffer = buffer.content();
 

@@ -2,8 +2,7 @@ use std::{
     fmt,
     fs::File,
     io,
-    num::NonZeroU8,
-    ops::RangeBounds,
+    ops::{Add, RangeBounds, Sub},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     str::CharIndices,
@@ -87,17 +86,64 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     }
 }
 
+pub fn char_display_len(_: char) -> u8 {
+    1
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct DisplayLen {
+    pub len: u32,
+    pub tab_count: u32,
+}
+impl DisplayLen {
+    pub fn total_len(&self, tab_size: u8) -> usize {
+        self.len as usize + self.tab_count as usize * tab_size as usize
+    }
+}
+impl<'a> From<&'a str> for DisplayLen {
+    fn from(s: &'a str) -> Self {
+        let mut len = 0;
+        let mut tab_count = 0;
+        for c in s.chars() {
+            match c {
+                '\t' => tab_count += 1,
+                _ => len += char_display_len(c) as u32,
+            }
+        }
+        Self { len, tab_count }
+    }
+}
+impl Add for DisplayLen {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        Self {
+            len: self.len + other.len,
+            tab_count: self.tab_count + other.tab_count,
+        }
+    }
+}
+impl Sub for DisplayLen {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        Self {
+            len: self.len - other.len,
+            tab_count: self.tab_count - other.tab_count,
+        }
+    }
+}
+
 pub struct CharDisplayDistance {
-    pub distance: usize,
-    pub char_index: usize,
+    pub distance: u32,
+    pub char: char,
+    pub char_index: u32,
 }
 pub struct CharDisplayDistances<'a> {
     char_indices: CharIndices<'a>,
-    len: usize,
-    tab_size: NonZeroU8,
+    len: u32,
+    tab_size: u8,
 }
 impl<'a> CharDisplayDistances<'a> {
-    pub fn new(text: &'a str, tab_size: NonZeroU8) -> Self {
+    pub fn new(text: &'a str, tab_size: u8) -> Self {
         Self {
             char_indices: text.char_indices(),
             len: 0,
@@ -108,12 +154,13 @@ impl<'a> CharDisplayDistances<'a> {
 impl<'a> CharDisplayDistances<'a> {
     fn calc_next(&mut self, char_index: usize, c: char) -> CharDisplayDistance {
         self.len += match c {
-            '\t' => self.tab_size.get() as _,
-            _ => 1,
+            '\t' => self.tab_size as u32,
+            _ => char_display_len(c) as u32,
         };
         CharDisplayDistance {
             distance: self.len,
-            char_index,
+            char: c,
+            char_index: char_index as _,
         }
     }
 }
@@ -250,6 +297,7 @@ impl BufferLinePool {
         match self.pool.pop() {
             Some(mut line) => {
                 line.text.clear();
+                line.display_len = DisplayLen::default();
                 line
             }
             None => BufferLine::new(),
@@ -263,17 +311,23 @@ impl BufferLinePool {
 
 pub struct BufferLine {
     text: String,
+    display_len: DisplayLen,
 }
 
 impl BufferLine {
     fn new() -> Self {
         Self {
             text: String::new(),
+            display_len: DisplayLen::default(),
         }
     }
 
     pub fn as_str(&self) -> &str {
         &self.text
+    }
+
+    pub fn display_len(&self) -> DisplayLen {
+        self.display_len
     }
 
     pub fn chars_from<'a>(
@@ -365,24 +419,36 @@ impl BufferLine {
 
     pub fn split_off(&mut self, other: &mut BufferLine, index: usize) {
         other.text.clear();
-        other.push_text(&self.text[index..]);
+        other.text.push_str(&self.text[index..]);
+
+        if index < other.text.len() {
+            let display_len = DisplayLen::from(&self.text[..index]);
+            other.display_len = self.display_len - display_len;
+            self.display_len = display_len;
+        } else {
+            other.display_len = DisplayLen::from(&other.text[..]);
+            self.display_len = self.display_len - other.display_len;
+        }
 
         self.text.truncate(index);
     }
 
     pub fn insert_text(&mut self, index: usize, text: &str) {
         self.text.insert_str(index, text);
+        self.display_len = self.display_len + DisplayLen::from(text);
     }
 
     pub fn push_text(&mut self, text: &str) {
         self.text.push_str(text);
+        self.display_len = self.display_len + DisplayLen::from(text);
     }
 
     pub fn delete_range<R>(&mut self, range: R)
     where
         R: RangeBounds<usize>,
     {
-        self.text.drain(range);
+        let deleted = self.text.drain(range);
+        self.display_len = self.display_len - DisplayLen::from(deleted.as_str());
     }
 }
 
@@ -430,18 +496,8 @@ impl BufferContent {
         }
     }
 
-    pub fn line_count(&self) -> usize {
-        self.lines.len()
-    }
-
-    pub fn lines(
-        &self,
-    ) -> impl ExactSizeIterator<Item = &BufferLine> + DoubleEndedIterator<Item = &BufferLine> {
-        self.lines.iter()
-    }
-
-    pub fn line_at(&self, index: usize) -> &BufferLine {
-        &self.lines[index]
+    pub fn lines(&self) -> &[BufferLine] {
+        &self.lines
     }
 
     pub fn end(&self) -> BufferPosition {
@@ -474,6 +530,7 @@ impl BufferContent {
                     if line.text.ends_with('\r') {
                         line.text.pop();
                     }
+                    line.display_len = DisplayLen::from(&line.text[..]);
 
                     self.lines.push(line);
                 }
@@ -491,8 +548,12 @@ impl BufferContent {
             self.lines.push(self.line_pool.acquire());
         }
 
-        if self.lines[0].text.as_bytes().starts_with(b"\xef\xbb\xbf") {
-            self.lines[0].text.drain(..3);
+        if self.lines[0]
+            .as_str()
+            .as_bytes()
+            .starts_with(b"\xef\xbb\xbf")
+        {
+            self.lines[0].delete_range(..3);
         }
 
         Ok(())
@@ -509,8 +570,8 @@ impl BufferContent {
     }
 
     pub fn saturate_position(&self, mut position: BufferPosition) -> BufferPosition {
-        position.line_index = position.line_index.min((self.line_count() - 1) as _);
-        let line = self.line_at(position.line_index as _).as_str();
+        position.line_index = position.line_index.min((self.lines.len() - 1) as _);
+        let line = self.lines[position.line_index as usize].as_str();
         position.column_byte_index = position.column_byte_index.min(line.len() as _);
         position
     }
@@ -633,7 +694,7 @@ impl BufferContent {
         let column_byte_index = position.column_byte_index as _;
 
         let (mid_word, left_words, right_words) =
-            self.line_at(line_index as _).words_from(column_byte_index);
+            self.lines[line_index as usize].words_from(column_byte_index);
 
         (
             mid_word.to_word_ref_with_position(line_index),
@@ -644,13 +705,13 @@ impl BufferContent {
 
     pub fn word_at(&self, position: BufferPosition) -> WordRefWithPosition {
         let position = self.saturate_position(position);
-        self.line_at(position.line_index as _)
+        self.lines[position.line_index as usize]
             .word_at(position.column_byte_index as _)
             .to_word_ref_with_position(position.line_index as _)
     }
 
     pub fn position_before(&self, mut position: BufferPosition) -> BufferPosition {
-        position.column_byte_index = self.line_at(position.line_index as _).as_str()
+        position.column_byte_index = self.lines[position.line_index as usize].as_str()
             [..position.column_byte_index as usize]
             .char_indices()
             .next_back()
@@ -665,7 +726,7 @@ impl BufferContent {
         delimiter: char,
     ) -> Option<BufferRange> {
         let position = self.saturate_position(position);
-        let line = self.line_at(position.line_index as _).as_str();
+        let line = self.lines[position.line_index as usize].as_str();
         let range = find_delimiter_pair_at(line, position.column_byte_index as _, delimiter)?;
         Some(BufferRange::between(
             BufferPosition::line_col(position.line_index, range.0 as _),
@@ -701,7 +762,7 @@ impl BufferContent {
         }
 
         let position = self.saturate_position(position);
-        let line = self.line_at(position.line_index as _).as_str();
+        let line = self.lines[position.line_index as usize].as_str();
         let (before, after) = line.split_at(position.column_byte_index as _);
 
         let mut balance = 0;
@@ -727,8 +788,8 @@ impl BufferContent {
                 }
                 None => {
                     let mut pos = None;
-                    for line_index in (position.line_index as usize + 1)..self.line_count() {
-                        let line = self.line_at(line_index).as_str();
+                    for line_index in (position.line_index as usize + 1)..self.lines.len() {
+                        let line = self.lines[line_index].as_str();
                         if let Some(column_byte_index) =
                             find(line.char_indices(), right, left, &mut balance)
                         {
@@ -756,7 +817,7 @@ impl BufferContent {
                 None => {
                     let mut pos = None;
                     for line_index in (0..position.line_index).rev() {
-                        let line = self.line_at(line_index as _).as_str();
+                        let line = self.lines[line_index as usize].as_str();
                         if let Some(column_byte_index) =
                             find(line.char_indices().rev(), left, right, &mut balance)
                         {
@@ -930,7 +991,7 @@ impl Buffer {
             self.highlighted.clear();
             self.highlighted.insert_range(BufferRange::between(
                 BufferPosition::zero(),
-                BufferPosition::line_col((self.content.line_count() - 1) as _, 0),
+                BufferPosition::line_col((self.content.lines.len() - 1) as _, 0),
             ));
         }
     }
@@ -991,7 +1052,7 @@ impl Buffer {
         text: &str,
     ) -> BufferRange {
         if uses_word_database {
-            for word in WordIter(content.line_at(position.line_index as _).as_str())
+            for word in WordIter(content.lines()[position.line_index as usize].as_str())
                 .of_kind(WordKind::Identifier)
             {
                 word_database.remove(word);
@@ -1003,11 +1064,8 @@ impl Buffer {
         lints.insert_range(range);
 
         if uses_word_database {
-            let line_count = range.to.line_index - range.from.line_index + 1;
-            for line in content
-                .lines()
-                .skip(range.from.line_index as _)
-                .take(line_count as _)
+            for line in
+                &content.lines()[range.from.line_index as usize..=range.to.line_index as usize]
             {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.add(word);
@@ -1043,7 +1101,7 @@ impl Buffer {
 
         if self.properties.has_history {
             fn add_history_delete_line(buffer: &mut Buffer, from: BufferPosition) {
-                let line = buffer.content.line_at(from.line_index as _).as_str();
+                let line = buffer.content.lines()[from.line_index as usize].as_str();
                 let range = BufferRange::between(
                     BufferPosition::line_col(from.line_index, line.len() as _),
                     BufferPosition::line_col(from.line_index + 1, 0),
@@ -1061,7 +1119,7 @@ impl Buffer {
             }
 
             if from.line_index == to.line_index {
-                let text = &self.content.line_at(from.line_index as _).as_str()
+                let text = &self.content.lines()[from.line_index as usize].as_str()
                     [from.column_byte_index as usize..to.column_byte_index as usize];
                 self.history.add_edit(Edit {
                     kind: EditKind::Delete,
@@ -1069,7 +1127,7 @@ impl Buffer {
                     text,
                 });
             } else {
-                let text = &self.content.line_at(to.line_index as _).as_str()
+                let text = &self.content.lines()[to.line_index as usize].as_str()
                     [..to.column_byte_index as usize];
                 self.history.add_edit(Edit {
                     kind: EditKind::Delete,
@@ -1102,11 +1160,8 @@ impl Buffer {
         range: BufferRange,
     ) {
         if uses_word_database {
-            let line_count = range.to.line_index - range.from.line_index + 1;
-            for line in content
-                .lines()
-                .skip(range.from.line_index as _)
-                .take(line_count as _)
+            for line in
+                &content.lines()[range.from.line_index as usize..=range.to.line_index as usize]
             {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.remove(word);
@@ -1115,7 +1170,7 @@ impl Buffer {
 
             content.delete_range(range);
 
-            for word in WordIter(content.line_at(range.from.line_index as _).as_str())
+            for word in WordIter(content.lines()[range.from.line_index as usize].as_str())
                 .of_kind(WordKind::Identifier)
             {
                 word_database.add(word);
@@ -1240,7 +1295,7 @@ impl Buffer {
 
         self.highlighted.insert_range(BufferRange::between(
             BufferPosition::zero(),
-            BufferPosition::line_col((self.content.line_count() - 1) as _, 0),
+            BufferPosition::line_col((self.content.lines.len() - 1) as _, 0),
         ));
 
         if self.properties.uses_word_database {
@@ -1663,8 +1718,7 @@ mod tests {
     #[test]
     fn display_distance() {
         fn display_len(text: &str) -> usize {
-            let tab_size = NonZeroU8::new(4).unwrap();
-            CharDisplayDistances::new(text, tab_size)
+            CharDisplayDistances::new(text, 4)
                 .last()
                 .map(|d| d.distance)
                 .unwrap_or(0)
@@ -1706,13 +1760,13 @@ mod tests {
     fn buffer_content_insert_text() {
         let mut buffer = BufferContent::new();
 
-        assert_eq!(1, buffer.line_count());
+        assert_eq!(1, buffer.lines().len());
         assert_eq!("", buffer.to_string());
 
         buffer.insert_text(BufferPosition::line_col(0, 0), "hold");
         buffer.insert_text(BufferPosition::line_col(0, 2), "r");
         buffer.insert_text(BufferPosition::line_col(0, 1), "ello w");
-        assert_eq!(1, buffer.line_count());
+        assert_eq!(1, buffer.lines().len());
         assert_eq!("hello world", buffer.to_string());
 
         buffer.insert_text(BufferPosition::line_col(0, 5), "\n");
@@ -1720,7 +1774,7 @@ mod tests {
             BufferPosition::line_col(1, 6),
             " appending more\nand more\nand even more\nlines",
         );
-        assert_eq!(5, buffer.line_count());
+        assert_eq!(5, buffer.lines().len());
         assert_eq!(
             "hello\n world appending more\nand more\nand even more\nlines",
             buffer.to_string()
@@ -1728,7 +1782,7 @@ mod tests {
 
         let mut buffer = buffer_from_str("this is content");
         buffer.insert_text(BufferPosition::line_col(0, 8), "some\nmultiline ");
-        assert_eq!(2, buffer.line_count());
+        assert_eq!(2, buffer.lines().len());
         assert_eq!("this is some\nmultiline content", buffer.to_string());
 
         let mut buffer = buffer_from_str("this is content");
@@ -1736,7 +1790,7 @@ mod tests {
             BufferPosition::line_col(0, 8),
             "some\nmore\nextensive\nmultiline ",
         );
-        assert_eq!(4, buffer.line_count());
+        assert_eq!(4, buffer.lines().len());
         assert_eq!(
             "this is some\nmore\nextensive\nmultiline content",
             buffer.to_string()
@@ -1769,7 +1823,7 @@ mod tests {
 
         let mut buffer = buffer_from_str("this is the initial\ncontent of the buffer");
 
-        assert_eq!(2, buffer.line_count());
+        assert_eq!(2, buffer.lines().len());
         assert_eq!(
             "this is the initial\ncontent of the buffer",
             buffer.to_string()
@@ -1779,7 +1833,7 @@ mod tests {
             BufferPosition::zero(),
             BufferPosition::zero(),
         ));
-        assert_eq!(2, buffer.line_count());
+        assert_eq!(2, buffer.lines().len());
         assert_eq!(
             "this is the initial\ncontent of the buffer",
             buffer.to_string()
@@ -1789,18 +1843,18 @@ mod tests {
             BufferPosition::line_col(0, 11),
             BufferPosition::line_col(0, 19),
         ));
-        assert_eq!(2, buffer.line_count());
+        assert_eq!(2, buffer.lines().len());
         assert_eq!("this is the\ncontent of the buffer", buffer.to_string());
 
         buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(0, 8),
             BufferPosition::line_col(1, 15),
         ));
-        assert_eq!(1, buffer.line_count());
+        assert_eq!(1, buffer.lines().len());
         assert_eq!("this is buffer", buffer.to_string());
 
         let mut buffer = buffer_from_str("this\nbuffer\ncontains\nmultiple\nlines\nyes");
-        assert_eq!(6, buffer.line_count());
+        assert_eq!(6, buffer.lines().len());
         buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(1, 4),
             BufferPosition::line_col(4, 1),
@@ -1811,7 +1865,7 @@ mod tests {
     #[test]
     fn buffer_content_delete_lines() {
         let mut buffer = buffer_from_str("first line\nsecond line\nthird line");
-        assert_eq!(3, buffer.line_count());
+        assert_eq!(3, buffer.lines().len());
         buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(1, 0),
             BufferPosition::line_col(2, 0),
@@ -1819,7 +1873,7 @@ mod tests {
         assert_eq!("first line\nthird line", buffer.to_string());
 
         let mut buffer = buffer_from_str("first line\nsecond line\nthird line");
-        assert_eq!(3, buffer.line_count());
+        assert_eq!(3, buffer.lines().len());
         buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(1, 0),
             BufferPosition::line_col(1, 11),
@@ -2028,5 +2082,42 @@ mod tests {
             )),
             buffer.find_balanced_chars_at(BufferPosition::line_col(4, 2), '(', ')')
         );
+    }
+
+    #[test]
+    fn buffer_display_len() {
+        fn len(buffer: &BufferContent, line: usize) -> usize {
+            buffer.lines()[line].display_len().total_len(4)
+        }
+
+        let mut buffer = buffer_from_str("abc\tdef");
+
+        assert_eq!(10, len(&buffer, 0));
+
+        buffer.insert_text(BufferPosition::line_col(0, 3), "\n");
+
+        assert_eq!(3, len(&buffer, 0));
+        assert_eq!(7, len(&buffer, 1));
+
+        buffer.insert_text(BufferPosition::line_col(1, 3), "\n");
+
+        assert_eq!(3, len(&buffer, 0));
+        assert_eq!(6, len(&buffer, 1));
+        assert_eq!(1, len(&buffer, 2));
+
+        buffer.insert_text(BufferPosition::line_col(2, 0), "xx");
+
+        assert_eq!(3, len(&buffer, 0));
+        assert_eq!(6, len(&buffer, 1));
+        assert_eq!(3, len(&buffer, 2));
+
+        buffer.delete_range(BufferRange::between(
+            BufferPosition::zero(),
+            BufferPosition::line_col(0, 3),
+        ));
+
+        assert_eq!(0, len(&buffer, 0));
+        assert_eq!(6, len(&buffer, 1));
+        assert_eq!(3, len(&buffer, 2));
     }
 }

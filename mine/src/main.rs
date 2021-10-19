@@ -84,7 +84,7 @@ fn main() {
         .push(pepper_plugin_lsp::DEFAULT_BINDINGS_CONFIG);
     config.static_configs.push(ResourceFile {
         name: "my.pepper",
-        content: "map-normal <space>a [[: goto-alternate-buffer<enter>]]",
+        content: "map-normal ga [[: goto-alternate-buffer<enter>]]",
     });
 
     pepper::run(config);

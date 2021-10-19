@@ -7,7 +7,7 @@ use crate::{
     },
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::ClientHandle,
+    client::{ClientHandle, ViewAnchor},
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
     editor_utils::{hash_bytes, MessageKind, RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
@@ -199,8 +199,8 @@ impl State {
                         }
                     }
                     Key::Char('a' | 'A') => {
-                        let last_line_index = buffer.line_count() - 1;
-                        let last_line_len = buffer.line_at(last_line_index).as_str().len();
+                        let last_line_index = buffer.lines().len() - 1;
+                        let last_line_len = buffer.lines()[last_line_index].as_str().len();
 
                         cursors.clear();
                         cursors.add(Cursor {
@@ -289,8 +289,8 @@ impl State {
                         }
                     }
                     Key::Char('a' | 'A') => {
-                        let last_line_index = buffer.line_count() - 1;
-                        let last_line_len = buffer.line_at(last_line_index).as_str().len();
+                        let last_line_index = buffer.lines().len() - 1;
+                        let last_line_len = buffer.lines()[last_line_index].as_str().len();
 
                         cursors.clear();
                         cursors.add(Cursor {
@@ -393,7 +393,7 @@ impl State {
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             let mut position = cursor.position;
 
-                            let line = buffer.line_at(position.line_index as _).as_str();
+                            let line = buffer.lines()[position.line_index as usize].as_str();
                             let cursor_char = if position.column_byte_index < line.len() as _ {
                                 match line[position.column_byte_index as usize..].chars().next() {
                                     Some(c) => c,
@@ -462,7 +462,7 @@ impl State {
                             }
 
                             let buffer = ctx.editor.buffers.get(buffer_handle);
-                            let line = buffer.content().line_at(line_index as _).as_str();
+                            let line = buffer.content().lines()[line_index as usize].as_str();
 
                             let from = range.from.column_byte_index;
                             let to = range.to.column_byte_index;
@@ -624,7 +624,7 @@ impl State {
                 let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
                 let count = state.count.max(1);
-                let last_line_index = buffer.line_count().saturating_sub(1);
+                let last_line_index = buffer.lines().len().saturating_sub(1);
                 for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                     if cursor.anchor <= cursor.position {
                         cursor.anchor.column_byte_index = 0;
@@ -633,22 +633,22 @@ impl State {
                             cursor.position.column_byte_index = 0;
                         } else {
                             cursor.position.line_index = last_line_index as _;
-                            cursor.position.column_byte_index = buffer
-                                .line_at(cursor.position.line_index as _)
-                                .as_str()
-                                .len()
-                                as _;
+                            cursor.position.column_byte_index =
+                                buffer.lines()[cursor.position.line_index as usize]
+                                    .as_str()
+                                    .len() as _;
                         }
                     } else {
-                        cursor.anchor.column_byte_index =
-                            buffer.line_at(cursor.anchor.line_index as _).as_str().len() as _;
+                        cursor.anchor.column_byte_index = buffer.lines()
+                            [cursor.anchor.line_index as usize]
+                            .as_str()
+                            .len() as _;
                         if cursor.position.line_index >= count as _ {
                             cursor.position.line_index -= count as BufferPositionIndex;
-                            cursor.position.column_byte_index = buffer
-                                .line_at(cursor.position.line_index as _)
-                                .as_str()
-                                .len()
-                                as _;
+                            cursor.position.column_byte_index =
+                                buffer.lines()[cursor.position.line_index as usize]
+                                    .as_str()
+                                    .len() as _;
                         } else {
                             cursor.position.line_index = 0;
                             cursor.position.column_byte_index = 0;
@@ -658,25 +658,12 @@ impl State {
                 state.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('z') => {
-                let buffer_view = ctx.editor.buffer_views.get(handle);
-                let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
                 let client = ctx.clients.get_mut(client_handle);
-                let height = client.height;
-
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return None,
-                    Key::Char('z') => {
-                        client.scroll.0 = 0;
-                        client.scroll.1 = focused_line_index.saturating_sub((height / 2) as _);
-                    }
-                    Key::Char('j') => {
-                        client.scroll.0 = 0;
-                        client.scroll.1 = focused_line_index.saturating_sub(height as _);
-                    }
-                    Key::Char('k') => {
-                        client.scroll.0 = 0;
-                        client.scroll.1 = focused_line_index;
-                    }
+                    Key::Char('z') => client.set_view_anchor(&ctx.editor, ViewAnchor::Center),
+                    Key::Char('j') => client.set_view_anchor(&ctx.editor, ViewAnchor::Bottom),
+                    Key::Char('k') => client.set_view_anchor(&ctx.editor, ViewAnchor::Top),
                     _ => (),
                 }
             }
@@ -689,6 +676,7 @@ impl State {
                     let mut was_empty = true;
                     let position = match buffer
                         .lines()
+                        .iter()
                         .enumerate()
                         .skip(cursor.position.line_index as usize)
                         .filter(|(_, l)| {
@@ -703,9 +691,8 @@ impl State {
                             BufferPosition::line_col(i as _, line.as_str().len() as _)
                         }
                         None => {
-                            let line_index = buffer.line_count() - 1;
-                            let column_byte_index = buffer
-                                .line_at(line_index)
+                            let line_index = buffer.lines().len() - 1;
+                            let column_byte_index = buffer.lines()[line_index]
                                 .as_str()
                                 .find(|c: char| !c.is_whitespace())
                                 .unwrap_or(0);
@@ -727,9 +714,10 @@ impl State {
                     let mut was_empty = true;
                     let position = match buffer
                         .lines()
+                        .iter()
                         .enumerate()
                         .rev()
-                        .skip(buffer.line_count() - cursor.position.line_index as usize)
+                        .skip(buffer.lines().len() - cursor.position.line_index as usize)
                         .filter(|(_, l)| {
                             let is_empty = l.as_str().chars().all(|c| c.is_whitespace());
                             let keep = !was_empty && is_empty;
@@ -742,8 +730,7 @@ impl State {
                             BufferPosition::line_col(i as _, line.as_str().len() as _)
                         }
                         None => {
-                            let column_byte_index = buffer
-                                .line_at(0)
+                            let column_byte_index = buffer.lines()[0]
                                 .as_str()
                                 .find(|c: char| !c.is_whitespace())
                                 .unwrap_or(0);
@@ -757,7 +744,7 @@ impl State {
                 }
             }
             Key::Ctrl('d') => {
-                let half_height = ctx.clients.get(client_handle).height / 2;
+                let half_height = ctx.clients.get(client_handle).viewport_size.1 / 2;
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesForward(
@@ -768,7 +755,7 @@ impl State {
                 );
             }
             Key::Ctrl('u') => {
-                let half_height = ctx.clients.get(client_handle).height / 2;
+                let half_height = ctx.clients.get(client_handle).viewport_size.1 / 2;
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesBackward(
@@ -815,7 +802,7 @@ impl State {
                 for i in 0..cursor_count {
                     let range = ctx.editor.buffer_views.get(handle).cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        let line = buffer.content().line_at(line_index as _).as_str();
+                        let line = buffer.content().lines()[line_index as usize].as_str();
                         let mut indentation_column_index = 0;
 
                         for _ in 0..count {
@@ -919,11 +906,13 @@ impl State {
                             cursor.anchor = range.from;
                             cursor.position = BufferPosition::line_col(
                                 range.from.line_index,
-                                buffer.line_at(range.from.line_index as _).as_str().len() as _,
+                                buffer.lines()[range.from.line_index as usize]
+                                    .as_str()
+                                    .len() as _,
                             );
 
                             for line_index in (range.from.line_index + 1)..range.to.line_index {
-                                let line_len = buffer.line_at(line_index as _).as_str().len();
+                                let line_len = buffer.lines()[line_index as usize].as_str().len();
                                 cursors.add(Cursor {
                                     anchor: BufferPosition::line_col(line_index, 0),
                                     position: BufferPosition::line_col(line_index, line_len as _),
@@ -939,7 +928,7 @@ impl State {
                             cursor.position = BufferPosition::line_col(range.to.line_index, 0);
 
                             for line_index in (range.from.line_index + 1)..range.to.line_index {
-                                let line_len = buffer.line_at(line_index as _).as_str().len();
+                                let line_len = buffer.lines()[line_index as usize].as_str().len();
                                 cursors.add(Cursor {
                                     anchor: BufferPosition::line_col(line_index, line_len as _),
                                     position: BufferPosition::line_col(line_index, 0),
@@ -949,7 +938,9 @@ impl State {
                             cursors.add(Cursor {
                                 anchor: BufferPosition::line_col(
                                     range.from.line_index,
-                                    buffer.line_at(range.from.line_index as _).as_str().len() as _,
+                                    buffer.lines()[range.from.line_index as usize]
+                                        .as_str()
+                                        .len() as _,
                                 ),
                                 position: range.from,
                             });
@@ -1515,9 +1506,8 @@ fn find_char(ctx: &mut EditorContext, client_handle: ClientHandle, forward: bool
 
     let count = state.count.max(1) as _;
     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-        let (left_chars, right_chars) = buffer
-            .content()
-            .line_at(cursor.position.line_index as _)
+        let (left_chars, right_chars) = buffer.content().lines()
+            [cursor.position.line_index as usize]
             .chars_from(cursor.position.column_byte_index as _);
 
         let element = match forward {
@@ -1627,10 +1617,7 @@ fn search_word_or_move_to_it(
 
     if valid_range || search_ranges.is_empty() || current_range_index.is_err() {
         let (position, text) = if valid_range {
-            let line = buffer
-                .content()
-                .line_at(main_position.line_index as _)
-                .as_str();
+            let line = buffer.content().lines()[main_position.line_index as usize].as_str();
             let text = &line[main_range.from.column_byte_index as usize
                 ..main_range.to.column_byte_index as usize];
             (main_range.from, text)
@@ -1738,4 +1725,3 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
-

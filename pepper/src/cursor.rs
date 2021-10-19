@@ -1,7 +1,4 @@
-use std::{
-    num::NonZeroU8,
-    ops::{Drop, Index, IndexMut, RangeFrom, RangeFull},
-};
+use std::ops::{Drop, Index, IndexMut, RangeFrom, RangeFull};
 
 use crate::{
     buffer::{BufferContent, CharDisplayDistances},
@@ -156,11 +153,11 @@ impl<'a> CursorCollectionMutGuard<'a> {
         }
     }
 
-    pub fn save_display_distances(&mut self, buffer: &BufferContent, tab_size: NonZeroU8) {
+    pub fn save_display_distances(&mut self, buffer: &BufferContent, tab_size: u8) {
         self.clear_display_distances = false;
         if self.inner.saved_display_distances_len == 0 {
             for c in &self.inner.cursors[..self.inner.len as usize] {
-                let line = &buffer.line_at(c.position.line_index as _).as_str()
+                let line = &buffer.lines()[c.position.line_index as usize].as_str()
                     [..c.position.column_byte_index as usize];
                 let distance = CharDisplayDistances::new(line, tab_size)
                     .last()

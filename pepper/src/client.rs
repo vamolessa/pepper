@@ -10,7 +10,7 @@ use crate::{
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
-#[derive(Default, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ClientHandle(u8);
 
 impl ClientHandle {
@@ -43,14 +43,19 @@ impl<'de> Serialize<'de> for ClientHandle {
     }
 }
 
-#[derive(Default)]
+pub enum ViewAnchor {
+    Top,
+    Center,
+    Bottom,
+}
+
 pub struct Client {
     active: bool,
     handle: ClientHandle,
 
     pub viewport_size: (u16, u16),
-    pub scroll: (BufferPositionIndex, BufferPositionIndex),
-    pub height: u16,
+    pub(crate) scroll: BufferPositionIndex,
+
     pub(crate) navigation_history: NavigationHistory,
 
     buffer_view_handle: Option<BufferViewHandle>,
@@ -59,15 +64,33 @@ pub struct Client {
 }
 
 impl Client {
+    pub(crate) fn new() -> Self {
+        Self {
+            active: false,
+            handle: ClientHandle(0),
+
+            viewport_size: (0, 0),
+            scroll: 0,
+
+            navigation_history: NavigationHistory::default(),
+
+            buffer_view_handle: None,
+            stdin_buffer_handle: None,
+            stdin_residual_bytes: ResidualStrBytes::default(),
+        }
+    }
+
     fn dispose(&mut self) {
         self.active = false;
 
         self.viewport_size = (0, 0);
-        self.scroll = (0, 0);
-        self.height = 0;
+        self.scroll = 0;
+
         self.navigation_history.clear();
 
         self.buffer_view_handle = None;
+        self.stdin_buffer_handle = None;
+        self.stdin_residual_bytes = ResidualStrBytes::default();
     }
 
     pub fn handle(&self) -> ClientHandle {
@@ -91,73 +114,51 @@ impl Client {
         self.set_buffer_view_handle_no_history(handle);
     }
 
-    pub fn has_ui(&self) -> bool {
-        self.viewport_size.0 != 0 && self.viewport_size.1 != 0
-    }
-
     pub(crate) fn set_buffer_view_handle_no_history(&mut self, handle: Option<BufferViewHandle>) {
         self.buffer_view_handle = handle;
     }
 
-    pub(crate) fn update_view(&mut self, editor: &Editor, picker_height: u16) {
-        self.height = self.viewport_size.1.saturating_sub(1 + picker_height);
+    pub fn has_ui(&self) -> bool {
+        self.viewport_size.0 != 0 && self.viewport_size.1 != 0
+    }
 
-        let width = self.viewport_size.0 as BufferPositionIndex;
-        if width == 0 {
+    pub fn set_view_anchor(&mut self, editor: &Editor, anchor: ViewAnchor) {
+        if !self.has_ui() {
             return;
         }
-        let height = self.height as BufferPositionIndex;
-        if height == 0 {
-            return;
-        }
-        let buffer_view_handle = match self.buffer_view_handle() {
-            Some(handle) => handle,
-            None => return,
+
+        let height = self.viewport_size.1.saturating_sub(1) as usize;
+        let height_offset = match anchor {
+            ViewAnchor::Top => 0,
+            ViewAnchor::Center => height / 2,
+            ViewAnchor::Bottom => height.saturating_sub(1),
         };
 
-        let buffer_view = editor.buffer_views.get(buffer_view_handle);
-        let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
+        let main_cursor_padding_top = self.find_main_cursor_padding_top(editor);
+        self.scroll = main_cursor_padding_top.saturating_sub(height_offset) as _;
+    }
 
-        let position = buffer_view.cursors.main_cursor().position;
+    pub(crate) fn scroll_to_main_cursor(&mut self, editor: &Editor, margin_bottom: usize) {
+        if !self.has_ui() {
+            return;
+        }
 
-        let line_index = position.line_index;
-        let line = buffer.line_at(line_index as _).as_str();
-        let column_index = position.column_byte_index;
-
+        let height = self.viewport_size.1.saturating_sub(1) as usize;
+        let height = height.saturating_sub(margin_bottom);
         let half_height = height / 2;
-        let quarter_height = half_height / 2;
 
-        let (mut scroll_x, mut scroll_y) = self.scroll;
+        let main_cursor_padding_top = self.find_main_cursor_padding_top(editor);
 
-        if column_index < scroll_x {
-            scroll_x = column_index
-        } else {
-            let index = column_index as usize;
-            let (width, text) = match line[index..].chars().next() {
-                Some(c) => (width, &line[..index + c.len_utf8()]),
-                None => (width - 1, line),
-            };
-
-            if let Some(d) = CharDisplayDistances::new(text, editor.config.tab_size)
-                .rev()
-                .take_while(|d| d.distance <= width as _)
-                .last()
-            {
-                scroll_x = scroll_x.max(d.char_index as _);
-            }
+        let scroll = self.scroll as usize;
+        if main_cursor_padding_top < scroll.saturating_sub(half_height) {
+            self.scroll = main_cursor_padding_top.saturating_sub(half_height) as _;
+        } else if main_cursor_padding_top < scroll {
+            self.scroll = main_cursor_padding_top as _;
+        } else if main_cursor_padding_top >= scroll + height + half_height {
+            self.scroll = (main_cursor_padding_top + 1 - half_height) as _;
+        } else if main_cursor_padding_top >= scroll + height {
+            self.scroll = (main_cursor_padding_top + 1 - height) as _;
         }
-
-        if line_index < scroll_y.saturating_sub(quarter_height) {
-            scroll_y = line_index.saturating_sub(half_height);
-        } else if line_index < scroll_y {
-            scroll_y = line_index;
-        } else if line_index >= scroll_y + height + quarter_height {
-            scroll_y = line_index + 1 - half_height;
-        } else if line_index >= scroll_y + height {
-            scroll_y = line_index + 1 - height;
-        }
-
-        self.scroll = (scroll_x, scroll_y);
     }
 
     pub(crate) fn on_stdin_input(&mut self, editor: &mut Editor, bytes: &[u8]) {
@@ -218,6 +219,37 @@ impl Client {
             self.stdin_buffer_handle = None;
         }
     }
+
+    fn find_main_cursor_padding_top(&mut self, editor: &Editor) -> usize {
+        let buffer_view_handle = match self.buffer_view_handle() {
+            Some(handle) => handle,
+            None => return 0,
+        };
+
+        let tab_size = editor.config.tab_size.get();
+        let width = self.viewport_size.0 as usize;
+
+        let buffer_view = editor.buffer_views.get(buffer_view_handle);
+        let position = buffer_view.cursors.main_cursor().position;
+        let lines = editor
+            .buffers
+            .get(buffer_view.buffer_handle)
+            .content()
+            .lines();
+
+        let mut height = position.line_index as usize;
+        for line in &lines[..position.line_index as usize] {
+            height += line.display_len().total_len(tab_size) / width;
+        }
+
+        let cursor_line = lines[position.line_index as usize].as_str();
+        let cursor_line = &cursor_line[..position.column_byte_index as usize];
+        if let Some(d) = CharDisplayDistances::new(cursor_line, tab_size).last() {
+            height += d.distance as usize / width;
+        }
+
+        height
+    }
 }
 
 #[derive(Default)]
@@ -269,7 +301,7 @@ impl ClientManager {
     pub(crate) fn on_client_joined(&mut self, handle: ClientHandle) {
         let min_len = handle.into_index() + 1;
         if min_len > self.clients.len() {
-            self.clients.resize_with(min_len, Client::default);
+            self.clients.resize_with(min_len, Client::new);
         }
 
         let client = &mut self.clients[handle.into_index()];
