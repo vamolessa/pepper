@@ -3,7 +3,6 @@ use std::{io, iter};
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
-    client::ClientManager,
     editor::Editor,
     editor_utils::MessageKind,
     mode::ModeKind,
@@ -64,7 +63,6 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
 
 pub struct RenderContext<'a> {
     pub editor: &'a Editor,
-    pub clients: &'a ClientManager,
     pub viewport_size: (u16, u16),
     pub scroll_offset: BufferPosition,
     pub has_focus: bool,

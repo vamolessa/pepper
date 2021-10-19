@@ -23,6 +23,7 @@ use crate::{
     plugin::PluginCollection,
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
+    ui,
     word_database::WordDatabase,
 };
 
@@ -89,6 +90,54 @@ pub struct EditorContext {
     pub plugins: PluginCollection,
 }
 impl EditorContext {
+    pub(crate) fn render(&mut self) {
+        let picker_height = self
+            .editor
+            .picker
+            .update_scroll(self.editor.config.picker_max_height as _);
+        let focused_client = self.clients.focused_client();
+
+        let mut needs_redraw = false;
+        for c in self.clients.iter_mut() {
+            if let Some(handle) = c.buffer_view_handle() {
+                let buffer_view = self.editor.buffer_views.get(handle);
+                let buffer = self.editor.buffers.get_mut(buffer_view.buffer_handle);
+                if let HighlightResult::Pending = buffer.update_highlighting(&self.editor.syntaxes)
+                {
+                    needs_redraw = true;
+                }
+            }
+
+            let has_focus = focused_client == Some(c.handle());
+            let scroll_offset =
+                c.calculate_scroll_offset(&self.editor, if has_focus { picker_height } else { 0 });
+
+            if !c.has_ui() {
+                continue;
+            }
+
+            let mut buf = self.platform.buf_pool.acquire();
+            let write = buf.write_with_len(ServerEvent::bytes_variant_header_len());
+            let ctx = ui::RenderContext {
+                editor: &self.editor,
+                viewport_size: c.viewport_size,
+                scroll_offset,
+                has_focus,
+            };
+            ui::render(&ctx, c.buffer_view_handle(), write);
+            ServerEvent::Display(&[]).serialize_bytes_variant_header(write);
+
+            let handle = c.handle();
+            self.platform
+                .requests
+                .enqueue(PlatformRequest::WriteToClient { handle, buf });
+        }
+
+        if needs_redraw {
+            self.platform.requests.enqueue(PlatformRequest::Redraw);
+        }
+    }
+
     pub fn trigger_event_handlers(&mut self) {
         loop {
             self.editor.events.flip();
@@ -317,28 +366,6 @@ impl Editor {
 
         ctx.editor.buffered_keys.0.truncate(start_index);
         EditorControlFlow::Continue
-    }
-
-    pub(crate) fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
-        let picker_height = self
-            .picker
-            .update_scroll(self.config.picker_max_height as _);
-        let focused_client = clients.focused_client();
-
-        let mut needs_redraw = false;
-        for c in clients.iter_mut() {
-            if let Some(handle) = c.buffer_view_handle() {
-                let buffer_view = self.buffer_views.get(handle);
-                let buffer = self.buffers.get_mut(buffer_view.buffer_handle);
-                if let HighlightResult::Pending = buffer.update_highlighting(&self.syntaxes) {
-                    needs_redraw = true;
-                }
-            }
-            let is_focused = focused_client == Some(c.handle());
-            c.frame_main_cursor(self, if is_focused { picker_height } else { 0 });
-        }
-
-        needs_redraw
     }
 
     pub(crate) fn on_client_event(

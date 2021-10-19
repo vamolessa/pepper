@@ -231,35 +231,7 @@ impl ServerApplication {
             }
         }
 
-        let needs_redraw = self.ctx.editor.on_pre_render(&mut self.ctx.clients);
-        if needs_redraw {
-            self.ctx.platform.requests.enqueue(PlatformRequest::Redraw);
-        }
-
-        let focused_client_handle = self.ctx.clients.focused_client();
-        for c in self.ctx.clients.iter() {
-            if !c.has_ui() {
-                continue;
-            }
-
-            let mut buf = self.ctx.platform.buf_pool.acquire();
-            let write = buf.write_with_len(ServerEvent::bytes_variant_header_len());
-            let ctx = ui::RenderContext {
-                editor: &self.ctx.editor,
-                clients: &self.ctx.clients,
-                viewport_size: c.viewport_size,
-                scroll_offset: c.scroll_offset,
-                has_focus: focused_client_handle == Some(c.handle()),
-            };
-            ui::render(&ctx, c.buffer_view_handle(), write);
-            ServerEvent::Display(&[]).serialize_bytes_variant_header(write);
-
-            let handle = c.handle();
-            self.ctx
-                .platform
-                .requests
-                .enqueue(PlatformRequest::WriteToClient { handle, buf });
-        }
+        self.ctx.render();
     }
 }
 
