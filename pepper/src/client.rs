@@ -141,7 +141,7 @@ impl Client {
         self.buffer_view_handle = handle;
     }
 
-    pub(crate) fn update_view(&mut self, editor: &Editor, margin_bottom: usize) {
+    pub(crate) fn frame_main_cursor(&mut self, editor: &Editor, margin_bottom: usize) {
         if !self.has_ui() {
             return;
         }
@@ -149,17 +149,16 @@ impl Client {
         let height = self.viewport_size.1.saturating_sub(1) as usize;
         let height = height.saturating_sub(margin_bottom);
         let half_height = height / 2;
-        let quarter_height = half_height / 2;
 
         let main_cursor_padding_top = self.find_main_cursor_padding_top(editor);
 
         {
             let scroll = self.scroll as usize;
-            if main_cursor_padding_top < scroll.saturating_sub(quarter_height) {
+            if main_cursor_padding_top < scroll.saturating_sub(half_height) {
                 self.scroll = main_cursor_padding_top.saturating_sub(half_height) as _;
             } else if main_cursor_padding_top < scroll {
                 self.scroll = main_cursor_padding_top as _;
-            } else if main_cursor_padding_top >= scroll + height + quarter_height {
+            } else if main_cursor_padding_top >= scroll + height + half_height {
                 self.scroll = (main_cursor_padding_top + 1 - half_height) as _;
             } else if main_cursor_padding_top >= scroll + height {
                 self.scroll = (main_cursor_padding_top + 1 - height) as _;
@@ -384,7 +383,12 @@ impl Client {
         }
 
         let cursor_line = lines[position.line_index as usize].as_str();
-        height += find_line_height(cursor_line, width, tab_size) - 1;
+        height += find_line_height(
+            &cursor_line[..position.column_byte_index as usize],
+            width,
+            tab_size,
+        );
+        height -= 1;
 
         height
     }

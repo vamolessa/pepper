@@ -335,7 +335,7 @@ impl Editor {
                 }
             }
             let is_focused = focused_client == Some(c.handle());
-            c.update_view(self, if is_focused { picker_height } else { 0 });
+            c.frame_main_cursor(self, if is_focused { picker_height } else { 0 });
         }
 
         needs_redraw
