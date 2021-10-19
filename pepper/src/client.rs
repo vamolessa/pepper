@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::{
-    buffer::{char_display_len, BufferHandle, BufferProperties, CharDisplayDistances},
+    buffer::{BufferHandle, BufferProperties, CharDisplayDistances, DisplayLen},
     buffer_position::{BufferPosition, BufferPositionIndex},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
@@ -55,6 +55,7 @@ pub struct Client {
 
     pub viewport_size: (u16, u16),
     scroll: BufferPositionIndex,
+    cumulative_display_len: Vec<DisplayLen>,
 
     pub(crate) navigation_history: NavigationHistory,
 
@@ -71,6 +72,7 @@ impl Client {
 
             viewport_size: (0, 0),
             scroll: 0,
+            cumulative_display_len: Vec::new(),
 
             navigation_history: NavigationHistory::default(),
 
@@ -169,7 +171,7 @@ impl Client {
             None => return BufferPosition::zero(),
         };
 
-        let tab_size = editor.config.tab_size.get() as usize;
+        let tab_size = editor.config.tab_size.get();
         let width = self.viewport_size.0 as usize;
 
         let buffer_handle = editor.buffer_views.get(buffer_view_handle).buffer_handle;
@@ -191,19 +193,12 @@ impl Client {
                 continue;
             }
 
-            let mut x = 0;
-            for (char_index, c) in line.as_str().char_indices() {
-                match c {
-                    '\t' => x += tab_size,
-                    _ => x += char_display_len(c) as usize,
-                }
-                if x >= width {
-                    x -= width;
-                    scroll_padding_top -= 1;
-                    if scroll_padding_top == 0 {
-                        scroll_offset.column_byte_index = (char_index + c.len_utf8()) as _;
-                        break;
-                    }
+            let target_display_len = (scroll_padding_top * width) as _;
+            for d in CharDisplayDistances::new(line.as_str(), tab_size) {
+                if d.distance >= target_display_len {
+                    let index = d.char_index as usize + d.char.len_utf8();
+                    scroll_offset.column_byte_index = index as _;
+                    break;
                 }
             }
 
@@ -366,7 +361,7 @@ impl Client {
             None => return 0,
         };
 
-        let tab_size = editor.config.tab_size.get() as usize;
+        let tab_size = editor.config.tab_size.get();
         let width = self.viewport_size.0 as usize;
 
         let buffer_view = editor.buffer_views.get(buffer_view_handle);
@@ -385,7 +380,7 @@ impl Client {
         let cursor_line = lines[position.line_index as usize].as_str();
         let cursor_line = &cursor_line[..position.column_byte_index as usize];
         if let Some(d) = CharDisplayDistances::new(cursor_line, tab_size).last() {
-            height += d.distance / width;
+            height += d.distance as usize / width;
         }
 
         height

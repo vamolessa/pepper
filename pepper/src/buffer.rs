@@ -96,8 +96,8 @@ pub struct DisplayLen {
     pub tab_count: u32,
 }
 impl DisplayLen {
-    pub fn total_len(&self, tab_size: usize) -> usize {
-        self.len as usize + self.tab_count as usize * tab_size
+    pub fn total_len(&self, tab_size: u8) -> usize {
+        self.len as usize + self.tab_count as usize * tab_size as usize
     }
 }
 impl<'a> From<&'a str> for DisplayLen {
@@ -133,16 +133,17 @@ impl Sub for DisplayLen {
 }
 
 pub struct CharDisplayDistance {
-    pub distance: usize,
-    pub char_index: usize,
+    pub distance: u32,
+    pub char: char,
+    pub char_index: u32,
 }
 pub struct CharDisplayDistances<'a> {
     char_indices: CharIndices<'a>,
-    len: usize,
-    tab_size: usize,
+    len: u32,
+    tab_size: u8,
 }
 impl<'a> CharDisplayDistances<'a> {
-    pub fn new(text: &'a str, tab_size: usize) -> Self {
+    pub fn new(text: &'a str, tab_size: u8) -> Self {
         Self {
             char_indices: text.char_indices(),
             len: 0,
@@ -153,12 +154,13 @@ impl<'a> CharDisplayDistances<'a> {
 impl<'a> CharDisplayDistances<'a> {
     fn calc_next(&mut self, char_index: usize, c: char) -> CharDisplayDistance {
         self.len += match c {
-            '\t' => self.tab_size,
-            _ => char_display_len(c) as _,
+            '\t' => self.tab_size as u32,
+            _ => char_display_len(c) as u32,
         };
         CharDisplayDistance {
             distance: self.len,
-            char_index,
+            char: c,
+            char_index: char_index as _,
         }
     }
 }

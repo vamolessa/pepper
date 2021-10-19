@@ -66,7 +66,7 @@ impl BufferView {
             Err(n)
         }
 
-        let tab_size = tab_size.get() as _;
+        let tab_size = tab_size.get();
         let buffer = buffers.get(self.buffer_handle).content();
 
         let mut cursors = self.cursors.mut_guard();
@@ -181,7 +181,7 @@ impl BufferView {
                         let line = buffer.lines()[c.position.line_index as usize].as_str();
                         c.position.column_byte_index = CharDisplayDistances::new(line, tab_size)
                             .find(|d| d.distance > distance as _)
-                            .map(|d| d.char_index)
+                            .map(|d| d.char_index as usize)
                             .unwrap_or(line.len())
                             as _;
                     }
@@ -198,7 +198,7 @@ impl BufferView {
                         let line = buffer.lines()[c.position.line_index as usize].as_str();
                         c.position.column_byte_index = CharDisplayDistances::new(line, tab_size)
                             .find(|d| d.distance > distance as _)
-                            .map(|d| d.char_index)
+                            .map(|d| d.char_index as usize)
                             .unwrap_or(line.len())
                             as _;
                     }

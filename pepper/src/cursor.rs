@@ -153,7 +153,7 @@ impl<'a> CursorCollectionMutGuard<'a> {
         }
     }
 
-    pub fn save_display_distances(&mut self, buffer: &BufferContent, tab_size: usize) {
+    pub fn save_display_distances(&mut self, buffer: &BufferContent, tab_size: u8) {
         self.clear_display_distances = false;
         if self.inner.saved_display_distances_len == 0 {
             for c in &self.inner.cursors[..self.inner.len as usize] {
