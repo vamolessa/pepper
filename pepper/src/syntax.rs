@@ -8,7 +8,10 @@ use crate::{
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
 
-const MAX_HIGHLIGHT_COUNT: usize = 2048;
+#[cfg(not(debug_assertions))]
+const MAX_HIGHLIGHT_BYTE_COUNT: usize = 128 * 1024;
+#[cfg(debug_assertions)]
+const MAX_HIGHLIGHT_BYTE_COUNT: usize = 8 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
@@ -374,7 +377,8 @@ impl HighlightedBuffer {
             None => LineParseState::Finished,
         };
 
-        let mut highlight_count = 0;
+        let mut highlighted_byte_count = 0;
+
         let mut i = 0;
         while i < self.dirty_line_indexes.len() {
             let dirty_index = self.dirty_line_indexes[i];
@@ -397,12 +401,13 @@ impl HighlightedBuffer {
                 hline.parse_state = previous_parse_state;
 
                 index += 1;
-                highlight_count += 1;
+                highlighted_byte_count += bline.len();
 
-                if highlight_count == MAX_HIGHLIGHT_COUNT {
+                if MAX_HIGHLIGHT_BYTE_COUNT < highlighted_byte_count {
                     i -= 1;
                     self.dirty_line_indexes[i] = index;
                     self.dirty_line_indexes.drain(..i);
+
                     return HighlightResult::Pending;
                 }
 
@@ -727,3 +732,4 @@ mod tests {
         }
     }
 }
+
