@@ -940,16 +940,16 @@ impl From<io::Error> for BufferWriteError {
 pub struct BufferProperties {
     pub has_history: bool,
     pub can_save: bool,
-    pub uses_word_database: bool,
     pub is_file: bool,
+    pub uses_word_database: bool,
 }
 impl BufferProperties {
     pub fn text() -> Self {
         Self {
             has_history: true,
             can_save: true,
-            uses_word_database: true,
             is_file: true,
+            uses_word_database: true,
         }
     }
 
@@ -957,8 +957,8 @@ impl BufferProperties {
         Self {
             has_history: false,
             can_save: false,
-            uses_word_database: false,
             is_file: false,
+            uses_word_database: false,
         }
     }
 }
@@ -1370,6 +1370,7 @@ impl Buffer {
         let new_path = match new_path {
             Some(path) => {
                 self.properties.can_save = true;
+                self.properties.is_file = true;
                 self.path.clear();
                 self.path.push(path);
                 true
