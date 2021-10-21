@@ -40,7 +40,7 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
         command::register_commands(&mut ctx.editor.commands, handle);
         Some(Plugin {
-            data: Box::new(LspPlugin::new()),
+            data: Box::new(LspPlugin::default()),
             on_editor_events,
             on_process_spawned,
             on_process_output,
@@ -99,7 +99,8 @@ impl Drop for ClientGuard {
     }
 }
 
-pub struct LspPlugin {
+#[derive(Default)]
+pub(crate) struct LspPlugin {
     entries: Vec<ClientEntry>,
     recipes: Vec<ClientRecipe>,
     read_line_client_handle: Option<ClientHandle>,
@@ -107,15 +108,6 @@ pub struct LspPlugin {
 }
 
 impl LspPlugin {
-    pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-            recipes: Vec::new(),
-            read_line_client_handle: None,
-            picker_client_handle: None,
-        }
-    }
-
     pub fn add_recipe(
         &mut self,
         glob: &str,
@@ -265,13 +257,6 @@ impl LspPlugin {
                 self.picker_client_handle = Some(client_handle);
             }
         }
-    }
-
-    pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
-        self.entries.iter().flat_map(|e| match e {
-            ClientEntry::Occupied(c) => Some(c.deref()),
-            _ => None,
-        })
     }
 }
 

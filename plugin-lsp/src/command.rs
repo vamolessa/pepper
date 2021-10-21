@@ -224,7 +224,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         })
     });
 
-    r("lsp-document-symbol", &[], |ctx, io| {
+    r("lsp-document-symbols", &[], |ctx, io| {
         io.args.assert_empty()?;
 
         let view_handle = io.current_buffer_view_handle(ctx)?;

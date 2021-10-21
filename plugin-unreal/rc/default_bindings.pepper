@@ -1,0 +1,7 @@
+map-normal <space>uo ": find-file 'fd --path-separator / -tf . S:/UnrealEngine/Engine/Source' 'unreal open:'<enter>"
+map-normal <space>uf [[: find-pattern 'rg --path-separator / --no-ignore-global --line-number "{}" S:/UnrealEngine/Engine/Source' 'unreal find:'<enter>]]
+
+map-normal <space>b ": build-game<enter>"
+map-normal <space>r ": run-game<enter>"
+map-normal <space>m ": run-map<enter>"
+map-normal <space>e ": open-editor<enter>"
