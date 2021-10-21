@@ -1,3 +1,5 @@
+use std::process::Stdio;
+
 use crate::{
     buffer::{BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferPositionIndex},
@@ -9,7 +11,7 @@ use crate::{
     events::EditorEventQueue,
     mode::{ModeKind, ModeState},
     pattern::Pattern,
-    platform::PooledBuf,
+    platform::{PlatformRequest, PooledBuf, ProcessTag},
     plugin::PluginHandle,
     word_database::WordDatabase,
 };
@@ -669,6 +671,46 @@ pub mod process {
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
+    pub fn enter_run_mode(ctx: &mut EditorContext) {
+        fn on_client_keys(
+            ctx: &mut EditorContext,
+            _: ClientHandle,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<EditorControlFlow> {
+            match poll {
+                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
+                ReadLinePoll::Submitted => {
+                    let command = ctx.editor.read_line.input();
+                    if let Some(mut command) = parse_process_command(command) {
+                        command.stdin(Stdio::null());
+                        command.stdout(Stdio::null());
+                        command.stderr(Stdio::null());
+
+                        ctx.platform
+                            .requests
+                            .enqueue(PlatformRequest::SpawnProcess {
+                                tag: ProcessTag::Ignored,
+                                command,
+                                buf_len: 0,
+                            });
+                    }
+
+                    ctx.editor.enter_mode(ModeKind::default());
+                    Some(EditorControlFlow::Continue)
+                }
+                ReadLinePoll::Canceled => {
+                    ctx.editor.enter_mode(ModeKind::default());
+                    Some(EditorControlFlow::Continue)
+                }
+            }
+        }
+
+        ctx.editor.read_line.set_prompt("run-command:");
+        ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
+        ctx.editor.enter_mode(ModeKind::ReadLine);
+    }
+
     fn spawn_process(ctx: &mut EditorContext, client_handle: ClientHandle, pipe: bool) {
         let buffer_view_handle = match ctx.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => handle,
@@ -705,7 +747,7 @@ pub mod process {
         let command = ctx.editor.read_line.input();
         let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
         for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-            let command = match parse_process_command(&command) {
+            let command = match parse_process_command(command) {
                 Some(command) => command,
                 None => continue,
             };
@@ -869,3 +911,4 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
         position,
     });
 }
+

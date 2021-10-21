@@ -150,6 +150,7 @@ impl ServerApplication {
                 }
                 PlatformEvent::ProcessSpawned { tag, handle } => {
                     match tag {
+                        ProcessTag::Ignored => (),
                         ProcessTag::Buffer(index) => self.ctx.editor.buffers.on_process_spawned(
                             &mut self.ctx.platform,
                             index,
@@ -171,6 +172,7 @@ impl ServerApplication {
                 PlatformEvent::ProcessOutput { tag, buf } => {
                     let bytes = buf.as_bytes();
                     match tag {
+                        ProcessTag::Ignored => (),
                         ProcessTag::Buffer(index) => self.ctx.editor.buffers.on_process_output(
                             &mut self.ctx.editor.word_database,
                             index,
@@ -206,6 +208,7 @@ impl ServerApplication {
                 }
                 PlatformEvent::ProcessExit { tag } => {
                     match tag {
+                        ProcessTag::Ignored => (),
                         ProcessTag::Buffer(index) => self.ctx.editor.buffers.on_process_exit(
                             &mut self.ctx.editor.word_database,
                             index,

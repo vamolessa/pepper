@@ -82,6 +82,7 @@ pub enum PlatformRequest {
 
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
+    Ignored,
     Buffer(u32),
     FindFiles,
     FindPattern,

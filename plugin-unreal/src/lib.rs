@@ -1,18 +1,8 @@
-use std::{
-    io,
-    ops::{Deref, DerefMut},
-    path::PathBuf,
-    process::{Command, Stdio},
-};
-
 use pepper::{
     editor::EditorContext,
-    editor_utils::{hash_bytes, parse_process_command, MessageKind},
-    events::{EditorEvent, EditorEventIter},
-    glob::{Glob, InvalidGlobError},
     help::HelpPages,
-    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
-    plugin::{CompletionContext, Plugin, PluginDefinition, PluginHandle},
+    platform::PlatformProcessHandle,
+    plugin::{Plugin, PluginDefinition, PluginHandle},
     ResourceFile,
 };
 
@@ -40,24 +30,25 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
 
 #[derive(Default)]
 pub(crate) struct UnrealPlugin {
-    unreal_path: String,
+    unreal_editor_path: String,
+    unreal_source_path: String,
 }
 
 fn on_process_spawned(
-    handle: PluginHandle,
-    ctx: &mut EditorContext,
-    client_index: u32,
-    process_handle: PlatformProcessHandle,
+    _handle: PluginHandle,
+    _ctx: &mut EditorContext,
+    _client_index: u32,
+    _process_handle: PlatformProcessHandle,
 ) {
 }
 
 fn on_process_output(
-    plugin_handle: PluginHandle,
-    ctx: &mut EditorContext,
-    client_index: u32,
-    bytes: &[u8],
+    _plugin_handle: PluginHandle,
+    _ctx: &mut EditorContext,
+    _client_index: u32,
+    _bytes: &[u8],
 ) {
 }
 
-fn on_process_exit(handle: PluginHandle, ctx: &mut EditorContext, client_index: u32) {}
+fn on_process_exit(_handle: PluginHandle, _ctx: &mut EditorContext, _client_index: u32) {}
 

@@ -1306,6 +1306,10 @@ impl ModeState for State {
                 }
                 _ => (),
             },
+            Key::Char('$') => {
+                handled_keys = true;
+                read_line::process::enter_run_mode(ctx);
+            }
             Key::Char(':') => {
                 handled_keys = true;
                 ctx.editor.enter_mode(ModeKind::Command);
@@ -1725,3 +1729,4 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
+
