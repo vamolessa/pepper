@@ -478,8 +478,9 @@ fn on_completion(
                     );
                     let client_handle = client.handle();
                     lsp.on_client_operation(client_handle, op);
-                    return true;
+                    return false;
                 }
+
                 should_complete = client.completion_triggers().contains(c);
             }
         }
