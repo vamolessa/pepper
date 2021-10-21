@@ -51,4 +51,3 @@ fn on_process_output(
 }
 
 fn on_process_exit(_handle: PluginHandle, _ctx: &mut EditorContext, _client_index: u32) {}
-

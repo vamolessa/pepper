@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 pub trait Serializer {
     fn write(&mut self, bytes: &[u8]);
 }

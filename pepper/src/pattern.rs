@@ -1,4 +1,4 @@
-use std::{convert::TryInto, fmt, num::TryFromIntError, ops::Range, str::Chars};
+use std::{fmt, num::TryFromIntError, ops::Range, str::Chars};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {

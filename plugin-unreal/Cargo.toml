@@ -2,7 +2,7 @@
 name = "pepper-plugin-unreal"
 version = "0.1.0"
 authors = ["Matheus Lessa"]
-edition = "2018"
+edition = "2021"
 description = "Unreal Engine integration plugin for Pepper editor"
 license = "GPL-3.0"
 

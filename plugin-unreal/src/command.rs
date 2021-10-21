@@ -59,4 +59,3 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         Ok(())
     });
 }
-

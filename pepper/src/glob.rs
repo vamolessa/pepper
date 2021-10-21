@@ -1,4 +1,4 @@
-use std::{convert::TryInto, fmt, num::TryFromIntError, str::Chars};
+use std::{fmt, num::TryFromIntError, str::Chars};
 
 #[derive(Debug)]
 pub struct InvalidGlobError;

@@ -2,7 +2,7 @@
 name = "pepper"
 version = "0.16.0"
 authors = ["Matheus Lessa"]
-edition = "2018"
+edition = "2021"
 description = "A simple and opinionated modal code editor for your terminal"
 license = "GPL-3.0"
 
