@@ -136,7 +136,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         ctx.editor
             .status_bar
             .write(MessageKind::Info)
-            .str("unreal: cleaning...");
+            .str("unreal: cleaning build artifacts...");
         Ok(())
     });
 
@@ -168,7 +168,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         ctx.editor
             .status_bar
             .write(MessageKind::Info)
-            .str("unreal: running...");
+            .str("unreal: running game...");
         Ok(())
     });
 }
