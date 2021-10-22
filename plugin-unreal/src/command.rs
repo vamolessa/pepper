@@ -1,4 +1,4 @@
-use std::{fmt::Write, fs, path::Path, process::Stdio};
+use std::{env, fmt::Write, fs, path::Path, process::Stdio};
 
 use pepper::{
     buffer::BufferProperties,
@@ -18,11 +18,29 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     };
 
     r("unreal-project-path", &[], |ctx, io| {
+        let mut current_dir = match env::current_dir() {
+            Ok(path) => path.into_os_string().to_string_lossy().into_owned(),
+            Err(_) => return Err(CommandError::OtherStatic("could not read current dir")),
+        };
+        if !current_dir
+            .chars()
+            .next_back()
+            .map(std::path::is_separator)
+            .unwrap_or(true)
+        {
+            current_dir.push('/');
+        }
+
         let plugin = ctx.plugins.get_as::<UnrealPlugin>(io.plugin_handle());
         plugin.unreal_project_path.clear();
 
         match io.args.try_next() {
-            Some(path) => plugin.unreal_project_path.push_str(path),
+            Some(path) => {
+                if Path::new(path).is_relative() {
+                    plugin.unreal_project_path.push_str(&current_dir);
+                }
+                plugin.unreal_project_path.push_str(path);
+            }
             None => {
                 let mut found = false;
                 if let Ok(entries) = fs::read_dir(".") {
@@ -38,6 +56,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
                         let file_name = entry.file_name();
                         if let Some(path) = file_name.to_str() {
                             if path.ends_with(UNREAL_PROJECT_EXTENSION) {
+                                plugin.unreal_project_path.push_str(&current_dir);
                                 plugin.unreal_project_path.push_str(path);
                                 found = true;
                                 break;
@@ -109,7 +128,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         Ok(())
     });
 
-    r("unreal-compile-clean", &[], |ctx, io| {
+    r("unreal-build-clean", &[], |ctx, io| {
         spawn_process(ctx, io, None, |_, plugin, command| {
             let _ = write!(
                 command,
@@ -126,7 +145,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         Ok(())
     });
 
-    r("unreal-compile-game", &[], |ctx, io| {
+    r("unreal-build-game", &[], |ctx, io| {
         spawn_process(ctx, io, Some("build.log"), |_, plugin, command| {
             let _ = write!(
                 command,
@@ -191,13 +210,9 @@ fn spawn_process(
     io.args.assert_empty()?;
 
     let mut command = command?;
-    command.stdin(Stdio::null());
-    command.stderr(Stdio::null());
 
     match buffer_name {
         Some(buffer_name) => {
-            command.stdout(Stdio::piped());
-
             let client_handle = io.client_handle()?;
             let buffer_view_handle = match ctx.editor.buffer_view_handle_from_path(
                 client_handle,
@@ -224,9 +239,21 @@ fn spawn_process(
 
             let client = ctx.clients.get_mut(client_handle);
             client.set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
+
+            let buffer_handle = buffer.handle();
+            ctx.editor.buffers.spawn_insert_process(
+                &mut ctx.platform,
+                command,
+                buffer_handle,
+                BufferPosition::zero(),
+                None,
+            );
         }
         None => {
+            command.stdin(Stdio::null());
             command.stdout(Stdio::null());
+            command.stderr(Stdio::null());
+
             let request = PlatformRequest::SpawnProcess {
                 tag: ProcessTag::Ignored,
                 command,
