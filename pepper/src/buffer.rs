@@ -1336,14 +1336,16 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if self.path.as_os_str().is_empty() {
-            return Err(BufferReadError::FileNotFound);
-        } else if let Some(mut reader) = help::open(&self.path) {
-            self.content.read(&mut reader)?;
-        } else {
-            let file = File::open(&self.path)?;
-            let mut reader = io::BufReader::new(file);
-            self.content.read(&mut reader)?;
+        if self.properties.can_save && self.properties.is_file {
+            if self.path.as_os_str().is_empty() {
+                return Err(BufferReadError::FileNotFound);
+            } else if let Some(mut reader) = help::open(&self.path) {
+                self.content.read(&mut reader)?;
+            } else {
+                let file = File::open(&self.path)?;
+                let mut reader = io::BufReader::new(file);
+                self.content.read(&mut reader)?;
+            }
         }
 
         self.highlighted.insert_range(BufferRange::between(
@@ -2175,3 +2177,4 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
+
