@@ -10,7 +10,7 @@ use pepper::{
     plugin::{PluginCollection, PluginHandle},
 };
 
-use crate::UnrealPlugin;
+use crate::{UnrealPlugin, UNREAL_PROJECT_EXTENSION};
 
 pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle) {
     let mut r = |name, completions, command_fn| {
@@ -37,7 +37,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
                         }
                         let file_name = entry.file_name();
                         if let Some(path) = file_name.to_str() {
-                            if path.ends_with(".uproject") {
+                            if path.ends_with(UNREAL_PROJECT_EXTENSION) {
                                 plugin.unreal_project_path.push_str(path);
                                 found = true;
                                 break;

@@ -1,10 +1,8 @@
 use std::path::Path;
 
 use pepper::{
-    editor::EditorContext,
     help::HelpPages,
-    platform::PlatformProcessHandle,
-    plugin::{Plugin, PluginDefinition, PluginHandle},
+    plugin::{Plugin, PluginDefinition},
     ResourceFile,
 };
 
@@ -21,14 +19,13 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
         command::register_commands(&mut ctx.editor.commands, handle);
         Some(Plugin {
             data: Box::new(UnrealPlugin::new()),
-            on_process_spawned,
-            on_process_output,
-            on_process_exit,
             ..Default::default()
         })
     },
     help_pages: &HELP_PAGES,
 };
+
+pub(crate) const UNREAL_PROJECT_EXTENSION: &str = ".uproject";
 
 pub(crate) struct UnrealPlugin {
     pub(crate) unreal_project_path: String,
@@ -50,24 +47,7 @@ impl UnrealPlugin {
             Some(name) => name.to_str().unwrap(),
             None => return "",
         };
-        name.trim_end_matches(".uproject")
+        name.trim_end_matches(UNREAL_PROJECT_EXTENSION)
     }
 }
 
-fn on_process_spawned(
-    _handle: PluginHandle,
-    _ctx: &mut EditorContext,
-    _client_index: u32,
-    _process_handle: PlatformProcessHandle,
-) {
-}
-
-fn on_process_output(
-    _plugin_handle: PluginHandle,
-    _ctx: &mut EditorContext,
-    _client_index: u32,
-    _bytes: &[u8],
-) {
-}
-
-fn on_process_exit(_handle: PluginHandle, _ctx: &mut EditorContext, _client_index: u32) {}
