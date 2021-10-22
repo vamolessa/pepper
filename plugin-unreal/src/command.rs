@@ -78,12 +78,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     });
 
     r("unreal-editor-path", &[], |ctx, io| {
-        let path = match io.args.try_next() {
-            Some(path) => path,
-            None => {
-                todo!();
-            }
-        };
+        let path = io.args.next()?;
         io.args.assert_empty()?;
 
         let plugin = ctx.plugins.get_as::<UnrealPlugin>(io.plugin_handle());
