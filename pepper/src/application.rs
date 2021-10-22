@@ -384,3 +384,4 @@ impl Drop for ClientApplication {
         self.restore_screen();
     }
 }
+
