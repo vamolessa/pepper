@@ -71,7 +71,7 @@ syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}|`{(\\)(\`)!`.}]]
 syntax-comments //{.}|/*{!(*/).$}
 
 syntax "**/*.md"
-syntax-keywords [[#{.}$]]
+syntax-keywords ^#{.}
 syntax-symbols %||%!|-
 syntax-literals %[{!%].}%({!%).}
 syntax-strings [[```{!(```).$}|`{!`.}]]

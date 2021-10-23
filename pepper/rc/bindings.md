@@ -17,10 +17,11 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `gh`, `gl`, `gi` | move cursors to first/last/first-non-blank columns |
 | `gk`, `gj` | move cursors to first/last line |
 | `gm` | move cursors to matching bracket |
-| `go` | fuzzy pick from all loaded buffers |
+| `go` | fuzzy pick an opened buffer |
 | `gb` | open previous buffer (if any) |
 | `gB`, `GB` | open the buffer that is open in the previously focused client, then that client opens its previous buffer |
 | `gf` | if the filepath under the cursor exists, open it as a buffer |
+| `gF`, `GF` | if the filepath under the cursor exists, open it as a buffer, then close the current buffer |
 | `]]<char>`, `[[<char>` | move cursors to next/previous `<char>` (inclusive) |
 | `][<char>`, `[]<char>` | move cursors to next/previous `<char>` (exclusive) |
 | `}`, `{` | repeat last find char in forward/backward mode |
@@ -30,7 +31,9 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `zz`, `zj`, `zk` | scroll to center main cursor or frame the main cursor on the bottom/top of screen |
 | `q<char>` | begin recording macro to register `<char>` |
 | `Q<char>` | executes keys recorded in register `<char>` |
-| `rn`, `rp` | move to next/previous diagnostic (requires a running lsp server) |
+| `m<char>` | save current buffer and main cursor position as a marker on register `<char>` |
+| `M<char>` | go to marker on register `<char>` (if it's a valid marker) |
+| `rn`, `rp` | move to next/previous lint (provided by a plugin) |
 
 **NOTE**: the register `a` always contains the last selection+edit keys.
 
@@ -73,13 +76,6 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | --- | --- | --- |
 | `<esc>`, `<c-c>` | `cdcVs<esc>` | keep only main cursor, remove selections, exit selection mode and clears search highlight |
 | `.` | `Qa` | executes auto recorded macro |
-| `K` | `: lsp-hover<enter>` | display hover information (requires a running lsp server) |
-| `gd` | `: lsp-definition<enter>` | jumps to where the symbol under the cursor is defined (requires a running lsp server) |
-| `gr` | `: lsp-references -context=2<enter>` | lists all references of the symbol under the cursor with 2 lines of context (requires a running lsp server) |
-| `gs` | `: lsp-document-symbols<enter>` | lists all symbols in the buffer (requires a running lsp server) |
-| `rr` | `: lsp-rename<enter>` | rename the symbol under the cursor (requires a running lsp server) |
-| `ra` | `: lsp-code-action<enter>` | suggests possible refactors for the region under the cursor (requires a running lsp server) |
-| `rf` | `: lsp-format<enter>` | auto-format the buffer's content (requires a running lsp server) |
 
 ### editing
 
@@ -93,6 +89,9 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `<c-y><lowercase-char>` | copy selected text to register `<char>` |
 | `<c-y><uppercase-char>` | delete selected text and paste the contents of register `<char>` |
 | `u`, `U` | undo/redo |
+| <code>A&#124;</code> | pass each selection as stdin to a command line and substitute each for its stdout |
+| `!` | substitute each selection with the stdout of a command line |
+| `$` | simply execute a command line (ignoring its output) |
 
 | binding | expands to | action |
 | --- | --- | --- |
