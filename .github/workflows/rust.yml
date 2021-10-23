@@ -44,7 +44,7 @@ jobs:
       if: env[format('{0}_install_dependencies', matrix.os)] != ''
       run: ${{ env[format('{0}_install_dependencies', matrix.os)] }}
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --all --verbose
     - name: Build release
       run: cargo build --verbose --release
     - name: Upload ${{ matrix.os }} binary
