@@ -16,5 +16,9 @@ categories = ["command-line-utilities", "text-editors"]
 name = "pepper_plugin_lsp"
 path = "src/lib.rs"
 
+[[bin]]
+name = "pepper"
+path = "src/main.rs"
+
 [dependencies]
 pepper = { path = "../pepper", version = "0" }

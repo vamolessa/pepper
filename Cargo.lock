@@ -14,7 +14,6 @@ version = "0.1.0"
 dependencies = [
  "pepper",
  "pepper-plugin-lsp",
- "pepper-plugin-unreal",
 ]
 
 [[package]]
@@ -28,13 +27,6 @@ dependencies = [
 [[package]]
 name = "pepper-plugin-lsp"
 version = "0.3.2"
-dependencies = [
- "pepper",
-]
-
-[[package]]
-name = "pepper-plugin-unreal"
-version = "0.1.0"
 dependencies = [
  "pepper",
 ]

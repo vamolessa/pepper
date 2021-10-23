@@ -11,4 +11,4 @@ path = "src/main.rs"
 [dependencies]
 pepper = { path = "../pepper" }
 pepper-plugin-lsp = { path = "../plugin-lsp" }
-pepper-plugin-unreal = { path = "../plugin-unreal" }
+

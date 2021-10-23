@@ -16,12 +16,13 @@ categories = ["command-line-utilities", "text-editors"]
 name = "pepper"
 path = "src/lib.rs"
 
+[[bin]]
+name = "pepper"
+path = "src/main.rs"
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winbase", "winerror", "winuser", "errhandlingapi", "stringapiset", "winnls", "consoleapi", "processenv", "handleapi", "synchapi", "ioapiset", "namedpipeapi", "debugapi", "sysinfoapi"] }
 
-[[example]]
-name = "pepper-vanilla"
-path = "examples/vanilla.rs"

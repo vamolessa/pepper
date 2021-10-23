@@ -78,16 +78,10 @@ fn main() {
     config
         .plugin_definitions
         .push(pepper_plugin_lsp::DEFINITION);
-    config
-        .plugin_definitions
-        .push(pepper_plugin_unreal::DEFINITION);
 
     config
         .static_configs
         .push(pepper_plugin_lsp::DEFAULT_BINDINGS_CONFIG);
-    config
-        .static_configs
-        .push(pepper_plugin_unreal::DEFAULT_BINDINGS_CONFIG);
     config.static_configs.push(ResourceFile {
         name: "my.pepper",
         content: "map-normal ga [[: goto-alternate-buffer<enter>]]",

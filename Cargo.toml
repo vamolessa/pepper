@@ -2,9 +2,9 @@
 members = [
     "pepper",
     "plugin-lsp",
-    "plugin-unreal",
     "mine",
 ]
+default-members = ["mine"]
 
 [profile.release]
 debug = true
