@@ -35,7 +35,10 @@ pub static DEFAULT_BINDINGS_CONFIG: ResourceFile = ResourceFile {
     content: include_str!("../rc/default_bindings.pepper"),
 };
 
-static HELP_PAGES: HelpPages = HelpPages::new(&[]);
+static HELP_PAGES: HelpPages = HelpPages::new(&[ResourceFile {
+    name: "lsp_help.md",
+    content: include_str!("../rc/help.md"),
+}]);
 pub static DEFINITION: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
         command::register_commands(&mut ctx.editor.commands, handle);
@@ -486,3 +489,4 @@ fn on_completion(
 
     false
 }
+
