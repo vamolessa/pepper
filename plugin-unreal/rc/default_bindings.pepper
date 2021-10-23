@@ -1,4 +1,0 @@
-map-normal <space>b ": unreal-build-game<enter>"
-map-normal <space>r ": unreal-run-game<enter>"
-map-normal <space>e ": unreal-open-editor<enter>"
-
