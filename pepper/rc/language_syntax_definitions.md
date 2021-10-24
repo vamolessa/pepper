@@ -67,7 +67,7 @@ but also lets the interpreter be non-recursive.
 | `(...)` | matches a sequence of subpatterns |
 | `(!...)` | matches anything except this sequence of subpatterns |
 | `{...}` | tries to match any of these subpatterns as much as possible |
-| <code>A&#124;</code> | if what came before it fails, try again from the beginning with the new pattern to the right. kinda like an logical 'or' |
+| <code>&#124;</code> | if what came before it fails, try again from the beginning with the new pattern to the right. kinda like an logical 'or' |
 
 ### group subpatterns `[...]`
 This will try to match each subpattern inside the brackets in declaration order.
