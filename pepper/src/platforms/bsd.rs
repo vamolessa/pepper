@@ -23,10 +23,6 @@ const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 43;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
-const _IGNORE_SERVER_CONNECTION_BUFFER_LEN: usize = ServerApplication::connection_buffer_len();
-const _IGNORE_CLIENT_CONNECTION_BUFFER_LEN: usize = ClientApplication::connection_buffer_len();
-const _IGNORE_CLIENT_STDIN_BUFFER_LEN: usize = ClientApplication::stdin_buffer_len();
-
 pub fn try_launching_debugger() {}
 
 pub fn main(config: ApplicationConfig) {
@@ -195,6 +191,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
     let kqueue = Kqueue::new();
     kqueue.add(Event::Fd(listener.as_raw_fd()), 0);
     let mut kqueue_events = KqueueEvents::new();
+
+    let _ignore_server_connection_buffer_len = ServerApplication::connection_buffer_len();
 
     loop {
         let kqueue_events = kqueue.wait(&mut kqueue_events, timeout);
@@ -422,7 +420,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
     }
 
     let mut keys = Vec::new();
-    let mut buf = Vec::new();
+    let buf_capacity =
+        ClientApplication::connection_buffer_len().max(ClientApplication::stdin_buffer_len());
+    let mut buf = Vec::with_capacity(buf_capcity);
 
     'main_loop: loop {
         for event in kqueue.wait(&mut kqueue_events, None) {

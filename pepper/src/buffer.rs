@@ -2177,4 +2177,3 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
-
