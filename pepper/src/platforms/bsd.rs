@@ -422,7 +422,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     let mut keys = Vec::new();
     let buf_capacity =
         ClientApplication::connection_buffer_len().max(ClientApplication::stdin_buffer_len());
-    let mut buf = Vec::with_capacity(buf_capcity);
+    let mut buf = Vec::with_capacity(buf_capacity);
 
     'main_loop: loop {
         for event in kqueue.wait(&mut kqueue_events, None) {
@@ -484,3 +484,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
+
