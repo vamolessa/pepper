@@ -23,6 +23,9 @@ const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 43;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
+const _IGNORE_CONNECTION_BUFFER_LEN: usize = ClientApplication::connection_buffer_len();
+const _IGNORE_STDIN_BUFFER_LEN: usize = ClientApplication::stdin_buffer_len();
+
 pub fn try_launching_debugger() {}
 
 pub fn main(config: ApplicationConfig) {
@@ -257,7 +260,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         let tag = process.tag();
                         match process.read(&mut application.ctx.platform.buf_pool) {
                             Ok(None) => (),
-                            Ok(Some(buf)) => events.push(PlatformEvent::ProcessExit { tag }),
+                            Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
                             Err(()) => {
                                 if let Some(fd) = process.try_as_raw_fd() {
                                     kqueue.remove(Event::Fd(fd));
