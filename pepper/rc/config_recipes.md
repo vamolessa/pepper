@@ -7,130 +7,58 @@ Since pepper does not try to load config files from a specific folder at startup
 the best way to emulate this is by creating an alias in your shell profile.
 
 ```
-alias pp='pepper --config ~/.config/pepper'
+alias pp='pepper --config ~/.config/.pepper'
 ```
 
-With this, whenever you type `pp`, pepper will start with sourcing the configs you put inside the file `~/.config/pepper`.
+With this, whenever you type `pp`, pepper will start with sourcing the configs you put inside the file `~/.config/.pepper`.
 This is better because you're in control over not only when pepper loads configs from the disk but also from where it fetches them.
 
-### project config
-It's also easy to load, say, configs that are per project. If you determine that all of your projects that you wish to configure
-individually, will do so through a file named `project.pp` in its root, you can set your pepper alias:
+### per project config
+It's also posssible to setup configs that are per project.
+Place a config file (`.pepper` in this example) in the root directory of your project then change your alias like this:
 
 ```
-alias pp='pepper --config ~/.config/pepper --try-config pepper-project'
+alias pp='pepper --config ~/.config/.pepper --config! .pepper'
 ```
 
-The only difference from `--try-config` to `--config` is that it won't report an error if the config file was not found.
+When invoking `--config` with a `!`, it will not generate an error when the file is not found.
 
-**NOTE**: both `--config` and `--try-config` are repeatable and can be used to load configs from files in different locations.
-The files are sourced in the order they appear in the command line.
+**NOTE**: `--config` (and `--config!`) are repeatable. Thus, they can be used to load configs files at different locations.
+Also, the files are sourced in the order they appear in the command line.
 
 ## keybindings
-You can remap keys with the [`keymap`](command_reference.md#map) command.
+You can remap keys with the [`map-*` commands](command_reference.md#map-normal) command.
 
-With this, you can hit `<c-s>` to save a buffer to a file:
+With this, you can hit `<c-s>` to save a buffer to a file when in `normal` mode:
 ```
 # The `<space>` after `:` makes it so the `save` command is not added to the command history
 map-normal <c-s> :<space>save<enter>
 ```
 
-If you wish to see all the keybindings that are created by default, you can see the builtin [default config](https://github.com/vamolessa/pepper/blob/master/src/default_config.pp).
+If you wish to see all the keybindings that are created by default, you can see the builtin
+[default bindings](default_bindings.pepper).
 
-## run lsp server automatically
-An LSP server is usually started when a file it should handle is opened, normally known from its extension.
-By using the `lsp` command, it's possible to automatically start an LSP server like that.
-For each LSP server you wish to register, add this to one of your config files:
-```
-lsp "lsp-server-command" "**.ext"
-```
-Where `"**.ext"` is a glob pattern that, when matched against a buffer just opened,
-will invoke the LSP server using `"lsp-server-command"`.
-In this case, whenever we open a buffer with extension `.ext`.
+## fuzzy file find
+Pepper ships with a simple fuzzy file finder (bound to `<space>o`) that uses a file finder binary available on each platform
+(`find` on unix and `dir` on windows).
 
-If you wish to inspect/debug the protocol messages, you can pass an extra path argument of a log file:
-```
-lsp "lsp-server-command" "**.ext" my-lsp-server-log.txt
-```
+However, it's possible to customize it by rebinding `<space>o` to another command.
+For example, if you wish to use [`fd`](https://github.com/sharkdp/fd) instead, you can:
 
-You can then open the lsp log at any time with the command `lsp-open-log`.
+`map-normal <space>o ": find-file 'fd -tf --path-separator / .'<enter>"`
 
-You can check a full example with many LSP server configured in my
-[my config repository](https://github.com/vamolessa/pepper-config/blob/master/init.pp#L3).
+Note that it uses the [`find-file`](command_reference.md#find-file) command.
 
-## simple fuzzy file opener (TODO)
-This uses [`fd`](https://github.com/sharkdp/fd) to feed file names to the picker ui which then lets you choose a file to open.
-While in normal mode, you can invoke it with `<c-o>`.
+## simple pattern finder (like grep)
+Pepper ships with a simple pattern finder (bound to `<space>f`) that uses a pattern finder binary available on each platform
+(`grep` on unix and `findstr` on windows).
 
-```
-macro fuzzy-open-file {
-	spawn "fd -tf -0 --path-separator / ." -split-on-byte=0 {
-		# this block executes whenever `fd` returns a new entry (separated by byte 0)
-		# those stdout bytes are placed in register %z
+However, it's possible to customize it by rebinding `<space>f` to another command.
+For example, if you wish to use [`ripgrep`](https://github.com/BurntSushi/ripgrep) instead, you can:
 
-		add-picker-option %z # as entries are found, populate the picker ui
-	}
-	
-	# open the picker ui with the prompt "open:"
-	pick -prompt="open:" {
-		# this block executes once the file is chosen,
-		# and register %z will contain its path
-	
-		open %z # open the chosen file
-	}
-}
-map -normal <c-o> :<space>fuzzy-open-file<enter> # bind fuzzy-open-file macro to `<c-o>`
-```
+`map-normal <space>f [[: find-pattern 'rg --no-ignore-global --path-separator / --line-number "{}"'<enter>]]`
 
-## simple grep (TODO)
-This defines a macro command that will invoke [`ripgrep`](https://github.com/BurntSushi/ripgrep) and then display its results in a new buffer
-from where you can jump to the found locations.
-
-You can use it like `:rg MyStruct` and a buffer will open with all the results.
-Then you can use pepper's builtin `gf` to jump to a filepath under the cursor.
-
-```
-macro rg z {
-	# when this macro is invoked, this block executes and
-	# the register %z will contain its argument
-
-	# open a temp buffer named "rg-find-results.refs"
-	# the ".refs" extension is useful for syntax highlighting
-	open -no-history -no-save -no-word-database "rg-find-results.refs"
-	
-	# delete buffer contents
-	execute-keys <esc>aad
-	
-	# insert text from `rg` stdout when searching for the pattern
-	# given as argument to this macro (register %z)
-	replace-with-output -split-on-byte=10 "rg --line-number --path-separator / --no-ignore-global %z"
-}
-```
-
-**NOTE**: you also use the flag `-auto-close` for the [`open`](command_reference.md#open) command.
-This will automatically close the ripgrep results buffer once you jump out of it.
-
-## simple buffer format (TODO)
-This command will save the current buffer, then call [`rustfmt`](https://github.com/rust-lang/rustfmt) with
-its path as argument. Once `rustfmt` returns, it reloads the buffer contents from file to apply the formatting.
-The `ff` keybind will trigger the command while in normal mode.
-
-```
-macro format {
-	save # save buffer to make sure all changes go to the file system
-	%z = buffer-path # save the current buffer path to register %z
-	
-	# spawn `rustfmt` passing it the current buffer path
-	spawn "rustfmt %z" {
-		reload # once rustfmt finishes, reload contents from the file system
-	}
-}
-map -normal ff :<space>format<enter> # bind format macro to `ff`
-```
-
-**NOTE**: this command may be most useful when defined from a project config
-since you probably want to use a different formatter per project.
-Also, since you're reloadin the buffer contents, you'll lose the buffer's history.
+Note that it uses the [`find-pattern`](command_reference.md#find-pattern) command.
 
 ## vim bindings
 These mappings somewhat emulate basic vanilla vim keybindings.
@@ -138,7 +66,7 @@ However please take note that this will not correctly emulate vim's visual mode,
 some builtin features may become inaccessible without further tweakings and, obviously,
 the experience will *not* be the same of using vim.
 
-If you need 100% vim compatibility, simply use vim.
+Please remember that if you need 100% vim compatibility, you'd better simply use vim.
 
 For more details, check the [builtin keybindigs](bindings.md).
 

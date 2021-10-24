@@ -15,7 +15,7 @@ syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}|%[%[{!(%]%]).}]]
 syntax-comments --{.}|--%[%[{!(%]%]).$}
 ```
 
-You can see a full example of language definitions that [come out-of-the-box](default_config.pp).
+You can see a full example of language definitions that [come out-of-the-box](default_syntaxes.pepper).
 
 Note that there's always a `syntax` command that defines the glob that matches that syntax filepaths.
 Then following the call to `syntax` command, it's possible to override each token pattern using the following commands:
@@ -66,7 +66,7 @@ but also lets the interpreter be non-recursive.
 | `(...)` | matches a sequence of subpatterns |
 | `(!...)` | matches anything except this sequence of subpatterns |
 | `{...}` | tries to match any of these subpatterns as much as possible |
-| `<pipe>` | if what came before it fails, try again from the beginning with the new pattern to the right kinda like an 'or' |
+| <code>A&#124;</code> | if what came before it fails, try again from the beginning with the new pattern to the right kinda like an 'or' |
 
 ### group subpatterns `[...]`
 This will try to match each subpattern inside the brackets in declaration order.
