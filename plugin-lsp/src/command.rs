@@ -169,7 +169,18 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     });
 
     r("lsp-references", &[], |ctx, io| {
-        let context_len = 2;
+        let context_len = match io.args.try_next() {
+            Some(len) => match len.parse() {
+                Ok(len) => len,
+                Err(_) => {
+                    return Err(CommandError::OtherOwned(format!(
+                        "could not parse context-len from '{}'",
+                        len
+                    )))
+                }
+            },
+            None => 2,
+        };
         io.args.assert_empty()?;
 
         let client_handle = io.client_handle()?;
@@ -308,3 +319,4 @@ where
 
     Ok(())
 }
+

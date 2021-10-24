@@ -34,20 +34,21 @@ You can check a full example with many LSP server configured in my
 ## commands
 
 ### `lsp`
-Automatically starts a lsp server when a buffer matching a glob is opened.
+Automatically starts a lsp server (by running `<lsp-command>`) when a buffer matching a glob `<glob>` is opened.
 The lsp command only runs if the server is not already running.
-- usage: `lsp [<flags>] <glob> <lsp-command>`
-- flags:
-  - `-log=<buffer-name>` : redirects the lsp server output to this buffer
-  - `-env=<vars>` : sets environment variables in the form `VAR=<value> VAR=<value>...`
+Optionally it's possible to set a log file where all lsp communication will be dumped into by setting `<log-path>`
+(it can be latter opened with the `lsp-open-log` command).
+- usage: `lsp <lsp-command> <glob> [<log-path>]`
+
+### `lsp-open-log`
+If the lsp server associated with the current buffer is logging to a file, opens it as a buffer
+(if you want to refresh it, use the `reopen` command).
+- usage: `lsp-open-log`
 
 ### `lsp-start`
-Manually starts a lsp server.
-- usage: `lsp-start [<flags>] <lsp-command>`
-- flags:
-  - `-root=<path>` : the root path from where the lsp server will execute
-  - `-log=<buffer-name>` : redirects the lsp server output to this buffer
-  - `-env=<vars>` : sets environment variables in the form `VAR=<value> VAR=<value>...`
+Manually starts a lsp server (by running `<lsp-command>`).
+Optionally it's possible to set a log file where all lsp communication will be dumped into by setting `<log-path>`
+- usage: `lsp-start <lsp-command> [<log-path>]`
 
 ### `lsp-stop`
 Stops the lsp server associated with the current buffer.
@@ -58,22 +59,28 @@ Stops all lsp servers.
 usage: `lsp-stop-all`
 
 ### `lsp-hover`
-Displays lsp hover information for the current buffer's main cursor position.
+Displays lsp hover information for the item under the main cursor.
 - usage: `lsp-hover`
 
 ### `lsp-definition`
-Jumps to the location of the definition of the item under the main cursor found by the lsp server.
+Jumps to the location of the definition of the item under the main cursor.
 - usage: `lsp-definition`
 
+### `lsp-declaration`
+Jumps to the location of the declaration of the item under the main cursor.
+- usage: `lsp-declaration`
+
+### `lsp-implementation`
+Jumps to the location of the implementation of the item under the main cursor.
+- usage: `lsp-implementation`
+
 ### `lsp-references`
-Opens up a buffer with all references of the item under the main cursor found by the lsp server.
-- usage: `lsp-references [<flags>]`
-- flags:
-  - `-context=<number>` : how many lines of context to show. 0 means no context is shown
-  - `-auto-close` : automatically closes buffer when no other client has it in focus
+Opens up a buffer with all references of the item under the main cursor.
+Optionally overrides the `<context-len>` (default is `2`). That is: how many lines above and under each reference to show.
+- usage: `lsp-references [<context-len>]`
 
 ### `lsp-rename`
-Renames the item under the main cursor through the lsp server.
+Renames the item under the main cursor.
 - usage: `lsp-rename`
 
 ### `lsp-code-action`
@@ -85,10 +92,10 @@ Pick and jump to a symbol in the current buffer listed by the lsp server.
 - usage: `lsp-document-symbols`
 
 ### `lsp-workspace-symbols`
-Opens up a buffer with all symbols in the workspace found by the lsp server
-optionally filtered by a query.
+Opens up a buffer with all symbols in the workspace found by the lsp server.
+Optionally pre-filters results with a `<query>`.
 - usage: `lsp-workspace-symbols [<query>]`
 
 ### `lsp-format`
-Format a buffer using the lsp server.
+Format the whole buffer.
 - usage: `lsp-format`
