@@ -9,7 +9,7 @@ license = "GPL-3.0"
 documentation = "https://vamolessa.github.io/pepper/plugin-lsp/rc/help"
 homepage = "https://vamolessa.github.io/pepper"
 repository = "https://github.com/vamolessa/pepper"
-readme = "../README.md"
+readme = "README.md"
 categories = ["command-line-utilities", "text-editors"]
 
 [lib]

@@ -27,14 +27,20 @@ This will not only keep you updated with the latest features/fixes but also supp
 pepper development!
 
 ## using [`cargo`](https://doc.rust-lang.org/cargo/)
-Simply running `cargo install pepper` will get you up and running.
+Simply running `cargo install pepper` will get you the vanilla pepper editor experience.
+
+However, if you also want [LSP](https://microsoft.github.io/language-server-protocol/) support,
+you can run `cargo install pepper-plugin-lsp` which will install the pepper editor together with its lsp plugin.
 
 ## from source
 ```
 cargo install --git https://github.com/vamolessa/pepper
 ```
 
-**NOTE**: installing from source still requires `cargo` (at least it's easier this way).
+**NOTE(1)**: installing from source still requires `cargo` (at least it's easier this way).
+
+**NOTE(2)**: installing from source will actually install the editor with the configurations I use
+(check [my setup](https://github.com/vamolessa/pepper/mine)).
 
 ## if you find a bug or need help
 Please [open an issue](https://github.com/vamolessa/pepper/issues)
