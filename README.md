@@ -40,7 +40,7 @@ cargo install --git https://github.com/vamolessa/pepper
 **NOTE(1)**: installing from source still requires `cargo` (at least it's easier this way).
 
 **NOTE(2)**: installing from source will actually install the editor with the configurations I use
-(check [my setup](https://github.com/vamolessa/pepper/mine)).
+(you can check [my setup](https://github.com/vamolessa/pepper/blob/master/mine/src/main.rs)).
 
 ## if you find a bug or need help
 Please [open an issue](https://github.com/vamolessa/pepper/issues)
