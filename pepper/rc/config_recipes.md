@@ -10,8 +10,8 @@ the best way to emulate this is by creating an alias in your shell profile.
 alias pp='pepper --config ~/.config/.pepper'
 ```
 
-With this, whenever you type `pp`, pepper will start with sourcing the configs you put inside the file `~/.config/.pepper`.
-This is better because you're in control over not only when pepper loads configs from the disk but also from where it fetches them.
+With this, whenever you type `pp`, pepper will start by sourcing the commands you put inside the file `~/.config/.pepper`.
+This way you're in control over from where pepper fetches its config files.
 
 ### per project config
 It's also posssible to setup configs that are per project.
@@ -66,9 +66,9 @@ However please take note that this will not correctly emulate vim's visual mode,
 some builtin features may become inaccessible without further tweakings and, obviously,
 the experience will *not* be the same of using vim.
 
-Please remember that if you need 100% vim compatibility, you'd better simply use vim.
+Please remember that if you need 100% vim compatibility, it's just better to simply use vim.
 
-For more details, check the [builtin keybindigs](bindings.md).
+For more keybinding details, check the [builtin keybindigs](bindings.md).
 
 ```
 map-normal gg gk
