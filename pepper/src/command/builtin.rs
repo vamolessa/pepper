@@ -69,7 +69,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             write.str(arg);
         }
         while let Some(arg) = io.args.try_next() {
-            write.str(" ");
+            write.str("\n");
             write.str(arg);
         }
         Ok(())
