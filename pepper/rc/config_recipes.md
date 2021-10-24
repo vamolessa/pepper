@@ -7,7 +7,11 @@ Since pepper does not try to load config files from a specific folder at startup
 the best way to emulate this is by creating an alias in your shell profile.
 
 ```
+# unix shell
 alias pp='pepper --config ~/.config/.pepper'
+
+# windows cmd
+doskey /exename=cmd.exe pp=pepper --config "%HOME%/pepper-config/.pepper" $*
 ```
 
 With this, whenever you type `pp`, pepper will start by sourcing the commands you put inside the file `~/.config/.pepper`.
