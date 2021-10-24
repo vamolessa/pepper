@@ -1,7 +1,7 @@
 <!-- {% raw %} -->
 
 Pepper language syntax definitions are minimalistic.
-That is, it's just a collection of patterns for each token kind.
+That is, it's just a collection of patterns for each kind of token.
 These token kinds control which theme color to use when rendering that token.
 
 Here's an example of syntax definition for the lua language:
@@ -25,6 +25,7 @@ Then following the call to `syntax` command, it's possible to override each toke
 - `syntax-literals`
 - `syntax-strings`
 - `syntax-comments`
+- `syntax-texts`
 Each of these commands takes a single pattern argument.
 
 Also, if a syntax can't match a token to a text slice, it will assume a `text` token kind which is used for normal text.
@@ -66,7 +67,7 @@ but also lets the interpreter be non-recursive.
 | `(...)` | matches a sequence of subpatterns |
 | `(!...)` | matches anything except this sequence of subpatterns |
 | `{...}` | tries to match any of these subpatterns as much as possible |
-| <code>A&#124;</code> | if what came before it fails, try again from the beginning with the new pattern to the right kinda like an 'or' |
+| <code>A&#124;</code> | if what came before it fails, try again from the beginning with the new pattern to the right. kinda like an logical 'or' |
 
 ### group subpatterns `[...]`
 This will try to match each subpattern inside the brackets in declaration order.
