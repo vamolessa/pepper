@@ -23,8 +23,9 @@ const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 43;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
-const _IGNORE_CONNECTION_BUFFER_LEN: usize = ClientApplication::connection_buffer_len();
-const _IGNORE_STDIN_BUFFER_LEN: usize = ClientApplication::stdin_buffer_len();
+const _IGNORE_SERVER_CONNECTION_BUFFER_LEN: usize = ServerApplication::connection_buffer_len();
+const _IGNORE_CLIENT_CONNECTION_BUFFER_LEN: usize = ClientApplication::connection_buffer_len();
+const _IGNORE_CLIENT_STDIN_BUFFER_LEN: usize = ClientApplication::stdin_buffer_len();
 
 pub fn try_launching_debugger() {}
 
