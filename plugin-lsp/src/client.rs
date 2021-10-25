@@ -1345,7 +1345,7 @@ pub(crate) mod util {
         }
 
         let buffer = editor.buffers.get(buffer_handle);
-        if !buffer.properties.can_save {
+        if !buffer.properties.saving_enabled {
             return;
         }
 
@@ -1375,7 +1375,7 @@ pub(crate) mod util {
                 continue;
             }
             let buffer = editor.buffers.get(buffer_handle);
-            if !buffer.properties.can_save {
+            if !buffer.properties.saving_enabled {
                 versioned_buffer.flush();
                 continue;
             }
@@ -1446,7 +1446,7 @@ pub(crate) mod util {
         }
 
         let buffer = editor.buffers.get(buffer_handle);
-        if !buffer.properties.can_save {
+        if !buffer.properties.saving_enabled {
             return;
         }
 
@@ -1477,7 +1477,7 @@ pub(crate) mod util {
         }
 
         let buffer = editor.buffers.get(buffer_handle);
-        if !buffer.properties.can_save {
+        if !buffer.properties.saving_enabled {
             return;
         }
 

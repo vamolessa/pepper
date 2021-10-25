@@ -938,27 +938,27 @@ impl From<io::Error> for BufferWriteError {
 
 #[derive(Default)]
 pub struct BufferProperties {
-    pub has_history: bool,
-    pub can_save: bool,
+    pub history_enabled: bool,
+    pub saving_enabled: bool,
     pub is_file: bool,
-    pub uses_word_database: bool,
+    pub word_database_enabled: bool,
 }
 impl BufferProperties {
     pub fn text() -> Self {
         Self {
-            has_history: true,
-            can_save: true,
+            history_enabled: true,
+            saving_enabled: true,
             is_file: true,
-            uses_word_database: true,
+            word_database_enabled: true,
         }
     }
 
     pub fn scratch() -> Self {
         Self {
-            has_history: false,
-            can_save: false,
-            is_file: false,
-            uses_word_database: false,
+            history_enabled: false,
+            saving_enabled: false,
+            is_file: true,
+            word_database_enabled: false,
         }
     }
 }
@@ -1009,7 +1009,7 @@ impl Buffer {
     }
 
     fn remove_all_words_from_database(&mut self, word_database: &mut WordDatabase) {
-        if self.properties.uses_word_database {
+        if self.properties.word_database_enabled {
             for line in &self.content.lines {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.remove(word);
@@ -1054,7 +1054,7 @@ impl Buffer {
     }
 
     pub fn needs_save(&self) -> bool {
-        self.properties.can_save && self.needs_save
+        self.properties.saving_enabled && self.needs_save
     }
 
     pub fn insert_text(
@@ -1076,7 +1076,7 @@ impl Buffer {
             &mut self.content,
             &mut self.highlighted,
             &mut self.lints,
-            self.properties.uses_word_database,
+            self.properties.word_database_enabled,
             word_database,
             position,
             text,
@@ -1084,7 +1084,7 @@ impl Buffer {
 
         events.enqueue_buffer_insert(self.handle, range, text);
 
-        if self.properties.has_history {
+        if self.properties.history_enabled {
             self.history.add_edit(Edit {
                 kind: EditKind::Insert,
                 range,
@@ -1152,7 +1152,7 @@ impl Buffer {
         let from = range.from;
         let to = range.to;
 
-        if self.properties.has_history {
+        if self.properties.history_enabled {
             fn add_history_delete_line(buffer: &mut Buffer, from: BufferPosition) {
                 let line = buffer.content.lines()[from.line_index as usize].as_str();
                 let range = BufferRange::between(
@@ -1198,7 +1198,7 @@ impl Buffer {
             &mut self.content,
             &mut self.highlighted,
             &mut self.lints,
-            self.properties.uses_word_database,
+            self.properties.word_database_enabled,
             word_database,
             range,
         );
@@ -1272,7 +1272,7 @@ impl Buffer {
         let content = &mut self.content;
         let highlighted = &mut self.highlighted;
         let lints = &mut self.lints;
-        let uses_word_database = self.properties.uses_word_database;
+        let uses_word_database = self.properties.word_database_enabled;
 
         let edits = selector(&mut self.history);
         for edit in edits.clone() {
@@ -1327,19 +1327,22 @@ impl Buffer {
         self.history.clear();
         self.search_ranges.clear();
 
-        if !self.properties.can_save || !self.properties.is_file {
+        if !self.properties.saving_enabled {
             return Ok(());
         }
 
         self.needs_save = false;
+        events.enqueue(EditorEvent::BufferRead {
+            handle: self.handle,
+        });
+
+        if !self.properties.is_file {
+            return Ok(());
+        }
 
         self.remove_all_words_from_database(word_database);
         self.content.clear();
         self.highlighted.clear();
-
-        events.enqueue(EditorEvent::BufferRead {
-            handle: self.handle,
-        });
 
         if self.path.as_os_str().is_empty() {
             return Err(BufferReadError::FileNotFound);
@@ -1356,7 +1359,7 @@ impl Buffer {
             BufferPosition::line_col((self.content.lines.len() - 1) as _, 0),
         ));
 
-        if self.properties.uses_word_database {
+        if self.properties.word_database_enabled {
             for line in &self.content.lines {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.add(word);
@@ -1374,7 +1377,7 @@ impl Buffer {
     ) -> Result<(), BufferWriteError> {
         let new_path = match new_path {
             Some(path) => {
-                self.properties.can_save = true;
+                self.properties.saving_enabled = true;
                 self.properties.is_file = true;
                 self.path.clear();
                 self.path.push(path);
@@ -1383,7 +1386,7 @@ impl Buffer {
             None => false,
         };
 
-        if !self.properties.can_save {
+        if !self.properties.saving_enabled {
             return Ok(());
         }
 

@@ -612,7 +612,7 @@ impl WorkspaceEdit {
                         None => {
                             let buffer = editor.buffers.add_new();
                             buffer.properties = BufferProperties::scratch();
-                            buffer.properties.can_save = true;
+                            buffer.properties.saving_enabled = true;
                             buffer.properties.is_file = true;
                             buffer.path.clear();
                             buffer.path.push(path);

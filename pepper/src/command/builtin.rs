@@ -93,17 +93,24 @@ pub fn register_commands(commands: &mut CommandManager) {
 
     r("open", &[CompletionSource::Files], |ctx, io| {
         let path = io.args.next()?;
-        let mode = io.args.try_next().unwrap_or("");
-        io.args.assert_empty()?;
+
+        let mut properties = BufferProperties::text();
+        while let Some(property) = io.args.try_next() {
+            match property {
+                "text" => properties = BufferProperties::text(),
+                "scratch" => properties = BufferProperties::scratch(),
+                "history-enabled" => properties.history_enabled = true,
+                "history-disabled" => properties.history_enabled = false,
+                "saving-enabled" => properties.saving_enabled = true,
+                "saving-disabled" => properties.saving_enabled = false,
+                "word-database-enabled" => properties.word_database_enabled = true,
+                "word-database-disabled" => properties.word_database_enabled = false,
+                _ => return Err(CommandError::NoSuchBufferProperty),
+            }
+        }
 
         let client_handle = io.client_handle()?;
         let (path, position) = parse_path_and_position(path);
-
-        let properties = match mode {
-            "" | "text" => BufferProperties::text(),
-            "scratch" => BufferProperties::scratch(),
-            _ => return Err(CommandError::InvalidBufferMode),
-        };
 
         let path = Path::new(&path);
         match ctx.editor.buffer_view_handle_from_path(
@@ -158,7 +165,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let mut count = 0;
         for buffer in ctx.editor.buffers.iter_mut() {
-            if buffer.properties.can_save {
+            if buffer.properties.saving_enabled {
                 buffer
                     .write_to_file(None, &mut ctx.editor.events)
                     .map_err(CommandError::BufferWriteError)?;
@@ -428,3 +435,4 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
+

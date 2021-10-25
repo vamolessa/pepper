@@ -33,11 +33,19 @@ Opens buffer up for editting.
 If file `<path>` exists, it will be loaded into the buffer's content.
 Also, if `<path>` ends with `:<line>[,<column>]`, it will be opened at that location.
 
-If `<mode>` is present, the opened buffer will have properties depending on its value:
-- `text` (default) : undo history enabled, save enabled
-- `scratch` : undo history disabled, save disabled
+A buffer has a set of properties that can be changed when opening it:
+- `history-enabled`, `history-disabled`: enables/disables undo history (enabled by default)
+- `saving-enabled`, `saving-disabled`: enables/disables saving (enabled by default)
+- `word-database-enabled`, `word-database-disabled`: enables/disables contributing words for the word database (builtin autocomplete) (enabled by default)
 
-- usage: `open <path> [<mode>]`
+It's also possible to change these properties in batch by passing:
+- `text`: will enable all properties
+- `scratch`: will disable all properties
+
+Note that the property evaluation order is the same as the order of the arguments.
+That is, calling `open my-buffer history-enabled scratch` will actually open `my-buffer` with undo history disabled!
+
+- usage: `open <path> [<properties...>]`
 - default alias: `o`
 
 ## `save`
