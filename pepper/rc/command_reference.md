@@ -34,7 +34,7 @@ If file `<path>` exists, it will be loaded into the buffer's content.
 Also, if `<path>` ends with `:<line>[,<column>]`, it will be opened at that location.
 
 If `<mode>` is present, the opened buffer will have properties depending on its value:
-- `<mode>` not present : undo history enabled, save enabled
+- `text` (default) : undo history enabled, save enabled
 - `scratch` : undo history disabled, save disabled
 
 - usage: `open <path> [<mode>]`
