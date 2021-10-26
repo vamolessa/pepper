@@ -1,13 +1,14 @@
 # gifs
 
-![main screenshot](main.png)
+![main screenshot](main.gif)
 
 ![selections](selections.gif)
 
-![occurrences](occurrences.gif)
+![swap selections](swap-selections.gif)
+
+![word occurrences](word-occurrences.gif)
 
 ![macros](macros.gif)
 
-![api](api.gif)
+![external commands](external-commands.gif)
 
-![commands](commands.gif)
