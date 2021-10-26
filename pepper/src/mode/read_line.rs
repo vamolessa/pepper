@@ -12,7 +12,6 @@ use crate::{
     mode::{ModeKind, ModeState},
     pattern::Pattern,
     platform::{PlatformRequest, PooledBuf, ProcessTag},
-    plugin::PluginHandle,
     word_database::WordDatabase,
 };
 
@@ -23,7 +22,6 @@ pub struct State {
         &mut KeysIterator,
         ReadLinePoll,
     ) -> Option<EditorControlFlow>,
-    pub plugin_handle: Option<PluginHandle>,
     previous_position: BufferPosition,
     find_pattern_command: String,
     find_pattern_buffer_handle: Option<BufferHandle>,
@@ -76,7 +74,6 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _, _| Some(EditorControlFlow::Continue),
-            plugin_handle: None,
             previous_position: BufferPosition::zero(),
             find_pattern_command: String::new(),
             find_pattern_buffer_handle: None,
@@ -91,13 +88,12 @@ impl ModeState for State {
     }
 
     fn on_exit(editor: &mut Editor) {
-        let state = &mut editor.mode.read_line_state;
-        state.plugin_handle = None;
-        state.find_pattern_command.clear();
+        editor.mode.plugin_handle = None;
+        editor.mode.read_line_state.find_pattern_command.clear();
         editor.read_line.input_mut().clear();
     }
 
-    fn on_client_keys(
+    fn on_keys(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,

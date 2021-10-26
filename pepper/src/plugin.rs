@@ -19,7 +19,6 @@ pub struct PluginDefinition {
 }
 
 pub struct Plugin {
-    pub name: &'static str,
     pub data: Box<dyn Any>,
     pub on_editor_events: fn(PluginHandle, &mut EditorContext),
     pub on_process_spawned: fn(PluginHandle, &mut EditorContext, u32, PlatformProcessHandle),
@@ -30,7 +29,6 @@ pub struct Plugin {
 impl Default for Plugin {
     fn default() -> Self {
         Self {
-            name: "",
             data: Box::new(()),
             on_editor_events: |_, _| (),
             on_process_spawned: |_, _, _, _| (),

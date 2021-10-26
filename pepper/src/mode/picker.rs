@@ -8,7 +8,6 @@ use crate::{
     mode::{ModeKind, ModeState},
     picker::Picker,
     platform::{Key, PlatformRequest, ProcessTag},
-    plugin::PluginHandle,
     word_database::WordIndicesIter,
 };
 
@@ -19,7 +18,6 @@ pub struct State {
         &mut KeysIterator,
         ReadLinePoll,
     ) -> Option<EditorControlFlow>,
-    pub plugin_handle: Option<PluginHandle>,
     find_file_waiting_for_process: bool,
     find_file_buf: Vec<u8>,
 }
@@ -87,7 +85,6 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _, _| Some(EditorControlFlow::Continue),
-            plugin_handle: None,
             find_file_waiting_for_process: false,
             find_file_buf: Vec::new(),
         }
@@ -100,13 +97,13 @@ impl ModeState for State {
     }
 
     fn on_exit(editor: &mut Editor) {
-        editor.mode.picker_state.plugin_handle = None;
+        editor.mode.plugin_handle = None;
         editor.mode.picker_state.find_file_waiting_for_process = false;
         editor.read_line.input_mut().clear();
         editor.picker.clear();
     }
 
-    fn on_client_keys(
+    fn on_keys(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,

@@ -43,7 +43,6 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
         command::register_commands(&mut ctx.editor.commands, handle);
         Some(Plugin {
-            name: "lsp",
             data: Box::new(LspPlugin::default()),
             on_editor_events,
             on_process_spawned,

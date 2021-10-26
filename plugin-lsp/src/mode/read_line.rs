@@ -22,7 +22,7 @@ pub fn enter_rename_mode(
         match poll {
             ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
             ReadLinePoll::Submitted => {
-                if let Some(handle) = ctx.editor.mode.read_line_state.plugin_handle {
+                if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) = lsp
                         .read_line_client_handle
@@ -37,7 +37,7 @@ pub fn enter_rename_mode(
                 Some(EditorControlFlow::Continue)
             }
             ReadLinePoll::Canceled => {
-                if let Some(handle) = ctx.editor.mode.read_line_state.plugin_handle {
+                if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) = lsp
                         .read_line_client_handle
@@ -56,9 +56,8 @@ pub fn enter_rename_mode(
 
     editor.read_line.set_prompt("rename:");
 
-    let state = &mut editor.mode.read_line_state;
-    state.on_client_keys = on_client_keys;
-    state.plugin_handle = Some(plugin_handle);
+    editor.mode.plugin_handle = Some(plugin_handle);
+    editor.mode.read_line_state.on_client_keys = on_client_keys;
     editor.enter_mode(ModeKind::ReadLine);
     editor.read_line.input_mut().push_str(placeholder);
 

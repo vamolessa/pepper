@@ -52,7 +52,7 @@ impl ModeState for State {
         editor.picker.clear();
     }
 
-    fn on_client_keys(
+    fn on_keys(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,

@@ -17,12 +17,14 @@ pub enum MatchResult<'a> {
 
 #[derive(Debug)]
 pub enum ParseKeyMapError {
+    CantRemapPluginMode,
     From(KeyParseAllError),
     To(KeyParseAllError),
 }
 impl fmt::Display for ParseKeyMapError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::CantRemapPluginMode => write!(f, "can not remap plugin mode"),
             Self::From(error) => write!(f, "invalid 'from' binding '{}'", error),
             Self::To(error) => write!(f, "invalid 'to' binding '{}'", error),
         }
@@ -42,7 +44,7 @@ pub struct KeyMapCollection {
 impl KeyMapCollection {
     pub fn parse_and_map(
         &mut self,
-        mode_kind: ModeKind,
+        mode: ModeKind,
         from: &str,
         to: &str,
     ) -> Result<(), ParseKeyMapError> {
@@ -57,12 +59,16 @@ impl KeyMapCollection {
             Ok(keys)
         }
 
+        if let ModeKind::Plugin = mode {
+            return Err(ParseKeyMapError::CantRemapPluginMode);
+        }
+
         let map = KeyMap {
             from: parse_keys(from).map_err(ParseKeyMapError::From)?,
             to: parse_keys(to).map_err(ParseKeyMapError::To)?,
         };
 
-        let maps = &mut self.maps[mode_kind as usize];
+        let maps = &mut self.maps[mode as usize];
         for m in maps.iter_mut() {
             if m.from == map.from {
                 m.to = map.to;
@@ -74,8 +80,12 @@ impl KeyMapCollection {
         Ok(())
     }
 
-    pub fn matches<'a>(&'a self, mode_kind: ModeKind, keys: &[Key]) -> MatchResult<'a> {
-        let maps = &self.maps[mode_kind as usize];
+    pub fn matches<'a>(&'a self, mode: ModeKind, keys: &[Key]) -> MatchResult<'a> {
+        if let ModeKind::Plugin = mode {
+            return MatchResult::None;
+        }
+
+        let maps = &self.maps[mode as usize];
 
         let mut has_prefix = false;
         for map in maps {
@@ -500,3 +510,4 @@ mod tests {
         );
     }
 }
+

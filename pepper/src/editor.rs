@@ -343,7 +343,7 @@ impl Editor {
             }
             let from_index = ctx.editor.recording_macro.map(|_| keys.index);
 
-            match Mode::on_client_keys(ctx, client_handle, &mut keys) {
+            match Mode::on_keys(ctx, client_handle, &mut keys) {
                 None => return EditorControlFlow::Continue,
                 Some(EditorControlFlow::Continue) => (),
                 Some(flow) => {

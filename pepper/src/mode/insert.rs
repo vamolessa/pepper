@@ -27,7 +27,7 @@ impl ModeState for State {
         cancel_completion(editor);
     }
 
-    fn on_client_keys(
+    fn on_keys(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
