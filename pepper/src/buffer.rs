@@ -1324,26 +1324,21 @@ impl Buffer {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> Result<(), BufferReadError> {
+        self.needs_save = false;
         self.history.clear();
         self.search_ranges.clear();
-
-        if !self.properties.saving_enabled {
-            return Ok(());
-        }
-
-        self.needs_save = false;
-        self.highlighted.clear();
 
         events.enqueue(EditorEvent::BufferRead {
             handle: self.handle,
         });
 
-        if !self.properties.is_file {
+        if !self.properties.saving_enabled || !self.properties.is_file {
             return Ok(());
         }
 
         self.remove_all_words_from_database(word_database);
         self.content.clear();
+        self.highlighted.clear();
 
         if self.path.as_os_str().is_empty() {
             return Err(BufferReadError::FileNotFound);
@@ -2184,3 +2179,4 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
+
