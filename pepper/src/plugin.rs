@@ -4,7 +4,7 @@ use crate::{
     buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
     client::ClientHandle,
-    editor::{EditorContext, EditorControlFlow},
+    editor::{EditorContext, EditorFlow, KeysIterator},
     help,
     platform::PlatformProcessHandle,
     ResourceFile,
@@ -28,7 +28,12 @@ pub struct Plugin {
     pub on_process_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
     pub on_process_exit: fn(PluginHandle, &mut EditorContext, u32),
 
-    pub on_keys: fn(PluginHandle, &mut EditorContext) -> Option<EditorControlFlow>,
+    pub on_keys: fn(
+        PluginHandle,
+        &mut EditorContext,
+        client_handle: ClientHandle,
+        keys: &mut KeysIterator,
+    ) -> Option<EditorFlow>,
     pub on_completion: fn(PluginHandle, &mut EditorContext, &CompletionContext) -> bool,
 }
 impl Default for Plugin {
@@ -42,7 +47,7 @@ impl Default for Plugin {
             on_process_output: |_, _, _, _| (),
             on_process_exit: |_, _, _| (),
 
-            on_keys: |_, _| None,
+            on_keys: |_, _, _, _| None,
             on_completion: |_, _, _| false,
         }
     }

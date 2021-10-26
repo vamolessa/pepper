@@ -3,7 +3,7 @@ use std::fs;
 use crate::{
     client::ClientHandle,
     command::{CommandManager, CommandTokenizer, CompletionSource},
-    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{ModeKind, ModeState},
     picker::Picker,
@@ -56,7 +56,7 @@ impl ModeState for State {
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         let state = &mut ctx.editor.mode.command_state;
         match ctx.editor.read_line.poll(
             &mut ctx.platform,
@@ -113,7 +113,7 @@ impl ModeState for State {
             }
         }
 
-        Some(EditorControlFlow::Continue)
+        Some(EditorFlow::Continue)
     }
 }
 

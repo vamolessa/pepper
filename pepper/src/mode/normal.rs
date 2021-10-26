@@ -9,7 +9,7 @@ use crate::{
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{ClientHandle, ViewAnchor},
     cursor::{Cursor, CursorCollection},
-    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{hash_bytes, MessageKind, RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     help::HELP_PREFIX,
     mode::{picker, read_line, ModeKind, ModeState},
@@ -81,7 +81,7 @@ impl State {
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         let state = &mut ctx.editor.mode.normal_state;
         let keys_from_index = keys.index;
         match keys.next(&ctx.editor.buffered_keys) {
@@ -779,7 +779,7 @@ impl State {
                     .commit_edits();
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Char('i') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
@@ -791,7 +791,7 @@ impl State {
 
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
                 ctx.editor.enter_mode(ModeKind::Insert);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Char('<') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
@@ -836,7 +836,7 @@ impl State {
 
                 buffer.commit_edits();
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Char('>') => {
                 let cursor_count = ctx.editor.buffer_views.get(handle).cursors[..].len();
@@ -870,7 +870,7 @@ impl State {
 
                 buffer.commit_edits();
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Char('c' | 'C') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return None,
@@ -1079,7 +1079,7 @@ impl State {
                 ctx.platform.read_from_clipboard(&mut text);
                 paste_text(ctx, handle, &text);
                 ctx.editor.string_pool.release(text);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Ctrl('y') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return None,
@@ -1102,7 +1102,7 @@ impl State {
                             let text = ctx.editor.string_pool.acquire_with(register);
                             paste_text(ctx, handle, &text);
                             ctx.editor.string_pool.release(text);
-                            return Some(EditorControlFlow::Continue);
+                            return Some(EditorFlow::Continue);
                         }
                     }
                 }
@@ -1118,7 +1118,7 @@ impl State {
                     &mut ctx.editor.events,
                 );
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Char('U') => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
@@ -1128,14 +1128,14 @@ impl State {
                     &mut ctx.editor.events,
                 );
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             _ => (),
         }
 
         Self::on_movement_keys(&mut ctx.editor, keys, keys_from_index);
         ctx.editor.mode.normal_state.count = 0;
-        Some(EditorControlFlow::Continue)
+        Some(EditorFlow::Continue)
     }
 }
 
@@ -1167,7 +1167,7 @@ impl ModeState for State {
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         fn show_hovered_lint(
             ctx: &mut EditorContext,
             client_handle: ClientHandle,
@@ -1216,7 +1216,7 @@ impl ModeState for State {
 
         match keys.next(&ctx.editor.buffered_keys) {
             Key::None => handled_keys = true,
-            Key::Ctrl('z') => return Some(EditorControlFlow::Suspend),
+            Key::Ctrl('z') => return Some(EditorFlow::Suspend),
             Key::Char('q') => match ctx.editor.recording_macro.take() {
                 Some(_) => handled_keys = true,
                 None => match keys.next(&ctx.editor.buffered_keys) {
@@ -1243,7 +1243,7 @@ impl ModeState for State {
                                 match ctx.editor.buffered_keys.parse(keys) {
                                     Ok(keys) => {
                                         match Editor::execute_keys(ctx, client_handle, keys) {
-                                            EditorControlFlow::Continue => (),
+                                            EditorFlow::Continue => (),
                                             flow => return Some(flow),
                                         }
                                     }
@@ -1381,7 +1381,7 @@ impl ModeState for State {
             Key::Char(c) => {
                 if let Some(n) = c.to_digit(10) {
                     state.count = state.count.saturating_mul(10).saturating_add(n);
-                    return Some(EditorControlFlow::Continue);
+                    return Some(EditorFlow::Continue);
                 }
             }
             _ => (),
@@ -1391,7 +1391,7 @@ impl ModeState for State {
             let state = &mut ctx.editor.mode.normal_state;
             state.is_recording_auto_macro = false;
             state.count = 0;
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         } else {
             match ctx.clients.get(client_handle).buffer_view_handle() {
                 Some(buffer_view_handle) => {
@@ -1415,7 +1415,7 @@ impl ModeState for State {
                     );
                     op
                 }
-                None => Some(EditorControlFlow::Continue),
+                None => Some(EditorFlow::Continue),
             }
         }
     }

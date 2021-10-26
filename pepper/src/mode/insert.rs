@@ -4,7 +4,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::ClientHandle,
-    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::AUTO_MACRO_REGISTER,
     mode::{ModeKind, ModeState},
     platform::Key,
@@ -31,12 +31,12 @@ impl ModeState for State {
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         let handle = match ctx.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => {
                 ctx.editor.enter_mode(ModeKind::default());
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
         };
 
@@ -52,7 +52,7 @@ impl ModeState for State {
                     .get_mut(buffer_view.buffer_handle)
                     .commit_edits();
                 ctx.editor.enter_mode(ModeKind::default());
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Left => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
@@ -62,7 +62,7 @@ impl ModeState for State {
                     ctx.editor.config.tab_size,
                 );
                 cancel_completion(&mut ctx.editor);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Down => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
@@ -72,7 +72,7 @@ impl ModeState for State {
                     ctx.editor.config.tab_size,
                 );
                 cancel_completion(&mut ctx.editor);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Up => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
@@ -82,7 +82,7 @@ impl ModeState for State {
                     ctx.editor.config.tab_size,
                 );
                 cancel_completion(&mut ctx.editor);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Right => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
@@ -92,7 +92,7 @@ impl ModeState for State {
                     ctx.editor.config.tab_size,
                 );
                 cancel_completion(&mut ctx.editor);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Tab => {
                 static SPACES_BUF: &[u8; u8::MAX as usize] = &[b' '; u8::MAX as usize];
@@ -198,18 +198,18 @@ impl ModeState for State {
             }
             Key::Ctrl('n') => {
                 apply_completion(ctx, client_handle, handle, 1);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
             Key::Ctrl('p') => {
                 apply_completion(ctx, client_handle, handle, -1);
-                return Some(EditorControlFlow::Continue);
+                return Some(EditorFlow::Continue);
             }
-            _ => return Some(EditorControlFlow::Continue),
+            _ => return Some(EditorFlow::Continue),
         };
 
         ctx.trigger_event_handlers();
         update_completions(ctx, client_handle, handle);
-        Some(EditorControlFlow::Continue)
+        Some(EditorFlow::Continue)
     }
 }
 

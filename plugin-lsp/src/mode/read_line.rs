@@ -1,6 +1,6 @@
 use pepper::{
     client::ClientHandle,
-    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::ReadLinePoll,
     mode::ModeKind,
     plugin::PluginHandle,
@@ -18,9 +18,9 @@ pub fn enter_rename_mode(
         _: ClientHandle,
         _: &mut KeysIterator,
         poll: ReadLinePoll,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         match poll {
-            ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
+            ReadLinePoll::Pending => Some(EditorFlow::Continue),
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
@@ -34,7 +34,7 @@ pub fn enter_rename_mode(
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
@@ -49,7 +49,7 @@ pub fn enter_rename_mode(
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
         }
     }

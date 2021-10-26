@@ -1,6 +1,6 @@
 use crate::{
     client::ClientHandle,
-    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     plugin::PluginHandle,
 };
 
@@ -17,7 +17,7 @@ pub(crate) trait ModeState {
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
-    ) -> Option<EditorControlFlow>;
+    ) -> Option<EditorFlow>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -83,7 +83,7 @@ impl Mode {
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         match ctx.editor.mode.kind {
             ModeKind::Normal => normal::State::on_keys(ctx, client_handle, keys),
             ModeKind::Insert => insert::State::on_keys(ctx, client_handle, keys),
@@ -93,7 +93,7 @@ impl Mode {
             ModeKind::Plugin => match ctx.editor.mode.plugin_handle {
                 Some(plugin_handle) => {
                     let on_keys = ctx.plugins.get(plugin_handle).on_keys;
-                    on_keys(plugin_handle, ctx)
+                    on_keys(plugin_handle, ctx, client_handle, keys)
                 }
                 None => {
                     Mode::change_to(&mut ctx.editor, ModeKind::default());

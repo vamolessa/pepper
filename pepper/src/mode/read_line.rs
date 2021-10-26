@@ -6,7 +6,7 @@ use crate::{
     buffer_view::CursorMovementKind,
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
-    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll, ResidualStrBytes},
     events::EditorEventQueue,
     mode::{ModeKind, ModeState},
@@ -21,7 +21,7 @@ pub struct State {
         ClientHandle,
         &mut KeysIterator,
         ReadLinePoll,
-    ) -> Option<EditorControlFlow>,
+    ) -> Option<EditorFlow>,
     previous_position: BufferPosition,
     find_pattern_command: String,
     find_pattern_buffer_handle: Option<BufferHandle>,
@@ -73,7 +73,7 @@ impl State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _, _| Some(EditorControlFlow::Continue),
+            on_client_keys: |_, _, _, _| Some(EditorFlow::Continue),
             previous_position: BufferPosition::zero(),
             find_pattern_command: String::new(),
             find_pattern_buffer_handle: None,
@@ -97,7 +97,7 @@ impl ModeState for State {
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         let poll = ctx.editor.read_line.poll(
             &mut ctx.platform,
             &mut ctx.editor.string_pool,
@@ -120,7 +120,7 @@ pub mod search {
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<EditorControlFlow> {
+        ) -> Option<EditorFlow> {
             match poll {
                 ReadLinePoll::Pending => {
                     update_search(ctx, client_handle);
@@ -157,7 +157,7 @@ pub mod search {
                 }
             }
 
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         }
 
         save_current_position(ctx, client_handle);
@@ -245,7 +245,7 @@ pub mod filter_cursors {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
                 on_event_impl(ctx, client_handle, true);
             });
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         };
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
@@ -256,7 +256,7 @@ pub mod filter_cursors {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
                 on_event_impl(ctx, client_handle, false);
             });
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         };
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
@@ -390,7 +390,7 @@ pub mod split_cursors {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
                 on_event_impl(ctx, client_handle, add_matches);
             });
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         };
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
@@ -447,7 +447,7 @@ pub mod split_cursors {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
                 on_event_impl(ctx, client_handle, add_matches);
             });
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         };
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
@@ -568,12 +568,12 @@ pub mod goto {
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<EditorControlFlow> {
+        ) -> Option<EditorFlow> {
             match poll {
                 ReadLinePoll::Pending => {
                     let line_number: usize = match ctx.editor.read_line.input().parse() {
                         Ok(number) => number,
-                        Err(_) => return Some(EditorControlFlow::Continue),
+                        Err(_) => return Some(EditorFlow::Continue),
                     };
                     let line_index = line_number.saturating_sub(1);
 
@@ -602,7 +602,7 @@ pub mod goto {
                     ctx.editor.enter_mode(ModeKind::default());
                 }
             }
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         }
 
         save_current_position(ctx, client_handle);
@@ -621,17 +621,17 @@ pub mod process {
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<EditorControlFlow> {
+        ) -> Option<EditorFlow> {
             match poll {
-                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
+                ReadLinePoll::Pending => Some(EditorFlow::Continue),
                 ReadLinePoll::Submitted => {
                     spawn_process(ctx, client_handle, true);
                     ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorControlFlow::Continue)
+                    Some(EditorFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorControlFlow::Continue)
+                    Some(EditorFlow::Continue)
                 }
             }
         }
@@ -647,17 +647,17 @@ pub mod process {
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<EditorControlFlow> {
+        ) -> Option<EditorFlow> {
             match poll {
-                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
+                ReadLinePoll::Pending => Some(EditorFlow::Continue),
                 ReadLinePoll::Submitted => {
                     spawn_process(ctx, client_handle, false);
                     ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorControlFlow::Continue)
+                    Some(EditorFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorControlFlow::Continue)
+                    Some(EditorFlow::Continue)
                 }
             }
         }
@@ -673,9 +673,9 @@ pub mod process {
             _: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<EditorControlFlow> {
+        ) -> Option<EditorFlow> {
             match poll {
-                ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
+                ReadLinePoll::Pending => Some(EditorFlow::Continue),
                 ReadLinePoll::Submitted => {
                     let command = ctx.editor.read_line.input();
                     if let Some(mut command) = parse_process_command(command) {
@@ -693,11 +693,11 @@ pub mod process {
                     }
 
                     ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorControlFlow::Continue)
+                    Some(EditorFlow::Continue)
                 }
                 ReadLinePoll::Canceled => {
                     ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorControlFlow::Continue)
+                    Some(EditorFlow::Continue)
                 }
             }
         }
@@ -776,13 +776,13 @@ pub mod find_pattern {
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<EditorControlFlow> {
+        ) -> Option<EditorFlow> {
             match poll {
-                ReadLinePoll::Pending => return Some(EditorControlFlow::Continue),
+                ReadLinePoll::Pending => return Some(EditorFlow::Continue),
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
                     ctx.editor.enter_mode(ModeKind::default());
-                    return Some(EditorControlFlow::Continue);
+                    return Some(EditorFlow::Continue);
                 }
             }
 
@@ -804,7 +804,7 @@ pub mod find_pattern {
                         .status_bar
                         .write(MessageKind::Error)
                         .fmt(format_args!("{}", error));
-                    return Some(EditorControlFlow::Continue);
+                    return Some(EditorFlow::Continue);
                 }
             };
 
@@ -842,7 +842,7 @@ pub mod find_pattern {
                             "invalid find pattern command '{}'",
                             &state.find_pattern_command
                         ));
-                    return Some(EditorControlFlow::Continue);
+                    return Some(EditorFlow::Continue);
                 }
             };
 
@@ -872,7 +872,7 @@ pub mod find_pattern {
             }
 
             ctx.editor.enter_mode(ModeKind::default());
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         }
 
         ctx.editor.read_line.set_prompt(prompt);

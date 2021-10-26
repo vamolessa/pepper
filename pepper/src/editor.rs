@@ -30,7 +30,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy)]
-pub enum EditorControlFlow {
+pub enum EditorFlow {
     Continue,
     Suspend,
     Quit,
@@ -327,7 +327,7 @@ impl Editor {
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         mut keys: KeysIterator,
-    ) -> EditorControlFlow {
+    ) -> EditorFlow {
         let start_index = keys.index;
 
         match ctx.editor.keymaps.matches(
@@ -335,7 +335,7 @@ impl Editor {
             &ctx.editor.buffered_keys.0[start_index..],
         ) {
             MatchResult::None => (),
-            MatchResult::Prefix => return EditorControlFlow::Continue,
+            MatchResult::Prefix => return EditorFlow::Continue,
             MatchResult::ReplaceWith(replaced_keys) => {
                 ctx.editor.buffered_keys.0.truncate(start_index);
                 ctx.editor.buffered_keys.0.extend_from_slice(replaced_keys);
@@ -349,8 +349,8 @@ impl Editor {
             let from_index = ctx.editor.recording_macro.map(|_| keys.index);
 
             match Mode::on_keys(ctx, client_handle, &mut keys) {
-                None => return EditorControlFlow::Continue,
-                Some(EditorControlFlow::Continue) => (),
+                None => return EditorFlow::Continue,
+                Some(EditorFlow::Continue) => (),
                 Some(flow) => {
                     ctx.editor.enter_mode(ModeKind::default());
                     ctx.editor.buffered_keys.0.truncate(start_index);
@@ -371,21 +371,21 @@ impl Editor {
         }
 
         ctx.editor.buffered_keys.0.truncate(start_index);
-        EditorControlFlow::Continue
+        EditorFlow::Continue
     }
 
     pub(crate) fn on_client_event(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         event: ClientEvent,
-    ) -> EditorControlFlow {
+    ) -> EditorFlow {
         match event {
             ClientEvent::Key(target, key) => {
                 let client_handle = match target {
                     TargetClient::Sender => client_handle,
                     TargetClient::Focused => match ctx.clients.focused_client() {
                         Some(handle) => handle,
-                        None => return EditorControlFlow::Continue,
+                        None => return EditorFlow::Continue,
                     },
                 };
 
@@ -404,14 +404,14 @@ impl Editor {
             ClientEvent::Resize(width, height) => {
                 let client = ctx.clients.get_mut(client_handle);
                 client.viewport_size = (width, height);
-                EditorControlFlow::Continue
+                EditorFlow::Continue
             }
             ClientEvent::Command(target, command) => {
                 let client_handle = match target {
                     TargetClient::Sender => client_handle,
                     TargetClient::Focused => match ctx.clients.focused_client() {
                         Some(handle) => handle,
-                        None => return EditorControlFlow::Continue,
+                        None => return EditorFlow::Continue,
                     },
                 };
 
@@ -426,7 +426,7 @@ impl Editor {
                     TargetClient::Sender => client_handle,
                     TargetClient::Focused => match ctx.clients.focused_client() {
                         Some(handle) => handle,
-                        None => return EditorControlFlow::Continue,
+                        None => return EditorFlow::Continue,
                     },
                 };
 
@@ -434,7 +434,7 @@ impl Editor {
                     .get_mut(client_handle)
                     .on_stdin_input(&mut ctx.editor, bytes);
                 ctx.trigger_event_handlers();
-                EditorControlFlow::Continue
+                EditorFlow::Continue
             }
         }
     }

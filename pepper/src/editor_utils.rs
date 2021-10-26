@@ -2,7 +2,7 @@ use std::{fmt, process::Command};
 
 use crate::{
     command::{CommandManager, CommandTokenizer},
-    editor::{BufferedKeys, EditorContext, EditorControlFlow, KeysIterator},
+    editor::{BufferedKeys, EditorContext, EditorFlow, KeysIterator},
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
     platform::{Key, Platform},
@@ -392,7 +392,7 @@ pub fn load_config(
     ctx: &mut EditorContext,
     config_name: &str,
     config_content: &str,
-) -> EditorControlFlow {
+) -> EditorFlow {
     for (line_index, line) in config_content.lines().enumerate() {
         if line.is_empty() || line.starts_with('#') {
             continue;
@@ -404,7 +404,7 @@ pub fn load_config(
 
         match result {
             Ok(flow) => match flow {
-                EditorControlFlow::Continue => (),
+                EditorFlow::Continue => (),
                 _ => return flow,
             },
             Err(error) => {
@@ -423,7 +423,7 @@ pub fn load_config(
         }
     }
 
-    EditorControlFlow::Continue
+    EditorFlow::Continue
 }
 
 #[cfg(test)]

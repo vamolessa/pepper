@@ -7,7 +7,7 @@ use crate::{
     command::{CommandError, CommandIO, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
-    editor::{EditorContext, EditorControlFlow},
+    editor::{EditorContext, EditorFlow},
     editor_utils::MessageKind,
     help,
     mode::{picker, read_line, ModeKind},
@@ -80,14 +80,14 @@ pub fn register_commands(commands: &mut CommandManager) {
         if ctx.clients.iter().count() == 1 {
             io.assert_can_discard_all_buffers(ctx)?;
         }
-        io.flow = EditorControlFlow::Quit;
+        io.flow = EditorFlow::Quit;
         Ok(())
     });
 
     r("quit-all", &[], |ctx, io| {
         io.args.assert_empty()?;
         io.assert_can_discard_all_buffers(ctx)?;
-        io.flow = EditorControlFlow::QuitAll;
+        io.flow = EditorFlow::QuitAll;
         Ok(())
     });
 

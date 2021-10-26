@@ -5,7 +5,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::ClientHandle,
     config::ParseConfigError,
-    editor::{EditorContext, EditorControlFlow},
+    editor::{EditorContext, EditorFlow},
     editor_utils::{MessageKind, ParseKeyMapError},
     events::KeyParseAllError,
     glob::InvalidGlobError,
@@ -97,7 +97,7 @@ pub struct CommandIO<'a> {
 
     pub args: CommandArgs<'a>,
     pub bang: bool,
-    pub flow: EditorControlFlow,
+    pub flow: EditorFlow,
 }
 impl<'a> CommandIO<'a> {
     pub fn client_handle(&self) -> Result<ClientHandle, CommandError> {
@@ -395,7 +395,7 @@ impl CommandManager {
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &mut String,
-    ) -> EditorControlFlow {
+    ) -> EditorFlow {
         match Self::try_eval(ctx, client_handle, command) {
             Ok(flow) => flow,
             Err(error) => {
@@ -403,7 +403,7 @@ impl CommandManager {
                     .status_bar
                     .write(MessageKind::Error)
                     .fmt(format_args!("{}", error));
-                EditorControlFlow::Continue
+                EditorFlow::Continue
             }
         }
     }
@@ -412,7 +412,7 @@ impl CommandManager {
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &mut String,
-    ) -> Result<EditorControlFlow, CommandError> {
+    ) -> Result<EditorFlow, CommandError> {
         if let Some(alias) = CommandTokenizer(command).next() {
             let alias = alias.trim_end_matches('!');
             if let Some(aliased) = ctx.editor.commands.aliases.find(alias) {
@@ -429,7 +429,7 @@ impl CommandManager {
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &str,
-    ) -> Result<EditorControlFlow, CommandError> {
+    ) -> Result<EditorFlow, CommandError> {
         let mut tokenizer = CommandTokenizer(command);
         let command = match tokenizer.next() {
             Some(command) => command,
@@ -449,7 +449,7 @@ impl CommandManager {
             plugin_handle,
             args: CommandArgs(tokenizer),
             bang,
-            flow: EditorControlFlow::Continue,
+            flow: EditorFlow::Continue,
         };
         command_fn(ctx, &mut io)?;
         Ok(io.flow)

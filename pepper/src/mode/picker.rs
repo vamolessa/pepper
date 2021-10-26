@@ -3,7 +3,7 @@ use std::process::Stdio;
 use crate::{
     buffer::BufferProperties,
     client::ClientHandle,
-    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
     mode::{ModeKind, ModeState},
     picker::Picker,
@@ -17,7 +17,7 @@ pub struct State {
         ClientHandle,
         &mut KeysIterator,
         ReadLinePoll,
-    ) -> Option<EditorControlFlow>,
+    ) -> Option<EditorFlow>,
     find_file_waiting_for_process: bool,
     find_file_buf: Vec<u8>,
 }
@@ -84,7 +84,7 @@ impl State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _, _| Some(EditorControlFlow::Continue),
+            on_client_keys: |_, _, _, _| Some(EditorFlow::Continue),
             find_file_waiting_for_process: false,
             find_file_buf: Vec::new(),
         }
@@ -107,7 +107,7 @@ impl ModeState for State {
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         let this = &mut ctx.editor.mode.picker_state;
         let poll = ctx.editor.read_line.poll(
             &mut ctx.platform,
@@ -172,13 +172,13 @@ pub mod opened_buffers {
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<EditorControlFlow> {
+        ) -> Option<EditorFlow> {
             match poll {
-                ReadLinePoll::Pending => return Some(EditorControlFlow::Continue),
+                ReadLinePoll::Pending => return Some(EditorFlow::Continue),
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
                     ctx.editor.enter_mode(ModeKind::default());
-                    return Some(EditorControlFlow::Continue);
+                    return Some(EditorFlow::Continue);
                 }
             }
 
@@ -186,7 +186,7 @@ pub mod opened_buffers {
                 Some((_, entry)) => entry,
                 _ => {
                     ctx.editor.enter_mode(ModeKind::default());
-                    return Some(EditorControlFlow::Continue);
+                    return Some(EditorFlow::Continue);
                 }
             };
 
@@ -203,7 +203,7 @@ pub mod opened_buffers {
             ctx.editor.string_pool.release(path);
 
             ctx.editor.enter_mode(ModeKind::default());
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         }
 
         ctx.editor.read_line.set_prompt("buffer:");
@@ -239,13 +239,13 @@ pub mod find_file {
             client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<EditorControlFlow> {
+        ) -> Option<EditorFlow> {
             match poll {
-                ReadLinePoll::Pending => return Some(EditorControlFlow::Continue),
+                ReadLinePoll::Pending => return Some(EditorFlow::Continue),
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
                     ctx.editor.enter_mode(ModeKind::default());
-                    return Some(EditorControlFlow::Continue);
+                    return Some(EditorFlow::Continue);
                 }
             }
 
@@ -253,7 +253,7 @@ pub mod find_file {
                 Some((_, entry)) => entry,
                 _ => {
                     ctx.editor.enter_mode(ModeKind::default());
-                    return Some(EditorControlFlow::Continue);
+                    return Some(EditorFlow::Continue);
                 }
             };
 
@@ -278,7 +278,7 @@ pub mod find_file {
             ctx.editor.string_pool.release(path);
 
             ctx.editor.enter_mode(ModeKind::default());
-            Some(EditorControlFlow::Continue)
+            Some(EditorFlow::Continue)
         }
 
         ctx.editor.read_line.set_prompt(prompt);

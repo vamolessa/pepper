@@ -2,7 +2,7 @@ use std::{env, fs, io, mem::ManuallyDrop, panic, path::Path, time::Duration};
 
 use crate::{
     client::ClientManager,
-    editor::{Editor, EditorContext, EditorControlFlow},
+    editor::{Editor, EditorContext, EditorFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
@@ -67,7 +67,7 @@ impl ServerApplication {
 
         for config in &config.static_configs {
             match load_config(&mut ctx, config.name, config.content) {
-                EditorControlFlow::Continue => (),
+                EditorFlow::Continue => (),
                 _ => return None,
             };
         }
@@ -79,7 +79,7 @@ impl ServerApplication {
             }
             match fs::read_to_string(path) {
                 Ok(source) => match load_config(&mut ctx, &config.path, &source) {
-                    EditorControlFlow::Continue => (),
+                    EditorFlow::Continue => (),
                     _ => return None,
                 },
                 Err(_) => ctx
@@ -124,8 +124,8 @@ impl ServerApplication {
 
                     while let Some(event) = events.next(&self.client_event_receiver) {
                         match Editor::on_client_event(&mut self.ctx, handle, event) {
-                            EditorControlFlow::Continue => (),
-                            EditorControlFlow::Suspend => {
+                            EditorFlow::Continue => (),
+                            EditorFlow::Suspend => {
                                 let mut buf = self.ctx.platform.buf_pool.acquire();
                                 ServerEvent::Suspend.serialize(buf.write());
                                 self.ctx
@@ -133,14 +133,14 @@ impl ServerApplication {
                                     .requests
                                     .enqueue(PlatformRequest::WriteToClient { handle, buf });
                             }
-                            EditorControlFlow::Quit => {
+                            EditorFlow::Quit => {
                                 self.ctx
                                     .platform
                                     .requests
                                     .enqueue(PlatformRequest::CloseClient { handle });
                                 break;
                             }
-                            EditorControlFlow::QuitAll => {
+                            EditorFlow::QuitAll => {
                                 self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
                                 break;
                             }

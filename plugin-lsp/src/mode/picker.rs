@@ -5,7 +5,7 @@ use pepper::{
     buffer_position::BufferPosition,
     client::ClientHandle,
     cursor::Cursor,
-    editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{MessageKind, ReadLinePoll},
     mode::ModeKind,
     picker::EntrySource,
@@ -24,9 +24,9 @@ pub fn enter_definition_mode(editor: &mut Editor, plugin_handle: PluginHandle) -
         client_handle: ClientHandle,
         _: &mut KeysIterator,
         poll: ReadLinePoll,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         match poll {
-            ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
+            ReadLinePoll::Pending => Some(EditorFlow::Continue),
             ReadLinePoll::Submitted => {
                 if let Some((_, entry)) = ctx.editor.picker.current_entry(&ctx.editor.word_database)
                 {
@@ -71,11 +71,11 @@ pub fn enter_definition_mode(editor: &mut Editor, plugin_handle: PluginHandle) -
                     ctx.editor.string_pool.release(path);
                 }
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
             ReadLinePoll::Canceled => {
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
         }
     }
@@ -103,9 +103,9 @@ pub fn enter_code_action_mode(
         _: ClientHandle,
         _: &mut KeysIterator,
         poll: ReadLinePoll,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         match poll {
-            ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
+            ReadLinePoll::Pending => Some(EditorFlow::Continue),
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
@@ -122,7 +122,7 @@ pub fn enter_code_action_mode(
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
@@ -135,7 +135,7 @@ pub fn enter_code_action_mode(
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
         }
     }
@@ -165,9 +165,9 @@ pub fn enter_document_symbol_mode(
         client_handle: ClientHandle,
         _: &mut KeysIterator,
         poll: ReadLinePoll,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         match poll {
-            ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
+            ReadLinePoll::Pending => Some(EditorFlow::Continue),
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
@@ -189,7 +189,7 @@ pub fn enter_document_symbol_mode(
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
@@ -202,7 +202,7 @@ pub fn enter_document_symbol_mode(
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
         }
     }
@@ -232,9 +232,9 @@ pub fn enter_workspace_symbol_mode(
         client_handle: ClientHandle,
         _: &mut KeysIterator,
         poll: ReadLinePoll,
-    ) -> Option<EditorControlFlow> {
+    ) -> Option<EditorFlow> {
         match poll {
-            ReadLinePoll::Pending => Some(EditorControlFlow::Continue),
+            ReadLinePoll::Pending => Some(EditorFlow::Continue),
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
@@ -256,7 +256,7 @@ pub fn enter_workspace_symbol_mode(
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
@@ -269,7 +269,7 @@ pub fn enter_workspace_symbol_mode(
                 }
 
                 ctx.editor.enter_mode(ModeKind::default());
-                Some(EditorControlFlow::Continue)
+                Some(EditorFlow::Continue)
             }
         }
     }
