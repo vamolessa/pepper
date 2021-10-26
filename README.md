@@ -2,7 +2,7 @@
 
 ### A simple and opinionated modal code editor for your terminal
 
-![main screenshot](.github/screenshots/main.gif)
+![main screenshot](.github/screenshots/main.png)
 
 [more screenshots](.github/screenshots/)
 
