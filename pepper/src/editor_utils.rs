@@ -388,11 +388,7 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
     Some(command)
 }
 
-pub fn load_config(
-    ctx: &mut EditorContext,
-    config_name: &str,
-    config_content: &str,
-) -> EditorFlow {
+pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &str) -> EditorFlow {
     for (line_index, line) in config_content.lines().enumerate() {
         if line.is_empty() || line.starts_with('#') {
             continue;

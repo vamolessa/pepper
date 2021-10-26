@@ -83,7 +83,6 @@ static REPLACE_CHAR_PLUGIN: PluginDefinition = PluginDefinition {
 
         Some(Plugin {
             on_keys: |_, ctx, client_handle, keys| {
-                
                 //
                 None
             },
@@ -114,4 +113,3 @@ fn main() {
 
     pepper::run(config);
 }
-

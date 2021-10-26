@@ -16,12 +16,8 @@ use crate::{
 };
 
 pub struct State {
-    pub on_client_keys: fn(
-        &mut EditorContext,
-        ClientHandle,
-        &mut KeysIterator,
-        ReadLinePoll,
-    ) -> Option<EditorFlow>,
+    pub on_client_keys:
+        fn(&mut EditorContext, ClientHandle, &mut KeysIterator, ReadLinePoll) -> Option<EditorFlow>,
     previous_position: BufferPosition,
     find_pattern_command: String,
     find_pattern_buffer_handle: Option<BufferHandle>,
