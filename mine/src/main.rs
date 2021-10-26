@@ -1,8 +1,7 @@
 use std::path::Path;
 
-use pepper::{buffer::BufferProperties, help::HelpPages, plugin::PluginDefinition, ResourceFile};
+use pepper::{buffer::BufferProperties, plugin::PluginDefinition, ResourceFile};
 
-static HELP_PAGES: HelpPages = HelpPages::new(&[]);
 static ALTERNATE_FILE_PLUGIN: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
         ctx.editor
@@ -66,7 +65,7 @@ static ALTERNATE_FILE_PLUGIN: PluginDefinition = PluginDefinition {
 
         None
     },
-    help_pages: &HELP_PAGES,
+    help_pages: &[],
 };
 
 fn main() {
@@ -89,3 +88,4 @@ fn main() {
 
     pepper::run(config);
 }
+

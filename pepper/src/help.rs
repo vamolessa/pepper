@@ -8,7 +8,7 @@ use crate::{buffer_position::BufferPosition, ResourceFile};
 
 pub const HELP_PREFIX: &str = "help://";
 
-pub struct HelpPages {
+struct HelpPages {
     pages: &'static [ResourceFile],
     next: AtomicPtr<HelpPages>,
 }
@@ -44,8 +44,12 @@ static HELP_PAGES: HelpPages = HelpPages::new(&[
     },
 ]);
 
-pub(crate) fn add_help_pages(pages: &'static HelpPages) {
-    let pages = pages as *const _ as *mut _;
+pub(crate) fn add_help_pages(pages: &'static [ResourceFile]) {
+    if pages.is_empty() {
+        return;
+    }
+
+    let pages = Box::into_raw(Box::new(HelpPages::new(pages)));
     let mut current = &HELP_PAGES;
     loop {
         match current.next.compare_exchange(

@@ -10,7 +10,6 @@ use pepper::{
     editor_utils::{hash_bytes, parse_process_command, MessageKind},
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
-    help::HelpPages,
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
     plugin::{CompletionContext, Plugin, PluginDefinition, PluginHandle},
     ResourceFile,
@@ -35,10 +34,6 @@ pub static DEFAULT_BINDINGS_CONFIG: ResourceFile = ResourceFile {
     content: include_str!("../rc/default_bindings.pepper"),
 };
 
-static HELP_PAGES: HelpPages = HelpPages::new(&[ResourceFile {
-    name: "lsp_help.md",
-    content: include_str!("../rc/help.md"),
-}]);
 pub static DEFINITION: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
         command::register_commands(&mut ctx.editor.commands, handle);
@@ -56,7 +51,10 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
             ..Default::default()
         })
     },
-    help_pages: &HELP_PAGES,
+    help_pages: &[ResourceFile {
+        name: "lsp_help.md",
+        content: include_str!("../rc/help.md"),
+    }],
 };
 
 struct ClientRecipe {
@@ -494,3 +492,4 @@ fn on_completion(
 
     false
 }
+
