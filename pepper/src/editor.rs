@@ -443,4 +443,3 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
-

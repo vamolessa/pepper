@@ -484,4 +484,3 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
-
