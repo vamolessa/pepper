@@ -1,7 +1,7 @@
 use crate::{
     client::ClientHandle,
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
-    plugin::{PluginHandle, PluginCollection},
+    plugin::PluginHandle,
 };
 
 mod command;
@@ -90,18 +90,16 @@ impl Mode {
             ModeKind::Command => command::State::on_keys(ctx, client_handle, keys),
             ModeKind::ReadLine => read_line::State::on_keys(ctx, client_handle, keys),
             ModeKind::Picker => picker::State::on_keys(ctx, client_handle, keys),
-            ModeKind::Plugin => {
-                match ctx.editor.mode.plugin_handle {
-                    Some(plugin_handle) => {
-                        //
-                        None
-                    }
-                    None => {
-                        Mode::change_to(&mut ctx.editor, ModeKind::default());
-                        None
-                    }
+            ModeKind::Plugin => match ctx.editor.mode.plugin_handle {
+                Some(plugin_handle) => {
+                    let on_keys = ctx.plugins.get(plugin_handle).on_keys;
+                    on_keys(plugin_handle, ctx)
                 }
-            }
+                None => {
+                    Mode::change_to(&mut ctx.editor, ModeKind::default());
+                    None
+                }
+            },
         }
     }
 }

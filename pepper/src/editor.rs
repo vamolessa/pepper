@@ -22,7 +22,7 @@ use crate::{
     pattern::Pattern,
     picker::Picker,
     platform::{Key, Platform, PlatformRequest},
-    plugin::PluginCollection,
+    plugin::{PluginCollection, PluginHandle},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
     ui,
@@ -316,6 +316,11 @@ impl Editor {
 
     pub fn enter_mode(&mut self, next: ModeKind) {
         Mode::change_to(self, next);
+    }
+
+    pub fn enter_plugin_mode(&mut self, plugin_handle: PluginHandle) {
+        Mode::change_to(self, ModeKind::Plugin);
+        self.mode.plugin_handle = Some(plugin_handle);
     }
 
     pub fn execute_keys(

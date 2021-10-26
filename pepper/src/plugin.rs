@@ -4,7 +4,7 @@ use crate::{
     buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
     client::ClientHandle,
-    editor::EditorContext,
+    editor::{EditorContext, EditorControlFlow},
     help,
     platform::PlatformProcessHandle,
 };
@@ -20,20 +20,28 @@ pub struct PluginDefinition {
 
 pub struct Plugin {
     pub data: Box<dyn Any>,
+
     pub on_editor_events: fn(PluginHandle, &mut EditorContext),
+
     pub on_process_spawned: fn(PluginHandle, &mut EditorContext, u32, PlatformProcessHandle),
     pub on_process_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
     pub on_process_exit: fn(PluginHandle, &mut EditorContext, u32),
+
+    pub on_keys: fn(PluginHandle, &mut EditorContext) -> Option<EditorControlFlow>,
     pub on_completion: fn(PluginHandle, &mut EditorContext, &CompletionContext) -> bool,
 }
 impl Default for Plugin {
     fn default() -> Self {
         Self {
             data: Box::new(()),
+
             on_editor_events: |_, _| (),
+
             on_process_spawned: |_, _, _, _| (),
             on_process_output: |_, _, _, _| (),
             on_process_exit: |_, _, _| (),
+
+            on_keys: |_, _| None,
             on_completion: |_, _, _| false,
         }
     }
@@ -123,3 +131,4 @@ impl PluginCollection {
         f(plugin_handle, ctx, process_id);
     }
 }
+

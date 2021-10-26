@@ -44,11 +44,16 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
         command::register_commands(&mut ctx.editor.commands, handle);
         Some(Plugin {
             data: Box::new(LspPlugin::default()),
+
             on_editor_events,
+
             on_process_spawned,
             on_process_output,
             on_process_exit,
+
             on_completion,
+
+            ..Default::default()
         })
     },
     help_pages: &HELP_PAGES,
@@ -489,3 +494,4 @@ fn on_completion(
 
     false
 }
+
