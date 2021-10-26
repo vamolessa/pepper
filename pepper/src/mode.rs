@@ -1,6 +1,7 @@
 use crate::{
     client::ClientHandle,
     editor::{Editor, EditorContext, EditorControlFlow, KeysIterator},
+    plugin::{PluginHandle, PluginCollection},
 };
 
 mod command;
@@ -26,6 +27,7 @@ pub enum ModeKind {
     Command,
     ReadLine,
     Picker,
+    Plugin,
 }
 
 impl Default for ModeKind {
@@ -43,6 +45,7 @@ pub struct Mode {
     pub command_state: command::State,
     pub read_line_state: read_line::State,
     pub picker_state: picker::State,
+    plugin_handle: Option<PluginHandle>,
 }
 
 impl Mode {
@@ -50,7 +53,7 @@ impl Mode {
         self.kind
     }
 
-    pub(crate) fn change_to(editor: &mut Editor, next: ModeKind) {
+    pub(crate) fn change_to(editor: &mut Editor, /*plugins: &mut PluginCollection,*/ next: ModeKind) {
         if editor.mode.kind == next {
             return;
         }
@@ -61,6 +64,9 @@ impl Mode {
             ModeKind::Command => command::State::on_exit(editor),
             ModeKind::ReadLine => read_line::State::on_exit(editor),
             ModeKind::Picker => picker::State::on_exit(editor),
+            ModeKind::Plugin => {
+                //let plugin = plugins.get(editor.mode.plugin_handle);
+            },
         }
 
         editor.mode.kind = next;
@@ -71,6 +77,9 @@ impl Mode {
             ModeKind::Command => command::State::on_enter(editor),
             ModeKind::ReadLine => read_line::State::on_enter(editor),
             ModeKind::Picker => picker::State::on_enter(editor),
+            ModeKind::Plugin => {
+                //
+            }
         }
     }
 
@@ -85,6 +94,7 @@ impl Mode {
             ModeKind::Command => command::State::on_client_keys(ctx, client_handle, keys),
             ModeKind::ReadLine => read_line::State::on_client_keys(ctx, client_handle, keys),
             ModeKind::Picker => picker::State::on_client_keys(ctx, client_handle, keys),
+            ModeKind::Plugin => None,
         }
     }
 }

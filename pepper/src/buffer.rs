@@ -1332,6 +1332,8 @@ impl Buffer {
         }
 
         self.needs_save = false;
+        self.highlighted.clear();
+
         events.enqueue(EditorEvent::BufferRead {
             handle: self.handle,
         });
@@ -1342,7 +1344,6 @@ impl Buffer {
 
         self.remove_all_words_from_database(word_database);
         self.content.clear();
-        self.highlighted.clear();
 
         if self.path.as_os_str().is_empty() {
             return Err(BufferReadError::FileNotFound);

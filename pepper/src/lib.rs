@@ -12,7 +12,6 @@ pub mod editor_utils;
 pub mod events;
 pub mod glob;
 pub mod help;
-pub mod keymap;
 pub mod mode;
 pub mod navigation_history;
 pub mod pattern;

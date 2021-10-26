@@ -6,10 +6,9 @@ use crate::{
     client::ClientHandle,
     config::ParseConfigError,
     editor::{EditorContext, EditorControlFlow},
-    editor_utils::MessageKind,
+    editor_utils::{MessageKind, ParseKeyMapError},
     events::KeyParseAllError,
     glob::InvalidGlobError,
-    keymap::ParseKeyMapError,
     pattern::PatternError,
     plugin::PluginHandle,
 };

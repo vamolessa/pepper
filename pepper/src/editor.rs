@@ -10,12 +10,14 @@ use crate::{
     client::{ClientHandle, ClientManager},
     command::CommandManager,
     config::Config,
-    editor_utils::{ReadLine, RegisterCollection, RegisterKey, StatusBar, StringPool},
+    editor_utils::{
+        KeyMapCollection, MatchResult, ReadLine, RegisterCollection, RegisterKey, StatusBar,
+        StringPool,
+    },
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
         ServerEvent, TargetClient,
     },
-    keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeKind},
     pattern::Pattern,
     picker::Picker,
@@ -436,3 +438,4 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
+
