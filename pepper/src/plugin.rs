@@ -47,7 +47,7 @@ impl Default for Plugin {
             on_process_output: |_, _, _, _| (),
             on_process_exit: |_, _, _| (),
 
-            on_keys: |_, _, _, _| None,
+            on_keys: |_, _, _, _| Some(EditorFlow::Continue),
             on_completion: |_, _, _| false,
         }
     }
@@ -137,3 +137,4 @@ impl PluginCollection {
         f(plugin_handle, ctx, process_id);
     }
 }
+

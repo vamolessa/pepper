@@ -1,10 +1,6 @@
 use std::path::Path;
 
-use pepper::{
-    buffer::BufferProperties,
-    plugin::{Plugin, PluginDefinition},
-    ResourceFile,
-};
+use pepper::{buffer::BufferProperties, plugin::PluginDefinition, ResourceFile};
 
 static ALTERNATE_FILE_PLUGIN: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
@@ -72,26 +68,6 @@ static ALTERNATE_FILE_PLUGIN: PluginDefinition = PluginDefinition {
     help_pages: &[],
 };
 
-static REPLACE_CHAR_PLUGIN: PluginDefinition = PluginDefinition {
-    instantiate: |handle, ctx| {
-        ctx.editor
-            .commands
-            .register(Some(handle), "replace-char", &[], |ctx, io| {
-                ctx.editor.enter_plugin_mode(io.plugin_handle());
-                Ok(())
-            });
-
-        Some(Plugin {
-            on_keys: |_, ctx, client_handle, keys| {
-                //
-                None
-            },
-            ..Default::default()
-        })
-    },
-    help_pages: &[],
-};
-
 fn main() {
     let mut config = pepper::application::ApplicationConfig::default();
     config.on_panic_config.write_info_to_file = Some(Path::new("pepper-crash.txt"));
@@ -101,7 +77,6 @@ fn main() {
         .plugin_definitions
         .push(pepper_plugin_lsp::DEFINITION);
     config.plugin_definitions.push(ALTERNATE_FILE_PLUGIN);
-    config.plugin_definitions.push(REPLACE_CHAR_PLUGIN);
 
     config
         .static_configs
@@ -113,3 +88,4 @@ fn main() {
 
     pepper::run(config);
 }
+
