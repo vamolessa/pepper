@@ -6,3 +6,4 @@ alias test [[enqueue-keys ":o test.log scratch<enter>aa!cmd /c cargo test 2<grea
 map-normal <space>b ": build<enter>"
 map-normal <space>t ": test<enter>"
 
+lsp-start "rust-analyzer"
