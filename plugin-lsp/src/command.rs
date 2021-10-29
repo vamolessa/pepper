@@ -43,11 +43,14 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
                 .log_file_path()
                 .ok_or(CommandError::OtherStatic("lsp server is not logging"))?;
 
+            let mut buffer_properties = BufferProperties::scratch();
+            buffer_properties.saving_enabled = true;
+
             let buffer_view_handle = editor
                 .buffer_view_handle_from_path(
                     client_handle,
                     Path::new(path),
-                    BufferProperties::scratch(),
+                    buffer_properties,
                     true,
                 )
                 .map_err(CommandError::BufferReadError)?;
@@ -319,3 +322,4 @@ where
 
     Ok(())
 }
+

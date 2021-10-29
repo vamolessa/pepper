@@ -607,9 +607,10 @@ pub(crate) fn on_response(
             let buffer_view = editor.buffer_views.get(buffer_view_handle);
             let buffer = editor.buffers.get_mut(buffer_view.buffer_handle);
 
-            buffer.properties = BufferProperties::scratch();
             let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
             buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
+
+            buffer.properties = BufferProperties::scratch();
 
             let mut text = editor.string_pool.acquire();
             let mut last_path = "";
