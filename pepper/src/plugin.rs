@@ -137,4 +137,3 @@ impl PluginCollection {
         f(plugin_handle, ctx, process_id);
     }
 }
-
