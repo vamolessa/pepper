@@ -21,7 +21,7 @@ impl HelpPages {
     }
 }
 
-static HELP_PAGES: HelpPages = HelpPages::new(&[
+static MAIN_HELP_PAGES: HelpPages = HelpPages::new(&[
     ResourceFile {
         name: "command_reference.md",
         content: include_str!("../rc/command_reference.md"),
@@ -50,7 +50,7 @@ pub(crate) fn add_help_pages(pages: &'static [ResourceFile]) {
     }
 
     let pages = Box::into_raw(Box::new(HelpPages::new(pages)));
-    let mut current = &HELP_PAGES;
+    let mut current = &MAIN_HELP_PAGES;
     loop {
         match current.next.compare_exchange(
             std::ptr::null_mut(),
@@ -65,13 +65,14 @@ pub(crate) fn add_help_pages(pages: &'static [ResourceFile]) {
 }
 
 pub(crate) fn main_help_name() -> &'static str {
-    HELP_PAGES.pages[HELP_PAGES.pages.len() - 1].name
+    MAIN_HELP_PAGES.pages[MAIN_HELP_PAGES.pages.len() - 1].name
 }
 
 pub(crate) fn open(path: &Path) -> Option<impl io::BufRead> {
-    let path = match path.to_str().and_then(|p| p.strip_prefix(HELP_PREFIX)) {
+    let path = path.to_str()?;
+    let path = match path.strip_prefix(HELP_PREFIX) {
         Some(path) => path,
-        None => return None,
+        None => path,
     };
     for page in HelpPageIterator::new() {
         if path == page.name {
@@ -84,7 +85,12 @@ pub(crate) fn open(path: &Path) -> Option<impl io::BufRead> {
 pub(crate) fn search(keyword: &str) -> Option<(&'static str, BufferPosition)> {
     let mut last_match = None;
     for page in HelpPageIterator::new() {
-        if keyword == page.name.trim_end_matches(".md") {
+        let page_name = match page.name.strip_suffix(".md") {
+            Some(name) => name,
+            None => page.name,
+        };
+
+        if keyword == page_name {
             return Some((page.name, BufferPosition::zero()));
         }
 
@@ -110,7 +116,7 @@ struct HelpPageIterator {
 impl HelpPageIterator {
     pub fn new() -> Self {
         Self {
-            current: &HELP_PAGES,
+            current: &MAIN_HELP_PAGES,
             index: 0,
         }
     }
@@ -129,8 +135,10 @@ impl Iterator for HelpPageIterator {
                     break None;
                 } else {
                     self.current = unsafe { &*next };
+                    self.index = 0;
                 }
             }
         }
     }
 }
+

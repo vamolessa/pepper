@@ -1332,7 +1332,9 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if !self.properties.saving_enabled || !self.properties.is_file {
+        if !self.path.starts_with(help::HELP_PREFIX)
+            && (!self.properties.saving_enabled || !self.properties.is_file)
+        {
             return Ok(());
         }
 
