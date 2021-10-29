@@ -911,6 +911,9 @@ pub(crate) fn on_response(
             ctx.trigger_event_handlers();
 
             let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+            let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+            let position = buffer.content().saturate_position(position);
+            
             let mut cursors = buffer_view.cursors.mut_guard();
             cursors.clear();
             cursors.add(Cursor {
