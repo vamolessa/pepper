@@ -1,18 +1,19 @@
 use pepper::{
     client::ClientHandle,
-    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
+    editor::{EditorContext, EditorFlow, KeysIterator},
     editor_utils::ReadLinePoll,
     mode::ModeKind,
     plugin::PluginHandle,
 };
 
-use crate::{client::ClientOperation, LspPlugin};
+use crate::{client::Client, LspPlugin};
 
 pub fn enter_rename_mode(
-    editor: &mut Editor,
+    ctx: &mut EditorContext,
     plugin_handle: PluginHandle,
     placeholder: &str,
-) -> ClientOperation {
+    client: &Client,
+) {
     fn on_client_keys(
         ctx: &mut EditorContext,
         _: ClientHandle,
@@ -25,7 +26,7 @@ pub fn enter_rename_mode(
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) = lsp
-                        .read_line_client_handle
+                        .current_client_handle
                         .take()
                         .and_then(|h| lsp.get_mut(h))
                     {
@@ -40,7 +41,7 @@ pub fn enter_rename_mode(
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
                     if let Some(client) = lsp
-                        .read_line_client_handle
+                        .current_client_handle
                         .take()
                         .and_then(|h| lsp.get_mut(h))
                     {
@@ -54,12 +55,14 @@ pub fn enter_rename_mode(
         }
     }
 
-    editor.read_line.set_prompt("rename:");
+    ctx.editor.read_line.set_prompt("rename:");
 
-    editor.mode.plugin_handle = Some(plugin_handle);
-    editor.mode.read_line_state.on_client_keys = on_client_keys;
-    editor.enter_mode(ModeKind::ReadLine);
-    editor.read_line.input_mut().push_str(placeholder);
+    ctx.editor.mode.plugin_handle = Some(plugin_handle);
+    ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
+    ctx.editor.enter_mode(ModeKind::ReadLine);
+    ctx.editor.read_line.input_mut().push_str(placeholder);
 
-    ClientOperation::EnteredReadLineMode
+    let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
+    lsp.current_client_handle = Some(client.handle());
 }
+

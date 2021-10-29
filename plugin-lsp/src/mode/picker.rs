@@ -5,7 +5,7 @@ use pepper::{
     buffer_position::BufferPosition,
     client::ClientHandle,
     cursor::Cursor,
-    editor::{Editor, EditorContext, EditorFlow, KeysIterator},
+    editor::{EditorContext, EditorFlow, KeysIterator},
     editor_utils::{MessageKind, ReadLinePoll},
     mode::ModeKind,
     picker::EntrySource,
@@ -13,12 +13,13 @@ use pepper::{
     word_database::WordIndicesIter,
 };
 
-use crate::{
-    client::{Client, ClientOperation},
-    LspPlugin,
-};
+use crate::{client::Client, LspPlugin};
 
-pub fn enter_definition_mode(editor: &mut Editor, plugin_handle: PluginHandle) -> ClientOperation {
+pub fn enter_definition_mode(
+    ctx: &mut EditorContext,
+    plugin_handle: PluginHandle,
+    client: &Client,
+) {
     fn on_client_keys(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
@@ -80,24 +81,25 @@ pub fn enter_definition_mode(editor: &mut Editor, plugin_handle: PluginHandle) -
         }
     }
 
-    editor.read_line.set_prompt("definition:");
-    editor.picker.filter(WordIndicesIter::empty(), "");
-    editor.picker.move_cursor(0);
+    ctx.editor.read_line.set_prompt("definition:");
+    ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+    ctx.editor.picker.move_cursor(0);
 
-    if editor.picker.len() > 0 {
-        editor.mode.plugin_handle = Some(plugin_handle);
-        editor.mode.picker_state.on_client_keys = on_client_keys;
-        editor.enter_mode(ModeKind::Picker);
+    if ctx.editor.picker.len() > 0 {
+        ctx.editor.mode.plugin_handle = Some(plugin_handle);
+        ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
+        ctx.editor.enter_mode(ModeKind::Picker);
+
+        let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
+        lsp.current_client_handle = Some(client.handle());
     }
-
-    ClientOperation::EnteredPickerMode
 }
 
 pub fn enter_code_action_mode(
-    editor: &mut Editor,
+    ctx: &mut EditorContext,
     plugin_handle: PluginHandle,
     client: &mut Client,
-) -> ClientOperation {
+) {
     fn on_client_keys(
         ctx: &mut EditorContext,
         _: ClientHandle,
@@ -109,8 +111,10 @@ pub fn enter_code_action_mode(
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
-                    if let Some(client) =
-                        lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
+                    if let Some(client) = lsp
+                        .current_client_handle
+                        .take()
+                        .and_then(|h| lsp.get_mut(h))
                     {
                         let index = match ctx.editor.picker.current_entry(&ctx.editor.word_database)
                         {
@@ -127,8 +131,10 @@ pub fn enter_code_action_mode(
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
-                    if let Some(client) =
-                        lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
+                    if let Some(client) = lsp
+                        .current_client_handle
+                        .take()
+                        .and_then(|h| lsp.get_mut(h))
                     {
                         client.cancel_current_request();
                     }
@@ -140,26 +146,27 @@ pub fn enter_code_action_mode(
         }
     }
 
-    editor.read_line.set_prompt("code action:");
-    editor.picker.filter(WordIndicesIter::empty(), "");
-    editor.picker.move_cursor(0);
+    ctx.editor.read_line.set_prompt("code action:");
+    ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+    ctx.editor.picker.move_cursor(0);
 
-    if editor.picker.len() > 0 {
-        editor.mode.plugin_handle = Some(plugin_handle);
-        editor.mode.picker_state.on_client_keys = on_client_keys;
-        editor.enter_mode(ModeKind::Picker);
-        ClientOperation::EnteredPickerMode
+    if ctx.editor.picker.len() > 0 {
+        ctx.editor.mode.plugin_handle = Some(plugin_handle);
+        ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
+        ctx.editor.enter_mode(ModeKind::Picker);
+
+        let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
+        lsp.current_client_handle = Some(client.handle());
     } else {
         client.cancel_current_request();
-        ClientOperation::None
     }
 }
 
 pub fn enter_document_symbol_mode(
-    editor: &mut Editor,
+    ctx: &mut EditorContext,
     plugin_handle: PluginHandle,
     client: &mut Client,
-) -> ClientOperation {
+) {
     fn on_client_keys(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
@@ -171,8 +178,10 @@ pub fn enter_document_symbol_mode(
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
-                    if let Some(client) =
-                        lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
+                    if let Some(client) = lsp
+                        .current_client_handle
+                        .take()
+                        .and_then(|h| lsp.get_mut(h))
                     {
                         let index = match ctx.editor.picker.current_entry(&ctx.editor.word_database)
                         {
@@ -194,8 +203,10 @@ pub fn enter_document_symbol_mode(
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
-                    if let Some(client) =
-                        lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
+                    if let Some(client) = lsp
+                        .current_client_handle
+                        .take()
+                        .and_then(|h| lsp.get_mut(h))
                     {
                         client.cancel_current_request();
                     }
@@ -207,26 +218,27 @@ pub fn enter_document_symbol_mode(
         }
     }
 
-    editor.read_line.set_prompt("document symbol:");
-    editor.picker.filter(WordIndicesIter::empty(), "");
-    editor.picker.move_cursor(0);
+    ctx.editor.read_line.set_prompt("document symbol:");
+    ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+    ctx.editor.picker.move_cursor(0);
 
-    if editor.picker.len() > 0 {
-        editor.mode.plugin_handle = Some(plugin_handle);
-        editor.mode.picker_state.on_client_keys = on_client_keys;
-        editor.enter_mode(ModeKind::Picker);
-        ClientOperation::EnteredPickerMode
+    if ctx.editor.picker.len() > 0 {
+        ctx.editor.mode.plugin_handle = Some(plugin_handle);
+        ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
+        ctx.editor.enter_mode(ModeKind::Picker);
+
+        let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
+        lsp.current_client_handle = Some(client.handle());
     } else {
         client.cancel_current_request();
-        ClientOperation::None
     }
 }
 
 pub fn enter_workspace_symbol_mode(
-    editor: &mut Editor,
+    ctx: &mut EditorContext,
     plugin_handle: PluginHandle,
     client: &mut Client,
-) -> ClientOperation {
+) {
     fn on_client_keys(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
@@ -238,8 +250,10 @@ pub fn enter_workspace_symbol_mode(
             ReadLinePoll::Submitted => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
-                    if let Some(client) =
-                        lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
+                    if let Some(client) = lsp
+                        .current_client_handle
+                        .take()
+                        .and_then(|h| lsp.get_mut(h))
                     {
                         let index = match ctx.editor.picker.current_entry(&ctx.editor.word_database)
                         {
@@ -261,8 +275,10 @@ pub fn enter_workspace_symbol_mode(
             ReadLinePoll::Canceled => {
                 if let Some(handle) = ctx.editor.mode.plugin_handle {
                     let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
-                    if let Some(client) =
-                        lsp.picker_client_handle.take().and_then(|h| lsp.get_mut(h))
+                    if let Some(client) = lsp
+                        .current_client_handle
+                        .take()
+                        .and_then(|h| lsp.get_mut(h))
                     {
                         client.cancel_current_request();
                     }
@@ -274,17 +290,19 @@ pub fn enter_workspace_symbol_mode(
         }
     }
 
-    editor.read_line.set_prompt("workspace symbol:");
-    editor.picker.filter(WordIndicesIter::empty(), "");
-    editor.picker.move_cursor(0);
+    ctx.editor.read_line.set_prompt("workspace symbol:");
+    ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+    ctx.editor.picker.move_cursor(0);
 
-    if editor.picker.len() > 0 {
-        editor.mode.plugin_handle = Some(plugin_handle);
-        editor.mode.picker_state.on_client_keys = on_client_keys;
-        editor.enter_mode(ModeKind::Picker);
-        ClientOperation::EnteredPickerMode
+    if ctx.editor.picker.len() > 0 {
+        ctx.editor.mode.plugin_handle = Some(plugin_handle);
+        ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
+        ctx.editor.enter_mode(ModeKind::Picker);
+
+        let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
+        lsp.current_client_handle = Some(client.handle());
     } else {
         client.cancel_current_request();
-        ClientOperation::None
     }
 }
+

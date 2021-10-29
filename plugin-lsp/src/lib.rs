@@ -23,7 +23,7 @@ mod json;
 mod mode;
 mod protocol;
 
-use client::{Client, ClientHandle, ClientOperation};
+use client::{Client, ClientHandle};
 use json::{JsonObject, JsonValue};
 use protocol::{ProtocolError, ResponseError, ServerEvent};
 
@@ -109,8 +109,7 @@ impl Drop for ClientGuard {
 pub(crate) struct LspPlugin {
     entries: Vec<ClientEntry>,
     recipes: Vec<ClientRecipe>,
-    read_line_client_handle: Option<ClientHandle>,
-    picker_client_handle: Option<ClientHandle>,
+    current_client_handle: Option<ClientHandle>,
 }
 
 impl LspPlugin {
@@ -252,18 +251,6 @@ impl LspPlugin {
 
         None
     }
-
-    pub(crate) fn on_client_operation(&mut self, client_handle: ClientHandle, op: ClientOperation) {
-        match op {
-            ClientOperation::None => (),
-            ClientOperation::EnteredReadLineMode => {
-                self.read_line_client_handle = Some(client_handle);
-            }
-            ClientOperation::EnteredPickerMode => {
-                self.picker_client_handle = Some(client_handle);
-            }
-        }
-    }
 }
 
 fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
@@ -356,10 +343,6 @@ fn on_process_output(
     };
     let client = client_guard.deref_mut();
 
-    let editor = &mut ctx.editor;
-    let platform = &mut ctx.platform;
-    let clients = &mut ctx.clients;
-
     let mut events = client.protocol.parse_events(bytes);
     while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
         match event {
@@ -369,18 +352,26 @@ fn on_process_output(
                     let _ = write!(buf, "send parse error\nrequest_id: ");
                     let _ = json.write(buf, &JsonValue::Null);
                 });
-                client.respond(platform, JsonValue::Null, Err(ResponseError::parse_error()));
+                client.respond(
+                    &mut ctx.platform,
+                    JsonValue::Null,
+                    Err(ResponseError::parse_error()),
+                );
             }
             ServerEvent::Request(request) => {
                 let request_id = request.id.clone();
-                match client_event_handler::on_request(client, editor, clients, request) {
-                    Ok(value) => client.respond(platform, request_id, Ok(value)),
+                match client_event_handler::on_request(client, ctx, request) {
+                    Ok(value) => client.respond(&mut ctx.platform, request_id, Ok(value)),
                     Err(ProtocolError::ParseError) => {
-                        client.respond(platform, request_id, Err(ResponseError::parse_error()));
+                        client.respond(
+                            &mut ctx.platform,
+                            request_id,
+                            Err(ResponseError::parse_error()),
+                        );
                     }
                     Err(ProtocolError::MethodNotFound) => {
                         client.respond(
-                            platform,
+                            &mut ctx.platform,
                             request_id,
                             Err(ResponseError::method_not_found()),
                         );
@@ -388,29 +379,17 @@ fn on_process_output(
                 }
             }
             ServerEvent::Notification(notification) => {
-                let _ = client_event_handler::on_notification(
-                    client,
-                    editor,
-                    plugin_handle,
-                    notification,
-                );
+                let _ =
+                    client_event_handler::on_notification(client, ctx, plugin_handle, notification);
             }
             ServerEvent::Response(response) => {
-                if let Ok(op) = client_event_handler::on_response(
-                    client,
-                    editor,
-                    platform,
-                    clients,
-                    plugin_handle,
-                    response,
-                ) {
-                    lsp.on_client_operation(client.handle(), op);
-                }
+                let _ = client_event_handler::on_response(client, ctx, plugin_handle, response);
             }
         }
     }
     events.finish(&mut client.protocol);
 
+    let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
     lsp.release(client_guard);
 }
 
@@ -461,14 +440,12 @@ fn on_completion(
                 .and_then(|s| s.chars().next_back())
             {
                 if client.signature_help_triggers().contains(c) {
-                    let op = client.signature_help(
+                    client.signature_help(
                         &ctx.editor,
                         &mut ctx.platform,
                         completion_ctx.buffer_handle,
                         completion_ctx.cursor_position,
                     );
-                    let client_handle = client.handle();
-                    lsp.on_client_operation(client_handle, op);
                     return false;
                 }
 
@@ -477,18 +454,17 @@ fn on_completion(
         }
 
         if should_complete {
-            let op = client.completion(
+            client.completion(
                 &ctx.editor,
                 &mut ctx.platform,
                 completion_ctx.client_handle,
                 completion_ctx.buffer_handle,
                 completion_ctx.cursor_position,
             );
-            let client_handle = client.handle();
-            lsp.on_client_operation(client_handle, op);
             return true;
         }
     }
 
     false
 }
+
