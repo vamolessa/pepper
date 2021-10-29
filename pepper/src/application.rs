@@ -314,13 +314,13 @@ impl ClientApplication {
         }
     }
 
-    pub fn update<'a>(
-        &'a mut self,
+    pub fn update(
+        &mut self,
         resize: Option<(usize, usize)>,
         keys: &[Key],
         stdin_bytes: Option<&[u8]>,
         server_bytes: &[u8],
-    ) -> (bool, &'a [u8]) {
+    ) -> (bool, &'_ [u8]) {
         use io::Write;
 
         self.server_write_buf.clear();
@@ -348,7 +348,8 @@ impl ClientApplication {
                 match ServerEvent::deserialize(&mut read_slice) {
                     Ok(ServerEvent::Display(display)) => {
                         if let Some(output) = &mut self.output {
-                            output.write_all(display).unwrap();
+                            //output.write_all(display).unwrap();
+                            let _ = output.write_all(display);
                         }
                     }
                     Ok(ServerEvent::Suspend) => suspend = true,
@@ -368,7 +369,8 @@ impl ClientApplication {
             }
 
             if let Some(output) = &mut self.output {
-                output.flush().unwrap();
+                //output.flush().unwrap();
+                let _ = output.flush();
             }
         }
 

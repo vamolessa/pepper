@@ -80,7 +80,7 @@ impl KeyMapCollection {
         Ok(())
     }
 
-    pub fn matches<'a>(&'a self, mode: ModeKind, keys: &[Key]) -> MatchResult<'a> {
+    pub fn matches(&self, mode: ModeKind, keys: &[Key]) -> MatchResult<'_> {
         if let ModeKind::Plugin = mode {
             return MatchResult::None;
         }

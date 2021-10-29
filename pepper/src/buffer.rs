@@ -326,12 +326,12 @@ impl BufferLine {
         &self.0
     }
 
-    pub fn chars_from<'a>(
-        &'a self,
+    pub fn chars_from(
+        &self,
         index: usize,
     ) -> (
-        impl 'a + Iterator<Item = (usize, char)>,
-        impl 'a + Iterator<Item = (usize, char)>,
+        impl '_ + Iterator<Item = (usize, char)>,
+        impl '_ + Iterator<Item = (usize, char)>,
     ) {
         let (left, right) = self.0.split_at(index);
         let left_chars = left.char_indices().rev();
@@ -1240,19 +1240,19 @@ impl Buffer {
         self.history.commit_edits();
     }
 
-    pub fn undo<'a>(
-        &'a mut self,
+    pub fn undo(
+        &mut self,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
-    ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> + DoubleEndedIterator<Item = Edit<'a>> {
+    ) -> impl '_ + ExactSizeIterator<Item = Edit<'_>> + DoubleEndedIterator<Item = Edit<'_>> {
         self.apply_history_edits(word_database, events, BufferHistory::undo_edits)
     }
 
-    pub fn redo<'a>(
-        &'a mut self,
+    pub fn redo(
+        &mut self,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
-    ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> + DoubleEndedIterator<Item = Edit<'a>> {
+    ) -> impl '_ + ExactSizeIterator<Item = Edit<'_>> + DoubleEndedIterator<Item = Edit<'_>> {
         self.apply_history_edits(word_database, events, BufferHistory::redo_edits)
     }
 
