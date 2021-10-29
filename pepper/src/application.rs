@@ -348,8 +348,7 @@ impl ClientApplication {
                 match ServerEvent::deserialize(&mut read_slice) {
                     Ok(ServerEvent::Display(display)) => {
                         if let Some(output) = &mut self.output {
-                            //output.write_all(display).unwrap();
-                            let _ = output.write_all(display);
+                            output.write_all(display).unwrap();
                         }
                     }
                     Ok(ServerEvent::Suspend) => suspend = true,
@@ -369,8 +368,7 @@ impl ClientApplication {
             }
 
             if let Some(output) = &mut self.output {
-                //output.flush().unwrap();
-                let _ = output.flush();
+                output.flush().unwrap();
             }
         }
 
