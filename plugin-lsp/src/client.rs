@@ -1408,4 +1408,3 @@ pub(crate) mod util {
         client.notify(platform, "textDocument/didClose", params);
     }
 }
-

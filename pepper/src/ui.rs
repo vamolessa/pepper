@@ -633,7 +633,8 @@ fn draw_statusbar(
                 None
             }
             _ => {
-                let line_count = ctx.status_bar_display.lines.len() + ctx.status_bar_display.prefix_is_line as usize;
+                let line_count = ctx.status_bar_display.lines.len()
+                    + ctx.status_bar_display.prefix_is_line as usize;
                 if line_count > 1 {
                     move_cursor_up(buf, (line_count - 1) as _);
                 }
@@ -662,27 +663,6 @@ fn draw_statusbar(
                         clear_until_new_line(buf);
                     }
                 }
-
-/*
-                    for (i, line) in ctx.status_bar_display.message.lines().enumerate() {
-                        let len = print_line(buf, line);
-                        if i < line_count - 1 {
-                            if len == 0 || len % ctx.viewport_size.0 as usize > 0 {
-                                clear_until_new_line(buf);
-                            }
-                            move_cursor_to_next_line(buf);
-                        }
-                    }
-                } else {
-                    clear_line(buf);
-                    set_background_color(buf, background_innactive_color);
-                    set_foreground_color(buf, foreground_color);
-                    buf.extend_from_slice(ctx.status_bar_display.prefix.as_bytes());
-                    set_background_color(buf, background_active_color);
-                    set_foreground_color(buf, foreground_color);
-                    print_line(buf, ctx.status_bar_display.message);
-                }
-*/
 
                 None
             }
@@ -776,4 +756,3 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
-

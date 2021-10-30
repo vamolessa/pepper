@@ -238,6 +238,12 @@ impl StatusBar {
         available_size: (u16, u8),
         lines: &'lines mut [&'this str],
     ) -> StatusBarDisplay<'this, 'lines> {
+        let lines = if lines.len() > available_size.1 as _ {
+            &mut lines[..available_size.1 as usize]
+        } else {
+            lines
+        };
+
         let prefix = match self.kind {
             MessageKind::Info => "",
             MessageKind::Error => "error: ",
@@ -246,10 +252,12 @@ impl StatusBar {
         let mut lines_len = 0;
         let mut x = 0;
         let mut line_start_index = 0;
+        let mut prefix_is_line = false;
 
-        let prefix_is_line = (prefix.len() + self.message.len()) >= available_size.0 as _;
-        if !prefix_is_line {
+        if (prefix.len() + self.message.len()) < available_size.0 as _ {
             x = prefix.len();
+        } else {
+            prefix_is_line = !prefix.is_empty();
         }
 
         for (i, c) in self.message.char_indices() {
@@ -586,4 +594,3 @@ mod tests {
         );
     }
 }
-

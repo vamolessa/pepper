@@ -496,7 +496,7 @@ impl BufferView {
                     edit.range.from
                 }
             };
-            
+
             if cursors_len < cursors.len() {
                 cursors[cursors_len] = Cursor {
                     anchor: edit.range.from,
