@@ -1,6 +1,7 @@
 use std::{fmt, process::Command};
 
 use crate::{
+    buffer::char_display_len,
     command::{CommandManager, CommandTokenizer},
     editor::{BufferedKeys, EditorContext, EditorFlow, KeysIterator},
     events::{KeyParseAllError, KeyParser},
@@ -206,14 +207,42 @@ impl StatusBar {
         self.message.clear();
     }
 
-    pub fn write(&mut self, kind: MessageKind) -> EditorOutputWrite {
+    pub fn write(&mut self, kind: MessageKind) -> StatusBarWriter {
         self.kind = kind;
         self.message.clear();
-        EditorOutputWrite(&mut self.message)
+        StatusBarWriter(&mut self.message)
+    }
+
+    pub fn extra_height(&self, available_size: (u16, u8)) -> usize {
+        let mut height = matches!(self.kind, MessageKind::Error) as _;
+        let mut x = 0;
+
+        for c in self.message.chars() {
+            match c {
+                '\n' => {
+                    height += 1;
+                    if height > available_size.1 as _ {
+                        break;
+                    }
+                }
+                c => {
+                    x += char_display_len(c) as usize;
+                    if x > available_size.0 as _ {
+                        x -= available_size.0 as usize;
+                        height += 1;
+                        if height > available_size.1 as _ {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        height
     }
 }
-pub struct EditorOutputWrite<'a>(&'a mut String);
-impl<'a> EditorOutputWrite<'a> {
+pub struct StatusBarWriter<'a>(&'a mut String);
+impl<'a> StatusBarWriter<'a> {
     pub fn str(&mut self, message: &str) {
         self.0.push_str(message);
     }
@@ -506,3 +535,4 @@ mod tests {
         );
     }
 }
+

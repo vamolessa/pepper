@@ -596,7 +596,7 @@ fn draw_statusbar(
     set_foreground_color(buf, foreground_color);
 
     let x = if ctx.has_focus {
-        let (message_target, message) = ctx.editor.status_bar.message();
+        let (message_kind, message) = ctx.editor.status_bar.message();
         let message = message.trim_end();
 
         let message_is_empty = message.trim_start().is_empty();
@@ -652,7 +652,7 @@ fn draw_statusbar(
                     len
                 }
 
-                let prefix = match message_target {
+                let prefix = match message_kind {
                     MessageKind::Info => &[],
                     MessageKind::Error => &b"error:"[..],
                 };

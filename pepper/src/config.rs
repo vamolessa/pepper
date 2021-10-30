@@ -76,4 +76,5 @@ config_values! {
 
     completion_min_len: u8 = 3,
     picker_max_height: u8 = 8,
+    status_bar_max_height: NonZeroU8 = NonZeroU8::new(8).unwrap(),
 }

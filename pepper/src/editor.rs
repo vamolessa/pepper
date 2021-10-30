@@ -111,7 +111,20 @@ impl EditorContext {
             }
 
             let has_focus = focused_client == Some(c.handle());
-            c.scroll_to_main_cursor(&self.editor, if has_focus { picker_height } else { 0 });
+
+            let margin_bottom = if has_focus {
+                let max_height = self.editor.config.status_bar_max_height.get();
+                let max_height = c.viewport_size.1.min(max_height as _) as _;
+                let available_size = (c.viewport_size.0, max_height);
+
+                let extra_height = self.editor.status_bar.extra_height(available_size);
+
+                picker_height.max(extra_height)
+            } else {
+                0
+            };
+
+            c.scroll_to_main_cursor(&self.editor, margin_bottom);
 
             if !c.has_ui() {
                 continue;
@@ -443,3 +456,4 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
+
