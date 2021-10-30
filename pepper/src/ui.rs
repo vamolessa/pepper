@@ -5,7 +5,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     editor::Editor,
-    editor_utils::MessageKind,
+    editor_utils::{MessageKind, StatusBarDisplayInfo},
     mode::ModeKind,
     syntax::{Token, TokenKind},
     theme::Color,
@@ -64,12 +64,13 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
 
 pub struct RenderContext<'a> {
     pub editor: &'a Editor,
+    pub status_bar_display: &'a StatusBarDisplayInfo<'a>,
     pub viewport_size: (u16, u16),
     pub scroll: BufferPositionIndex,
     pub has_focus: bool,
 }
 
-pub fn render(
+pub fn draw(
     ctx: &RenderContext,
     buffer_view_handle: Option<BufferViewHandle>,
     buf: &mut Vec<u8>,

@@ -101,7 +101,7 @@ impl EditorEventQueue {
         });
     }
 
-    pub(crate) fn enqueue_fix_cursors(&mut self, handle: BufferViewHandle, cursors: &[Cursor]) {
+    pub fn enqueue_fix_cursors(&mut self, handle: BufferViewHandle, cursors: &[Cursor]) {
         let from = self.write.cursors.len();
         self.write.cursors.extend_from_slice(cursors);
         let cursors = EditorEventCursors {

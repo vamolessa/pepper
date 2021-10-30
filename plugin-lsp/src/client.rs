@@ -15,7 +15,6 @@ use pepper::{
     cursor::Cursor,
     editor::{Editor, EditorContext},
     editor_utils::{MessageKind, StatusBar},
-    events::{EditorEvent, EditorEventIter},
     glob::Glob,
     navigation_history::NavigationHistory,
     platform::Platform,
@@ -252,7 +251,7 @@ struct VersionedBufferEdit {
     buffer_range: BufferRange,
     text_range: Range<u32>,
 }
-struct VersionedBuffer {
+pub(crate) struct VersionedBuffer {
     version: usize,
     texts: String,
     pending_edits: Vec<VersionedBufferEdit>,
@@ -278,7 +277,7 @@ impl VersionedBuffer {
     }
 }
 #[derive(Default)]
-struct VersionedBufferCollection {
+pub(crate) struct VersionedBufferCollection {
     buffers: Vec<VersionedBuffer>,
 }
 impl VersionedBufferCollection {
@@ -448,7 +447,7 @@ pub struct Client {
     pub(crate) server_capabilities: ServerCapabilities,
 
     pub(crate) document_selectors: Vec<Glob>,
-    versioned_buffers: VersionedBufferCollection,
+    pub(crate) versioned_buffers: VersionedBufferCollection,
     pub(crate) diagnostics: DiagnosticCollection,
 
     pub(crate) temp_edits: Vec<(BufferRange, BufferRange)>,
@@ -1073,50 +1072,6 @@ impl Client {
         }
     }
 
-    pub(crate) fn on_editor_events(&mut self, editor: &Editor, platform: &mut Platform) {
-        if !self.initialized {
-            return;
-        }
-
-        let mut events = EditorEventIter::new();
-        while let Some(event) = events.next(&editor.events) {
-            match *event {
-                EditorEvent::Idle => {
-                    util::send_pending_did_change(self, editor, platform);
-                }
-                EditorEvent::BufferRead { handle } => {
-                    let handle = handle;
-                    self.versioned_buffers.dispose(handle);
-                    util::send_did_open(self, editor, platform, handle);
-                }
-                EditorEvent::BufferInsertText {
-                    handle,
-                    range,
-                    text,
-                    ..
-                } => {
-                    let text = text.as_str(&editor.events);
-                    let range = BufferRange::between(range.from, range.from);
-                    self.versioned_buffers.add_edit(handle, range, text);
-                }
-                EditorEvent::BufferDeleteText { handle, range, .. } => {
-                    self.versioned_buffers.add_edit(handle, range, "");
-                }
-                EditorEvent::BufferWrite { handle, .. } => {
-                    util::send_pending_did_change(self, editor, platform);
-                    util::send_did_save(self, editor, platform, handle);
-                }
-                EditorEvent::BufferClose { handle } => {
-                    self.versioned_buffers.dispose(handle);
-                    self.diagnostics.on_close_buffer(handle);
-                    util::send_pending_did_change(self, editor, platform);
-                    util::send_did_close(self, editor, platform, handle);
-                }
-                EditorEvent::FixCursors { .. } => (),
-            }
-        }
-    }
-
     fn request(&mut self, platform: &mut Platform, method: &'static str, params: JsonObject) {
         if !self.initialized {
             return;
@@ -1131,7 +1086,6 @@ impl Client {
         let id = self
             .protocol
             .request(platform, &mut self.json, method, params);
-        self.json.clear();
 
         self.pending_requests.add(id, method);
     }
@@ -1164,7 +1118,6 @@ impl Client {
         });
         self.protocol
             .respond(platform, &mut self.json, request_id, result);
-        self.json.clear();
     }
 
     pub(crate) fn notify(
@@ -1181,7 +1134,6 @@ impl Client {
         });
         self.protocol
             .notify(platform, &mut self.json, method, params);
-        self.json.clear();
     }
 
     pub fn initialize(&mut self, platform: &mut Platform) {

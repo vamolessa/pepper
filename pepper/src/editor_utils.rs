@@ -263,9 +263,9 @@ impl StatusBar {
         }
 
         StatusBarDisplayInfo {
-           extra_height,
-           prefix,
-           message,
+            extra_height,
+            prefix,
+            message,
         }
     }
 }
@@ -563,4 +563,8 @@ mod tests {
         );
     }
 }
+
+
+
+
 

@@ -65,4 +65,3 @@ pub fn enter_rename_mode(
     let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
     lsp.current_client_handle = Some(client.handle());
 }
-

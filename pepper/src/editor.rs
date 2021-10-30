@@ -135,11 +135,12 @@ impl EditorContext {
             let write = buf.write_with_len(ServerEvent::bytes_variant_header_len());
             let ctx = ui::RenderContext {
                 editor: &self.editor,
+                status_bar_display: &status_bar_display,
                 viewport_size: c.viewport_size,
                 scroll: c.scroll,
                 has_focus,
             };
-            ui::render(&ctx, c.buffer_view_handle(), write);
+            ui::draw(&ctx, c.buffer_view_handle(), write);
             ServerEvent::Display(&[]).serialize_bytes_variant_header(write);
 
             let handle = c.handle();
@@ -457,4 +458,3 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
-

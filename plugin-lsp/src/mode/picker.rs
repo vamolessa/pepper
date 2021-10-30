@@ -305,4 +305,3 @@ pub fn enter_workspace_symbol_mode(
         client.cancel_current_request();
     }
 }
-

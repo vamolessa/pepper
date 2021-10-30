@@ -6,6 +6,7 @@ use std::{
 };
 
 use pepper::{
+    buffer_position::BufferRange,
     editor::EditorContext,
     editor_utils::{hash_bytes, parse_process_command, MessageKind},
     events::{EditorEvent, EditorEventIter},
@@ -23,7 +24,7 @@ mod json;
 mod mode;
 mod protocol;
 
-use client::{Client, ClientHandle};
+use client::{Client, ClientHandle, util};
 use json::{JsonObject, JsonValue};
 use protocol::{ProtocolError, ResponseError, ServerEvent};
 
@@ -319,8 +320,52 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
     }
 
     for entry in &mut lsp.entries {
-        if let ClientEntry::Occupied(client) = entry {
-            client.on_editor_events(&mut ctx.editor, &mut ctx.platform);
+        let client = match entry {
+            ClientEntry::Occupied(client) => client,
+            _ => continue,
+        };
+        if !client.initialized {
+            continue;
+        }
+
+        let mut events = EditorEventIter::new();
+        while let Some(event) = events.next(&ctx.editor.events) {
+            client.json.clear();
+
+            match *event {
+                EditorEvent::Idle => {
+                    util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
+                }
+                EditorEvent::BufferRead { handle } => {
+                    let handle = handle;
+                    client.versioned_buffers.dispose(handle);
+                    util::send_did_open(client, &ctx.editor, &mut ctx.platform, handle);
+                }
+                EditorEvent::BufferInsertText {
+                    handle,
+                    range,
+                    text,
+                    ..
+                } => {
+                    let text = text.as_str(&ctx.editor.events);
+                    let range = BufferRange::between(range.from, range.from);
+                    client.versioned_buffers.add_edit(handle, range, text);
+                }
+                EditorEvent::BufferDeleteText { handle, range, .. } => {
+                    client.versioned_buffers.add_edit(handle, range, "");
+                }
+                EditorEvent::BufferWrite { handle, .. } => {
+                    util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
+                    util::send_did_save(client, &ctx.editor, &mut ctx.platform, handle);
+                }
+                EditorEvent::BufferClose { handle } => {
+                    client.versioned_buffers.dispose(handle);
+                    client.diagnostics.on_close_buffer(handle);
+                    util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
+                    util::send_did_close(client, &ctx.editor, &mut ctx.platform, handle);
+                }
+                EditorEvent::FixCursors { .. } => (),
+            }
         }
     }
 }
@@ -335,6 +380,7 @@ fn on_process_spawned(
         &mut ctx.plugins.get_as::<LspPlugin>(handle).entries[client_index as usize]
     {
         client.protocol.set_process_handle(process_handle);
+        client.json.clear();
         client.initialize(&mut ctx.platform);
     }
 }
@@ -351,6 +397,7 @@ fn on_process_output(
         None => return,
     };
     let client = client_guard.deref_mut();
+    client.json.clear();
 
     let mut events = client.protocol.parse_events(bytes);
     while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
@@ -388,7 +435,8 @@ fn on_process_output(
                 }
             }
             ServerEvent::Notification(notification) => {
-                let result = client_event_handler::on_notification(client, ctx, plugin_handle, notification);
+                let result =
+                    client_event_handler::on_notification(client, ctx, plugin_handle, notification);
                 if let Err(error) = result {
                     ctx.editor
                         .status_bar
@@ -397,7 +445,8 @@ fn on_process_output(
                 }
             }
             ServerEvent::Response(response) => {
-                let result = client_event_handler::on_response(client, ctx, plugin_handle, response);
+                let result =
+                    client_event_handler::on_response(client, ctx, plugin_handle, response);
                 if let Err(error) = result {
                     ctx.editor
                         .status_bar
@@ -446,6 +495,7 @@ fn on_completion(
             ClientEntry::Occupied(client) => client,
             _ => continue,
         };
+        client.json.clear();
 
         let mut should_complete = completion_ctx.completion_requested;
 
@@ -487,4 +537,3 @@ fn on_completion(
 
     false
 }
-
