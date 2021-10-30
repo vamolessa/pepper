@@ -36,7 +36,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     r("lsp-open-log", &[], |ctx, io| {
         io.args.assert_empty()?;
         let client_handle = io.client_handle()?;
-        let buffer_handle = io.current_buffer_handle(ctx)?;
+        let buffer_handle = io.current_buffer_handle(ctx).ok();
         access(ctx, io, buffer_handle, |ctx, client| {
             let path = client
                 .log_file_path()
@@ -88,7 +88,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     r("lsp-stop", &[], |ctx, io| {
         io.args.assert_empty()?;
 
-        let buffer_handle = io.current_buffer_handle(ctx)?;
+        let buffer_handle = io.current_buffer_handle(ctx).ok();
         let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
         match find_lsp_client_for_buffer(lsp, &ctx.editor, buffer_handle) {
             Some(client) => {
@@ -113,7 +113,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         io.args.assert_empty()?;
 
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(ctx, io)?;
-        access(ctx, io, buffer_handle, |ctx, client| {
+        access(ctx, io, Some(buffer_handle), |ctx, client| {
             let op = client.hover(
                 &mut ctx.editor,
                 &mut ctx.platform,
@@ -130,7 +130,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(ctx, io)?;
 
-        access(ctx, io, buffer_handle, |ctx, client| {
+        access(ctx, io, Some(buffer_handle), |ctx, client| {
             let op = client.definition(
                 &mut ctx.editor,
                 &mut ctx.platform,
@@ -148,7 +148,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(ctx, io)?;
 
-        access(ctx, io, buffer_handle, |ctx, client| {
+        access(ctx, io, Some(buffer_handle), |ctx, client| {
             let op = client.declaration(
                 &mut ctx.editor,
                 &mut ctx.platform,
@@ -164,7 +164,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         io.args.assert_empty()?;
         let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(ctx, io)?;
-        access(ctx, io, buffer_handle, |ctx, client| {
+        access(ctx, io, Some(buffer_handle), |ctx, client| {
             let op = client.implementation(
                 &mut ctx.editor,
                 &mut ctx.platform,
@@ -194,7 +194,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let client_handle = io.client_handle()?;
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(ctx, io)?;
 
-        access(ctx, io, buffer_handle, |ctx, client| {
+        access(ctx, io, Some(buffer_handle), |ctx, client| {
             let op = client.references(
                 &mut ctx.editor,
                 &mut ctx.platform,
@@ -213,7 +213,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(ctx, io)?;
         let plugin_handle = io.plugin_handle();
 
-        access(ctx, io, buffer_handle, |ctx, client| {
+        access(ctx, io, Some(buffer_handle), |ctx, client| {
             let op = client.rename(ctx, plugin_handle, buffer_handle, cursor.position);
             Ok(op)
         })
@@ -225,7 +225,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let (buffer_handle, cursor) = current_buffer_and_main_cursor(ctx, io)?;
         let plugin_handle = io.plugin_handle();
 
-        access(ctx, io, buffer_handle, |ctx, client| {
+        access(ctx, io, Some(buffer_handle), |ctx, client| {
             let op = client.code_action(
                 &mut ctx.editor,
                 &mut ctx.platform,
@@ -243,7 +243,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let view_handle = io.current_buffer_view_handle(ctx)?;
         let buffer_handle = ctx.editor.buffer_views.get(view_handle).buffer_handle;
 
-        access(ctx, io, buffer_handle, |ctx, client| {
+        access(ctx, io, Some(buffer_handle), |ctx, client| {
             let op = client.document_symbols(&mut ctx.editor, &mut ctx.platform, view_handle);
             Ok(op)
         })
@@ -253,7 +253,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         let query = io.args.try_next().unwrap_or("");
         io.args.assert_empty()?;
 
-        let buffer_handle = io.current_buffer_handle(ctx)?;
+        let buffer_handle = io.current_buffer_handle(ctx).ok();
         access(ctx, io, buffer_handle, |ctx, client| {
             let op = client.workspace_symbols(&mut ctx.editor, &mut ctx.platform, query);
             Ok(op)
@@ -270,7 +270,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
             .get(buffer_view_handle)
             .buffer_handle;
 
-        access(ctx, io, buffer_handle, |ctx, client| {
+        access(ctx, io, Some(buffer_handle), |ctx, client| {
             let op = client.formatting(&mut ctx.editor, &mut ctx.platform, buffer_view_handle);
             Ok(op)
         })
@@ -292,16 +292,21 @@ fn current_buffer_and_main_cursor(
 fn find_lsp_client_for_buffer(
     lsp: &mut LspPlugin,
     editor: &Editor,
-    buffer_handle: BufferHandle,
+    buffer_handle: Option<BufferHandle>,
 ) -> Option<ClientGuard> {
-    let buffer_path = editor.buffers.get(buffer_handle).path.to_str()?;
-    lsp.find_client(|c| c.handles_path(buffer_path))
+    match buffer_handle {
+        Some(buffer_handle) => {
+            let buffer_path = editor.buffers.get(buffer_handle).path.to_str()?;
+            lsp.find_client(|c| c.handles_path(buffer_path))
+        }
+        None => lsp.find_client(|_| true),
+    }
 }
 
 fn access<A>(
     ctx: &mut EditorContext,
     io: &mut CommandIO,
-    buffer_handle: BufferHandle,
+    buffer_handle: Option<BufferHandle>,
     accessor: A,
 ) -> Result<(), CommandError>
 where
