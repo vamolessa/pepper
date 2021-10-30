@@ -263,6 +263,15 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 Some(path) => path,
                 None => continue,
             };
+
+            let buffer_is_client_log = lsp.entries.iter().any(|e| match e {
+                ClientEntry::Occupied(c) => c.log_file_path() == Some(buffer_path),
+                _ => false,
+            });
+            if buffer_is_client_log {
+                continue;
+            }
+
             let (index, recipe) = match lsp
                 .recipes
                 .iter_mut()
@@ -379,11 +388,22 @@ fn on_process_output(
                 }
             }
             ServerEvent::Notification(notification) => {
-                let _ =
-                    client_event_handler::on_notification(client, ctx, plugin_handle, notification);
+                let result = client_event_handler::on_notification(client, ctx, plugin_handle, notification);
+                if let Err(error) = result {
+                    ctx.editor
+                        .status_bar
+                        .write(MessageKind::Error)
+                        .fmt(format_args!("lsp protocol error: {}", error));
+                }
             }
             ServerEvent::Response(response) => {
-                let _ = client_event_handler::on_response(client, ctx, plugin_handle, response);
+                let result = client_event_handler::on_response(client, ctx, plugin_handle, response);
+                if let Err(error) = result {
+                    ctx.editor
+                        .status_bar
+                        .write(MessageKind::Error)
+                        .fmt(format_args!("lsp protocol error: {}", error));
+                }
             }
         }
     }

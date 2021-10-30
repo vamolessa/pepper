@@ -187,6 +187,13 @@ pub enum MessageKind {
     Error,
 }
 
+#[derive(Default)]
+pub struct StatusBarDisplayInfo<'a> {
+    pub extra_height: u32,
+    pub prefix: &'static str,
+    pub message: &'a str,
+}
+
 pub struct StatusBar {
     kind: MessageKind,
     message: String,
@@ -213,15 +220,32 @@ impl StatusBar {
         StatusBarWriter(&mut self.message)
     }
 
-    pub fn extra_height(&self, available_size: (u16, u8)) -> usize {
-        let mut height = matches!(self.kind, MessageKind::Error) as _;
+    pub fn display_info(&self, available_size: (u16, u8)) -> StatusBarDisplayInfo {
+        let prefix = match self.kind {
+            MessageKind::Info => "",
+            MessageKind::Error => "error: ",
+        };
+
+        let message = self.message.trim_end();
+        let message = match message.trim_start() {
+            "" => "",
+            _ => message,
+        };
+
+        let mut extra_height = prefix.len() as u32 / available_size.1 as u32;
         let mut x = 0;
 
-        for c in self.message.chars() {
+        if extra_height == 0 && (prefix.len() + message.len()) < available_size.0 as _ {
+            x = prefix.len() % available_size.1 as usize;
+        } else {
+            extra_height = 1
+        }
+
+        for c in message.chars() {
             match c {
                 '\n' => {
-                    height += 1;
-                    if height > available_size.1 as _ {
+                    extra_height += 1;
+                    if extra_height > available_size.1 as _ {
                         break;
                     }
                 }
@@ -229,8 +253,8 @@ impl StatusBar {
                     x += char_display_len(c) as usize;
                     if x > available_size.0 as _ {
                         x -= available_size.0 as usize;
-                        height += 1;
-                        if height > available_size.1 as _ {
+                        extra_height += 1;
+                        if extra_height > available_size.1 as _ {
                             break;
                         }
                     }
@@ -238,7 +262,11 @@ impl StatusBar {
             }
         }
 
-        height
+        StatusBarDisplayInfo {
+           extra_height,
+           prefix,
+           message,
+        }
     }
 }
 pub struct StatusBarWriter<'a>(&'a mut String);

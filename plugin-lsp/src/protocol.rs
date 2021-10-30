@@ -244,6 +244,14 @@ impl From<InvalidGlobError> for ProtocolError {
         Self::ParseError
     }
 }
+impl fmt::Display for ProtocolError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::ParseError => f.write_str("parse error"),
+            Self::MethodNotFound => f.write_str("method not found"),
+        }
+    }
+}
 
 #[derive(Default, Clone, Copy)]
 pub struct DocumentPosition {

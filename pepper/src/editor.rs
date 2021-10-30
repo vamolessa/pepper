@@ -12,7 +12,7 @@ use crate::{
     config::Config,
     editor_utils::{
         KeyMapCollection, MatchResult, ReadLine, RegisterCollection, RegisterKey, StatusBar,
-        StringPool,
+        StatusBarDisplayInfo, StringPool,
     },
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
@@ -101,6 +101,10 @@ impl EditorContext {
 
         let mut needs_redraw = false;
         for c in self.clients.iter_mut() {
+            if !c.has_ui() {
+                continue;
+            }
+
             if let Some(handle) = c.buffer_view_handle() {
                 let buffer_view = self.editor.buffer_views.get(handle);
                 let buffer = self.editor.buffers.get_mut(buffer_view.buffer_handle);
@@ -112,23 +116,20 @@ impl EditorContext {
 
             let has_focus = focused_client == Some(c.handle());
 
-            let margin_bottom = if has_focus {
+            let (status_bar_display, margin_bottom) = if has_focus {
                 let max_height = self.editor.config.status_bar_max_height.get();
                 let max_height = c.viewport_size.1.min(max_height as _) as _;
                 let available_size = (c.viewport_size.0, max_height);
 
-                let extra_height = self.editor.status_bar.extra_height(available_size);
+                let status_bar_display = self.editor.status_bar.display_info(available_size);
 
-                picker_height.max(extra_height)
+                let margin_bottom = picker_height.max(status_bar_display.extra_height as _);
+                (status_bar_display, margin_bottom)
             } else {
-                0
+                (StatusBarDisplayInfo::default(), 0)
             };
 
             c.scroll_to_main_cursor(&self.editor, margin_bottom);
-
-            if !c.has_ui() {
-                continue;
-            }
 
             let mut buf = self.platform.buf_pool.acquire();
             let write = buf.write_with_len(ServerEvent::bytes_variant_header_len());
