@@ -128,10 +128,10 @@ impl EditorContext {
                     .editor
                     .status_bar
                     .display((width, max_height), &mut status_bar_lines_buf);
-                let status_bar_extra_height =
-                    status_bar_display.lines.len() + status_bar_display.prefix_is_line as usize - 1;
+                let status_bar_height =
+                    status_bar_display.lines.len() + status_bar_display.prefix_is_line as usize;
 
-                let margin_bottom = picker_height.max(status_bar_extra_height);
+                let margin_bottom = status_bar_height.saturating_sub(1).max(picker_height);
                 (status_bar_display, margin_bottom)
             } else {
                 (StatusBarDisplay::default(), 0)

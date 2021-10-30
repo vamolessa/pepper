@@ -190,7 +190,7 @@ pub enum MessageKind {
 #[derive(Default)]
 pub struct StatusBarDisplay<'status_bar, 'lines> {
     pub prefix: &'static str,
-    pub prefix_is_line : bool,
+    pub prefix_is_line: bool,
     pub lines: &'lines [&'status_bar str],
 }
 
@@ -243,46 +243,46 @@ impl StatusBar {
             MessageKind::Error => "error: ",
         };
 
-        let mut message = &self.message[..];
-
         let mut lines_len = 0;
         let mut x = 0;
+        let mut line_start_index = 0;
 
-        let prefix_is_line = (prefix.len() + message.len()) >= available_size.0 as _;
+        let prefix_is_line = (prefix.len() + self.message.len()) >= available_size.0 as _;
         if !prefix_is_line {
             x = prefix.len();
         }
 
-        'split_into_lines: while !message.is_empty() {
-            let mut chars = message.char_indices();
-            while let Some((i, c)) = chars.next() {
-                match c {
-                    '\n' => {
-                        if lines_len >= lines.len() {
-                            break 'split_into_lines;
-                        }
-                        
-                        lines[lines_len] = &message[..i];
-                        lines_len += 1;
-                        message = &message[i + 1..];
+        for (i, c) in self.message.char_indices() {
+            match c {
+                '\n' => {
+                    if lines_len >= lines.len() {
+                        break;
                     }
-                    c => {
-                        let c_len = char_display_len(c) as usize;
-                        x += c_len;
-                        if x >= available_size.0 as _ {
-                            x = c_len;
 
-                            if lines_len >= lines.len() {
-                                break 'split_into_lines;
-                            }
+                    lines[lines_len] = &self.message[line_start_index..i];
+                    lines_len += 1;
+                    line_start_index = i + 1;
+                }
+                c => {
+                    let c_len = char_display_len(c) as usize;
+                    x += c_len;
+                    if x >= available_size.0 as _ {
+                        x = c_len;
 
-                            lines[lines_len] = &message[..i];
-                            lines_len += 1;
-                            message = &message[i..];
+                        if lines_len >= lines.len() {
+                            break;
                         }
+
+                        lines[lines_len] = &self.message[line_start_index..i];
+                        lines_len += 1;
+                        line_start_index = i;
                     }
                 }
             }
+        }
+        if lines_len < lines.len() && line_start_index < self.message.len() {
+            lines[lines_len] = &self.message[line_start_index..];
+            lines_len += 1;
         }
 
         StatusBarDisplay {
