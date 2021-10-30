@@ -24,7 +24,7 @@ mod json;
 mod mode;
 mod protocol;
 
-use client::{Client, ClientHandle, util};
+use client::{util, Client, ClientHandle};
 use json::{JsonObject, JsonValue};
 use protocol::{ProtocolError, ResponseError, ServerEvent};
 
@@ -264,15 +264,6 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 Some(path) => path,
                 None => continue,
             };
-
-            let buffer_is_client_log = lsp.entries.iter().any(|e| match e {
-                ClientEntry::Occupied(c) => c.log_file_path() == Some(buffer_path),
-                _ => false,
-            });
-            if buffer_is_client_log {
-                continue;
-            }
-
             let (index, recipe) = match lsp
                 .recipes
                 .iter_mut()
@@ -337,9 +328,11 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                     util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
                 }
                 EditorEvent::BufferRead { handle } => {
-                    let handle = handle;
-                    client.versioned_buffers.dispose(handle);
-                    util::send_did_open(client, &ctx.editor, &mut ctx.platform, handle);
+                    let buffer = ctx.editor.buffers.get(handle);
+                    if buffer.path.to_str() != client.log_file_path() {
+                        client.versioned_buffers.dispose(handle);
+                        util::send_did_open(client, &ctx.editor, &mut ctx.platform, handle);
+                    }
                 }
                 EditorEvent::BufferInsertText {
                     handle,
@@ -347,22 +340,34 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                     text,
                     ..
                 } => {
-                    let text = text.as_str(&ctx.editor.events);
-                    let range = BufferRange::between(range.from, range.from);
-                    client.versioned_buffers.add_edit(handle, range, text);
+                    let buffer = ctx.editor.buffers.get(handle);
+                    if buffer.path.to_str() != client.log_file_path() {
+                        let text = text.as_str(&ctx.editor.events);
+                        let range = BufferRange::between(range.from, range.from);
+                        client.versioned_buffers.add_edit(handle, range, text);
+                    }
                 }
                 EditorEvent::BufferDeleteText { handle, range, .. } => {
-                    client.versioned_buffers.add_edit(handle, range, "");
+                    let buffer = ctx.editor.buffers.get(handle);
+                    if buffer.path.to_str() != client.log_file_path() {
+                        client.versioned_buffers.add_edit(handle, range, "");
+                    }
                 }
                 EditorEvent::BufferWrite { handle, .. } => {
-                    util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
-                    util::send_did_save(client, &ctx.editor, &mut ctx.platform, handle);
+                    let buffer = ctx.editor.buffers.get(handle);
+                    if buffer.path.to_str() != client.log_file_path() {
+                        util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
+                        util::send_did_save(client, &ctx.editor, &mut ctx.platform, handle);
+                    }
                 }
                 EditorEvent::BufferClose { handle } => {
-                    client.versioned_buffers.dispose(handle);
-                    client.diagnostics.on_close_buffer(handle);
-                    util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
-                    util::send_did_close(client, &ctx.editor, &mut ctx.platform, handle);
+                    let buffer = ctx.editor.buffers.get(handle);
+                    if buffer.path.to_str() != client.log_file_path() {
+                        client.versioned_buffers.dispose(handle);
+                        client.diagnostics.on_close_buffer(handle);
+                        util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
+                        util::send_did_close(client, &ctx.editor, &mut ctx.platform, handle);
+                    }
                 }
                 EditorEvent::FixCursors { .. } => (),
             }
@@ -537,3 +542,4 @@ fn on_completion(
 
     false
 }
+

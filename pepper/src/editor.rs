@@ -12,7 +12,7 @@ use crate::{
     config::Config,
     editor_utils::{
         KeyMapCollection, MatchResult, ReadLine, RegisterCollection, RegisterKey, StatusBar,
-        StatusBarDisplayInfo, StringPool,
+        StatusBarDisplay, StringPool,
     },
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
@@ -97,7 +97,10 @@ impl EditorContext {
             .editor
             .picker
             .update_scroll(self.editor.config.picker_max_height as _);
+        self.editor.status_bar.on_before_render();
         let focused_client = self.clients.focused_client();
+
+        let mut status_bar_lines_buf = [""; u8::MAX as _];
 
         let mut needs_redraw = false;
         for c in self.clients.iter_mut() {
@@ -117,16 +120,21 @@ impl EditorContext {
             let has_focus = focused_client == Some(c.handle());
 
             let (status_bar_display, margin_bottom) = if has_focus {
+                let width = c.viewport_size.0.saturating_sub(1);
                 let max_height = self.editor.config.status_bar_max_height.get();
                 let max_height = c.viewport_size.1.min(max_height as _) as _;
-                let available_size = (c.viewport_size.0, max_height);
 
-                let status_bar_display = self.editor.status_bar.display_info(available_size);
+                let status_bar_display = self
+                    .editor
+                    .status_bar
+                    .display((width, max_height), &mut status_bar_lines_buf);
+                let status_bar_extra_height =
+                    status_bar_display.lines.len() + status_bar_display.prefix_is_line as usize - 1;
 
-                let margin_bottom = picker_height.max(status_bar_display.extra_height as _);
+                let margin_bottom = picker_height.max(status_bar_extra_height);
                 (status_bar_display, margin_bottom)
             } else {
-                (StatusBarDisplayInfo::default(), 0)
+                (StatusBarDisplay::default(), 0)
             };
 
             c.scroll_to_main_cursor(&self.editor, margin_bottom);
@@ -224,10 +232,14 @@ impl EditorContext {
                         self.editor.mode.read_line_state.on_buffer_close(handle);
                     }
                     EditorEvent::FixCursors { handle, cursors } => {
-                        let mut view_cursors =
-                            self.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                        let buffer_view = self.editor.buffer_views.get_mut(handle);
+                        let buffer = self.editor.buffers.get(buffer_view.buffer_handle).content();
+                        let mut view_cursors = buffer_view.cursors.mut_guard();
                         view_cursors.clear();
                         for &cursor in cursors.as_cursors(&self.editor.events) {
+                            let mut cursor = cursor;
+                            cursor.anchor = buffer.saturate_position(cursor.anchor);
+                            cursor.position = buffer.saturate_position(cursor.position);
                             view_cursors.add(cursor);
                         }
                     }
@@ -458,3 +470,4 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
+

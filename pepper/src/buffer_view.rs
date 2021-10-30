@@ -437,25 +437,31 @@ impl BufferView {
         let edits = buffers
             .get_mut(self.buffer_handle)
             .undo(word_database, events);
-        let mut cursors = self.cursors.mut_guard();
+
+        let mut cursors = [Cursor::zero(); CursorCollection::capacity()];
+        let mut cursors_len = 0;
+
         let mut last_edit_kind = None;
         for edit in edits {
             if last_edit_kind != Some(edit.kind) {
-                cursors.clear();
+                cursors_len = 0;
             }
             let position = match edit.kind {
                 EditKind::Insert => edit.range.to,
                 EditKind::Delete => edit.range.from,
             };
-            cursors.add(Cursor {
-                anchor: edit.range.from,
-                position,
-            });
+            if cursors_len < cursors.len() {
+                cursors[cursors_len] = Cursor {
+                    anchor: edit.range.from,
+                    position,
+                };
+                cursors_len += 1;
+            }
+
             last_edit_kind = Some(edit.kind);
         }
 
-        events.enqueue_fix_cursors(self.handle, &cursors[..]);
-        cursors.clear();
+        events.enqueue_fix_cursors(self.handle, &cursors[..cursors_len]);
     }
 
     pub fn redo(
@@ -467,35 +473,42 @@ impl BufferView {
         let edits = buffers
             .get_mut(self.buffer_handle)
             .redo(word_database, events);
-        let mut cursors = self.cursors.mut_guard();
+
+        let mut cursors = [Cursor::zero(); CursorCollection::capacity()];
+        let mut cursors_len = 0;
+
         let mut last_edit_kind = None;
         for edit in edits {
             if last_edit_kind != Some(edit.kind) {
-                cursors.clear();
+                cursors_len = 0;
             }
             let position = match edit.kind {
                 EditKind::Insert => {
-                    for cursor in &mut cursors[..] {
+                    for cursor in &mut cursors[..cursors_len] {
                         cursor.insert(edit.range);
                     }
                     edit.range.to
                 }
                 EditKind::Delete => {
-                    for cursor in &mut cursors[..] {
+                    for cursor in &mut cursors[..cursors_len] {
                         cursor.delete(edit.range);
                     }
                     edit.range.from
                 }
             };
-            cursors.add(Cursor {
-                anchor: edit.range.from,
-                position,
-            });
+            
+            if cursors_len < cursors.len() {
+                cursors[cursors_len] = Cursor {
+                    anchor: edit.range.from,
+                    position,
+                };
+                cursors_len += 1;
+            }
+
             last_edit_kind = Some(edit.kind);
         }
 
-        events.enqueue_fix_cursors(self.handle, &cursors[..]);
-        cursors.clear();
+        events.enqueue_fix_cursors(self.handle, &cursors[..cursors_len]);
     }
 }
 

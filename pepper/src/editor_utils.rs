@@ -188,10 +188,10 @@ pub enum MessageKind {
 }
 
 #[derive(Default)]
-pub struct StatusBarDisplayInfo<'a> {
-    pub extra_height: u32,
+pub struct StatusBarDisplay<'status_bar, 'lines> {
     pub prefix: &'static str,
-    pub message: &'a str,
+    pub prefix_is_line : bool,
+    pub lines: &'lines [&'status_bar str],
 }
 
 pub struct StatusBar {
@@ -206,8 +206,8 @@ impl StatusBar {
         }
     }
 
-    pub fn message(&self) -> (MessageKind, &str) {
-        (self.kind, &self.message)
+    pub fn is_empty(&self) -> bool {
+        self.message.is_empty()
     }
 
     pub fn clear(&mut self) {
@@ -220,52 +220,75 @@ impl StatusBar {
         StatusBarWriter(&mut self.message)
     }
 
-    pub fn display_info(&self, available_size: (u16, u8)) -> StatusBarDisplayInfo {
+    pub(crate) fn on_before_render(&mut self) {
+        let trimmed_len = self.message.trim_end().len();
+        self.message.truncate(trimmed_len);
+
+        unsafe {
+            for b in self.message.as_mut_vec().iter_mut() {
+                if *b == b'\t' {
+                    *b = b' ';
+                }
+            }
+        }
+    }
+
+    pub(crate) fn display<'this, 'lines>(
+        &'this self,
+        available_size: (u16, u8),
+        lines: &'lines mut [&'this str],
+    ) -> StatusBarDisplay<'this, 'lines> {
         let prefix = match self.kind {
             MessageKind::Info => "",
             MessageKind::Error => "error: ",
         };
 
-        let message = self.message.trim_end();
-        let message = match message.trim_start() {
-            "" => "",
-            _ => message,
-        };
+        let mut message = &self.message[..];
 
-        let mut extra_height = prefix.len() as u32 / available_size.1 as u32;
+        let mut lines_len = 0;
         let mut x = 0;
 
-        if extra_height == 0 && (prefix.len() + message.len()) < available_size.0 as _ {
-            x = prefix.len() % available_size.1 as usize;
-        } else {
-            extra_height = 1
+        let prefix_is_line = (prefix.len() + message.len()) >= available_size.0 as _;
+        if !prefix_is_line {
+            x = prefix.len();
         }
 
-        for c in message.chars() {
-            match c {
-                '\n' => {
-                    extra_height += 1;
-                    if extra_height > available_size.1 as _ {
-                        break;
+        'split_into_lines: while !message.is_empty() {
+            let mut chars = message.char_indices();
+            while let Some((i, c)) = chars.next() {
+                match c {
+                    '\n' => {
+                        if lines_len >= lines.len() {
+                            break 'split_into_lines;
+                        }
+                        
+                        lines[lines_len] = &message[..i];
+                        lines_len += 1;
+                        message = &message[i + 1..];
                     }
-                }
-                c => {
-                    x += char_display_len(c) as usize;
-                    if x > available_size.0 as _ {
-                        x -= available_size.0 as usize;
-                        extra_height += 1;
-                        if extra_height > available_size.1 as _ {
-                            break;
+                    c => {
+                        let c_len = char_display_len(c) as usize;
+                        x += c_len;
+                        if x >= available_size.0 as _ {
+                            x = c_len;
+
+                            if lines_len >= lines.len() {
+                                break 'split_into_lines;
+                            }
+
+                            lines[lines_len] = &message[..i];
+                            lines_len += 1;
+                            message = &message[i..];
                         }
                     }
                 }
             }
         }
 
-        StatusBarDisplayInfo {
-            extra_height,
+        StatusBarDisplay {
             prefix,
-            message,
+            prefix_is_line,
+            lines: &lines[..lines_len],
         }
     }
 }
@@ -563,8 +586,4 @@ mod tests {
         );
     }
 }
-
-
-
-
 

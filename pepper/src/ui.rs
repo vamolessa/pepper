@@ -5,7 +5,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     editor::Editor,
-    editor_utils::{MessageKind, StatusBarDisplayInfo},
+    editor_utils::StatusBarDisplay,
     mode::ModeKind,
     syntax::{Token, TokenKind},
     theme::Color,
@@ -64,17 +64,13 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
 
 pub struct RenderContext<'a> {
     pub editor: &'a Editor,
-    pub status_bar_display: &'a StatusBarDisplayInfo<'a>,
+    pub status_bar_display: &'a StatusBarDisplay<'a, 'a>,
     pub viewport_size: (u16, u16),
     pub scroll: BufferPositionIndex,
     pub has_focus: bool,
 }
 
-pub fn draw(
-    ctx: &RenderContext,
-    buffer_view_handle: Option<BufferViewHandle>,
-    buf: &mut Vec<u8>,
-) {
+pub fn draw(ctx: &RenderContext, buffer_view_handle: Option<BufferViewHandle>, buf: &mut Vec<u8>) {
     draw_buffer_view(ctx, buffer_view_handle, buf);
     draw_picker(ctx, buf);
     draw_statusbar(ctx, buffer_view_handle, buf);
@@ -597,10 +593,7 @@ fn draw_statusbar(
     set_foreground_color(buf, foreground_color);
 
     let x = if ctx.has_focus {
-        let (message_kind, message) = ctx.editor.status_bar.message();
-        let message = message.trim_end();
-
-        let message_is_empty = message.trim_start().is_empty();
+        let message_is_empty = ctx.status_bar_display.lines.is_empty();
         match ctx.editor.mode.kind() {
             ModeKind::Normal if message_is_empty => match ctx.editor.recording_macro {
                 Some(key) => {
@@ -640,57 +633,38 @@ fn draw_statusbar(
                 None
             }
             _ => {
-                fn print_line(buf: &mut Vec<u8>, line: &str) -> usize {
-                    let mut char_buf = [0; std::mem::size_of::<char>()];
-                    let mut len = 0;
-                    for c in line.chars() {
-                        match c {
-                            '\t' => buf.push(b' '),
-                            c => buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes()),
-                        }
-                        len += 1;
-                    }
-                    len
+                let line_count = ctx.status_bar_display.lines.len() + ctx.status_bar_display.prefix_is_line as usize;
+                if line_count > 1 {
+                    move_cursor_up(buf, (line_count - 1) as _);
                 }
 
-                let prefix = match message_kind {
-                    MessageKind::Info => &[],
-                    MessageKind::Error => &b"error:"[..],
-                };
+                let prefix = ctx.status_bar_display.prefix.as_bytes();
+                if !prefix.is_empty() {
+                    set_background_color(buf, background_innactive_color);
+                    set_foreground_color(buf, foreground_color);
+                    buf.extend_from_slice(prefix);
 
-                let line_count = {
-                    let mut x = 0;
-                    let mut line_count = 1;
-                    for c in message.chars() {
-                        if c == '\n' {
-                            x = 0;
-                            line_count += 1;
-                        } else {
-                            x += 1;
-                            if x >= ctx.viewport_size.0 as _ {
-                                x = 0;
-                                line_count += 1;
-                            }
-                        }
-                    }
-                    line_count
-                };
-
-                if line_count > 1 {
-                    if prefix.is_empty() {
-                        move_cursor_up(buf, line_count - 1);
-                    } else {
-                        move_cursor_up(buf, line_count);
-                        set_background_color(buf, background_innactive_color);
-                        set_foreground_color(buf, foreground_color);
-                        buf.extend_from_slice(prefix);
+                    if ctx.status_bar_display.prefix_is_line {
                         clear_until_new_line(buf);
                         move_cursor_to_next_line(buf);
-                        set_background_color(buf, background_active_color);
-                        set_foreground_color(buf, foreground_color);
                     }
 
-                    for (i, line) in message.lines().enumerate() {
+                    set_background_color(buf, background_active_color);
+                    set_foreground_color(buf, foreground_color);
+                }
+
+                if let Some((first, rest)) = ctx.status_bar_display.lines.split_first() {
+                    buf.extend_from_slice(first.as_bytes());
+                    clear_until_new_line(buf);
+                    for &line in rest {
+                        move_cursor_to_next_line(buf);
+                        buf.extend_from_slice(line.as_bytes());
+                        clear_until_new_line(buf);
+                    }
+                }
+
+/*
+                    for (i, line) in ctx.status_bar_display.message.lines().enumerate() {
                         let len = print_line(buf, line);
                         if i < line_count - 1 {
                             if len == 0 || len % ctx.viewport_size.0 as usize > 0 {
@@ -703,11 +677,12 @@ fn draw_statusbar(
                     clear_line(buf);
                     set_background_color(buf, background_innactive_color);
                     set_foreground_color(buf, foreground_color);
-                    buf.extend_from_slice(prefix);
+                    buf.extend_from_slice(ctx.status_bar_display.prefix.as_bytes());
                     set_background_color(buf, background_active_color);
                     set_foreground_color(buf, foreground_color);
-                    print_line(buf, message);
+                    print_line(buf, ctx.status_bar_display.message);
                 }
+*/
 
                 None
             }
@@ -801,3 +776,4 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
+

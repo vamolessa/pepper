@@ -1178,7 +1178,7 @@ impl ModeState for State {
                 Some(handle) => handle,
                 None => return,
             };
-            if !ctx.editor.status_bar.message().1.is_empty() {
+            if !ctx.editor.status_bar.is_empty() {
                 return;
             }
 
