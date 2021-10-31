@@ -1,7 +1,7 @@
 This is a plugin for the [Pepper Code Editor](https://vamolessa.itch.io/pepper) that adds
 [LSP](https://microsoft.github.io/language-server-protocol/) support for it.
 
-## [help page](pepper/rc/help.md)
+## [help page](./rc/help.md)
 
 # installation
 

@@ -2,18 +2,18 @@
 
 ### A simple and opinionated modal code editor for your terminal
 
-![main screenshot](.github/screenshots/main.png)
+![main screenshot](./.github/screenshots/main.png)
 
-[more screenshots](.github/screenshots/)
+[more screenshots](./.github/screenshots/)
 
 Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
 
-## [help page](pepper/rc/help.md)
-## [default keybindings](pepper/rc/bindings.md)
-## [command reference](pepper/rc/command_reference.md)
-## [defining language syntaxes](pepper/rc/language_syntax_definitions.md)
-## [config recipes](pepper/rc/config_recipes.md)
+## [help page](./pepper/rc/help.md)
+## [default keybindings](./pepper/rc/bindings.md)
+## [command reference](./pepper/rc/command_reference.md)
+## [defining language syntaxes](./pepper/rc/language_syntax_definitions.md)
+## [config recipes](./pepper/rc/config_recipes.md)
 
 # installation
 
@@ -103,7 +103,7 @@ Pepper expands on Vim's editing capabilities by supporting multiple cursors.
 This enables you to make several text transformations at once.
 Also, cursors behave like carets instead of blocks and can always go one-past-last-character-in-line.
 
-In [config recipes](rc/config_recipes.md#vim-bindings) you'll find some basic "vim-like" keybindigns
+In [config recipes](./pepper/rc/config_recipes.md#vim-bindings) you'll find some basic "vim-like" keybindigns
 for more vim comparisons.
 
 # comparing to kakoune
