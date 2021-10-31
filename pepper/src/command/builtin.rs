@@ -306,12 +306,12 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 
     r("map-normal", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
-    r("map-insert", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
-    r("map-command", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
+    r("map-insert", &[], |ctx, io| map(ctx, io, ModeKind::Insert));
+    r("map-command", &[], |ctx, io| map(ctx, io, ModeKind::Command));
     r("map-readline", &[], |ctx, io| {
-        map(ctx, io, ModeKind::Normal)
+        map(ctx, io, ModeKind::ReadLine)
     });
-    r("map-picker", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
+    r("map-picker", &[], |ctx, io| map(ctx, io, ModeKind::Picker));
 
     static ALIAS_COMPLETIONS: &[CompletionSource] =
         &[CompletionSource::Custom(&[]), CompletionSource::Commands];
