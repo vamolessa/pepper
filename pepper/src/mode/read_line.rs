@@ -10,6 +10,7 @@ use crate::{
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll, ResidualStrBytes},
     events::EditorEventQueue,
     mode::{ModeKind, ModeState},
+    navigation_history::NavigationHistory,
     pattern::Pattern,
     platform::{PlatformRequest, PooledBuf, ProcessTag},
     word_database::WordDatabase,
@@ -122,20 +123,41 @@ pub mod search {
                     update_search(ctx, client_handle);
                 }
                 ReadLinePoll::Submitted => {
-                    if let Some(buffer_view) = ctx
-                        .clients
-                        .get(client_handle)
-                        .buffer_view_handle()
-                        .map(|h| ctx.editor.buffer_views.get(h))
-                    {
+                    let client = ctx.clients.get_mut(client_handle);
+                    if let Some(buffer_view_handle) = client.buffer_view_handle() {
+                        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
                         let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                         let search_ranges = buffer.search_ranges();
+
                         if search_ranges.is_empty() {
                             restore_saved_position(ctx, client_handle);
                         } else {
-                            let position = buffer_view.cursors.main_cursor().position;
+                            let previous_position =
+                                ctx.editor.mode.read_line_state.previous_position;
+                            let current_position = buffer_view.cursors.main_cursor().position;
+
+                            {
+                                let mut cursors = buffer_view.cursors.mut_guard();
+                                cursors.clear();
+                                cursors.add(Cursor {
+                                    anchor: previous_position,
+                                    position: previous_position,
+                                });
+                            }
+
+                            NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
+                            let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+                            {
+                                let mut cursors = buffer_view.cursors.mut_guard();
+                                cursors.clear();
+                                cursors.add(Cursor {
+                                    anchor: current_position,
+                                    position: current_position,
+                                });
+                            }
+
                             ctx.editor.mode.normal_state.search_index =
-                                match search_ranges.binary_search_by_key(&position, |r| r.from) {
+                                match search_ranges.binary_search_by_key(&current_position, |r| r.from) {
                                     Ok(i) => i,
                                     Err(i) => i,
                                 };
@@ -903,3 +925,4 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
         position,
     });
 }
+

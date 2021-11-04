@@ -39,6 +39,10 @@ pub struct BufferView {
 }
 
 impl BufferView {
+    pub fn handle(&self) -> BufferViewHandle {
+        self.handle
+    }
+
     fn reset(&mut self, client_handle: ClientHandle, buffer_handle: BufferHandle) {
         self.alive = true;
         self.client_handle = client_handle;
@@ -559,6 +563,14 @@ impl BufferViewCollection {
         &mut self.buffer_views[handle.0 as usize]
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = &BufferView> {
+        self.buffer_views.iter().filter(|v| v.alive)
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut BufferView> {
+        self.buffer_views.iter_mut().filter(|v| v.alive)
+    }
+
     pub fn buffer_view_handle_from_buffer_handle(
         &mut self,
         client_handle: ClientHandle,
@@ -582,7 +594,7 @@ impl BufferViewCollection {
         let buffer_handle = buffer.handle();
         let buffer = buffer.content();
 
-        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
+        for view in self.iter_mut() {
             if view.buffer_handle == buffer_handle {
                 for c in &mut view.cursors.mut_guard()[..] {
                     c.anchor = buffer.saturate_position(c.anchor);
@@ -597,7 +609,7 @@ impl BufferViewCollection {
         buffer_handle: BufferHandle,
         range: BufferRange,
     ) {
-        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
+        for view in self.iter_mut() {
             if view.buffer_handle == buffer_handle {
                 for c in &mut view.cursors.mut_guard()[..] {
                     c.insert(range);
@@ -611,7 +623,7 @@ impl BufferViewCollection {
         buffer_handle: BufferHandle,
         range: BufferRange,
     ) {
-        for view in self.buffer_views.iter_mut().filter(|v| v.alive) {
+        for view in self.iter_mut() {
             if view.buffer_handle == buffer_handle {
                 for c in &mut view.cursors.mut_guard()[..] {
                     c.delete(range);

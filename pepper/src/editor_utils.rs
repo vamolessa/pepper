@@ -246,7 +246,7 @@ impl StatusBar {
 
         let prefix = match self.kind {
             MessageKind::Info => "",
-            MessageKind::Error => "error: ",
+            MessageKind::Error => "error:",
         };
 
         let mut lines_len = 0;

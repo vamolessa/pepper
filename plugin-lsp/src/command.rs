@@ -263,15 +263,9 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     r("lsp-format", &[], |ctx, io| {
         io.args.assert_empty()?;
 
-        let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
-        let buffer_handle = ctx
-            .editor
-            .buffer_views
-            .get(buffer_view_handle)
-            .buffer_handle;
-
+        let buffer_handle = io.current_buffer_handle(ctx)?;
         access(ctx, io, Some(buffer_handle), |ctx, client| {
-            let op = client.formatting(&mut ctx.editor, &mut ctx.platform, buffer_view_handle);
+            let op = client.formatting(&mut ctx.editor, &mut ctx.platform, buffer_handle);
             Ok(op)
         })
     });

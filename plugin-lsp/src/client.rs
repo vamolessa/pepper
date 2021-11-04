@@ -406,7 +406,7 @@ pub(crate) enum RequestState {
     WorkspaceSymbols,
     FinishWorkspaceSymbols,
     Formatting {
-        buffer_view_handle: BufferViewHandle,
+        buffer_handle: BufferHandle,
     },
     Completion {
         client_handle: client::ClientHandle,
@@ -992,7 +992,7 @@ impl Client {
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        buffer_view_handle: BufferViewHandle,
+        buffer_handle: BufferHandle,
     ) {
         if !self.server_capabilities.document_formatting_provider.0 || !self.request_state.is_idle()
         {
@@ -1001,8 +1001,7 @@ impl Client {
 
         util::send_pending_did_change(self, editor, platform);
 
-        let buffer_view = editor.buffer_views.get(buffer_view_handle);
-        let buffer_path = &editor.buffers.get(buffer_view.buffer_handle).path;
+        let buffer_path = &editor.buffers.get(buffer_handle).path;
         let text_document = util::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let mut options = JsonObject::default();
         options.set(
@@ -1022,7 +1021,7 @@ impl Client {
         params.set("textDocument".into(), text_document.into(), &mut self.json);
         params.set("options".into(), options.into(), &mut self.json);
 
-        self.request_state = RequestState::Formatting { buffer_view_handle };
+        self.request_state = RequestState::Formatting { buffer_handle };
         self.request(platform, "textDocument/formatting", params);
     }
 

@@ -753,6 +753,14 @@ pub(crate) fn on_response(
             Ok(())
         }
         "textDocument/rename" => {
+            if let JsonValue::Null = result {
+                ctx.editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .str("could not rename item under cursor");
+                return Ok(());
+            }
+
             let edit = WorkspaceEdit::from_json(result, &client.json)?;
             edit.apply(
                 &mut ctx.editor,
@@ -886,8 +894,8 @@ pub(crate) fn on_response(
             Ok(())
         }
         "textDocument/formatting" => {
-            let buffer_view_handle = match client.request_state {
-                RequestState::Formatting { buffer_view_handle } => buffer_view_handle,
+            let buffer_handle = match client.request_state {
+                RequestState::Formatting { buffer_handle } => buffer_handle,
                 _ => return Ok(()),
             };
             client.request_state = RequestState::Idle;
@@ -895,10 +903,6 @@ pub(crate) fn on_response(
                 JsonValue::Array(edits) => edits,
                 _ => return Ok(()),
             };
-
-            let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
-            let buffer_handle = buffer_view.buffer_handle;
-            let position = buffer_view.cursors.main_cursor().position;
 
             TextEdit::apply_edits(
                 &mut ctx.editor,
@@ -908,13 +912,16 @@ pub(crate) fn on_response(
                 &client.json,
             );
 
-            ctx.editor.events.enqueue_fix_cursors(
-                buffer_view_handle,
-                &[Cursor {
-                    anchor: position,
-                    position,
-                }],
-            );
+            for buffer_view in ctx.editor.buffer_views.iter() {
+                let position = buffer_view.cursors.main_cursor().position;
+                ctx.editor.events.enqueue_fix_cursors(
+                    buffer_view.handle(),
+                    &[Cursor {
+                        anchor: position,
+                        position,
+                    }],
+                );
+            }
 
             Ok(())
         }
@@ -1077,3 +1084,4 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(()),
     }
 }
+
