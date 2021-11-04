@@ -1,4 +1,5 @@
 [![build badge](https://github.com/vamolessa/pepper/workflows/rust/badge.svg?branch=master)](https://github.com/vamolessa/pepper)
+[![liberapay badge](https://img.shields.io/liberapay/goal/lessa.svg?logo=liberapay)](https://liberapay.com/lessa/donate)
 
 ### A simple and opinionated modal code editor for your terminal
 
@@ -130,3 +131,8 @@ I'll be forever grateful :)
 <iframe src="https://itch.io/embed/810985?border_width=0" width="206" height="165" frameborder="0">
   <a href="https://vamolessa.itch.io/pepper">pepper by Matheus Lessa</a>
 </iframe>
+
+Please consider donating on Liberapay to support Pepper's development :)
+
+<script src="https://liberapay.com/lessa/widgets/button.js"></script>
+<noscript><a href="https://liberapay.com/lessa/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a></noscript>
