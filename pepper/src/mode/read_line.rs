@@ -156,11 +156,12 @@ pub mod search {
                                 });
                             }
 
-                            ctx.editor.mode.normal_state.search_index =
-                                match search_ranges.binary_search_by_key(&current_position, |r| r.from) {
-                                    Ok(i) => i,
-                                    Err(i) => i,
-                                };
+                            ctx.editor.mode.normal_state.search_index = match search_ranges
+                                .binary_search_by_key(&current_position, |r| r.from)
+                            {
+                                Ok(i) => i,
+                                Err(i) => i,
+                            };
                         }
                     }
 
@@ -925,4 +926,3 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
         position,
     });
 }
-

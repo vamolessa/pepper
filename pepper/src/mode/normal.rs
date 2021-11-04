@@ -717,7 +717,7 @@ impl State {
                         .iter()
                         .enumerate()
                         .rev()
-                        .skip(buffer.lines().len() - cursor.position.line_index as usize)
+                        .skip(buffer.lines().len() - cursor.position.line_index as usize - 1)
                         .filter(|(_, l)| {
                             let is_empty = l.as_str().chars().all(|c| c.is_whitespace());
                             let keep = !was_empty && is_empty;
