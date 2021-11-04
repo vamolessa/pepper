@@ -134,5 +134,4 @@ I'll be forever grateful :)
 
 Please consider donating on Liberapay to support Pepper's development :)
 
-<script src="https://liberapay.com/lessa/widgets/button.js"></script>
-<noscript><a href="https://liberapay.com/lessa/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a></noscript>
+<a href="https://liberapay.com/lessa/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a>
