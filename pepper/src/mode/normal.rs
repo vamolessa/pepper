@@ -565,6 +565,10 @@ impl State {
                 Key::None => return None,
                 Key::Char('[') => match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return None,
+                    Key::Tab => {
+                        state.last_char_jump = CharJump::Inclusive('\t');
+                        find_char(ctx, client_handle, false);
+                    }
                     Key::Char(ch) => {
                         state.last_char_jump = CharJump::Inclusive(ch);
                         find_char(ctx, client_handle, false);
@@ -573,6 +577,10 @@ impl State {
                 },
                 Key::Char(']') => match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return None,
+                    Key::Tab => {
+                        state.last_char_jump = CharJump::Exclusive('\t');
+                        find_char(ctx, client_handle, false);
+                    }
                     Key::Char(ch) => {
                         state.last_char_jump = CharJump::Exclusive(ch);
                         find_char(ctx, client_handle, false);
@@ -585,6 +593,10 @@ impl State {
                 Key::None => return None,
                 Key::Char('[') => match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return None,
+                    Key::Tab => {
+                        state.last_char_jump = CharJump::Exclusive('\t');
+                        find_char(ctx, client_handle, true);
+                    }
                     Key::Char(ch) => {
                         state.last_char_jump = CharJump::Exclusive(ch);
                         find_char(ctx, client_handle, true);
@@ -593,6 +605,10 @@ impl State {
                 },
                 Key::Char(']') => match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return None,
+                    Key::Tab => {
+                        state.last_char_jump = CharJump::Inclusive('\t');
+                        find_char(ctx, client_handle, true);
+                    }
                     Key::Char(ch) => {
                         state.last_char_jump = CharJump::Inclusive(ch);
                         find_char(ctx, client_handle, true);
