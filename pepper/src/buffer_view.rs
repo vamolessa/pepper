@@ -746,7 +746,6 @@ mod tests {
                     &ctx.buffers,
                     movement,
                     CursorMovementKind::PositionAndAnchor,
-                    NonZeroU8::new(4).unwrap(),
                 );
             assert_eq!(
                 BufferPosition::line_col(to.start as _, to.end as _),
@@ -797,3 +796,4 @@ mod tests {
         assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }
+
