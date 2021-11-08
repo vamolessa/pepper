@@ -2,7 +2,7 @@ syntax "**/*.refs"
 syntax-keywords "^{%w[/\]%._-!:}"
 syntax-symbols ","
 syntax-literals %d{%d}
-syntax-texts {%w-_}
+syntax-texts {%w_-}
 
 syntax "**/*.pepper"
 syntax-keywords ""
@@ -75,12 +75,12 @@ syntax-keywords ^#{.}
 syntax-symbols %||%!|-
 syntax-literals %[{!%].}%({!%).}
 syntax-strings [[```{!(```).$}|`{!`.}]]
-syntax-texts {%w-_}
+syntax-texts {%w_-}
 
 syntax "**/*.html"
-syntax-keywords "%!DOCTYPE"
+syntax-keywords "</{%w_-}|<{%w_-}|>|/>"
 syntax-symbols =
 syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}]]
 syntax-comments <%!--{!(-->).$}
-syntax-texts {%w-_}
+syntax-texts {%w_-}
 
