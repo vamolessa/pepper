@@ -10,6 +10,7 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | --- | --- |
 | `h`, `j`, `k`, `l` | move cursors |
 | `w`, `b` | move cursors forward/back by word |
+| `e` | move cursors forward to the end of the word |
 | `n`, `p` | move main cursor to next/previous search match |
 | `N`, `P` | add cursor to the next/previous search match if inside a search range or make a new one  |
 | `<c-n>`, `<c-p>` | go to next/previous cursor position in history |

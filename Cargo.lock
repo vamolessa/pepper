@@ -18,7 +18,7 @@ dependencies = [
 
 [[package]]
 name = "pepper"
-version = "0.18.6"
+version = "0.19.0"
 dependencies = [
  "libc",
  "winapi",
@@ -26,7 +26,7 @@ dependencies = [
 
 [[package]]
 name = "pepper-plugin-lsp"
-version = "0.6.4"
+version = "0.7.0"
 dependencies = [
  "pepper",
 ]

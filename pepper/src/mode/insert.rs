@@ -59,7 +59,6 @@ impl ModeState for State {
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsBackward(1),
                     CursorMovementKind::PositionAndAnchor,
-                    ctx.editor.config.tab_size,
                 );
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
@@ -67,9 +66,11 @@ impl ModeState for State {
             Key::Down => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
-                    CursorMovement::LinesForward(1),
+                    CursorMovement::LinesForward {
+                        count: 1,
+                        tab_size: ctx.editor.config.tab_size.get(),
+                    },
                     CursorMovementKind::PositionAndAnchor,
-                    ctx.editor.config.tab_size,
                 );
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
@@ -77,9 +78,11 @@ impl ModeState for State {
             Key::Up => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
-                    CursorMovement::LinesBackward(1),
+                    CursorMovement::LinesBackward {
+                        count: 1,
+                        tab_size: ctx.editor.config.tab_size.get(),
+                    },
                     CursorMovementKind::PositionAndAnchor,
-                    ctx.editor.config.tab_size,
                 );
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
@@ -89,7 +92,6 @@ impl ModeState for State {
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsForward(1),
                     CursorMovementKind::PositionAndAnchor,
-                    ctx.editor.config.tab_size,
                 );
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
@@ -160,7 +162,6 @@ impl ModeState for State {
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsBackward(1),
                     CursorMovementKind::PositionOnly,
-                    ctx.editor.config.tab_size,
                 );
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
@@ -174,7 +175,6 @@ impl ModeState for State {
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsForward(1),
                     CursorMovementKind::PositionOnly,
-                    ctx.editor.config.tab_size,
                 );
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
@@ -188,7 +188,6 @@ impl ModeState for State {
                     &ctx.editor.buffers,
                     CursorMovement::WordsBackward(1),
                     CursorMovementKind::PositionOnly,
-                    ctx.editor.config.tab_size,
                 );
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,

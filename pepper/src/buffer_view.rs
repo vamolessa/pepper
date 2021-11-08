@@ -1,5 +1,3 @@
-use std::num::NonZeroU8;
-
 use crate::{
     buffer::{Buffer, BufferCollection, BufferHandle, CharDisplayDistances},
     buffer_history::EditKind,
@@ -13,10 +11,11 @@ use crate::{
 pub enum CursorMovement {
     ColumnsForward(usize),
     ColumnsBackward(usize),
-    LinesForward(usize),
-    LinesBackward(usize),
+    LinesForward { count: usize, tab_size: u8 },
+    LinesBackward { count: usize, tab_size: u8 },
     WordsForward(usize),
     WordsBackward(usize),
+    WordEndForward(usize),
     Home,
     HomeNonWhitespace,
     End,
@@ -55,7 +54,6 @@ impl BufferView {
         buffers: &BufferCollection,
         movement: CursorMovement,
         movement_kind: CursorMovementKind,
-        tab_size: NonZeroU8,
     ) {
         fn try_nth<I, E>(iter: I, mut n: usize) -> Result<E, usize>
         where
@@ -70,7 +68,6 @@ impl BufferView {
             Err(n)
         }
 
-        let tab_size = tab_size.get();
         let buffer = buffers.get(self.buffer_handle).content();
 
         let mut cursors = self.cursors.mut_guard();
@@ -173,7 +170,7 @@ impl BufferView {
                     }
                 }
             }
-            CursorMovement::LinesForward(n) => {
+            CursorMovement::LinesForward { count: n, tab_size } => {
                 cursors.save_display_distances(buffer, tab_size);
                 for i in 0..cursors[..].len() {
                     let saved_display_distance = cursors.get_saved_display_distance(i);
@@ -195,7 +192,7 @@ impl BufferView {
                     c.position = buffer.saturate_position(c.position);
                 }
             }
-            CursorMovement::LinesBackward(n) => {
+            CursorMovement::LinesBackward { count: n, tab_size } => {
                 cursors.save_display_distances(buffer, tab_size);
                 for i in 0..cursors[..].len() {
                     let saved_display_distance = cursors.get_saved_display_distance(i);
@@ -288,6 +285,45 @@ impl BufferView {
                         line = buffer.lines()[c.position.line_index as usize].as_str();
                         c.position.column_byte_index = line.len() as _;
                         n -= 1;
+                    }
+                }
+            }
+            CursorMovement::WordEndForward(n) => {
+                let last_line_index = buffer.lines().len() - 1;
+                for c in &mut cursors[..] {
+                    let mut n = n;
+                    let mut line = buffer.lines()[c.position.line_index as usize].as_str();
+
+                    while n > 0 {
+                        if c.position.column_byte_index == line.len() as _ {
+                            if c.position.line_index == last_line_index as _ {
+                                break;
+                            }
+
+                            c.position.line_index += 1;
+                            c.position.column_byte_index = 0;
+                            line = buffer.lines()[c.position.line_index as usize].as_str();
+                            n -= 1;
+                            continue;
+                        }
+
+                        let words = WordIter(&line[c.position.column_byte_index as usize..])
+                            .inspect(|w| {
+                                c.position.column_byte_index += w.text.len() as BufferPositionIndex
+                            })
+                            .filter(|w| w.kind != WordKind::Whitespace);
+
+                        match try_nth(words, n - 1) {
+                            Ok(word) => {
+                                //c.position.column_byte_index -=
+                                word.text.len() as BufferPositionIndex;
+                                break;
+                            }
+                            Err(rest) => {
+                                n = rest;
+                                c.position.column_byte_index = line.len() as _;
+                            }
+                        }
                     }
                 }
             }

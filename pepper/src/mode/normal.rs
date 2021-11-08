@@ -89,37 +89,42 @@ impl State {
                 &ctx.editor.buffers,
                 CursorMovement::ColumnsBackward(state.count.max(1) as _),
                 state.movement_kind,
-                ctx.editor.config.tab_size,
             ),
             Key::Char('j') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
-                CursorMovement::LinesForward(state.count.max(1) as _),
+                CursorMovement::LinesForward {
+                    count: state.count.max(1) as _,
+                    tab_size: ctx.editor.config.tab_size.get(),
+                },
                 state.movement_kind,
-                ctx.editor.config.tab_size,
             ),
             Key::Char('k') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
-                CursorMovement::LinesBackward(state.count.max(1) as _),
+                CursorMovement::LinesBackward {
+                    count: state.count.max(1) as _,
+                    tab_size: ctx.editor.config.tab_size.get(),
+                },
                 state.movement_kind,
-                ctx.editor.config.tab_size,
             ),
             Key::Char('l') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::ColumnsForward(state.count.max(1) as _),
                 state.movement_kind,
-                ctx.editor.config.tab_size,
             ),
             Key::Char('w') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::WordsForward(state.count.max(1) as _),
                 state.movement_kind,
-                ctx.editor.config.tab_size,
             ),
             Key::Char('b') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::WordsBackward(state.count.max(1) as _),
                 state.movement_kind,
-                ctx.editor.config.tab_size,
+            ),
+            Key::Char('e') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
+                &ctx.editor.buffers,
+                CursorMovement::WordEndForward(state.count.max(1) as _),
+                state.movement_kind,
             ),
             Key::Char('n') => {
                 let count = state.count.max(1);
@@ -348,7 +353,6 @@ impl State {
                         &ctx.editor.buffers,
                         CursorMovement::Home,
                         state.movement_kind,
-                        ctx.editor.config.tab_size,
                     ),
                     Key::Char('j') => {
                         NavigationHistory::save_snapshot(
@@ -360,7 +364,6 @@ impl State {
                             &ctx.editor.buffers,
                             CursorMovement::LastLine,
                             state.movement_kind,
-                            ctx.editor.config.tab_size,
                         );
                     }
                     Key::Char('k') => {
@@ -373,20 +376,17 @@ impl State {
                             &ctx.editor.buffers,
                             CursorMovement::FirstLine,
                             state.movement_kind,
-                            ctx.editor.config.tab_size,
                         );
                     }
                     Key::Char('l') => buffer_view.move_cursors(
                         &ctx.editor.buffers,
                         CursorMovement::End,
                         state.movement_kind,
-                        ctx.editor.config.tab_size,
                     ),
                     Key::Char('i') => buffer_view.move_cursors(
                         &ctx.editor.buffers,
                         CursorMovement::HomeNonWhitespace,
                         state.movement_kind,
-                        ctx.editor.config.tab_size,
                     ),
                     Key::Char('m') => {
                         let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
@@ -747,22 +747,22 @@ impl State {
                 let half_height = ctx.clients.get(client_handle).viewport_size.1 / 2;
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
-                    CursorMovement::LinesForward(
-                        half_height as usize * state.count.max(1) as usize,
-                    ),
+                    CursorMovement::LinesForward {
+                        count: half_height as usize * state.count.max(1) as usize,
+                        tab_size: ctx.editor.config.tab_size.get(),
+                    },
                     state.movement_kind,
-                    ctx.editor.config.tab_size,
                 );
             }
             Key::Ctrl('u') => {
                 let half_height = ctx.clients.get(client_handle).viewport_size.1 / 2;
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
-                    CursorMovement::LinesBackward(
-                        half_height as usize * state.count.max(1) as usize,
-                    ),
+                    CursorMovement::LinesBackward {
+                        count: half_height as usize * state.count.max(1) as usize,
+                        tab_size: ctx.editor.config.tab_size.get(),
+                    },
                     state.movement_kind,
-                    ctx.editor.config.tab_size,
                 );
             }
             Key::Char('d') => {
