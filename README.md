@@ -123,15 +123,14 @@ It's possible to kinda follow Pepper's development history in this
 
 # support pepper development
 Pepper is open-source, which means you're free to build it and access all of its features.
-However, to support the development, prebuilt binaries are available for purchase at itch.
 
-Please consider purchasing in order to support both the development of new features and bug fixing.
-I'll be forever grateful :)
-
+However, prebuilt binaries are available for purchase at itch.
 <iframe src="https://itch.io/embed/810985?border_width=0" width="206" height="165" frameborder="0">
   <a href="https://vamolessa.itch.io/pepper">pepper by Matheus Lessa</a>
 </iframe>
 
-Please consider donating on Liberapay to support Pepper's development :)
-
+You can also directly buy me a coffee :)
 <a href="https://liberapay.com/lessa/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a>
+<a href='https://ko-fi.com/K3K86X3RD' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://cdn.ko-fi.com/cdn/kofi2.png?v=3' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+
+Please consider supporting Pepper's development and I'll be forever grateful :)
