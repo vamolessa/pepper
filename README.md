@@ -126,8 +126,8 @@ Pepper is open-source, which means you're free to build it and access all of its
 
 However, prebuilt binaries are available for purchase at itch.
 
-<iframe src="https://itch.io/embed/810985?border_width=0" width="206" height="165" frameborder="0">
-  <a href="https://vamolessa.itch.io/pepper">pepper by Matheus Lessa</a>
+<iframe src="https://itch.io/embed/810985?linkback=true" width="552" height="167" frameborder="0">
+  <a href="https://vamolessa.itch.io/pepper">pepper code editor by Matheus Lessa Rodrigues</a>
 </iframe>
 
 You can also directly buy me a coffee :)
