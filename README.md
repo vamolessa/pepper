@@ -133,6 +133,6 @@ However, prebuilt binaries are available for purchase at itch.
 You can also directly buy me a coffee :)
 
 <a href="https://liberapay.com/lessa/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a>
-<a href='https://ko-fi.com/K3K86X3RD' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://cdn.ko-fi.com/cdn/kofi2.png?v=3' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K86X3RD)
 
 Please consider supporting Pepper's development and I'll be forever grateful :)
