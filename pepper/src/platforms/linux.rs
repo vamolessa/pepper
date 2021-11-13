@@ -203,6 +203,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         ) {
                             Ok(buf) => events.push(PlatformEvent::ConnectionOutput { handle, buf }),
                             Err(()) => {
+                                eprintln!("read from connection failled");
                                 epoll.remove(connection.as_raw_fd());
                                 client_connections[index] = None;
                                 events.push(PlatformEvent::ConnectionClose { handle });
@@ -251,6 +252,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     let index = handle.into_index();
                     if let Some(ref mut connection) = client_connections[index] {
                         if connection.write_all(buf.as_bytes()).is_err() {
+                            eprintln!("write to connection failled");
                             epoll.remove(connection.as_raw_fd());
                             client_connections[index] = None;
                             events.push(PlatformEvent::ConnectionClose { handle });
@@ -263,6 +265,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     if let Some(connection) = client_connections[index].take() {
                         epoll.remove(connection.as_raw_fd());
                     }
+                    eprintln!("close client request");
                     events.push(PlatformEvent::ConnectionClose { handle });
                 }
                 PlatformRequest::SpawnProcess {

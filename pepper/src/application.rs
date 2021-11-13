@@ -110,6 +110,7 @@ impl ServerApplication {
                     self.ctx.clients.on_client_joined(handle)
                 }
                 PlatformEvent::ConnectionClose { handle } => {
+                    eprintln!("a connection closed");
                     self.ctx.clients.on_client_left(handle);
                     if self.ctx.clients.iter().next().is_none() {
                         eprintln!("last client out");
