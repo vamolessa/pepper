@@ -279,6 +279,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             while let Some(request) = requests.next() {
                 match request {
                     PlatformRequest::Quit => {
+                        eprintln!("quit request");
                         for request in requests {
                             if let PlatformRequest::WriteToClient { buf, .. }
                             | PlatformRequest::WriteToProcess { buf, .. } = request
