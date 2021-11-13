@@ -174,6 +174,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 }
                 None => unreachable!(),
             }
+        } else {
+            timeout = Some(Duration::ZERO);
         }
 
         for event_index in epoll_events {
@@ -446,3 +448,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
+
