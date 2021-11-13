@@ -40,19 +40,19 @@ impl SignalFd {
             let mut signals = std::mem::zeroed();
             let result = libc::sigemptyset(&mut signals);
             if result == -1 {
-                panic!("could not create signal fd");
+                panic!("could not create signal fd, errno: {}", errno());
             }
             let result = libc::sigaddset(&mut signals, signal);
             if result == -1 {
-                panic!("could not create signal fd");
+                panic!("could not create signal fd, errno: {}", errno());
             }
             let result = libc::sigprocmask(libc::SIG_BLOCK, &signals, std::ptr::null_mut());
             if result == -1 {
-                panic!("could not create signal fd");
+                panic!("could not create signal fd, errno: {}", errno());
             }
             let fd = libc::signalfd(-1, &signals, 0);
             if fd == -1 {
-                panic!("could not create signal fd");
+                panic!("could not create signal fd, errno: {}", errno());
             }
             Self(fd)
         }
@@ -61,7 +61,7 @@ impl SignalFd {
     pub fn read(&self) {
         let mut buf = [0; std::mem::size_of::<libc::signalfd_siginfo>()];
         if read(self.0, &mut buf) != Ok(buf.len()) {
-            panic!("could not read from signal fd");
+            panic!("could not read from signal fd, errno: {}", errno());
         }
     }
 }
@@ -88,7 +88,7 @@ impl Epoll {
     pub fn new() -> Self {
         let fd = unsafe { libc::epoll_create1(0) };
         if fd == -1 {
-            panic!("could not create epoll");
+            panic!("could not create epoll, errno: {}", errno());
         }
         Self(fd)
     }
@@ -100,7 +100,7 @@ impl Epoll {
         };
         let result = unsafe { libc::epoll_ctl(self.0, libc::EPOLL_CTL_ADD, fd, &mut event) };
         if result == -1 {
-            panic!("could not add event");
+            panic!("could not add event, errno: {}", errno());
         }
     }
 
@@ -125,7 +125,7 @@ impl Epoll {
             if errno() == libc::EINTR {
                 len = 0;
             } else {
-                panic!("could not wait for events");
+                panic!("could not wait for events, errno: {}", errno());
             }
         }
 

@@ -89,7 +89,7 @@ impl Kqueue {
     pub fn new() -> Self {
         let fd = unsafe { libc::kqueue() };
         if fd == -1 {
-            panic!("could not create kqueue");
+            panic!("could not create kqueue, errno: {}", errno());
         }
         Self(fd)
     }
@@ -97,14 +97,14 @@ impl Kqueue {
     pub fn add(&self, event: Event, index: usize) {
         let event = event.into_kevent(libc::EV_ADD, index);
         if !modify_kqueue(self.0, &event) {
-            panic!("could not add event");
+            panic!("could not add event, errno: {}", errno());
         }
     }
 
     pub fn remove(&self, event: Event) {
         let event = event.into_kevent(libc::EV_DELETE, 0);
         if !modify_kqueue(self.0, &event) {
-            panic!("could not remove event");
+            panic!("could not remove event, errno: {}", errno());
         }
     }
 
@@ -140,7 +140,7 @@ impl Kqueue {
             if errno() == libc::EINTR {
                 len = 0;
             } else {
-                panic!("could not wait for events");
+                panic!("could not wait for events, errno: {}", errno());
             }
         }
 
