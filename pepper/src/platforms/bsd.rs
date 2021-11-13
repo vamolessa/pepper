@@ -200,11 +200,14 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             match timeout {
                 Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
                 Some(_) => {
+                    eprintln!("idle!");
                     events.push(PlatformEvent::Idle);
                     timeout = None;
                 }
                 None => unreachable!(),
             }
+        } else {
+            timeout = Some(Duration::ZERO);
         }
 
         for event in kqueue_events {
@@ -278,6 +281,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             application.update(events.drain(..));
             let mut requests = application.ctx.platform.requests.drain();
             while let Some(request) = requests.next() {
+                eprintln!("has request: {:?}", std::mem::discriminant(&request));
                 match request {
                     PlatformRequest::Quit => {
                         eprintln!("quit request");
@@ -308,8 +312,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         if let Some(connection) = client_connections[index].take() {
                             kqueue.remove(Event::Fd(connection.as_raw_fd()));
                         }
-                        eprintln!("close client request");
                         events.push(PlatformEvent::ConnectionClose { handle });
+                        eprintln!("close client request. event count: {}", events.len());
                     }
                     PlatformRequest::SpawnProcess {
                         tag,
@@ -373,9 +377,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 }
             }
 
-            eprintln!("event count: {}", events.len());
+            eprintln!("still has {} events", events.len());
             if !events.is_empty() {
-                eprintln!("timeout = Some(0)");
                 timeout = Some(Duration::ZERO);
             }
         }
