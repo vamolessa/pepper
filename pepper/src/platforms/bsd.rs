@@ -308,7 +308,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         if let Some(connection) = client_connections[index].take() {
                             kqueue.remove(Event::Fd(connection.as_raw_fd()));
                         }
-                    eprintln!("close client request");
+                        eprintln!("close client request");
                         events.push(PlatformEvent::ConnectionClose { handle });
                     }
                     PlatformRequest::SpawnProcess {
@@ -373,7 +373,9 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 }
             }
 
+            eprintln!("event count: {}", events.len());
             if !events.is_empty() {
+                eprintln!("timeout = Some(0)");
                 timeout = Some(Duration::ZERO);
             }
         }
