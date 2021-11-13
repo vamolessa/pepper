@@ -200,7 +200,6 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             match timeout {
                 Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
                 Some(_) => {
-                    eprintln!("idle!");
                     events.push(PlatformEvent::Idle);
                     timeout = None;
                 }
@@ -249,7 +248,6 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         ) {
                             Ok(buf) => events.push(PlatformEvent::ConnectionOutput { handle, buf }),
                             Err(()) => {
-                                eprintln!("read from connection failled");
                                 kqueue.remove(Event::Fd(connection.as_raw_fd()));
                                 client_connections[index] = None;
                                 events.push(PlatformEvent::ConnectionClose { handle });
@@ -282,7 +280,6 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         application.update(events.drain(..));
         let mut requests = application.ctx.platform.requests.drain();
         while let Some(request) = requests.next() {
-            eprintln!("has request: {:?}", std::mem::discriminant(&request));
             match request {
                 PlatformRequest::Quit => {
                     for request in requests {
@@ -312,7 +309,6 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         kqueue.remove(Event::Fd(connection.as_raw_fd()));
                     }
                     events.push(PlatformEvent::ConnectionClose { handle });
-                    eprintln!("close client request. event count: {}", events.len());
                 }
                 PlatformRequest::SpawnProcess {
                     tag,
@@ -376,7 +372,6 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             }
         }
 
-        eprintln!("still has {} events", events.len());
         if !events.is_empty() {
             timeout = Some(Duration::ZERO);
         }
