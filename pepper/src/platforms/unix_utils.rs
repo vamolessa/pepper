@@ -100,7 +100,7 @@ pub(crate) struct Terminal {
 }
 impl Terminal {
     pub fn new() -> Self {
-        let flags = libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC;
+        let flags = libc::O_RDWR | libc::O_CLOEXEC;
         let fd = unsafe { libc::open("/dev/tty\0".as_ptr() as _, flags) };
         if fd < 0 {
             panic!("could not open terminal");
