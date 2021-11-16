@@ -474,7 +474,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
             }
         }
 
-        for event in kqueue.wait(&mut kqueue_events, Some(Duration::ZERO) {
+        for event in kqueue.wait(&mut kqueue_events, Some(Duration::ZERO)) {
             let mut resize = None;
             let mut stdin_bytes = None;
             let mut server_bytes = &[][..];
