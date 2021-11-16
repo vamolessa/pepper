@@ -297,9 +297,9 @@ impl ClientApplication {
     pub fn reinit_screen(&mut self) {
         use io::Write;
         if let Some(output) = &mut self.output {
-            let _ = output.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
-            let _ = output.write_all(ui::HIDE_CURSOR_CODE);
-            let _ = output.write_all(ui::MODE_256_COLORS_CODE);
+            write_all_output(output, ui::ENTER_ALTERNATE_BUFFER_CODE);
+            write_all_output(output, ui::HIDE_CURSOR_CODE);
+            write_all_output(output, ui::MODE_256_COLORS_CODE);
             output.flush().unwrap();
         }
     }
@@ -307,10 +307,10 @@ impl ClientApplication {
     pub fn restore_screen(&mut self) {
         use io::Write;
         if let Some(output) = &mut self.output {
-            let _ = output.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
-            let _ = output.write_all(ui::SHOW_CURSOR_CODE);
-            let _ = output.write_all(ui::RESET_STYLE_CODE);
-            let _ = output.flush();
+            write_all_output(output, ui::EXIT_ALTERNATE_BUFFER_CODE);
+            write_all_output(output, ui::SHOW_CURSOR_CODE);
+            write_all_output(output, ui::RESET_STYLE_CODE);
+            output.flush().unwrap();
         }
     }
 
@@ -348,7 +348,7 @@ impl ClientApplication {
                 match ServerEvent::deserialize(&mut read_slice) {
                     Ok(ServerEvent::Display(display)) => {
                         if let Some(output) = &mut self.output {
-                            output.write_all(display).unwrap();
+                            write_all_output(output, display);
                         }
                     }
                     Ok(ServerEvent::Suspend) => suspend = true,
@@ -382,5 +382,18 @@ impl ClientApplication {
 impl Drop for ClientApplication {
     fn drop(&mut self) {
         self.restore_screen();
+    }
+}
+
+fn write_all_output(output: &mut fs::File, bytes: &[u8]) {
+    use io::Write;
+    loop {
+        match output.write_all(bytes) {
+            Ok(()) => break,
+            Err(error) => match error.kind() {
+                io::ErrorKind::WouldBlock => (),
+                _ => panic!("could not write to output: {:?}", error),
+            }
+        }
     }
 }
