@@ -452,7 +452,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 }
 
                 if libc::FD_ISSET(terminal.as_raw_fd(), &select_read_set) {
-                    buf.resize(data as _, 0);
+                    buf.resize(ClientApplication::stdin_buffer_len(), 0);
                     match read(terminal.as_raw_fd(), &mut buf) {
                         Ok(0) | Err(()) => break,
                         Ok(len) => terminal.parse_keys(&buf[..len], &mut keys),
