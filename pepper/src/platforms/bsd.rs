@@ -448,8 +448,10 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     break;
                 }
 
-                let any_set = libc::FD_ISSET(kqueue.as_raw_fd(), &select_read_set);
-                eprintln!("select result: {} any set: {}", result, any_set);
+                let terminal_set = libc::FD_ISSET(terminal.as_raw_fd(), &select_read_set);
+                let kqueue_set = libc::FD_ISSET(kqueue.as_raw_fd(), &select_read_set);
+                eprintln!("select result: {} sets: {}, {}", result, terminal_set, kqueue_set);
+
                 if libc::FD_ISSET(terminal.as_raw_fd(), &select_read_set) {
                     eprintln!("has terminal event");
 
