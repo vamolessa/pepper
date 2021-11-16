@@ -426,7 +426,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         ClientApplication::connection_buffer_len().max(ClientApplication::stdin_buffer_len());
     let mut buf = Vec::with_capacity(buf_capacity);
 
-    let mut select_read_set = unsafe { std::mem::zero() };
+    let mut select_read_set = unsafe { std::mem::zeroed() };
 
     'main_loop: loop {
         keys.clear();
@@ -458,7 +458,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                         Ok(len) => terminal.parse_keys(&buf[..len], &mut keys),
                     }
 
-                    let (suspend, bytes) = application.update(None, &keys, &[], &[]);
+                    let (suspend, bytes) = application.update(None, &keys, None, &[]);
                     if connection.write_all(bytes).is_err() {
                         break;
                     }
