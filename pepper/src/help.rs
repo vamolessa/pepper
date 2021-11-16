@@ -23,6 +23,10 @@ impl HelpPages {
 
 static MAIN_HELP_PAGES: HelpPages = HelpPages::new(&[
     ResourceFile {
+        name: "changelog.md",
+        content: include_str!("../rc/changelog.md"),
+    },
+    ResourceFile {
         name: "command_reference.md",
         content: include_str!("../rc/command_reference.md"),
     },
