@@ -335,7 +335,7 @@ impl Drop for Process {
     }
 }
 
-pub(crate) fn suspend_process(application: &mut ClientApplication, terminal: &Option<Terminal>) {
+pub(crate) fn suspend_process(application: &mut ClientApplication, terminal: Option<&Terminal>) {
     application.restore_screen();
     if let Some(terminal) = terminal {
         terminal.leave_raw_mode();

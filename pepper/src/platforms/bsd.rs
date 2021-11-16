@@ -431,27 +431,27 @@ fn run_client(args: Args, mut connection: UnixStream) {
     'main_loop: loop {
         keys.clear();
 
-        unsafe {
-            libc::FD_ZERO(&mut select_read_set);
-            libc::FD_SET(terminal.as_raw_fd(), &mut select_read_set);
-            libc::FD_SET(kqueue.as_raw_fd(), &mut select_read_set);
+        if let Some(terminal) = &terminal {
+            unsafe {
+                libc::FD_ZERO(&mut select_read_set);
+                libc::FD_SET(terminal.as_raw_fd(), &mut select_read_set);
+                libc::FD_SET(kqueue.as_raw_fd(), &mut select_read_set);
 
-            let result = libc::select(
-                terminal.as_raw_fd().max(kqueue.as_raw_fd()) + 1,
-                &mut select_read_set,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            );
-            if result == 0 {
-                continue;
-            }
-            if result < 0 {
-                break;
-            }
+                let result = libc::select(
+                    terminal.as_raw_fd().max(kqueue.as_raw_fd()) + 1,
+                    &mut select_read_set,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                );
+                if result == 0 {
+                    continue;
+                }
+                if result < 0 {
+                    break;
+                }
 
-            if libc::FD_ISSET(terminal.as_raw_fd(), &select_read_set) {
-                if let Some(terminal) = &terminal {
+                if libc::FD_ISSET(terminal.as_raw_fd(), &select_read_set) {
                     buf.resize(data as _, 0);
                     match read(terminal.as_raw_fd(), &mut buf) {
                         Ok(0) | Err(()) => break,
@@ -463,12 +463,12 @@ fn run_client(args: Args, mut connection: UnixStream) {
                         break;
                     }
                     if suspend {
-                        suspend_process(&mut application, &terminal);
+                        suspend_process(&mut application, Some(terminal));
                     }
-                }
 
-                if result == 1 {
-                    continue;
+                    if result == 1 {
+                        continue;
+                    }
                 }
             }
         }
@@ -519,7 +519,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 break;
             }
             if suspend {
-                suspend_process(&mut application, &terminal);
+                suspend_process(&mut application, terminal.as_ref());
             }
         }
     }
