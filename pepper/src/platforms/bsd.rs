@@ -444,14 +444,12 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     std::ptr::null_mut(),
                     std::ptr::null_mut(),
                 );
-                if result == 0 {
-                    continue;
-                }
                 if result < 0 {
                     break;
                 }
 
-                eprintln!("select result: {}", result);
+                let any_set = libc::FD_ISSET(kqueue.as_raw_fd(), &select_read_set);
+                eprintln!("select result: {} any set: {}", result, any_set);
                 if libc::FD_ISSET(terminal.as_raw_fd(), &select_read_set) {
                     eprintln!("has terminal event");
 
@@ -472,6 +470,10 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     if result == 1 {
                         continue;
                     }
+                }
+
+                if !libc::FD_ISSET(kqueue.as_raw_fd(), &select_read_set) {
+                    unreachable!();
                 }
             }
         }
