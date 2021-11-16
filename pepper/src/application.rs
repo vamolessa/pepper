@@ -300,7 +300,7 @@ impl ClientApplication {
             let _ = output.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
             let _ = output.write_all(ui::HIDE_CURSOR_CODE);
             let _ = output.write_all(ui::MODE_256_COLORS_CODE);
-            output.flush().unwrap();
+            let _ = output.flush();
         }
     }
 

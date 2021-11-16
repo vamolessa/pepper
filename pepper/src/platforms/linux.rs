@@ -435,7 +435,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 break;
             }
             if suspend {
-                suspend_process(&mut application, &terminal);
+                suspend_process(&mut application, terminal.as_ref());
             }
         }
     }

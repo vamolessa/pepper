@@ -403,7 +403,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     if let Some(terminal) = &terminal {
         terminal.enter_raw_mode();
-        kqueue.add(Event::Fd(terminal.as_raw_fd()), 0);
 
         kqueue.add(Event::Resize, 2);
 
@@ -426,24 +425,56 @@ fn run_client(args: Args, mut connection: UnixStream) {
         ClientApplication::connection_buffer_len().max(ClientApplication::stdin_buffer_len());
     let mut buf = Vec::with_capacity(buf_capacity);
 
+    let mut select_read_set = unsafe { std::mem::zeroed() };
+
     'main_loop: loop {
-        for event in kqueue.wait(&mut kqueue_events, None) {
+        keys.clear();
+
+        if let Some(terminal) = &terminal {
+            unsafe {
+                libc::FD_ZERO(&mut select_read_set);
+                libc::FD_SET(terminal.as_raw_fd(), &mut select_read_set);
+                libc::FD_SET(kqueue.as_raw_fd(), &mut select_read_set);
+
+                let result = libc::select(
+                    terminal.as_raw_fd().max(kqueue.as_raw_fd()) + 1,
+                    &mut select_read_set,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                );
+                if result < 0 {
+                    break;
+                }
+
+                if libc::FD_ISSET(terminal.as_raw_fd(), &select_read_set) {
+                    buf.resize(buf_capacity, 0);
+                    match read(terminal.as_raw_fd(), &mut buf) {
+                        Ok(0) | Err(()) => break,
+                        Ok(len) => terminal.parse_keys(&buf[..len], &mut keys),
+                    }
+
+                    let (suspend, bytes) = application.update(None, &keys, None, &[]);
+                    if connection.write_all(bytes).is_err() {
+                        break;
+                    }
+                    if suspend {
+                        suspend_process(&mut application, Some(terminal));
+                    }
+
+                    if result == 1 {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        for event in kqueue.wait(&mut kqueue_events, Some(Duration::ZERO)) {
             let mut resize = None;
             let mut stdin_bytes = None;
             let mut server_bytes = &[][..];
 
-            keys.clear();
-
             match event {
-                Ok(TriggeredEvent { index: 0, data }) => {
-                    if let Some(terminal) = &terminal {
-                        buf.resize(data as _, 0);
-                        match read(terminal.as_raw_fd(), &mut buf) {
-                            Ok(0) | Err(()) => break 'main_loop,
-                            Ok(len) => terminal.parse_keys(&buf[..len], &mut keys),
-                        }
-                    }
-                }
                 Ok(TriggeredEvent { index: 1, data }) => {
                     buf.resize(data as _, 0);
                     match connection.read(&mut buf) {
@@ -473,7 +504,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 break;
             }
             if suspend {
-                suspend_process(&mut application, &terminal);
+                suspend_process(&mut application, terminal.as_ref());
             }
         }
     }
@@ -486,3 +517,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
+
