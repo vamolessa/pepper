@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
 use crate::{
+    buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::ClientHandle,
@@ -14,9 +15,29 @@ use crate::{
 
 #[derive(Default)]
 pub struct State {
-    // TODO: fix completion positions on buffer events
+    editing_buffer_handle: Option<BufferHandle>,
     completion_positions: Vec<BufferPosition>,
     completing_plugin_handle: Option<PluginHandle>,
+}
+
+impl State {
+    pub fn on_buffer_insert_text(&mut self, handle: BufferHandle, range: BufferRange) {
+        if self.editing_buffer_handle == Some(handle) {
+            for position in &mut self.completion_positions {
+                if *position != range.from {
+                    *position = position.insert(range);
+                }
+            }
+        }
+    }
+
+    pub fn on_buffer_delete_text(&mut self, handle: BufferHandle, range: BufferRange) {
+        if self.editing_buffer_handle == Some(handle) {
+            for position in &mut self.completion_positions {
+                *position = position.delete(range);
+            }
+        }
+    }
 }
 
 impl ModeState for State {
@@ -25,6 +46,7 @@ impl ModeState for State {
     }
 
     fn on_exit(editor: &mut Editor) {
+        editor.mode.insert_state.editing_buffer_handle = None;
         cancel_completion(editor);
     }
 
@@ -40,6 +62,9 @@ impl ModeState for State {
                 return Some(EditorFlow::Continue);
             }
         };
+
+        ctx.editor.mode.insert_state.editing_buffer_handle =
+            Some(ctx.editor.buffer_views.get(handle).buffer_handle);
 
         let key = keys.next(&ctx.editor.buffered_keys);
         let register = ctx.editor.registers.get_mut(AUTO_MACRO_REGISTER);
@@ -410,3 +435,4 @@ fn apply_completion(
     );
     ctx.editor.string_pool.release(completion);
 }
+
