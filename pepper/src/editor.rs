@@ -185,13 +185,19 @@ impl EditorContext {
                         self.editor
                             .buffer_views
                             .on_buffer_insert_text(handle, range);
-                        self.editor.mode.insert_state.on_buffer_insert_text(handle, range);
+                        self.editor
+                            .mode
+                            .insert_state
+                            .on_buffer_insert_text(handle, range);
                     }
                     EditorEvent::BufferDeleteText { handle, range } => {
                         self.editor
                             .buffer_views
                             .on_buffer_delete_text(handle, range);
-                        self.editor.mode.insert_state.on_buffer_delete_text(handle, range);
+                        self.editor
+                            .mode
+                            .insert_state
+                            .on_buffer_delete_text(handle, range);
                     }
                     EditorEvent::BufferWrite { handle, new_path } => {
                         let buffer = self.editor.buffers.get_mut(handle);
