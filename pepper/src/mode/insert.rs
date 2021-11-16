@@ -14,6 +14,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct State {
+    // TODO: fix completion positions on buffer events
     completion_positions: Vec<BufferPosition>,
     completing_plugin_handle: Option<PluginHandle>,
 }

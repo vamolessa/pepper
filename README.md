@@ -15,6 +15,7 @@ It's mission is to be a minimal and fast code editor with an orthogonal set of b
 ## [command reference](./pepper/rc/command_reference.md)
 ## [defining language syntaxes](./pepper/rc/language_syntax_definitions.md)
 ## [config recipes](./pepper/rc/config_recipes.md)
+## [changelog](./pepper/rc/changelog.md)
 
 # installation
 

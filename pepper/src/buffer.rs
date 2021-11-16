@@ -2016,6 +2016,60 @@ mod tests {
     }
 
     #[test]
+    fn buffer_insert_delete_forward_insert_undo() {
+        let mut word_database = WordDatabase::new();
+        let mut events = EditorEventQueue::default();
+
+        let mut buffer = Buffer::new(BufferHandle(0));
+        buffer.properties = BufferProperties::text();
+        let insert_range = buffer.insert_text(
+            &mut word_database,
+            BufferPosition::zero(),
+            "\n",
+            &mut events,
+        );
+        let assert_range = BufferRange::between(
+            BufferPosition::line_col(0, 0),
+            BufferPosition::line_col(1, 0),
+        );
+        assert_eq!(assert_range, insert_range);
+
+        buffer.commit_edits();
+        assert_eq!("\n", buffer.content.to_string());
+
+        let insert_range =
+            buffer.insert_text(&mut word_database, BufferPosition::zero(), "a", &mut events);
+        let assert_range = BufferRange::between(
+            BufferPosition::line_col(0, 0),
+            BufferPosition::line_col(0, 1),
+        );
+        assert_eq!(assert_range, insert_range);
+
+        buffer.delete_range(
+            &mut word_database,
+            BufferRange::between(
+                BufferPosition::line_col(0, 1),
+                BufferPosition::line_col(1, 0),
+            ),
+            &mut events,
+        );
+
+        let insert_range = buffer.insert_text(
+            &mut word_database,
+            BufferPosition::line_col(0, 1),
+            "b",
+            &mut events,
+        );
+        let assert_range = BufferRange::between(
+            BufferPosition::line_col(0, 1),
+            BufferPosition::line_col(0, 2),
+        );
+        assert_eq!(assert_range, insert_range);
+
+        buffer.undo(&mut word_database, &mut events);
+    }
+
+    #[test]
     fn buffer_content_text_range() {
         let buffer = buffer_from_str("abc\ndef\nghi");
         let range = BufferRange::between(
@@ -2181,3 +2235,4 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
+

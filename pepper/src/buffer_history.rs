@@ -356,7 +356,7 @@ impl BufferHistory {
                     edit_range.from = edit_range.from.delete(other_edit.buffer_range);
                     edit_range.to = edit_range.to.delete(other_edit.buffer_range);
                 }
-                (EditKind::Delete, EditKind::Insert) => (),
+                (EditKind::Delete, EditKind::Insert) => break,
             }
         }
 
@@ -1072,6 +1072,38 @@ mod tests {
     }
 
     #[test]
+    fn no_compress_insert_delete_insert_edits() {
+        let mut history = BufferHistory::new();
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range((0, 0), (0, 1)),
+            text: "a",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range((0, 1), (1, 0)),
+            text: "\n",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range((0, 1), (0, 2)),
+            text: "ab",
+        });
+
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!(buffer_range((0, 1), (0, 2)), edit.range);
+        let edit = edits.next().unwrap();
+        assert_eq!(EditKind::Insert, edit.kind);
+        assert_eq!(buffer_range((0, 1), (1, 0)), edit.range);
+        let edit = edits.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
+        assert!(edits.next().is_none());
+    }
+
+    #[test]
     fn insert_multiple_deletes_insert() {
         let mut history = BufferHistory::new();
         history.add_edit(Edit {
@@ -1259,3 +1291,4 @@ mod tests {
         }
     }
 }
+
