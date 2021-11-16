@@ -403,7 +403,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     if let Some(terminal) = &terminal {
         terminal.enter_raw_mode();
-        //kqueue.add(Event::Fd(terminal.as_raw_fd()), 0);
 
         kqueue.add(Event::Resize, 2);
 
@@ -467,10 +466,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
                         continue;
                     }
                 }
-
-                if !libc::FD_ISSET(kqueue.as_raw_fd(), &select_read_set) {
-                    unreachable!();
-                }
             }
         }
 
@@ -480,17 +475,6 @@ fn run_client(args: Args, mut connection: UnixStream) {
             let mut server_bytes = &[][..];
 
             match event {
-                /*
-                Ok(TriggeredEvent { index: 0, data }) => {
-                    if let Some(terminal) = &terminal {
-                        buf.resize(data as _, 0);
-                        match read(terminal.as_raw_fd(), &mut buf) {
-                            Ok(0) | Err(()) => break 'main_loop,
-                            Ok(len) => terminal.parse_keys(&buf[..len], &mut keys),
-                        }
-                    }
-                }
-                */
                 Ok(TriggeredEvent { index: 1, data }) => {
                     buf.resize(data as _, 0);
                     match connection.read(&mut buf) {

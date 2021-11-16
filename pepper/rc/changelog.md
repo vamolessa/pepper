@@ -7,6 +7,7 @@
 - fix idle events not triggering on unix
 - fix buffer history undo crash when you undo after a "insert, delete then insert" single action
 - fix messy multiple autocomplete on the same line
+- fix crash on macos since there kqueue can't poll /dev/tty
 
 ## 0.19.2 and older
 There was no official changelog before.
