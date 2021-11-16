@@ -448,13 +448,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     break;
                 }
 
-                let terminal_set = libc::FD_ISSET(terminal.as_raw_fd(), &select_read_set);
-                let kqueue_set = libc::FD_ISSET(kqueue.as_raw_fd(), &select_read_set);
-                eprintln!("select result: {} sets: {}, {}", result, terminal_set, kqueue_set);
-
                 if libc::FD_ISSET(terminal.as_raw_fd(), &select_read_set) {
-                    eprintln!("has terminal event");
-
                     buf.resize(buf_capacity, 0);
                     match read(terminal.as_raw_fd(), &mut buf) {
                         Ok(0) | Err(()) => break,
@@ -480,7 +474,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
             }
         }
 
-        for event in kqueue.wait(&mut kqueue_events, None) {
+        for event in kqueue.wait(&mut kqueue_events, Some(Duration::ZERO) {
             let mut resize = None;
             let mut stdin_bytes = None;
             let mut server_bytes = &[][..];
