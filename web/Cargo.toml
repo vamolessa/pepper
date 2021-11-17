@@ -1,0 +1,12 @@
+[package]
+name = "pepper-web"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "pepper_web"
+path = "src/lib.rs"
+
+[dependencies]
+pepper = { path = "../pepper" }

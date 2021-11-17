@@ -3,6 +3,7 @@ members = [
     "pepper",
     "plugin-lsp",
     "mine",
+    "web",
 ]
 default-members = ["mine"]
 

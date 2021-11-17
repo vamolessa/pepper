@@ -207,7 +207,7 @@ mod platform_impl {
     pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_bsd.pepper");
 }
 
-pub fn run(config: application::ApplicationConfig) {
+pub fn init(config: &application::ApplicationConfig) {
     use std::{fs, io, mem::MaybeUninit, panic};
 
     static mut ORIGINAL_PANIC_HOOK: MaybeUninit<Box<dyn Fn(&panic::PanicInfo) + Sync + Send>> =
@@ -234,6 +234,9 @@ pub fn run(config: application::ApplicationConfig) {
         let hook = ORIGINAL_PANIC_HOOK.assume_init_ref();
         hook(info);
     }));
+}
 
+pub fn run(config: application::ApplicationConfig) {
+    init(&config);
     platform_impl::sys::main(config);
 }
