@@ -1,3 +1,5 @@
+mod web_platform;
+
 use wasm_bindgen::prelude::*;
 
 #[global_allocator]
