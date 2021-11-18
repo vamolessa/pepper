@@ -207,6 +207,25 @@ mod platform_impl {
     pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_bsd.pepper");
 }
 
+#[cfg(not(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly",
+)))]
+mod platform_impl {
+    use super::*;
+    pub mod sys {
+        use super::*;
+        pub fn try_launching_debugger() {}
+        pub fn main(_: application::ApplicationConfig) {}
+    }
+    pub const DEFAULT_CONFIG_CONTENT: &str = "";
+}
+
 pub fn init(config: &application::ApplicationConfig) {
     use std::{fs, io, mem::MaybeUninit, panic};
 
