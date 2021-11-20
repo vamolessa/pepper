@@ -349,6 +349,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     let mut application = ClientApplication::new();
     application.output = terminal.as_ref().map(Terminal::to_client_output);
+
     let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
         return;

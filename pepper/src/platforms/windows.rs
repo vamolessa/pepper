@@ -1344,9 +1344,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
     });
 
     let mut application = ClientApplication::new();
-    if let Some(handle) = &console_output_handle {
-        application.output = Some(ClientOutput(handle.0));
-    }
+    application.output = console_output_handle.as_ref().map(|h| ClientOutput(h.0));
 
     let bytes = application.init(args);
     if !connection.write(bytes) {

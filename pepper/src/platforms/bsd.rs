@@ -195,13 +195,13 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
     kqueue.add(Event::Fd(listener.as_raw_fd()), 0);
     let mut kqueue_events = KqueueEvents::new();
 
-    let _ignore_server_connection_buffer_len = ServerApplication::connection_buffer_len();
+    let _ignore_server_connection_buffer_len = SERVER_CONNECTION_BUFFER_LEN;
 
     loop {
         let kqueue_events = kqueue.wait(&mut kqueue_events, timeout);
         if kqueue_events.len() == 0 {
             match timeout {
-                Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
+                Some(Duration::ZERO) => timeout = Some(SERVER_IDLE_DURATION),
                 Some(_) => {
                     events.push(PlatformEvent::Idle);
                     timeout = None;
@@ -392,6 +392,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     let mut application = ClientApplication::new();
     application.output = terminal.as_ref().map(Terminal::to_client_output);
+
     let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
         return;
@@ -425,8 +426,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     }
 
     let mut keys = Vec::new();
-    let buf_capacity =
-        ClientApplication::connection_buffer_len().max(ClientApplication::stdin_buffer_len());
+    let buf_capacity = CLIENT_CONNECTION_BUFFER_LEN.max(CLIENT_STDIN_BUFFER_LEN);
     let mut buf = Vec::with_capacity(buf_capacity);
 
     let mut select_read_set = unsafe { std::mem::zeroed() };
@@ -521,3 +521,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
+
