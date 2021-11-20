@@ -348,3 +348,19 @@ pub(crate) fn suspend_process(application: &mut ClientApplication, terminal: Opt
     }
     application.reinit_screen();
 }
+
+pub struct ClientOutput(RawFd);
+impl io::Write for ClientOutput {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let len = unsafe { libc::write(self.0, buf.as_ptr() as _, buf.len()) };
+        if result < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(len as _)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+

@@ -1,4 +1,4 @@
-use std::{env, fs, io, mem::ManuallyDrop, panic, path::Path, time::Duration};
+use std::{env, fs, io, mem::ManuallyDrop, panic, path::{Path, PathBuf}, time::Duration};
 
 use crate::{
     client::ClientManager,
@@ -39,7 +39,7 @@ impl Default for ApplicationConfig {
     }
 }
 
-pub(crate) struct ServerApplication {
+pub struct ServerApplication {
     pub ctx: EditorContext,
     client_event_receiver: ClientEventReceiver,
 }
@@ -53,7 +53,7 @@ impl ServerApplication {
     }
 
     pub fn new(config: ApplicationConfig) -> Option<Self> {
-        let current_dir = env::current_dir().expect("could not retrieve the current directory");
+        let current_dir = env::current_dir().unwrap_or(PathBuf::new());
         let mut ctx = EditorContext {
             editor: Editor::new(current_dir),
             platform: Platform::default(),
@@ -238,11 +238,11 @@ impl ServerApplication {
     }
 }
 
-pub(crate) struct ClientApplication {
+pub struct ClientApplication {
     target_client: TargetClient,
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
-    output: Option<ManuallyDrop<fs::File>>,
+    output: Option<Box<dyn io::Write>>,
     stdout_buf: Vec<u8>,
 }
 impl ClientApplication {
@@ -254,7 +254,7 @@ impl ClientApplication {
         48 * 1024
     }
 
-    pub fn new(output: Option<ManuallyDrop<fs::File>>) -> Self {
+    pub fn new(output: Option<Box<dyn io::Write>>) -> Self {
         Self {
             target_client: TargetClient::Sender,
             server_read_buf: Vec::new(),

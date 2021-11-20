@@ -1279,6 +1279,30 @@ impl ConnectionToServer {
     }
 }
 
+struct ClientOutput(HANDLE);
+impl io::Write for ClientOutput {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut write_len = 0;
+        let result = unsafe {
+            WriteFile(
+                self.0,
+                buf.as_ptr() as _,
+                buf.len() as _,
+                &mut write_len,
+                std::ptr::null_mut(),
+            )
+        };
+        if result == FALSE {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(write_len as _)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 fn run_client(args: Args, pipe_path: &[u16]) {
     CtrlCEvent::set_ctrl_handler();
 
@@ -1286,12 +1310,10 @@ fn run_client(args: Args, pipe_path: &[u16]) {
 
     let console_input_handle;
     let console_output_handle;
-    let output_file;
 
     if args.quit {
         console_input_handle = None;
         console_output_handle = None;
-        output_file = None;
     } else {
         console_input_handle = {
             let path = b"CONIN$\0".map(|b| b as _);
@@ -1309,10 +1331,6 @@ fn run_client(args: Args, pipe_path: &[u16]) {
             }
             handle
         };
-
-        output_file = console_output_handle
-            .as_ref()
-            .map(|h| unsafe { ManuallyDrop::new(fs::File::from_raw_handle(h.0 as _)) })
     };
 
     let console_input_mode = console_input_handle.as_ref().map(|h| {
@@ -1326,7 +1344,10 @@ fn run_client(args: Args, pipe_path: &[u16]) {
         mode
     });
 
-    let mut application = ClientApplication::new(output_file);
+    let mut application = ClientApplication::new(match &console_output_handle {
+        Some(handle) => Some(Box::new(ClientOutput(handle.0))),
+        None => None,
+    });
     let bytes = application.init(args);
     if !connection.write(bytes) {
         return;
@@ -1511,3 +1532,4 @@ fn parse_console_events(
         }
     }
 }
+
