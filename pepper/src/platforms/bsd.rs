@@ -8,7 +8,10 @@ use std::{
 };
 
 use crate::{
-    application::{ApplicationConfig, ClientApplication, ServerApplication},
+    application::{
+        ApplicationConfig, ClientApplication, ServerApplication, CLIENT_CONNECTION_BUFFER_LEN,
+        CLIENT_STDIN_BUFFER_LEN, SERVER_CONNECTION_BUFFER_LEN, SERVER_IDLE_DURATION,
+    },
     client::ClientHandle,
     platform::{Key, PlatformEvent, PlatformProcessHandle, PlatformRequest},
     Args,
@@ -387,7 +390,8 @@ fn run_client(args: Args, mut connection: UnixStream) {
         Some(Terminal::new())
     };
 
-    let mut application = ClientApplication::new(terminal.as_ref().map(Terminal::to_file));
+    let mut application = ClientApplication::new();
+    application.output = terminal.as_ref().map(Terminal::to_client_output);
     let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
         return;

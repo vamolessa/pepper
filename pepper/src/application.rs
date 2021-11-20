@@ -1,4 +1,8 @@
-use std::{env, fs, io, mem::ManuallyDrop, panic, path::{Path, PathBuf}, time::Duration};
+use std::{
+    env, fs, io, panic,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use crate::{
     client::ClientManager,
@@ -39,19 +43,14 @@ impl Default for ApplicationConfig {
     }
 }
 
+pub const SERVER_CONNECTION_BUFFER_LEN: usize = 512;
+pub const SERVER_IDLE_DURATION: Duration = Duration::from_secs(1);
+
 pub struct ServerApplication {
     pub ctx: EditorContext,
     client_event_receiver: ClientEventReceiver,
 }
 impl ServerApplication {
-    pub const fn connection_buffer_len() -> usize {
-        512
-    }
-
-    pub const fn idle_duration() -> Duration {
-        Duration::from_secs(1)
-    }
-
     pub fn new(config: ApplicationConfig) -> Option<Self> {
         let current_dir = env::current_dir().unwrap_or(PathBuf::new());
         let mut ctx = EditorContext {
@@ -238,28 +237,29 @@ impl ServerApplication {
     }
 }
 
-pub struct ClientApplication {
+pub const CLIENT_STDIN_BUFFER_LEN: usize = 4 * 1024;
+pub const CLIENT_CONNECTION_BUFFER_LEN: usize = 4 * 1024;
+
+pub struct ClientApplication<O>
+where
+    O: io::Write,
+{
     target_client: TargetClient,
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
-    output: Option<Box<dyn io::Write>>,
+    pub output: Option<O>,
     stdout_buf: Vec<u8>,
 }
-impl ClientApplication {
-    pub const fn stdin_buffer_len() -> usize {
-        4 * 1024
-    }
-
-    pub const fn connection_buffer_len() -> usize {
-        48 * 1024
-    }
-
-    pub fn new(output: Option<Box<dyn io::Write>>) -> Self {
+impl<O> ClientApplication<O>
+where
+    O: io::Write,
+{
+    pub fn new() -> Self {
         Self {
             target_client: TargetClient::Sender,
             server_read_buf: Vec::new(),
             server_write_buf: Vec::new(),
-            output,
+            output: None,
             stdout_buf: Vec::new(),
         }
     }
@@ -295,7 +295,6 @@ impl ClientApplication {
     }
 
     pub fn reinit_screen(&mut self) {
-        use io::Write;
         if let Some(output) = &mut self.output {
             let _ = output.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
             let _ = output.write_all(ui::HIDE_CURSOR_CODE);
@@ -305,7 +304,6 @@ impl ClientApplication {
     }
 
     pub fn restore_screen(&mut self) {
-        use io::Write;
         if let Some(output) = &mut self.output {
             let _ = output.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
             let _ = output.write_all(ui::SHOW_CURSOR_CODE);
@@ -321,8 +319,6 @@ impl ClientApplication {
         stdin_bytes: Option<&[u8]>,
         server_bytes: &[u8],
     ) -> (bool, &'_ [u8]) {
-        use io::Write;
-
         self.server_write_buf.clear();
 
         if let Some((width, height)) = resize {
@@ -379,7 +375,10 @@ impl ClientApplication {
         &self.stdout_buf
     }
 }
-impl Drop for ClientApplication {
+impl<O> Drop for ClientApplication<O>
+where
+    O: io::Write,
+{
     fn drop(&mut self) {
         self.restore_screen();
     }

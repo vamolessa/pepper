@@ -8,7 +8,10 @@ use std::{
 };
 
 use crate::{
-    application::{ApplicationConfig, ClientApplication, ServerApplication},
+    application::{
+        ApplicationConfig, ClientApplication, ServerApplication, CLIENT_CONNECTION_BUFFER_LEN,
+        CLIENT_STDIN_BUFFER_LEN, SERVER_CONNECTION_BUFFER_LEN, SERVER_IDLE_DURATION,
+    },
     client::ClientHandle,
     platform::{Key, PlatformEvent, PlatformProcessHandle, PlatformRequest},
     Args,
@@ -167,7 +170,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         let epoll_events = epoll.wait(&mut epoll_events, timeout);
         if epoll_events.len() == 0 {
             match timeout {
-                Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
+                Some(Duration::ZERO) => timeout = Some(SERVER_IDLE_DURATION),
                 Some(_) => {
                     events.push(PlatformEvent::Idle);
                     timeout = None;
@@ -201,7 +204,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         match read_from_connection(
                             connection,
                             &mut application.ctx.platform.buf_pool,
-                            ServerApplication::connection_buffer_len(),
+                            SERVER_CONNECTION_BUFFER_LEN,
                         ) {
                             Ok(buf) => events.push(PlatformEvent::ConnectionOutput { handle, buf }),
                             Err(()) => {
@@ -344,7 +347,8 @@ fn run_client(args: Args, mut connection: UnixStream) {
         Some(Terminal::new())
     };
 
-    let mut application = ClientApplication::new(terminal.as_ref().map(Terminal::to_file));
+    let mut application = ClientApplication::new();
+    application.output = terminal.as_ref().map(Terminal::to_client_output);
     let bytes = application.init(args);
     if connection.write_all(bytes).is_err() {
         return;
@@ -385,12 +389,11 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     let mut keys = Vec::new();
 
-    const BUF_LEN: usize =
-        if ClientApplication::connection_buffer_len() > ClientApplication::stdin_buffer_len() {
-            ClientApplication::connection_buffer_len()
-        } else {
-            ClientApplication::stdin_buffer_len()
-        };
+    const BUF_LEN: usize = if CLIENT_CONNECTION_BUFFER_LEN > CLIENT_STDIN_BUFFER_LEN {
+        CLIENT_CONNECTION_BUFFER_LEN
+    } else {
+        CLIENT_STDIN_BUFFER_LEN
+    };
     let mut buf = [0; BUF_LEN];
 
     'main_loop: loop {

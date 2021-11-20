@@ -1,10 +1,6 @@
 use std::{
-    env, fs, io,
-    mem::ManuallyDrop,
-    os::windows::{
-        ffi::OsStrExt,
-        io::{FromRawHandle, IntoRawHandle},
-    },
+    env, io,
+    os::windows::{ffi::OsStrExt, io::IntoRawHandle},
     process::Child,
     ptr::NonNull,
     sync::atomic::{AtomicPtr, Ordering},
@@ -66,7 +62,10 @@ use winapi::{
 };
 
 use crate::{
-    application::{ApplicationConfig, ClientApplication, ServerApplication},
+    application::{
+        ApplicationConfig, ClientApplication, ServerApplication, CLIENT_CONNECTION_BUFFER_LEN,
+        CLIENT_STDIN_BUFFER_LEN, SERVER_CONNECTION_BUFFER_LEN, SERVER_IDLE_DURATION,
+    },
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
@@ -985,8 +984,7 @@ impl EventListener {
 
 fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
     let mut event_listener = EventListener::new();
-    let mut listener =
-        ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
+    let mut listener = ConnectionToClientListener::new(pipe_path, SERVER_CONNECTION_BUFFER_LEN);
 
     let mut application = match ServerApplication::new(config) {
         Some(application) => application,
@@ -1028,7 +1026,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
             }
             None => {
                 match timeout {
-                    Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
+                    Some(Duration::ZERO) => timeout = Some(SERVER_IDLE_DURATION),
                     Some(_) => {
                         events.push(PlatformEvent::Idle);
                         timeout = None;
@@ -1153,7 +1151,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                 if let Some(connection) = &mut client_connections[i] {
                     let handle = ClientHandle::from_index(i).unwrap();
                     match connection.read_async(
-                        ServerApplication::connection_buffer_len(),
+                        SERVER_CONNECTION_BUFFER_LEN,
                         &mut application.ctx.platform.buf_pool,
                     ) {
                         Ok(None) => (),
@@ -1190,7 +1188,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
 struct StdinPipe {
     handle: Handle,
-    buf: Box<[u8; ClientApplication::stdin_buffer_len()]>,
+    buf: Box<[u8; CLIENT_STDIN_BUFFER_LEN]>,
 }
 impl StdinPipe {
     pub fn new(handle: Handle) -> Option<Self> {
@@ -1200,7 +1198,7 @@ impl StdinPipe {
 
         Some(Self {
             handle,
-            buf: Box::new([0; ClientApplication::stdin_buffer_len()]),
+            buf: Box::new([0; CLIENT_STDIN_BUFFER_LEN]),
         })
     }
 
@@ -1233,7 +1231,7 @@ impl StdinPipe {
 
 struct ConnectionToServer {
     reader: AsyncReader,
-    buf: Box<[u8; ClientApplication::connection_buffer_len()]>,
+    buf: Box<[u8; CLIENT_CONNECTION_BUFFER_LEN]>,
 }
 impl ConnectionToServer {
     pub fn connect(path: &[u16]) -> Self {
@@ -1257,7 +1255,7 @@ impl ConnectionToServer {
         }
 
         let reader = AsyncReader::new(handle);
-        let buf = Box::new([0; ClientApplication::connection_buffer_len()]);
+        let buf = Box::new([0; CLIENT_CONNECTION_BUFFER_LEN]);
 
         Self { reader, buf }
     }
@@ -1298,6 +1296,7 @@ impl io::Write for ClientOutput {
 
         Ok(write_len as _)
     }
+
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
@@ -1344,10 +1343,11 @@ fn run_client(args: Args, pipe_path: &[u16]) {
         mode
     });
 
-    let mut application = ClientApplication::new(match &console_output_handle {
-        Some(handle) => Some(Box::new(ClientOutput(handle.0))),
-        None => None,
-    });
+    let mut application = ClientApplication::new();
+    if let Some(handle) = &console_output_handle {
+        application.output = Some(ClientOutput(handle.0));
+    }
+
     let bytes = application.init(args);
     if !connection.write(bytes) {
         return;
@@ -1532,4 +1532,3 @@ fn parse_console_events(
         }
     }
 }
-
