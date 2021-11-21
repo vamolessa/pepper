@@ -41,9 +41,9 @@ function main() {
         const alt = event.domEvent.altKey;
 
         const displayBytes = pepper_on_event(STATE.pepperApplication, key, ctrl, alt);
-        term.writeUtf8(displayBytes);
+        term.write(displayBytes);
     });
 
     const displayBytes = pepper_init(STATE.pepperApplication, term.cols, term.rows);
-    term.writeUtf8(displayBytes);
+    term.write(displayBytes);
 }

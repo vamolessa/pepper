@@ -48,7 +48,9 @@ pub fn pepper_init(app: *mut Application, terminal_width: u16, terminal_height: 
         output.clear();
     }
 
-    app.events.push(PlatformEvent::ConnectionOpen { handle: CLIENT_HANDLE });
+    app.events.push(PlatformEvent::ConnectionOpen {
+        handle: CLIENT_HANDLE,
+    });
 
     let bytes = app.client.init(Args::default());
     let buf = app.server.ctx.platform.buf_pool.acquire();
@@ -174,4 +176,3 @@ fn parse_key(name: &str, has_ctrl: bool, has_alt: bool) -> Key {
         }
     }
 }
-
