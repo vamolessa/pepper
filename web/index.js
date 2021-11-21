@@ -26,13 +26,19 @@ function main() {
     var term = new Terminal({
         cols: TERMINAL_WIDTH,
         rows: TERMINAL_HEIGHT,
+        //rendererType: "dom",
+        rendererType: "canvas",
+        allowTransparency: false,
+        bellStyle: "none",
+        convertEol: false,
+        screenReaderMode: false,
+        scrollback: 0,
     });
     term.open(STATE.terminalElement);
     term.onKey(function(event) {
         const key = event.domEvent.key;
         const ctrl = event.domEvent.ctrlKey;
         const alt = event.domEvent.altKey;
-        console.log(key, ctrl, alt, event);
 
         const displayBytes = pepper_on_event(STATE.pepperApplication, key, ctrl, alt);
         term.writeUtf8(displayBytes);

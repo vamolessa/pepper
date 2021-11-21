@@ -18,6 +18,10 @@ impl ClientHandle {
         self.0 as _
     }
 
+    pub const fn from_raw(index: u8) -> ClientHandle {
+        ClientHandle(index)
+    }
+
     pub fn from_index(index: usize) -> Option<ClientHandle> {
         if index <= u8::MAX as usize {
             Some(ClientHandle(index as _))

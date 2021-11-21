@@ -314,7 +314,7 @@ where
 
     pub fn update(
         &mut self,
-        resize: Option<(usize, usize)>,
+        resize: Option<(u16, u16)>,
         keys: &[Key],
         stdin_bytes: Option<&[u8]>,
         server_bytes: &[u8],
@@ -322,7 +322,7 @@ where
         self.server_write_buf.clear();
 
         if let Some((width, height)) = resize {
-            ClientEvent::Resize(width as _, height as _).serialize(&mut self.server_write_buf);
+            ClientEvent::Resize(width, height).serialize(&mut self.server_write_buf);
         }
 
         for key in keys {

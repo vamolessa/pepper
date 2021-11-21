@@ -142,7 +142,7 @@ impl Terminal {
         unsafe { libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.original_state) };
     }
 
-    pub fn get_size(&self) -> (usize, usize) {
+    pub fn get_size(&self) -> (u16, u16) {
         let mut size: libc::winsize = unsafe { std::mem::zeroed() };
         let result = unsafe {
             libc::ioctl(

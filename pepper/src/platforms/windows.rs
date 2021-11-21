@@ -228,7 +228,7 @@ fn get_std_handle(which: DWORD) -> Option<Handle> {
     }
 }
 
-fn get_console_size(output_handle: &Handle) -> (usize, usize) {
+fn get_console_size(output_handle: &Handle) -> (u16, u16) {
     let mut console_info = unsafe { std::mem::zeroed() };
     let result = unsafe { GetConsoleScreenBufferInfo(output_handle.0, &mut console_info) };
     if result == FALSE {
@@ -1457,7 +1457,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
 fn parse_console_events(
     console_events: &[INPUT_RECORD],
     keys: &mut Vec<Key>,
-    resize: &mut Option<(usize, usize)>,
+    resize: &mut Option<(u16, u16)>,
 ) {
     for event in console_events {
         match event.EventType {
