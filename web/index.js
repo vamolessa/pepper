@@ -23,27 +23,36 @@ window.onload = function() {
 }
 
 function main() {
-    var term = new Terminal({
+    const terminal = new Terminal({
         cols: TERMINAL_WIDTH,
         rows: TERMINAL_HEIGHT,
-        //rendererType: "dom",
         rendererType: "canvas",
         allowTransparency: false,
         bellStyle: "none",
         convertEol: false,
+        windowsMode: true,
         screenReaderMode: false,
         scrollback: 0,
+        experimentalCharAtlas: "dynamic",
     });
-    term.open(STATE.terminalElement);
-    term.onKey(function(event) {
+
+    terminal.open(STATE.terminalElement);
+
+    const webglAddon = new WebglAddon.WebglAddon();
+    webglAddon.onContextLoss(e => {
+        webglAddon.dispose();
+    });
+    terminal.loadAddon(webglAddon);
+
+    terminal.onKey(function(event) {
         const key = event.domEvent.key;
         const ctrl = event.domEvent.ctrlKey;
         const alt = event.domEvent.altKey;
 
         const displayBytes = pepper_on_event(STATE.pepperApplication, key, ctrl, alt);
-        term.write(displayBytes);
+        terminal.write(displayBytes);
     });
 
-    const displayBytes = pepper_init(STATE.pepperApplication, term.cols, term.rows);
-    term.write(displayBytes);
+    const displayBytes = pepper_init(STATE.pepperApplication, terminal.cols, terminal.rows);
+    terminal.write(displayBytes);
 }
