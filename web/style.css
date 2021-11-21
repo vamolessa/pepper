@@ -1,0 +1,51 @@
+html {
+    background: url(/.github/images/background.png) repeat;
+
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-content: center;
+    align-items: center;
+}
+
+body {
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    align-content: center;
+    align-items: center;
+
+    font-family: "Tahoma";
+}
+
+div.header {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-content: center;
+    align-items: center;
+}
+
+h1 {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+a {
+    text-decoration: none !important;
+}
+
+.pink {
+    color: rgb(178, 223, 255);
+}
+.blue {
+    color: rgb(255, 217, 217);
+}
+
+span.note {
+    margin-top: 10px;
+    color: gray;
+}
