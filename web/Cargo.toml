@@ -1,0 +1,22 @@
+[package]
+name = "pepper-web"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+#[profile.release]
+#debug = false
+#ltp = true
+#opt-level = 's'
+
+[lib]
+crate-type = ["cdylib"]
+name = "pepper_web"
+path = "src/lib.rs"
+
+[dependencies]
+pepper = { path = "../pepper" }
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+wee_alloc = "0.4"

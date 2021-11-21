@@ -917,7 +917,7 @@ impl fmt::Display for BufferReadError {
 impl From<io::Error> for BufferReadError {
     fn from(other: io::Error) -> Self {
         match other.kind() {
-            io::ErrorKind::NotFound => Self::FileNotFound,
+            io::ErrorKind::NotFound | io::ErrorKind::Unsupported => Self::FileNotFound,
             io::ErrorKind::InvalidData => Self::InvalidData,
             _ => Self::Other,
         }

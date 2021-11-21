@@ -1,10 +1,6 @@
 use std::{
-    env, fs, io,
-    mem::ManuallyDrop,
-    os::windows::{
-        ffi::OsStrExt,
-        io::{FromRawHandle, IntoRawHandle},
-    },
+    env, io,
+    os::windows::{ffi::OsStrExt, io::IntoRawHandle},
     process::Child,
     ptr::NonNull,
     sync::atomic::{AtomicPtr, Ordering},
@@ -66,7 +62,10 @@ use winapi::{
 };
 
 use crate::{
-    application::{ApplicationConfig, ClientApplication, ServerApplication},
+    application::{
+        ApplicationConfig, ClientApplication, ServerApplication, CLIENT_CONNECTION_BUFFER_LEN,
+        CLIENT_STDIN_BUFFER_LEN, SERVER_CONNECTION_BUFFER_LEN, SERVER_IDLE_DURATION,
+    },
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
@@ -229,7 +228,7 @@ fn get_std_handle(which: DWORD) -> Option<Handle> {
     }
 }
 
-fn get_console_size(output_handle: &Handle) -> (usize, usize) {
+fn get_console_size(output_handle: &Handle) -> (u16, u16) {
     let mut console_info = unsafe { std::mem::zeroed() };
     let result = unsafe { GetConsoleScreenBufferInfo(output_handle.0, &mut console_info) };
     if result == FALSE {
@@ -985,8 +984,7 @@ impl EventListener {
 
 fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
     let mut event_listener = EventListener::new();
-    let mut listener =
-        ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
+    let mut listener = ConnectionToClientListener::new(pipe_path, SERVER_CONNECTION_BUFFER_LEN);
 
     let mut application = match ServerApplication::new(config) {
         Some(application) => application,
@@ -1028,7 +1026,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
             }
             None => {
                 match timeout {
-                    Some(Duration::ZERO) => timeout = Some(ServerApplication::idle_duration()),
+                    Some(Duration::ZERO) => timeout = Some(SERVER_IDLE_DURATION),
                     Some(_) => {
                         events.push(PlatformEvent::Idle);
                         timeout = None;
@@ -1153,7 +1151,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                 if let Some(connection) = &mut client_connections[i] {
                     let handle = ClientHandle::from_index(i).unwrap();
                     match connection.read_async(
-                        ServerApplication::connection_buffer_len(),
+                        SERVER_CONNECTION_BUFFER_LEN,
                         &mut application.ctx.platform.buf_pool,
                     ) {
                         Ok(None) => (),
@@ -1190,7 +1188,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
 struct StdinPipe {
     handle: Handle,
-    buf: Box<[u8; ClientApplication::stdin_buffer_len()]>,
+    buf: Box<[u8; CLIENT_STDIN_BUFFER_LEN]>,
 }
 impl StdinPipe {
     pub fn new(handle: Handle) -> Option<Self> {
@@ -1200,7 +1198,7 @@ impl StdinPipe {
 
         Some(Self {
             handle,
-            buf: Box::new([0; ClientApplication::stdin_buffer_len()]),
+            buf: Box::new([0; CLIENT_STDIN_BUFFER_LEN]),
         })
     }
 
@@ -1233,7 +1231,7 @@ impl StdinPipe {
 
 struct ConnectionToServer {
     reader: AsyncReader,
-    buf: Box<[u8; ClientApplication::connection_buffer_len()]>,
+    buf: Box<[u8; CLIENT_CONNECTION_BUFFER_LEN]>,
 }
 impl ConnectionToServer {
     pub fn connect(path: &[u16]) -> Self {
@@ -1257,7 +1255,7 @@ impl ConnectionToServer {
         }
 
         let reader = AsyncReader::new(handle);
-        let buf = Box::new([0; ClientApplication::connection_buffer_len()]);
+        let buf = Box::new([0; CLIENT_CONNECTION_BUFFER_LEN]);
 
         Self { reader, buf }
     }
@@ -1279,6 +1277,31 @@ impl ConnectionToServer {
     }
 }
 
+struct ClientOutput(HANDLE);
+impl io::Write for ClientOutput {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut write_len = 0;
+        let result = unsafe {
+            WriteFile(
+                self.0,
+                buf.as_ptr() as _,
+                buf.len() as _,
+                &mut write_len,
+                std::ptr::null_mut(),
+            )
+        };
+        if result == FALSE {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(write_len as _)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 fn run_client(args: Args, pipe_path: &[u16]) {
     CtrlCEvent::set_ctrl_handler();
 
@@ -1286,12 +1309,10 @@ fn run_client(args: Args, pipe_path: &[u16]) {
 
     let console_input_handle;
     let console_output_handle;
-    let output_file;
 
     if args.quit {
         console_input_handle = None;
         console_output_handle = None;
-        output_file = None;
     } else {
         console_input_handle = {
             let path = b"CONIN$\0".map(|b| b as _);
@@ -1309,10 +1330,6 @@ fn run_client(args: Args, pipe_path: &[u16]) {
             }
             handle
         };
-
-        output_file = console_output_handle
-            .as_ref()
-            .map(|h| unsafe { ManuallyDrop::new(fs::File::from_raw_handle(h.0 as _)) })
     };
 
     let console_input_mode = console_input_handle.as_ref().map(|h| {
@@ -1326,7 +1343,9 @@ fn run_client(args: Args, pipe_path: &[u16]) {
         mode
     });
 
-    let mut application = ClientApplication::new(output_file);
+    let mut application = ClientApplication::new();
+    application.output = console_output_handle.as_ref().map(|h| ClientOutput(h.0));
+
     let bytes = application.init(args);
     if !connection.write(bytes) {
         return;
@@ -1438,7 +1457,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
 fn parse_console_events(
     console_events: &[INPUT_RECORD],
     keys: &mut Vec<Key>,
-    resize: &mut Option<(usize, usize)>,
+    resize: &mut Option<(u16, u16)>,
 ) {
     for event in console_events {
         match event.EventType {

@@ -207,7 +207,26 @@ mod platform_impl {
     pub const DEFAULT_CONFIG_CONTENT: &str = include_str!("../rc/default_bsd.pepper");
 }
 
-pub fn run(config: application::ApplicationConfig) {
+#[cfg(not(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly",
+)))]
+mod platform_impl {
+    use super::*;
+    pub mod sys {
+        use super::*;
+        pub fn try_launching_debugger() {}
+        pub fn main(_: application::ApplicationConfig) {}
+    }
+    pub const DEFAULT_CONFIG_CONTENT: &str = "";
+}
+
+pub fn init(config: &application::ApplicationConfig) {
     use std::{fs, io, mem::MaybeUninit, panic};
 
     static mut ORIGINAL_PANIC_HOOK: MaybeUninit<Box<dyn Fn(&panic::PanicInfo) + Sync + Send>> =
@@ -234,6 +253,9 @@ pub fn run(config: application::ApplicationConfig) {
         let hook = ORIGINAL_PANIC_HOOK.assume_init_ref();
         hook(info);
     }));
+}
 
+pub fn run(config: application::ApplicationConfig) {
+    init(&config);
     platform_impl::sys::main(config);
 }

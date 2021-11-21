@@ -700,7 +700,7 @@ mod tests {
 
             let mut buffer_views = BufferViewCollection::default();
             let buffer_view_handle =
-                buffer_views.add_new(ClientHandle::from_index(0).unwrap(), buffer.handle());
+                buffer_views.add_new(ClientHandle::from_raw(0), buffer.handle());
 
             Self {
                 buffers,

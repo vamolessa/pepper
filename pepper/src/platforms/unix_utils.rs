@@ -1,9 +1,8 @@
 use std::{
     env, fs, io,
-    mem::ManuallyDrop,
     os::unix::{
         ffi::OsStrExt,
-        io::{AsRawFd, FromRawFd, RawFd},
+        io::{AsRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
     path::Path,
@@ -115,8 +114,8 @@ impl Terminal {
         Self { fd, original_state }
     }
 
-    pub fn to_file(&self) -> ManuallyDrop<fs::File> {
-        unsafe { ManuallyDrop::new(fs::File::from_raw_fd(self.fd)) }
+    pub fn to_client_output(&self) -> ClientOutput {
+        ClientOutput(self.fd)
     }
 
     pub fn enter_raw_mode(&self) {
@@ -143,7 +142,7 @@ impl Terminal {
         unsafe { libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.original_state) };
     }
 
-    pub fn get_size(&self) -> (usize, usize) {
+    pub fn get_size(&self) -> (u16, u16) {
         let mut size: libc::winsize = unsafe { std::mem::zeroed() };
         let result = unsafe {
             libc::ioctl(
@@ -335,7 +334,12 @@ impl Drop for Process {
     }
 }
 
-pub(crate) fn suspend_process(application: &mut ClientApplication, terminal: Option<&Terminal>) {
+pub(crate) fn suspend_process<O>(
+    application: &mut ClientApplication<O>,
+    terminal: Option<&Terminal>,
+) where
+    O: io::Write,
+{
     application.restore_screen();
     if let Some(terminal) = terminal {
         terminal.leave_raw_mode();
@@ -347,4 +351,20 @@ pub(crate) fn suspend_process(application: &mut ClientApplication, terminal: Opt
         terminal.enter_raw_mode();
     }
     application.reinit_screen();
+}
+
+pub struct ClientOutput(RawFd);
+impl io::Write for ClientOutput {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let len = unsafe { libc::write(self.0, buf.as_ptr() as _, buf.len()) };
+        if len >= 0 {
+            Ok(len as _)
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
