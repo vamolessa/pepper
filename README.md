@@ -17,7 +17,7 @@ It's mission is to be a minimal and fast code editor with an orthogonal set of b
 ## [config recipes](./pepper/rc/config_recipes.md)
 ## [changelog](./pepper/rc/changelog.md)
 
-## [web version](./web)
+### [try it on your browser!](./web)
 
 # installation
 
@@ -53,7 +53,7 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 - small, however orthogonal, set of editing primitives
 - mnemonic and easy to reach default keybindings (assuming a qwerty keyboard)
-- cross-plaftorm (Windows, Linux, BSD, Mac, Web)
+- cross-plaftorm (Windows, Linux, BSD, Mac and even [Web](./web))
 - extensible through external cli tools
 - be as fast and reponsive as possible
 - zero runtime dependencies (besides platform libs)
