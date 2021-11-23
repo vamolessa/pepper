@@ -148,6 +148,20 @@ impl Picker {
         }
     }
 
+    pub fn filter_completion(&mut self, word_indices: WordIndicesIter, pattern: &str) {
+        if self.custom_entries_len == 0 {
+            self.filter(word_indices, pattern);
+            if self.cursor.is_none() {
+                self.cursor = Some(0);
+            }
+            if self.len() == 1 {
+                self.clear();
+            }
+        } else {
+            self.filter(WordIndicesIter::empty(), pattern);
+        }
+    }
+
     fn filter_custom_entry(&mut self, index: usize, pattern: &str) -> bool {
         let entry = &self.custom_entries_buffer[index];
         let score = self.fuzzy_matcher.score(entry, pattern);

@@ -1,5 +1,8 @@
 # changelog
 
+## 0.20.0
+- use builtin word database for completions when plugins provide no suggestions
+
 ## 0.19.3
 - added changelog! you can access it through `:help changelog<enter>`
 - added error number to unix platform panics

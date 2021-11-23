@@ -10,7 +10,7 @@ use crate::{
     mode::{ModeKind, ModeState},
     platform::Key,
     plugin::{CompletionContext, PluginHandle},
-    word_database::{WordIndicesIter, WordKind},
+    word_database::WordKind,
 };
 
 #[derive(Default)]
@@ -350,24 +350,9 @@ fn update_completions(
         }
     };
 
-    match ctx.editor.mode.insert_state.completing_plugin_handle {
-        Some(_) => {
-            ctx.editor
-                .picker
-                .filter(WordIndicesIter::empty(), completion_filter);
-        }
-        None => {
-            ctx.editor
-                .picker
-                .filter(ctx.editor.word_database.word_indices(), completion_filter);
-            if ctx.editor.picker.cursor().is_none() {
-                ctx.editor.picker.move_cursor(0);
-            }
-            if ctx.editor.picker.len() == 1 {
-                ctx.editor.picker.clear();
-            }
-        }
-    }
+    ctx.editor
+        .picker
+        .filter_completion(ctx.editor.word_database.word_indices(), completion_filter);
 }
 
 fn apply_completion(

@@ -11,7 +11,7 @@ use pepper::{
     mode::ModeKind,
     picker::Picker,
     plugin::PluginHandle,
-    word_database::{WordIndicesIter, WordKind},
+    word_database::WordKind,
 };
 
 use crate::{
@@ -974,7 +974,9 @@ pub(crate) fn on_response(
                 WordKind::Identifier => word.text,
                 _ => "",
             };
-            ctx.editor.picker.filter(WordIndicesIter::empty(), filter);
+            ctx.editor
+                .picker
+                .filter_completion(ctx.editor.word_database.word_indices(), filter);
 
             Ok(())
         }
