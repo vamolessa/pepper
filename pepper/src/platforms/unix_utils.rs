@@ -72,6 +72,7 @@ pub(crate) fn run(
             Err(_) => match unsafe { libc::fork() } {
                 -1 => panic!("could not start server"),
                 0 => {
+                    unsafe { libc::daemon(false as _, false as _) };
                     server_fn(config, start_server(session_path));
                     let _ = fs::remove_file(session_path);
                 }
@@ -368,3 +369,4 @@ impl io::Write for ClientOutput {
         Ok(())
     }
 }
+

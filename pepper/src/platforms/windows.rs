@@ -35,10 +35,11 @@ use winapi::{
         synchapi::{CreateEventW, SetEvent, Sleep, WaitForMultipleObjects},
         sysinfoapi::GetSystemDirectoryW,
         winbase::{
-            GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED,
-            FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX,
-            PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES,
-            STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
+            GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, CREATE_NEW_PROCESS_GROUP,
+            DETACHED_PROCESS, FILE_FLAG_OVERLAPPED, FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE,
+            NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
+            PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
+            STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
             GetConsoleScreenBufferInfo, CTRL_C_EVENT, ENABLE_PROCESSED_OUTPUT,
@@ -188,7 +189,7 @@ pub fn main(config: ApplicationConfig) {
 
     if config.args.server {
         if !pipe_exists(&pipe_path) {
-            let _ = run_server(config, &pipe_path);
+            run_server(config, &pipe_path);
         }
     } else {
         if !pipe_exists(&pipe_path) {
@@ -414,7 +415,7 @@ fn fork() {
     let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
 
     let mut client_command_line = unsafe { GetCommandLineW() };
-    let mut command_line = Vec::new();
+    let mut command_line = Vec::with_capacity(1024);
     loop {
         unsafe {
             let short = std::ptr::read(client_command_line);
@@ -435,7 +436,7 @@ fn fork() {
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             TRUE,
-            NORMAL_PRIORITY_CLASS,
+            NORMAL_PRIORITY_CLASS | CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
             NULL,
             std::ptr::null_mut(),
             &mut startup_info,
@@ -443,8 +444,8 @@ fn fork() {
         )
     };
 
-    let _ = Handle(process_info.hProcess);
-    let _ = Handle(process_info.hThread);
+    std::mem::drop(Handle(process_info.hProcess));
+    std::mem::drop(Handle(process_info.hThread));
 
     if result == FALSE {
         panic!("could not spawn server");
@@ -1530,3 +1531,4 @@ fn parse_console_events(
         }
     }
 }
+
