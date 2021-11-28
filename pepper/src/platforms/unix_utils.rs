@@ -369,4 +369,3 @@ impl io::Write for ClientOutput {
         Ok(())
     }
 }
-

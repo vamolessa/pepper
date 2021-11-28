@@ -388,4 +388,3 @@ where
         self.restore_screen();
     }
 }
-

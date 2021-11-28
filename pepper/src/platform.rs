@@ -239,4 +239,3 @@ pub fn drop_request(buf_pool: &mut BufPool, request: PlatformRequest) {
         | PlatformRequest::KillProcess { .. } => (),
     }
 }
-

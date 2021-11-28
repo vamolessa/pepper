@@ -2,6 +2,8 @@
 
 ## 0.20.0
 - use builtin word database for completions when plugins provide no suggestions
+- prevent closing all clients when the terminal from which the server was spawned is closed
+- fix debugging crash when sometimes dropping a client connection
 
 ## 0.19.3
 - added changelog! you can access it through `:help changelog<enter>`
