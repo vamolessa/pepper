@@ -1,6 +1,6 @@
 use std::{
     env, io,
-    os::windows::{ffi::OsStrExt, io::IntoRawHandle},
+    os::windows::{ffi::OsStrExt, io::IntoRawHandle, process::CommandExt},
     process::Child,
     ptr::NonNull,
     sync::atomic::{AtomicPtr, Ordering},
@@ -36,10 +36,10 @@ use winapi::{
         sysinfoapi::GetSystemDirectoryW,
         winbase::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, CREATE_NEW_PROCESS_GROUP,
-            DETACHED_PROCESS, FILE_FLAG_OVERLAPPED, FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE,
-            NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
-            PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
-            STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
+            CREATE_NO_WINDOW, DETACHED_PROCESS, FILE_FLAG_OVERLAPPED, FILE_TYPE_CHAR,
+            GMEM_MOVEABLE, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE,
+            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_ERROR_HANDLE,
+            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
             GetConsoleScreenBufferInfo, CTRL_C_EVENT, ENABLE_PROCESSED_OUTPUT,
@@ -629,7 +629,10 @@ impl CtrlCEvent {
                 _ => FALSE,
             }
         }
-        unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) };
+        let result = unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) };
+        if result == FALSE {
+            panic!("could not set ctrl handler");
+        }
     }
 
     pub fn new() -> Self {
@@ -1086,9 +1089,11 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                                     continue;
                                 }
 
-                                let handle = PlatformProcessHandle(i as _);
+                                command.creation_flags(NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW);
+
                                 if let Ok(child) = command.spawn() {
                                     *p = Some(AsyncProcess::new(child, tag, buf_len));
+                                    let handle = PlatformProcessHandle(i as _);
                                     events.push(PlatformEvent::ProcessSpawned { tag, handle });
                                     spawned = true;
                                 }
