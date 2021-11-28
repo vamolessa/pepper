@@ -9,7 +9,7 @@ use crate::{
     editor::{Editor, EditorContext, EditorFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
-    platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
+    platform::{drop_event, Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
     serialization::{DeserializeError, Serialize},
     ui, Args, ResourceFile,
@@ -95,11 +95,12 @@ impl ServerApplication {
         })
     }
 
-    pub fn update<I>(&mut self, events: I)
+    pub fn update<I>(&mut self, mut events: I)
     where
         I: Iterator<Item = PlatformEvent>,
     {
-        for event in events {
+        //for event in events {
+        while let Some(event) = events.next() {
             match event {
                 PlatformEvent::Idle => {
                     self.ctx.editor.on_idle();
@@ -112,6 +113,10 @@ impl ServerApplication {
                     self.ctx.clients.on_client_left(handle);
                     if self.ctx.clients.iter().next().is_none() {
                         self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
+
+                        for event in events {
+                            drop_event(&mut self.ctx.platform.buf_pool, event);
+                        }
                         break;
                     }
                 }
@@ -383,3 +388,4 @@ where
         self.restore_screen();
     }
 }
+

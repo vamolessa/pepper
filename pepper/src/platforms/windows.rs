@@ -70,7 +70,8 @@ use crate::{
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
-        BufPool, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest, PooledBuf, ProcessTag,
+        drop_request, BufPool, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest,
+        PooledBuf, ProcessTag,
     },
     Args,
 };
@@ -1051,11 +1052,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                                 process.kill();
                             }
                             for request in requests {
-                                if let PlatformRequest::WriteToClient { buf, .. }
-                                | PlatformRequest::WriteToProcess { buf, .. } = request
-                                {
-                                    application.ctx.platform.buf_pool.release(buf);
-                                }
+                                drop_request(&mut application.ctx.platform.buf_pool, request);
                             }
                             return;
                         }

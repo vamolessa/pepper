@@ -13,7 +13,7 @@ use crate::{
         CLIENT_STDIN_BUFFER_LEN, SERVER_CONNECTION_BUFFER_LEN, SERVER_IDLE_DURATION,
     },
     client::ClientHandle,
-    platform::{Key, PlatformEvent, PlatformProcessHandle, PlatformRequest},
+    platform::{drop_request, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest},
     Args,
 };
 
@@ -286,11 +286,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             match request {
                 PlatformRequest::Quit => {
                     for request in requests {
-                        if let PlatformRequest::WriteToClient { buf, .. }
-                        | PlatformRequest::WriteToProcess { buf, .. } = request
-                        {
-                            application.ctx.platform.buf_pool.release(buf);
-                        }
+                        drop_request(&mut application.ctx.platform.buf_pool, request);
                     }
                     return;
                 }
@@ -521,3 +517,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
+
