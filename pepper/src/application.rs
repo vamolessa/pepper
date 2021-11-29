@@ -43,7 +43,7 @@ impl Default for ApplicationConfig {
     }
 }
 
-pub const SERVER_CONNECTION_BUFFER_LEN: usize = 512;
+pub const SERVER_CONNECTION_BUFFER_LEN: usize = 4 * 1024;
 pub const SERVER_IDLE_DURATION: Duration = Duration::from_secs(1);
 
 pub struct ServerApplication {
@@ -99,7 +99,6 @@ impl ServerApplication {
     where
         I: Iterator<Item = PlatformEvent>,
     {
-        //for event in events {
         while let Some(event) = events.next() {
             match event {
                 PlatformEvent::Idle => {
