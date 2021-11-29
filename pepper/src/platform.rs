@@ -177,6 +177,10 @@ impl PooledBuf {
         &self.0
     }
 
+    pub fn drain_start(&mut self, start: usize) {
+        self.0.drain(..start);
+    }
+
     pub fn write(&mut self) -> &mut Vec<u8> {
         let buf = &mut self.0;
         buf.clear();

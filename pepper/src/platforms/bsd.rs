@@ -230,7 +230,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                             CLIENTS_START_INDEX + i,
                                         );
                                         *c = Some(connection);
-                                        let handle = ClientHandle::from_index(i).unwrap();
+                                        let handle = ClientHandle(i as _);
                                         events.push(PlatformEvent::ConnectionOpen { handle });
                                         break;
                                     }
@@ -243,7 +243,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 CLIENTS_START_INDEX..=CLIENTS_LAST_INDEX => {
                     let index = event_index - CLIENTS_START_INDEX;
                     if let Some(ref mut connection) = client_connections[index] {
-                        let handle = ClientHandle::from_index(index).unwrap();
+                        let handle = ClientHandle(index as _);
                         match read_from_connection(
                             connection,
                             &mut application.ctx.platform.buf_pool,
@@ -292,7 +292,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 }
                 PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
                 PlatformRequest::WriteToClient { handle, buf } => {
-                    let index = handle.into_index();
+                    let index = handle.0 as usize;
                     if let Some(ref mut connection) = client_connections[index] {
                         if connection.write_all(buf.as_bytes()).is_err() {
                             kqueue.remove(Event::Fd(connection.as_raw_fd()));
@@ -303,7 +303,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     application.ctx.platform.buf_pool.release(buf);
                 }
                 PlatformRequest::CloseClient { handle } => {
-                    let index = handle.into_index();
+                    let index = handle.0 as usize;
                     if let Some(connection) = client_connections[index].take() {
                         kqueue.remove(Event::Fd(connection.as_raw_fd()));
                     }
