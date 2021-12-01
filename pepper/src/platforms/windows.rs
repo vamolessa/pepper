@@ -1104,6 +1104,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
     let mut events = Vec::new();
     let mut timeout = None;
+    let mut was_write_event = false;
 
     loop {
         event_listener.track(listener.event(), EventSource::ConnectionListener);
@@ -1125,10 +1126,14 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
         let event = match event_listener.wait_next(timeout) {
             Some(event) => {
-                timeout = Some(Duration::ZERO);
+                if !was_write_event {
+                    timeout = Some(Duration::ZERO);
+                }
                 event
             }
             None => {
+                was_write_event = false;
+
                 match timeout {
                     Some(Duration::ZERO) => timeout = Some(SERVER_IDLE_DURATION),
                     Some(_) => {
@@ -1163,10 +1168,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                         PlatformRequest::WriteToClient { handle, buf } => {
                             let index = handle.0 as usize;
                             match &mut client_connections[index] {
-                                Some(connection) => {
-                                    connection.enqueue_write(buf);
-                                    timeout = Some(Duration::ZERO);
-                                }
+                                Some(connection) => connection.enqueue_write(buf),
                                 None => application.ctx.platform.buf_pool.release(buf),
                             }
                         }
@@ -1270,6 +1272,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                 }
             }
             EventSource::ConnectionWrite(i) => {
+                was_write_event = true;
                 if let Some(connection) = &mut client_connections[i as usize] {
                     match connection.write_pending_async() {
                         Ok(None) => (),
