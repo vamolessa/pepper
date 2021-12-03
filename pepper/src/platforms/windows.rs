@@ -80,11 +80,9 @@ use crate::{
 const MAX_CLIENT_COUNT: usize = 10;
 const MAX_PROCESS_COUNT: usize = 43;
 const MAX_EVENT_COUNT: usize = 1 + 2 * MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
-const _ASSERT_MAX_EVENT_COUNT_IS_MAX_WAIT_OBJECTS: [(); MAXIMUM_WAIT_OBJECTS as _] =
-    [(); MAX_EVENT_COUNT];
+const _: () = assert!(MAX_EVENT_COUNT == MAXIMUM_WAIT_OBJECTS as _);
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
-static PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
 pub fn try_launching_debugger() {
     let mut buf = [0; MAX_PATH + 1];
@@ -178,6 +176,8 @@ pub fn main(config: ApplicationConfig) {
             std::str::from_utf8(&hash_buf[..len]).unwrap()
         }
     };
+
+    const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
     pipe_path.clear();
     pipe_path.extend(PIPE_PREFIX.encode_utf16());
@@ -1104,7 +1104,6 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
     let mut events = Vec::new();
     let mut timeout = None;
-    let mut previous_timeout = None;
 
     loop {
         event_listener.track(listener.event(), EventSource::ConnectionListener);
@@ -1124,10 +1123,9 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
             }
         }
 
-        previous_timeout = timeout;
+        let previous_timeout = timeout;
         let event = match event_listener.wait_next(timeout) {
             Some(event) => {
-                //previous_timeout = timeout;
                 timeout = Some(Duration::ZERO);
                 event
             }
@@ -1271,7 +1269,6 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
             }
             EventSource::ConnectionWrite(i) => {
                 timeout = previous_timeout;
-                //previous_timeout = None;
 
                 if let Some(connection) = &mut client_connections[i as usize] {
                     match connection.write_pending_async() {
