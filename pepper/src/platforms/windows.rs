@@ -1104,6 +1104,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
     let mut events = Vec::new();
     let mut timeout = None;
+    let mut need_redraw = false;
 
     loop {
         event_listener.track(listener.event(), EventSource::ConnectionListener);
@@ -1139,10 +1140,11 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                     None => unreachable!(),
                 }
 
-                if events.is_empty() {
+                if events.is_empty() && !need_redraw {
                     continue;
                 }
 
+                need_redraw = false;
                 application.update(events.drain(..));
                 let mut requests = application.ctx.platform.requests.drain();
                 while let Some(request) = requests.next() {
@@ -1160,7 +1162,10 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                             }
                             return;
                         }
-                        PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
+                        PlatformRequest::Redraw => {
+                            need_redraw = true;
+                            timeout = Some(Duration::ZERO);
+                        }
                         PlatformRequest::WriteToClient { handle, buf } => {
                             let index = handle.0 as usize;
                             match &mut client_connections[index] {
