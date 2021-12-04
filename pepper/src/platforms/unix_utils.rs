@@ -248,16 +248,33 @@ pub(crate) fn read_from_connection(
 ) -> Result<PooledBuf, ()> {
     use io::Read;
     let mut buf = buf_pool.acquire();
-    let write = buf.write_with_len(len);
-    match connection.read(write) {
-        Ok(0) | Err(_) => {
-            buf_pool.release(buf);
-            Err(())
+    let write = buf.write();
+
+    loop {
+        let start = write.len();
+        write.resize(start + len, 0);
+        match connection.read(&mut write[start..start + len]) {
+            Err(error) => {
+                match error.kind() {
+                    io::ErrorKind::WouldBlock => write.truncate(start),
+                    _ => write.clear(),
+                }
+                break;
+            }
+            Ok(len) => {
+                write.truncate(start + len);
+                if len == 0 {
+                    break;
+                }
+            }
         }
-        Ok(len) => {
-            write.truncate(len);
-            Ok(buf)
-        }
+    }
+
+    if write.is_empty() {
+        buf_pool.release(buf);
+        Err(())
+    } else {
+        Ok(buf)
     }
 }
 
@@ -369,3 +386,4 @@ impl io::Write for ClientOutput {
         Ok(())
     }
 }
+

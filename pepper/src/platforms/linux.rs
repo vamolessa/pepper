@@ -96,9 +96,10 @@ impl Epoll {
         Self(fd)
     }
 
-    pub fn add(&self, fd: RawFd, index: usize) {
+    pub fn add(&self, fd: RawFd, index: u8, extra_flags: u32) {
         let mut event = libc::epoll_event {
-            events: (libc::EPOLLIN | libc::EPOLLERR | libc::EPOLLRDHUP | libc::EPOLLHUP) as _,
+            events: (libc::EPOLLIN | libc::EPOLLERR | libc::EPOLLRDHUP | libc::EPOLLHUP) as u32
+                | extra_flags,
             u64: index as _,
         };
         let result = unsafe { libc::epoll_ctl(self.0, libc::EPOLL_CTL_ADD, fd, &mut event) };
@@ -163,7 +164,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
     const PROCESSES_LAST_INDEX: usize = PROCESSES_START_INDEX + MAX_PROCESS_COUNT - 1;
 
     let epoll = Epoll::new();
-    epoll.add(listener.as_raw_fd(), 0);
+    epoll.add(listener.as_raw_fd(), 0, 0);
     let mut epoll_events = EpollEvents::new();
 
     loop {
@@ -185,9 +186,17 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             match event_index {
                 0 => match listener.accept() {
                     Ok((connection, _)) => {
+                        if let Err(error) = connection.set_nonblocking(true) {
+                            panic!("could not set connection to nonblocking {}", error);
+                        }
+
                         for (i, c) in client_connections.iter_mut().enumerate() {
                             if c.is_none() {
-                                epoll.add(connection.as_raw_fd(), CLIENTS_START_INDEX + i);
+                                epoll.add(
+                                    connection.as_raw_fd(),
+                                    (CLIENTS_START_INDEX + i) as _,
+                                    libc::EPOLLET as _,
+                                );
                                 *c = Some(connection);
                                 let handle = ClientHandle(i as _);
                                 events.push(PlatformEvent::ConnectionOpen { handle });
@@ -281,7 +290,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         if let Ok(child) = command.spawn() {
                             let process = Process::new(child, tag, buf_len);
                             if let Some(fd) = process.try_as_raw_fd() {
-                                epoll.add(fd, PROCESSES_START_INDEX + i);
+                                epoll.add(fd, (PROCESSES_START_INDEX + i) as _, 0);
                             }
                             *p = Some(process);
                             events.push(PlatformEvent::ProcessSpawned { tag, handle });
@@ -352,9 +361,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
     }
 
     let epoll = Epoll::new();
-    epoll.add(connection.as_raw_fd(), 1);
+    epoll.add(connection.as_raw_fd(), 1, 0);
     if is_pipped(libc::STDIN_FILENO) {
-        epoll.add(libc::STDIN_FILENO, 3);
+        epoll.add(libc::STDIN_FILENO, 3, 0);
     }
 
     let mut epoll_events = EpollEvents::new();
@@ -362,10 +371,10 @@ fn run_client(args: Args, mut connection: UnixStream) {
     let resize_signal;
     if let Some(terminal) = &terminal {
         terminal.enter_raw_mode();
-        epoll.add(terminal.as_raw_fd(), 0);
+        epoll.add(terminal.as_raw_fd(), 0, 0);
 
         let signal = SignalFd::new(libc::SIGWINCH);
-        epoll.add(signal.as_raw_fd(), 2);
+        epoll.add(signal.as_raw_fd(), 2, 0);
         resize_signal = Some(signal);
 
         let size = terminal.get_size();
@@ -448,3 +457,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
+
