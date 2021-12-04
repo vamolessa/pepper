@@ -644,6 +644,10 @@ pub struct ClientEventReceiver {
 }
 
 impl ClientEventReceiver {
+    pub fn len(&self, client_handle: ClientHandle) -> usize {
+        self.bufs[client_handle.0 as usize].len()
+    }
+
     pub fn receive_events(&mut self, client_handle: ClientHandle, bytes: &[u8]) -> ClientEventIter {
         let buf_index = client_handle.0 as usize;
         if buf_index >= self.bufs.len() {

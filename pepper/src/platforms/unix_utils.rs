@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     env, fs, io,
     os::unix::{
         ffi::OsStrExt,
@@ -275,6 +276,47 @@ pub(crate) fn read_from_connection(
         Err(())
     } else {
         Ok(buf)
+    }
+}
+
+pub(crate) fn write_to_connection(
+    connection: &mut UnixStream,
+    buf_pool: &mut BufPool,
+    write_queue: &mut VecDeque<PooledBuf>,
+) -> Result<(), ()> {
+    use io::Write;
+
+    loop {
+        let mut buf = match write_queue.pop_front() {
+            Some(buf) => buf,
+            None => return Ok(()),
+        };
+
+        match connection.write(buf.as_bytes()) {
+            Ok(len) => {
+                buf.drain_start(len);
+                if buf.as_bytes().is_empty() {
+                    buf_pool.release(buf);
+                } else {
+                    write_queue.push_front(buf);
+                }
+            }
+            Err(error) => {
+                match error.kind() {
+                    io::ErrorKind::WouldBlock => {
+                        write_queue.push_front(buf);
+                        return Ok(());
+                    }
+                    _ => {
+                        buf_pool.release(buf);
+                        for buf in write_queue.drain(..) {
+                            buf_pool.release(buf);
+                        }
+                        return Err(());
+                    }
+                }
+            }
+        }
     }
 }
 
