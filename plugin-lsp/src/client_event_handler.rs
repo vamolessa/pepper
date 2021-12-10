@@ -631,7 +631,10 @@ pub(crate) fn on_response(
                     let surrounding_len = context_len - 1;
                     let start =
                         (location.range.start.line as usize).saturating_sub(surrounding_len);
-                    let end = location.range.end.line as usize + surrounding_len;
+                    let end = context_buffer
+                        .lines()
+                        .len()
+                        .min(location.range.end.line as usize + surrounding_len);
 
                     for line in context_buffer.lines()[start..=end]
                         .iter()
@@ -1086,3 +1089,4 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(()),
     }
 }
+
