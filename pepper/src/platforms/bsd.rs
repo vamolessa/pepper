@@ -282,10 +282,10 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     let handle = ClientHandle(index as _);
                     if let Some(ref mut connection) = client_connections[index] {
                         if event_read {
+                            /*
                             let mut buf = application.ctx.platform.buf_pool.acquire();
                             let write = buf.write_with_len(event_data as _);
 
-                            //*
                             match connection.read_exact(write) {
                                 Ok(()) => {
                                     events.push(PlatformEvent::ConnectionOutput { handle, buf });
@@ -297,7 +297,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                 }
                             }
                             // */
-                            /*
+                            //*
                             match read_from_connection(
                                 connection,
                                 &mut application.ctx.platform.buf_pool,
