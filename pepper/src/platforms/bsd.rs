@@ -279,7 +279,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     if let Some(ref mut connection) = client_connections[index] {
                         if event_read {
                             let mut buf = application.ctx.platform.buf_pool.acquire();
-                            let write = buf.write_len(event_data as _);
+                            let write = buf.write_with_len(event_data as _);
 
                             match connection.read_exact(write) {
                                 Ok(()) => {
