@@ -22,7 +22,7 @@ pub struct Application {
     events: Vec<PlatformEvent>,
 }
 
-const CLIENT_HANDLE: ClientHandle = ClientHandle::from_raw(0);
+const CLIENT_HANDLE: ClientHandle = ClientHandle(0);
 
 #[wasm_bindgen]
 pub fn pepper_new_application() -> *mut Application {

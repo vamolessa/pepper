@@ -783,7 +783,7 @@ mod tests {
             }
         }
 
-        let client_handle = ClientHandle::from_raw(0);
+        let client_handle = ClientHandle(0);
         let event = ClientEvent::Key(TargetClient::Sender, Key::Char(CHAR));
         let mut bytes = Vec::new();
         for _ in 0..EVENT_COUNT {
@@ -807,7 +807,7 @@ mod tests {
         }
         events.finish(&mut receiver);
 
-        assert_eq!(0, receiver.bufs[client_handle as usize].len());
+        assert_eq!(0, receiver.bufs[client_handle.0 as usize].len());
         assert_eq!(EVENT_COUNT, event_count);
     }
 }
