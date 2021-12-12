@@ -174,7 +174,7 @@ impl Kqueue {
                     libc::EVFILT_READ => EventKind::Read,
                     libc::EVFILT_WRITE => EventKind::Write,
                     _ => unreachable!(),
-                }; 
+                };
 
                 Ok(TriggeredEvent {
                     index: e.udata as _,
@@ -361,6 +361,10 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 }
                 _ => unreachable!(),
             }
+        }
+
+        if events.is_empty() {
+            continue;
         }
 
         application.update(events.drain(..));
