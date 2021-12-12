@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "pepper"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "libc",
  "winapi",
