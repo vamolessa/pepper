@@ -14,7 +14,9 @@ use crate::{
         CLIENT_STDIN_BUFFER_LEN, SERVER_CONNECTION_BUFFER_LEN, SERVER_IDLE_DURATION,
     },
     client::ClientHandle,
-    platform::{drop_request, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest},
+    platform::{
+        drop_request, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest, PooledBuf,
+    },
     Args,
 };
 
@@ -534,7 +536,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
             let mut server_bytes = &[][..];
 
             match event {
-                Ok(TriggeredEvent { index: 1, data }) => {
+                Ok(TriggeredEvent { index: 1, data, .. }) => {
                     buf.resize(data as _, 0);
                     match connection.read(&mut buf) {
                         Ok(0) | Err(_) => break 'main_loop,
@@ -544,7 +546,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 Ok(TriggeredEvent { index: 2, .. }) => {
                     resize = terminal.as_ref().map(Terminal::get_size);
                 }
-                Ok(TriggeredEvent { index: 3, data }) => {
+                Ok(TriggeredEvent { index: 3, data, .. }) => {
                     buf.resize(data as _, 0);
                     match read(libc::STDIN_FILENO, &mut buf) {
                         Ok(0) | Err(()) => {
