@@ -3,6 +3,7 @@
 ## 0.21.0
 - prevent deadlocks by writing asynchronously to clients from server
 - fix possible crash when listing lsp item references when there's a usage near the end of the buffer
+- added instructions on how to package the web version of the editor
 
 ## 0.20.0
 - use builtin word database for completions when plugins provide no suggestions
