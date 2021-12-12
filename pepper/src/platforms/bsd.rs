@@ -210,6 +210,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
 
     let mut events = Vec::new();
     let mut timeout = None;
+    let mut need_redraw = false;
 
     const CLIENTS_START_INDEX: usize = 1;
     const CLIENTS_LAST_INDEX: usize = CLIENTS_START_INDEX + MAX_CLIENT_COUNT - 1;
@@ -223,8 +224,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
     let _ignore_server_connection_buffer_len = SERVER_CONNECTION_BUFFER_LEN;
 
     loop {
-        eprintln!("wait with timeout: {:?}", timeout);
-
+        let previous_timeout = timeout;
         let kqueue_events = kqueue.wait(&mut kqueue_events, timeout);
         if kqueue_events.len() == 0 {
             match timeout {
@@ -290,23 +290,6 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     if let Some(ref mut connection) = client_connections[index] {
                         match event_kind {
                             EventKind::Read => {
-                                /*
-                                let mut buf = application.ctx.platform.buf_pool.acquire();
-                                let write = buf.write_with_len(event_data as _);
-
-                                match connection.read_exact(write) {
-                                    Ok(()) => {
-                                        events.push(PlatformEvent::ConnectionOutput { handle, buf });
-                                    }
-                                    Err(_) => {
-                                        kqueue.remove(Event::FdRead(connection.as_raw_fd()));
-                                        kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
-                                        client_connections[index] = None;
-                                        events.push(PlatformEvent::ConnectionClose { handle });
-                                    }
-                                }
-                                // */
-                                //*
                                 match read_from_connection(
                                     connection,
                                     &mut application.ctx.platform.buf_pool,
@@ -323,9 +306,10 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                         events.push(PlatformEvent::ConnectionClose { handle });
                                     }
                                 }
-                                // */
                             }
                             EventKind::Write => {
+                                timeout = previous_timeout;
+
                                 let result = write_to_connection(
                                     connection,
                                     &mut application.ctx.platform.buf_pool,
@@ -363,10 +347,11 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             }
         }
 
-        if events.is_empty() {
+        if events.is_empty() && !need_redraw {
             continue;
         }
 
+        need_redraw = false;
         application.update(events.drain(..));
         let mut requests = application.ctx.platform.requests.drain();
         while let Some(request) = requests.next() {
@@ -382,7 +367,10 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     }
                     return;
                 }
-                PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
+                PlatformRequest::Redraw => {
+                    need_redraw = true;
+                    timeout = Some(Duration::ZERO);
+                }
                 PlatformRequest::WriteToClient { handle, buf } => {
                     let index = handle.0 as usize;
                     match client_connections[index] {

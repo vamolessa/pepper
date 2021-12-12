@@ -271,10 +271,6 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             }
         }
 
-        if events.is_empty() {
-            continue;
-        }
-
         application.update(events.drain(..));
         let mut requests = application.ctx.platform.requests.drain();
         while let Some(request) = requests.next() {
