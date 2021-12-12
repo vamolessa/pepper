@@ -276,6 +276,11 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         while let Some(request) = requests.next() {
             match request {
                 PlatformRequest::Quit => {
+                    for queue in &mut client_write_queue {
+                        for buf in queue.drain(..) {
+                            application.ctx.platform.buf_pool.release(buf);
+                        }
+                    }
                     for request in requests {
                         drop_request(&mut application.ctx.platform.buf_pool, request);
                     }

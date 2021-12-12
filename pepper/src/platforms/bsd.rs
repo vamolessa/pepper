@@ -237,7 +237,14 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         for event in kqueue_events {
             let (event_index, event_data, event_read, event_write) = match event {
                 Ok(event) => (event.index, event.data, event.read, event.write),
-                Err(()) => return,
+                Err(()) => {
+                    for queue in &mut client_write_queue {
+                        for buf in queue.drain(..) {
+                            application.ctx.platform.buf_pool.release(buf);
+                        }
+                    }
+                    return;
+                }
             };
 
             match event_index {
@@ -331,6 +338,11 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         while let Some(request) = requests.next() {
             match request {
                 PlatformRequest::Quit => {
+                    for queue in &mut client_write_queue {
+                        for buf in queue.drain(..) {
+                            application.ctx.platform.buf_pool.release(buf);
+                        }
+                    }
                     for request in requests {
                         drop_request(&mut application.ctx.platform.buf_pool, request);
                     }
