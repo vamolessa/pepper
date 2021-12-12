@@ -278,14 +278,26 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     let handle = ClientHandle(index as _);
                     if let Some(ref mut connection) = client_connections[index] {
                         if event_read {
-                            eprintln!("before read from connection");
+                            let mut buf = application.ctx.platform.buf_pool.acquire();
+                            let write = buf.write_len(event_data as _);
+
+                            match connection.read_exact(write) {
+                                Ok(()) => {
+                                    events.push(PlatformEvent::ConnectionOutput { handle, buf });
+                                }
+                                Err(_) => {
+                                    kqueue.remove(Event::ReadWriteFd(connection.as_raw_fd()));
+                                    client_connections[index] = None;
+                                    events.push(PlatformEvent::ConnectionClose { handle });
+                                }
+                            }
+                            /*
                             match read_from_connection(
                                 connection,
                                 &mut application.ctx.platform.buf_pool,
                                 event_data as _,
                             ) {
                                 Ok(buf) => {
-                                eprintln!("after read from connection");
                                     events.push(PlatformEvent::ConnectionOutput { handle, buf });
                                 }
                                 Err(()) => {
@@ -294,6 +306,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
                             }
+                            */
                         }
                     }
                     if let Some(ref mut connection) = client_connections[index] {
