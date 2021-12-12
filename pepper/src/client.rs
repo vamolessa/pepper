@@ -11,25 +11,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub struct ClientHandle(u8);
-
-impl ClientHandle {
-    pub fn into_index(self) -> usize {
-        self.0 as _
-    }
-
-    pub const fn from_raw(index: u8) -> ClientHandle {
-        ClientHandle(index)
-    }
-
-    pub fn from_index(index: usize) -> Option<ClientHandle> {
-        if index <= u8::MAX as usize {
-            Some(ClientHandle(index as _))
-        } else {
-            None
-        }
-    }
-}
+pub struct ClientHandle(pub u8);
 
 impl<'de> Serialize<'de> for ClientHandle {
     fn serialize<S>(&self, serializer: &mut S)
@@ -177,7 +159,7 @@ impl Client {
                 let buffer = editor.buffers.add_new();
 
                 let mut path = editor.string_pool.acquire_with("pipe.");
-                let _ = write!(path, "{}", self.handle().into_index());
+                let _ = write!(path, "{}", self.handle().0);
                 buffer.path.clear();
                 buffer.path.push(&path);
                 editor.string_pool.release(path);
@@ -283,11 +265,11 @@ impl ClientManager {
     }
 
     pub fn get(&self, handle: ClientHandle) -> &Client {
-        &self.clients[handle.into_index()]
+        &self.clients[handle.0 as usize]
     }
 
     pub fn get_mut(&mut self, handle: ClientHandle) -> &mut Client {
-        &mut self.clients[handle.into_index()]
+        &mut self.clients[handle.0 as usize]
     }
 
     pub fn iter(&self) -> impl Clone + Iterator<Item = &Client> {
@@ -299,18 +281,18 @@ impl ClientManager {
     }
 
     pub(crate) fn on_client_joined(&mut self, handle: ClientHandle) {
-        let min_len = handle.into_index() + 1;
+        let min_len = handle.0 as usize + 1;
         if min_len > self.clients.len() {
             self.clients.resize_with(min_len, Client::new);
         }
 
-        let client = &mut self.clients[handle.into_index()];
+        let client = &mut self.clients[handle.0 as usize];
         client.active = true;
         client.handle = handle;
     }
 
     pub(crate) fn on_client_left(&mut self, handle: ClientHandle) {
-        self.clients[handle.into_index()].dispose();
+        self.clients[handle.0 as usize].dispose();
         if self.focused_client == Some(handle) {
             self.focused_client = None;
         }

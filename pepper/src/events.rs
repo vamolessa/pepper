@@ -644,8 +644,12 @@ pub struct ClientEventReceiver {
 }
 
 impl ClientEventReceiver {
+    pub fn len(&self, client_handle: ClientHandle) -> usize {
+        self.bufs[client_handle.0 as usize].len()
+    }
+
     pub fn receive_events(&mut self, client_handle: ClientHandle, bytes: &[u8]) -> ClientEventIter {
-        let buf_index = client_handle.into_index();
+        let buf_index = client_handle.0 as usize;
         if buf_index >= self.bufs.len() {
             self.bufs.resize_with(buf_index + 1, Vec::new);
         }
@@ -803,7 +807,7 @@ mod tests {
         }
         events.finish(&mut receiver);
 
-        assert_eq!(0, receiver.bufs[client_handle.into_index()].len());
+        assert_eq!(0, receiver.bufs[client_handle as usize].len());
         assert_eq!(EVENT_COUNT, event_count);
     }
 }

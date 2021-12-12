@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     env, io,
     os::windows::{ffi::OsStrExt, io::IntoRawHandle},
     process::Child,
@@ -76,14 +77,12 @@ use crate::{
     Args,
 };
 
-const MAX_CLIENT_COUNT: usize = 20;
+const MAX_CLIENT_COUNT: usize = 10;
 const MAX_PROCESS_COUNT: usize = 43;
-const MAX_EVENT_COUNT: usize = 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
-const _ASSERT_MAX_EVENT_COUNT_IS_MAX_WAIT_OBJECTS: [(); MAXIMUM_WAIT_OBJECTS as _] =
-    [(); MAX_EVENT_COUNT];
+const MAX_EVENT_COUNT: usize = 1 + 2 * MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
+const _: () = assert!(MAX_EVENT_COUNT == MAXIMUM_WAIT_OBJECTS as _);
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
-static PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
 pub fn try_launching_debugger() {
     let mut buf = [0; MAX_PATH + 1];
@@ -178,6 +177,8 @@ pub fn main(config: ApplicationConfig) {
         }
     };
 
+    const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
+
     pipe_path.clear();
     pipe_path.extend(PIPE_PREFIX.encode_utf16());
     pipe_path.extend(session_name.encode_utf16());
@@ -261,28 +262,24 @@ fn read_console_input<'a>(
     &events[..(event_count as usize)]
 }
 
-struct AsyncReader {
-    handle: Handle,
+struct AsyncIO {
+    raw_handle: HANDLE,
     event: Event,
     overlapped: Overlapped,
     pending_io: bool,
 }
-impl AsyncReader {
-    pub fn new(handle: Handle) -> Self {
+impl AsyncIO {
+    pub fn new(raw_handle: HANDLE) -> Self {
         let event = Event::manual();
         event.notify();
         let overlapped = Overlapped::with_event(&event);
 
         Self {
-            handle,
+            raw_handle,
             event,
             overlapped,
             pending_io: false,
         }
-    }
-
-    pub fn handle(&self) -> &Handle {
-        &self.handle
     }
 
     pub fn event(&self) -> &Event {
@@ -293,14 +290,14 @@ impl AsyncReader {
         &mut self.overlapped
     }
 
-    pub fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
+    pub fn read_async(&mut self, buf: &mut [u8]) -> IoResult {
         let mut read_len = 0;
         if self.pending_io {
             self.pending_io = false;
 
             let result = unsafe {
                 GetOverlappedResult(
-                    self.handle.0,
+                    self.raw_handle,
                     self.overlapped.as_mut_ptr(),
                     &mut read_len,
                     FALSE,
@@ -311,18 +308,18 @@ impl AsyncReader {
                 match get_last_error() {
                     ERROR_MORE_DATA => {
                         self.event.notify();
-                        ReadResult::Ok(read_len as _)
+                        IoResult::Ok(read_len as _)
                     }
-                    _ => ReadResult::Err,
+                    _ => IoResult::Err,
                 }
             } else {
                 self.event.notify();
-                ReadResult::Ok(read_len as _)
+                IoResult::Ok(read_len as _)
             }
         } else {
             let result = unsafe {
                 ReadFile(
-                    self.handle.0,
+                    self.raw_handle,
                     buf.as_mut_ptr() as _,
                     buf.len() as _,
                     &mut read_len,
@@ -334,13 +331,65 @@ impl AsyncReader {
                 match get_last_error() {
                     ERROR_IO_PENDING => {
                         self.pending_io = true;
-                        ReadResult::Waiting
+                        IoResult::Waiting
                     }
-                    _ => ReadResult::Err,
+                    _ => IoResult::Err,
                 }
             } else {
                 self.event.notify();
-                ReadResult::Ok(read_len as _)
+                IoResult::Ok(read_len as _)
+            }
+        }
+    }
+
+    pub fn write_async(&mut self, buf: &[u8]) -> IoResult {
+        let mut write_len = 0;
+        if self.pending_io {
+            self.pending_io = false;
+
+            let result = unsafe {
+                GetOverlappedResult(
+                    self.raw_handle,
+                    self.overlapped.as_mut_ptr(),
+                    &mut write_len,
+                    FALSE,
+                )
+            };
+
+            if result == FALSE {
+                match get_last_error() {
+                    ERROR_MORE_DATA => {
+                        self.event.notify();
+                        IoResult::Ok(write_len as _)
+                    }
+                    _ => IoResult::Err,
+                }
+            } else {
+                self.event.notify();
+                IoResult::Ok(write_len as _)
+            }
+        } else {
+            let result = unsafe {
+                WriteFile(
+                    self.raw_handle,
+                    buf.as_ptr() as _,
+                    buf.len() as _,
+                    &mut write_len,
+                    self.overlapped.as_mut_ptr(),
+                )
+            };
+
+            if result == FALSE {
+                match get_last_error() {
+                    ERROR_IO_PENDING => {
+                        self.pending_io = true;
+                        IoResult::Waiting
+                    }
+                    _ => IoResult::Err,
+                }
+            } else {
+                self.event.notify();
+                IoResult::Ok(write_len as _)
             }
         }
     }
@@ -369,7 +418,7 @@ fn create_file(path: &[u16], share_mode: DWORD, flags: DWORD) -> Option<Handle> 
     }
 }
 
-enum ReadResult {
+enum IoResult {
     Waiting,
     Ok(usize),
     Err,
@@ -716,19 +765,34 @@ impl Drop for ConsoleMode {
 }
 
 struct ConnectionToClient {
-    reader: AsyncReader,
-    current_buf: Option<PooledBuf>,
+    handle: Handle,
+    reader: AsyncIO,
+    read_buf: Option<PooledBuf>,
+    writer: AsyncIO,
+    write_buf_queue: VecDeque<PooledBuf>,
 }
 impl ConnectionToClient {
-    pub fn new(reader: AsyncReader) -> Self {
+    pub fn new(handle: Handle, reader: AsyncIO) -> Self {
+        let raw_handle = handle.0;
         Self {
+            handle,
             reader,
-            current_buf: None,
+            read_buf: None,
+            writer: AsyncIO::new(raw_handle),
+            write_buf_queue: VecDeque::new(),
         }
     }
 
-    pub fn event(&self) -> &Event {
+    pub fn read_event(&self) -> &Event {
         self.reader.event()
+    }
+
+    pub fn write_event(&self) -> Option<&Event> {
+        if self.write_buf_queue.is_empty() {
+            None
+        } else {
+            Some(self.writer.event())
+        }
     }
 
     pub fn read_async(
@@ -736,50 +800,76 @@ impl ConnectionToClient {
         buf_len: usize,
         buf_pool: &mut BufPool,
     ) -> Result<Option<PooledBuf>, ()> {
-        let mut buf = match self.current_buf.take() {
+        let mut buf = match self.read_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
         };
         let write = buf.write_with_len(buf_len);
 
         match self.reader.read_async(write) {
-            ReadResult::Waiting => {
-                self.current_buf = Some(buf);
+            IoResult::Waiting => {
+                self.read_buf = Some(buf);
                 Ok(None)
             }
-            ReadResult::Ok(len) => {
+            IoResult::Ok(len) => {
                 write.truncate(len);
                 Ok(Some(buf))
             }
-            ReadResult::Err => {
+            IoResult::Err => {
                 buf_pool.release(buf);
                 Err(())
             }
         }
     }
 
-    pub fn write(&self, buf: &[u8]) -> bool {
-        write_all_bytes(self.reader.handle(), buf)
+    pub fn enqueue_write(&mut self, buf: PooledBuf) {
+        self.write_buf_queue.push_back(buf);
+    }
+
+    pub fn write_pending_async(&mut self) -> Result<Option<PooledBuf>, VecDeque<PooledBuf>> {
+        match self.write_buf_queue.get_mut(0) {
+            Some(buf) => match self.writer.write_async(buf.as_bytes()) {
+                IoResult::Waiting => Ok(None),
+                IoResult::Ok(len) => {
+                    buf.drain_start(len);
+                    if buf.as_bytes().is_empty() {
+                        Ok(self.write_buf_queue.pop_front())
+                    } else {
+                        Ok(None)
+                    }
+                }
+                IoResult::Err => {
+                    let mut bufs = VecDeque::new();
+                    std::mem::swap(&mut bufs, &mut self.write_buf_queue);
+                    Err(bufs)
+                }
+            },
+            None => unreachable!(),
+        }
     }
 
     pub fn dispose(&mut self, buf_pool: &mut BufPool) {
-        if let Some(buf) = self.current_buf.take() {
+        if let Some(buf) = self.read_buf.take() {
+            buf_pool.release(buf);
+        }
+        for buf in self.write_buf_queue.drain(..) {
             buf_pool.release(buf);
         }
     }
 }
 impl Drop for ConnectionToClient {
     fn drop(&mut self) {
-        unsafe { DisconnectNamedPipe(self.reader.handle().0) };
+        unsafe { DisconnectNamedPipe(self.handle.0) };
     }
 }
 
 struct ConnectionToClientListener {
-    reader: AsyncReader,
+    handle: Handle,
+    reader: AsyncIO,
     buf: Box<[u8]>,
 }
 impl ConnectionToClientListener {
-    fn new_listen_reader(pipe_path: &[u16], buf_len: usize) -> AsyncReader {
+    fn new_listen_reader(pipe_path: &[u16], buf_len: usize) -> (Handle, AsyncIO) {
         let handle = unsafe {
             CreateNamedPipeW(
                 pipe_path.as_ptr(),
@@ -796,10 +886,10 @@ impl ConnectionToClientListener {
             panic!("could not create new connection");
         }
 
-        let mut reader = AsyncReader::new(Handle(handle));
+        let handle = Handle(handle);
+        let mut reader = AsyncIO::new(handle.0);
 
-        if unsafe { ConnectNamedPipe(reader.handle().0, reader.overlapped().as_mut_ptr()) } != FALSE
-        {
+        if unsafe { ConnectNamedPipe(handle.0, reader.overlapped().as_mut_ptr()) } != FALSE {
             panic!("could not accept incomming connection");
         }
 
@@ -813,17 +903,21 @@ impl ConnectionToClientListener {
         };
         reader.overlapped = Overlapped::with_event(reader.event());
 
-        reader
+        (handle, reader)
     }
 
     pub fn new(pipe_path: &[u16], buf_len: usize) -> Self {
-        let reader = Self::new_listen_reader(pipe_path, buf_len);
+        let (handle, reader) = Self::new_listen_reader(pipe_path, buf_len);
 
         let mut buf = Vec::with_capacity(buf_len);
         buf.resize(buf_len, 0);
         let buf = buf.into_boxed_slice();
 
-        Self { reader, buf }
+        Self {
+            handle,
+            reader,
+            buf,
+        }
     }
 
     pub fn event(&self) -> &Event {
@@ -832,27 +926,31 @@ impl ConnectionToClientListener {
 
     pub fn accept(&mut self, pipe_path: &[u16]) -> Option<ConnectionToClient> {
         match self.reader.read_async(&mut self.buf) {
-            ReadResult::Waiting => None,
-            ReadResult::Ok(_) => {
-                let mut reader = Self::new_listen_reader(pipe_path, self.buf.len());
+            IoResult::Waiting => None,
+            IoResult::Ok(_) => {
+                let (mut handle, mut reader) = Self::new_listen_reader(pipe_path, self.buf.len());
+                std::mem::swap(&mut handle, &mut self.handle);
                 std::mem::swap(&mut reader, &mut self.reader);
-                Some(ConnectionToClient::new(reader))
+                Some(ConnectionToClient::new(handle, reader))
             }
-            ReadResult::Err => panic!("could not accept connection {}", get_last_error()),
+            IoResult::Err => panic!("could not accept connection {}", get_last_error()),
         }
     }
 }
 
 struct ProcessPipe {
-    reader: AsyncReader,
+    _handle: Handle,
+    reader: AsyncIO,
     buf_len: usize,
     current_buf: Option<PooledBuf>,
 }
 impl ProcessPipe {
-    pub fn new(reader: AsyncReader, buf_len: usize) -> Self {
+    pub fn new(handle: Handle, buf_len: usize) -> Self {
+        let reader = AsyncIO::new(handle.0);
         reader.event.notify();
 
         Self {
+            _handle: handle,
             reader,
             buf_len,
             current_buf: None,
@@ -871,15 +969,15 @@ impl ProcessPipe {
         let write = buf.write_with_len(self.buf_len);
 
         match self.reader.read_async(write) {
-            ReadResult::Waiting => {
+            IoResult::Waiting => {
                 self.current_buf = Some(buf);
                 Ok(None)
             }
-            ReadResult::Ok(0) | ReadResult::Err => {
+            IoResult::Ok(0) | IoResult::Err => {
                 buf_pool.release(buf);
                 Err(())
             }
-            ReadResult::Ok(len) => {
+            IoResult::Ok(len) => {
                 write.truncate(len);
                 Ok(Some(buf))
             }
@@ -899,10 +997,7 @@ impl AsyncProcess {
             .stdout
             .take()
             .map(IntoRawHandle::into_raw_handle)
-            .map(|h| {
-                let reader = AsyncReader::new(Handle(h as _));
-                ProcessPipe::new(reader, buf_len)
-            });
+            .map(|h| ProcessPipe::new(Handle(h as _), buf_len));
 
         Self {
             alive: true,
@@ -950,13 +1045,14 @@ impl Drop for AsyncProcess {
 
 enum EventSource {
     ConnectionListener,
-    Connection(usize),
-    Process(usize),
+    ConnectionRead(u8),
+    ConnectionWrite(u8),
+    Process(u8),
 }
 struct EventListener {
     wait_handles: [HANDLE; MAX_EVENT_COUNT],
     sources: [EventSource; MAX_EVENT_COUNT],
-    len: usize,
+    len: u8,
 }
 impl EventListener {
     pub fn new() -> Self {
@@ -970,7 +1066,7 @@ impl EventListener {
     }
 
     pub fn track(&mut self, event: &Event, source: EventSource) {
-        let index = self.len;
+        let index = self.len as usize;
         debug_assert!(index < self.wait_handles.len());
         self.wait_handles[index] = event.handle();
         self.sources[index] = source;
@@ -980,7 +1076,7 @@ impl EventListener {
     pub fn wait_next(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
         let len = self.len;
         self.len = 0;
-        let index = wait_for_multiple_objects(&self.wait_handles[..len], timeout)?;
+        let index = wait_for_multiple_objects(&self.wait_handles[..len as usize], timeout)?;
         let mut source = EventSource::ConnectionListener;
         std::mem::swap(&mut source, &mut self.sources[index]);
         Some(source)
@@ -1008,22 +1104,27 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
     let mut events = Vec::new();
     let mut timeout = None;
+    let mut need_redraw = false;
 
     loop {
         event_listener.track(listener.event(), EventSource::ConnectionListener);
         for (i, connection) in client_connections.iter().enumerate() {
             if let Some(connection) = connection {
-                event_listener.track(connection.event(), EventSource::Connection(i));
+                event_listener.track(connection.read_event(), EventSource::ConnectionRead(i as _));
+                if let Some(event) = connection.write_event() {
+                    event_listener.track(event, EventSource::ConnectionWrite(i as _));
+                }
             }
         }
         for (i, process) in processes.iter().enumerate() {
             if let Some(process) = process {
                 if let Some(stdout) = &process.stdout {
-                    event_listener.track(stdout.event(), EventSource::Process(i));
+                    event_listener.track(stdout.event(), EventSource::Process(i as _));
                 }
             }
         }
 
+        let previous_timeout = timeout;
         let event = match event_listener.wait_next(timeout) {
             Some(event) => {
                 timeout = Some(Duration::ZERO);
@@ -1039,6 +1140,11 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                     None => unreachable!(),
                 }
 
+                if events.is_empty() && !need_redraw {
+                    continue;
+                }
+
+                need_redraw = false;
                 application.update(events.drain(..));
                 let mut requests = application.ctx.platform.requests.drain();
                 while let Some(request) = requests.next() {
@@ -1056,21 +1162,20 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                             }
                             return;
                         }
-                        PlatformRequest::Redraw => timeout = Some(Duration::ZERO),
+                        PlatformRequest::Redraw => {
+                            need_redraw = true;
+                            timeout = Some(Duration::ZERO);
+                        }
                         PlatformRequest::WriteToClient { handle, buf } => {
-                            if let Some(connection) = &mut client_connections[handle.into_index()] {
-                                if !connection.write(buf.as_bytes()) {
-                                    connection.dispose(&mut application.ctx.platform.buf_pool);
-                                    client_connections[handle.into_index()] = None;
-                                    events.push(PlatformEvent::ConnectionClose { handle });
-                                }
+                            let index = handle.0 as usize;
+                            match &mut client_connections[index] {
+                                Some(connection) => connection.enqueue_write(buf),
+                                None => application.ctx.platform.buf_pool.release(buf),
                             }
-                            application.ctx.platform.buf_pool.release(buf);
                         }
                         PlatformRequest::CloseClient { handle } => {
-                            if let Some(mut connection) =
-                                client_connections[handle.into_index()].take()
-                            {
+                            let index = handle.0 as usize;
+                            if let Some(mut connection) = client_connections[index].take() {
                                 connection.dispose(&mut application.ctx.platform.buf_pool)
                             }
                             events.push(PlatformEvent::ConnectionClose { handle });
@@ -1141,16 +1246,16 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                     for (i, c) in client_connections.iter_mut().enumerate() {
                         if c.is_none() {
                             *c = Some(connection);
-                            let handle = ClientHandle::from_index(i).unwrap();
+                            let handle = ClientHandle(i as _);
                             events.push(PlatformEvent::ConnectionOpen { handle });
                             break;
                         }
                     }
                 }
             }
-            EventSource::Connection(i) => {
-                if let Some(connection) = &mut client_connections[i] {
-                    let handle = ClientHandle::from_index(i).unwrap();
+            EventSource::ConnectionRead(i) => {
+                if let Some(connection) = &mut client_connections[i as usize] {
+                    let handle = ClientHandle(i);
                     match connection.read_async(
                         SERVER_CONNECTION_BUFFER_LEN,
                         &mut application.ctx.platform.buf_pool,
@@ -1160,14 +1265,31 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                             events.push(PlatformEvent::ConnectionOutput { handle, buf });
                         }
                         Err(()) => {
-                            client_connections[i] = None;
+                            connection.dispose(&mut application.ctx.platform.buf_pool);
+                            client_connections[i as usize] = None;
                             events.push(PlatformEvent::ConnectionClose { handle });
                         }
                     }
                 }
             }
+            EventSource::ConnectionWrite(i) => {
+                timeout = previous_timeout;
+
+                if let Some(connection) = &mut client_connections[i as usize] {
+                    match connection.write_pending_async() {
+                        Ok(None) => (),
+                        Ok(Some(buf)) => application.ctx.platform.buf_pool.release(buf),
+                        Err(bufs) => {
+                            for buf in bufs {
+                                application.ctx.platform.buf_pool.release(buf);
+                            }
+                            client_connections[i as usize] = None;
+                        }
+                    }
+                }
+            }
             EventSource::Process(i) => {
-                if let Some(process) = &mut processes[i] {
+                if let Some(process) = &mut processes[i as usize] {
                     if let Some(pipe) = &mut process.stdout {
                         let tag = process.tag;
                         match pipe.read_async(&mut application.ctx.platform.buf_pool) {
@@ -1176,7 +1298,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                             Err(()) => {
                                 process.stdout = None;
                                 process.kill();
-                                processes[i] = None;
+                                processes[i as usize] = None;
                                 events.push(PlatformEvent::ProcessExit { tag });
                             }
                         }
@@ -1231,7 +1353,8 @@ impl StdinPipe {
 }
 
 struct ConnectionToServer {
-    reader: AsyncReader,
+    handle: Handle,
+    reader: AsyncIO,
     buf: Box<[u8; CLIENT_CONNECTION_BUFFER_LEN]>,
 }
 impl ConnectionToServer {
@@ -1255,10 +1378,14 @@ impl ConnectionToServer {
             panic!("could not establish a connection");
         }
 
-        let reader = AsyncReader::new(handle);
+        let reader = AsyncIO::new(handle.0);
         let buf = Box::new([0; CLIENT_CONNECTION_BUFFER_LEN]);
 
-        Self { reader, buf }
+        Self {
+            handle,
+            reader,
+            buf,
+        }
     }
 
     pub fn event(&self) -> &Event {
@@ -1266,14 +1393,14 @@ impl ConnectionToServer {
     }
 
     pub fn write(&mut self, buf: &[u8]) -> bool {
-        write_all_bytes(self.reader.handle(), buf)
+        write_all_bytes(&self.handle, buf)
     }
 
     pub fn read_async(&mut self) -> Result<&[u8], ()> {
         match self.reader.read_async(&mut self.buf[..]) {
-            ReadResult::Waiting => Ok(&[]),
-            ReadResult::Ok(0) | ReadResult::Err => Err(()),
-            ReadResult::Ok(len) => Ok(&self.buf[..len]),
+            IoResult::Waiting => Ok(&[]),
+            IoResult::Ok(0) | IoResult::Err => Err(()),
+            IoResult::Ok(len) => Ok(&self.buf[..len]),
         }
     }
 }

@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     env, fs, io,
     os::unix::{
         ffi::OsStrExt,
@@ -72,7 +73,7 @@ pub(crate) fn run(
             Err(_) => match unsafe { libc::fork() } {
                 -1 => panic!("could not start server"),
                 0 => {
-                    unsafe { libc::daemon(false as _, false as _) };
+                    unsafe { libc::daemon(true as _, false as _) };
                     server_fn(config, start_server(session_path));
                     let _ = fs::remove_file(session_path);
                 }
@@ -248,15 +249,71 @@ pub(crate) fn read_from_connection(
 ) -> Result<PooledBuf, ()> {
     use io::Read;
     let mut buf = buf_pool.acquire();
-    let write = buf.write_with_len(len);
-    match connection.read(write) {
-        Ok(0) | Err(_) => {
-            buf_pool.release(buf);
-            Err(())
+    let write = buf.write();
+
+    loop {
+        let start = write.len();
+        write.resize(start + len, 0);
+        match connection.read(&mut write[start..start + len]) {
+            Err(error) => {
+                match error.kind() {
+                    io::ErrorKind::WouldBlock => write.truncate(start),
+                    _ => write.clear(),
+                }
+                break;
+            }
+            Ok(len) => {
+                write.truncate(start + len);
+                if len == 0 {
+                    break;
+                }
+            }
         }
-        Ok(len) => {
-            write.truncate(len);
-            Ok(buf)
+    }
+
+    if write.is_empty() {
+        buf_pool.release(buf);
+        Err(())
+    } else {
+        Ok(buf)
+    }
+}
+
+pub(crate) fn write_to_connection(
+    connection: &mut UnixStream,
+    buf_pool: &mut BufPool,
+    write_queue: &mut VecDeque<PooledBuf>,
+) -> Result<(), ()> {
+    use io::Write;
+
+    loop {
+        let mut buf = match write_queue.pop_front() {
+            Some(buf) => buf,
+            None => return Ok(()),
+        };
+
+        match connection.write(buf.as_bytes()) {
+            Ok(len) => {
+                buf.drain_start(len);
+                if buf.as_bytes().is_empty() {
+                    buf_pool.release(buf);
+                } else {
+                    write_queue.push_front(buf);
+                }
+            }
+            Err(error) => match error.kind() {
+                io::ErrorKind::WouldBlock => {
+                    write_queue.push_front(buf);
+                    return Ok(());
+                }
+                _ => {
+                    buf_pool.release(buf);
+                    for buf in write_queue.drain(..) {
+                        buf_pool.release(buf);
+                    }
+                    return Err(());
+                }
+            },
         }
     }
 }
