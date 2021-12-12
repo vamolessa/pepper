@@ -40,13 +40,18 @@ fn errno() -> libc::c_int {
     unsafe { *libc::__error() }
 }
 
+enum EventKind {
+    Read,
+    Write,
+}
+
 enum Event {
     Resize,
-    ReadOnlyFd(RawFd),
-    ReadWriteFd(RawFd),
+    FdRead(RawFd),
+    FdWrite(RawFd),
 }
 impl Event {
-    pub fn into_kevent(self, mut flags: u16, index: usize) -> libc::kevent {
+    pub fn into_kevent(self, flags: u16, index: usize) -> libc::kevent {
         match self {
             Self::Resize => libc::kevent {
                 ident: libc::SIGWINCH as _,
@@ -56,7 +61,7 @@ impl Event {
                 data: 0,
                 udata: index as _,
             },
-            Self::ReadOnlyFd(fd) => libc::kevent {
+            Self::FdRead(fd) => libc::kevent {
                 ident: fd as _,
                 filter: libc::EVFILT_READ,
                 flags,
@@ -64,20 +69,14 @@ impl Event {
                 data: 0,
                 udata: index as _,
             },
-            Self::ReadWriteFd(fd) => {
-                if flags & libc::EV_ADD != 0 {
-                    flags |= libc::EV_CLEAR;
-                }
-
-                libc::kevent {
-                    ident: fd as _,
-                    filter: libc::EVFILT_READ | libc::EVFILT_WRITE,
-                    flags,
-                    fflags: 0,
-                    data: 0,
-                    udata: index as _,
-                }
-            }
+            Self::FdWrite(fd) => libc::kevent {
+                ident: fd as _,
+                filter: libc::EVFILT_WRITE,
+                flags,
+                fflags: 0,
+                data: 0,
+                udata: index as _,
+            },
         }
     }
 }
@@ -85,8 +84,7 @@ impl Event {
 struct TriggeredEvent {
     pub index: usize,
     pub data: isize,
-    pub read: bool,
-    pub write: bool,
+    pub kind: EventKind,
 }
 
 struct KqueueEvents([libc::kevent; MAX_TRIGGERED_EVENT_COUNT]);
@@ -118,8 +116,8 @@ impl Kqueue {
         Self(fd)
     }
 
-    pub fn add(&self, event: Event, index: usize) {
-        let event = event.into_kevent(libc::EV_ADD, index);
+    pub fn add(&self, event: Event, index: usize, extra_flags: u16) {
+        let event = event.into_kevent(libc::EV_ADD | extra_flags, index);
         if !modify_kqueue(self.0, &event) {
             panic!("could not add event, errno: {}", errno());
         }
@@ -172,14 +170,16 @@ impl Kqueue {
             if e.flags & libc::EV_ERROR != 0 {
                 Err(())
             } else {
+                let kind = match e.filter {
+                    libc::EVFILT_READ => EventKind::Read,
+                    libc::EVFILT_WRITE => EventKind::Write,
+                    _ => unreachable!(),
+                }; 
+
                 Ok(TriggeredEvent {
                     index: e.udata as _,
                     data: e.data as _,
-                    //read: (e.filter & libc::EVFILT_READ) != 0,
-                    //write: (e.filter & libc::EVFILT_WRITE) != 0,
-                    //read: e.filter == libc::EVFILT_READ,
-                    read: e.filter != libc::EVFILT_WRITE,
-                    write: e.filter == libc::EVFILT_WRITE,
+                    kind,
                 })
             }
         })
@@ -217,7 +217,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
     const PROCESSES_LAST_INDEX: usize = PROCESSES_START_INDEX + MAX_PROCESS_COUNT - 1;
 
     let kqueue = Kqueue::new();
-    kqueue.add(Event::ReadOnlyFd(listener.as_raw_fd()), 0);
+    kqueue.add(Event::FdRead(listener.as_raw_fd()), 0, 0);
     let mut kqueue_events = KqueueEvents::new();
 
     let _ignore_server_connection_buffer_len = SERVER_CONNECTION_BUFFER_LEN;
@@ -240,8 +240,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         }
 
         for event in kqueue_events {
-            let (event_index, event_data, event_read, event_write) = match event {
-                Ok(event) => (event.index, event.data, event.read, event.write),
+            let (event_index, event_data, event_kind) = match event {
+                Ok(event) => (event.index, event.data, event.kind),
                 Err(()) => {
                     for queue in &mut client_write_queue {
                         for buf in queue.drain(..) {
@@ -264,8 +264,14 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                 for (i, c) in client_connections.iter_mut().enumerate() {
                                     if c.is_none() {
                                         kqueue.add(
-                                            Event::ReadWriteFd(connection.as_raw_fd()),
+                                            Event::FdRead(connection.as_raw_fd()),
                                             CLIENTS_START_INDEX + i,
+                                            libc::EV_CLEAR,
+                                        );
+                                        kqueue.add(
+                                            Event::FdWrite(connection.as_raw_fd()),
+                                            CLIENTS_START_INDEX + i,
+                                            libc::EV_CLEAR,
                                         );
                                         *c = Some(connection);
                                         let handle = ClientHandle(i as _);
@@ -279,56 +285,58 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     }
                 }
                 CLIENTS_START_INDEX..=CLIENTS_LAST_INDEX => {
-                    use io::Read;
-
                     let index = event_index - CLIENTS_START_INDEX;
                     let handle = ClientHandle(index as _);
                     if let Some(ref mut connection) = client_connections[index] {
-                        if event_read {
-                            /*
-                            let mut buf = application.ctx.platform.buf_pool.acquire();
-                            let write = buf.write_with_len(event_data as _);
+                        match event_kind {
+                            EventKind::Read => {
+                                /*
+                                let mut buf = application.ctx.platform.buf_pool.acquire();
+                                let write = buf.write_with_len(event_data as _);
 
-                            match connection.read_exact(write) {
-                                Ok(()) => {
-                                    events.push(PlatformEvent::ConnectionOutput { handle, buf });
+                                match connection.read_exact(write) {
+                                    Ok(()) => {
+                                        events.push(PlatformEvent::ConnectionOutput { handle, buf });
+                                    }
+                                    Err(_) => {
+                                        kqueue.remove(Event::FdRead(connection.as_raw_fd()));
+                                        kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
+                                        client_connections[index] = None;
+                                        events.push(PlatformEvent::ConnectionClose { handle });
+                                    }
                                 }
-                                Err(_) => {
-                                    kqueue.remove(Event::ReadWriteFd(connection.as_raw_fd()));
+                                // */
+                                //*
+                                match read_from_connection(
+                                    connection,
+                                    &mut application.ctx.platform.buf_pool,
+                                    event_data as _,
+                                ) {
+                                    Ok(buf) => {
+                                        events
+                                            .push(PlatformEvent::ConnectionOutput { handle, buf });
+                                    }
+                                    Err(()) => {
+                                        kqueue.remove(Event::FdRead(connection.as_raw_fd()));
+                                        kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
+                                        client_connections[index] = None;
+                                        events.push(PlatformEvent::ConnectionClose { handle });
+                                    }
+                                }
+                                // */
+                            }
+                            EventKind::Write => {
+                                let result = write_to_connection(
+                                    connection,
+                                    &mut application.ctx.platform.buf_pool,
+                                    &mut client_write_queue[index],
+                                );
+                                if result.is_err() {
+                                    kqueue.remove(Event::FdRead(connection.as_raw_fd()));
+                                    kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
                                     client_connections[index] = None;
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
-                            }
-                            // */
-                            //*
-                            match read_from_connection(
-                                connection,
-                                &mut application.ctx.platform.buf_pool,
-                                event_data as _,
-                            ) {
-                                Ok(buf) => {
-                                    events.push(PlatformEvent::ConnectionOutput { handle, buf });
-                                }
-                                Err(()) => {
-                                    kqueue.remove(Event::ReadWriteFd(connection.as_raw_fd()));
-                                    client_connections[index] = None;
-                                    events.push(PlatformEvent::ConnectionClose { handle });
-                                }
-                            }
-                            // */
-                        }
-                    }
-                    if let Some(ref mut connection) = client_connections[index] {
-                        if event_write {
-                            let result = write_to_connection(
-                                connection,
-                                &mut application.ctx.platform.buf_pool,
-                                &mut client_write_queue[index],
-                            );
-                            if result.is_err() {
-                                kqueue.remove(Event::ReadWriteFd(connection.as_raw_fd()));
-                                client_connections[index] = None;
-                                events.push(PlatformEvent::ConnectionClose { handle });
                             }
                         }
                     }
@@ -342,7 +350,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                             Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
                             Err(()) => {
                                 if let Some(fd) = process.try_as_raw_fd() {
-                                    kqueue.remove(Event::ReadOnlyFd(fd));
+                                    kqueue.remove(Event::FdRead(fd));
                                 }
                                 process.kill();
                                 processes[index] = None;
@@ -384,7 +392,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                 write_queue,
                             );
                             if result.is_err() {
-                                kqueue.remove(Event::ReadWriteFd(connection.as_raw_fd()));
+                                kqueue.remove(Event::FdRead(connection.as_raw_fd()));
+                                kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
                                 client_connections[index] = None;
                                 events.push(PlatformEvent::ConnectionClose { handle });
                             }
@@ -395,7 +404,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 PlatformRequest::CloseClient { handle } => {
                     let index = handle.0 as usize;
                     if let Some(connection) = client_connections[index].take() {
-                        kqueue.remove(Event::ReadWriteFd(connection.as_raw_fd()));
+                        kqueue.remove(Event::FdRead(connection.as_raw_fd()));
+                        kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
                     }
                     events.push(PlatformEvent::ConnectionClose { handle });
                 }
@@ -414,7 +424,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         if let Ok(child) = command.spawn() {
                             let process = Process::new(child, tag, buf_len);
                             if let Some(fd) = process.try_as_raw_fd() {
-                                kqueue.add(Event::ReadOnlyFd(fd), PROCESSES_START_INDEX + i);
+                                kqueue.add(Event::FdRead(fd), PROCESSES_START_INDEX + i, 0);
                             }
                             *p = Some(process);
                             events.push(PlatformEvent::ProcessSpawned { tag, handle });
@@ -431,7 +441,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     if let Some(ref mut process) = processes[index] {
                         if !process.write(buf.as_bytes()) {
                             if let Some(fd) = process.try_as_raw_fd() {
-                                kqueue.remove(Event::ReadOnlyFd(fd));
+                                kqueue.remove(Event::FdRead(fd));
                             }
                             let tag = process.tag();
                             process.kill();
@@ -450,7 +460,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     let index = handle.0 as usize;
                     if let Some(ref mut process) = processes[index] {
                         if let Some(fd) = process.try_as_raw_fd() {
-                            kqueue.remove(Event::ReadOnlyFd(fd));
+                            kqueue.remove(Event::FdRead(fd));
                         }
                         let tag = process.tag();
                         process.kill();
@@ -485,9 +495,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
     }
 
     let kqueue = Kqueue::new();
-    kqueue.add(Event::ReadOnlyFd(connection.as_raw_fd()), 1);
+    kqueue.add(Event::FdRead(connection.as_raw_fd()), 1, 0);
     if is_pipped(libc::STDIN_FILENO) {
-        kqueue.add(Event::ReadOnlyFd(libc::STDIN_FILENO), 3);
+        kqueue.add(Event::FdRead(libc::STDIN_FILENO), 3, 0);
     }
 
     let mut kqueue_events = KqueueEvents::new();
@@ -495,7 +505,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     if let Some(terminal) = &terminal {
         terminal.enter_raw_mode();
 
-        kqueue.add(Event::Resize, 2);
+        kqueue.add(Event::Resize, 2, 0);
 
         let size = terminal.get_size();
         let (_, bytes) = application.update(Some(size), &[Key::None], None, &[]);
@@ -579,7 +589,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     buf.resize(data as _, 0);
                     match read(libc::STDIN_FILENO, &mut buf) {
                         Ok(0) | Err(()) => {
-                            kqueue.remove(Event::ReadOnlyFd(libc::STDIN_FILENO));
+                            kqueue.remove(Event::FdRead(libc::STDIN_FILENO));
                             stdin_bytes = Some(&[][..]);
                         }
                         Ok(len) => stdin_bytes = Some(&buf[..len]),
