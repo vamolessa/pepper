@@ -285,7 +285,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                             let mut buf = application.ctx.platform.buf_pool.acquire();
                             let write = buf.write_with_len(event_data as _);
 
-                            /*
+                            //*
                             match connection.read_exact(write) {
                                 Ok(()) => {
                                     events.push(PlatformEvent::ConnectionOutput { handle, buf });
@@ -296,8 +296,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
                             }
-                            */
-                            //*
+                            // */
+                            /*
                             match read_from_connection(
                                 connection,
                                 &mut application.ctx.platform.buf_pool,
