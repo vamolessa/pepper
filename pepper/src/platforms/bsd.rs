@@ -278,12 +278,14 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     let handle = ClientHandle(index as _);
                     if let Some(ref mut connection) = client_connections[index] {
                         if event_read {
+                            eprintln!("before read from connection");
                             match read_from_connection(
                                 connection,
                                 &mut application.ctx.platform.buf_pool,
                                 event_data as _,
                             ) {
                                 Ok(buf) => {
+                                eprintln!("after read from connection");
                                     events.push(PlatformEvent::ConnectionOutput { handle, buf });
                                 }
                                 Err(()) => {
@@ -296,13 +298,11 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     }
                     if let Some(ref mut connection) = client_connections[index] {
                         if event_write {
-                            eprintln!("before write to connection 1");
                             let result = write_to_connection(
                                 connection,
                                 &mut application.ctx.platform.buf_pool,
                                 &mut client_write_queue[index],
                             );
-                            eprintln!("after write to connection 1");
                             if result.is_err() {
                                 kqueue.remove(Event::ReadWriteFd(connection.as_raw_fd()));
                                 client_connections[index] = None;
@@ -356,13 +356,11 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                             let write_queue = &mut client_write_queue[index];
                             write_queue.push_back(buf);
 
-                            eprintln!("before write to connection 2");
                             let result = write_to_connection(
                                 connection,
                                 &mut application.ctx.platform.buf_pool,
                                 write_queue,
                             );
-                            eprintln!("after write to connection 2");
                             if result.is_err() {
                                 kqueue.remove(Event::ReadWriteFd(connection.as_raw_fd()));
                                 client_connections[index] = None;
