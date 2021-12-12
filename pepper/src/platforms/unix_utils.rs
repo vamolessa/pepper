@@ -301,21 +301,19 @@ pub(crate) fn write_to_connection(
                     write_queue.push_front(buf);
                 }
             }
-            Err(error) => {
-                match error.kind() {
-                    io::ErrorKind::WouldBlock => {
-                        write_queue.push_front(buf);
-                        return Ok(());
-                    }
-                    _ => {
-                        buf_pool.release(buf);
-                        for buf in write_queue.drain(..) {
-                            buf_pool.release(buf);
-                        }
-                        return Err(());
-                    }
+            Err(error) => match error.kind() {
+                io::ErrorKind::WouldBlock => {
+                    write_queue.push_front(buf);
+                    return Ok(());
                 }
-            }
+                _ => {
+                    buf_pool.release(buf);
+                    for buf in write_queue.drain(..) {
+                        buf_pool.release(buf);
+                    }
+                    return Err(());
+                }
+            },
         }
     }
 }
@@ -428,4 +426,3 @@ impl io::Write for ClientOutput {
         Ok(())
     }
 }
-

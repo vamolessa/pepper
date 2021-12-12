@@ -83,11 +83,6 @@ impl Drop for SignalFd {
     }
 }
 
-enum EpollEventKind {
-    Read,
-    Write,
-}
-
 struct EpollEvents([libc::epoll_event; MAX_TRIGGERED_EVENT_COUNT]);
 impl EpollEvents {
     pub fn new() -> Self {
@@ -126,7 +121,7 @@ impl Epoll {
         &self,
         events: &'a mut EpollEvents,
         timeout: Option<Duration>,
-    ) -> impl 'a + ExactSizeIterator<Item = (EpollEventKind, usize)> {
+    ) -> impl 'a + ExactSizeIterator<Item = (bool, bool, usize)> {
         let timeout = match timeout {
             Some(duration) => duration.as_millis() as _,
             None => -1,
@@ -143,12 +138,9 @@ impl Epoll {
         }
 
         events.0[..len as usize].iter().map(|e| {
-            let kind = if (e.events as usize) & (libc::EPOLLOUT as usize) != 0 {
-                EpollEventKind::Write
-            } else {
-                EpollEventKind::Read
-            };
-            (kind, e.u64 as _)
+            let read = (e.events as usize & libc::EPOLLIN as usize) != 0;
+            let write = (e.events as usize & libc::EPOLLOUT as usize) != 0;
+            (read, write, e.u64 as _)
         })
     }
 }
@@ -197,7 +189,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
             timeout = Some(Duration::ZERO);
         }
 
-        for (event_kind, event_index) in epoll_events {
+        for (event_read, event_write, event_index) in epoll_events {
             match event_index {
                 0 => match listener.accept() {
                     Ok((connection, _)) => {
@@ -223,38 +215,36 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 },
                 CLIENTS_START_INDEX..=CLIENTS_LAST_INDEX => {
                     let index = event_index - CLIENTS_START_INDEX;
+                    let handle = ClientHandle(index as _);
                     if let Some(ref mut connection) = client_connections[index] {
-                        let handle = ClientHandle(index as _);
-                        match event_kind {
-                            EpollEventKind::Read => {
-                                match read_from_connection(
-                                    connection,
-                                    &mut application.ctx.platform.buf_pool,
-                                    SERVER_CONNECTION_BUFFER_LEN,
-                                ) {
-                                    Ok(buf) => {
-                                        events
-                                            .push(PlatformEvent::ConnectionOutput { handle, buf });
-                                    }
-                                    Err(()) => {
-                                        epoll.remove(connection.as_raw_fd());
-                                        client_connections[index] = None;
-                                        events.push(PlatformEvent::ConnectionClose { handle });
-                                    }
+                        if event_read {
+                            match read_from_connection(
+                                connection,
+                                &mut application.ctx.platform.buf_pool,
+                                SERVER_CONNECTION_BUFFER_LEN,
+                            ) {
+                                Ok(buf) => {
+                                    events.push(PlatformEvent::ConnectionOutput { handle, buf });
                                 }
-                            }
-                            EpollEventKind::Write => {
-                                let write_queue = &mut client_write_queue[index];
-                                let result = write_to_connection(
-                                    connection,
-                                    &mut application.ctx.platform.buf_pool,
-                                    write_queue,
-                                );
-                                if result.is_err() {
+                                Err(()) => {
                                     epoll.remove(connection.as_raw_fd());
                                     client_connections[index] = None;
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
+                            }
+                        }
+                    }
+                    if let Some(ref mut connection) = client_connections[index] {
+                        if event_write {
+                            let result = write_to_connection(
+                                connection,
+                                &mut application.ctx.platform.buf_pool,
+                                &mut client_write_queue[index],
+                            );
+                            if result.is_err() {
+                                epoll.remove(connection.as_raw_fd());
+                                client_connections[index] = None;
+                                events.push(PlatformEvent::ConnectionClose { handle });
                             }
                         }
                     }
@@ -448,7 +438,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     let mut buf = [0; BUF_LEN];
 
     'main_loop: loop {
-        for (_, event_index) in epoll.wait(&mut epoll_events, None) {
+        for (_, _, event_index) in epoll.wait(&mut epoll_events, None) {
             let mut resize = None;
             let mut stdin_bytes = None;
             let mut server_bytes = &[][..];
