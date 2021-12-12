@@ -223,6 +223,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
     let _ignore_server_connection_buffer_len = SERVER_CONNECTION_BUFFER_LEN;
 
     loop {
+        eprintln!("wait with timeout: {:?}", timeout);
+
         let kqueue_events = kqueue.wait(&mut kqueue_events, timeout);
         if kqueue_events.len() == 0 {
             match timeout {
