@@ -175,8 +175,10 @@ impl Kqueue {
                 Ok(TriggeredEvent {
                     index: e.udata as _,
                     data: e.data as _,
-                    read: (e.filter & libc::EVFILT_READ) != 0,
-                    write: (e.filter & libc::EVFILT_WRITE) != 0,
+                    //read: (e.filter & libc::EVFILT_READ) != 0,
+                    //write: (e.filter & libc::EVFILT_WRITE) != 0,
+                    read: e.filter == libc::EVFILT_READ,
+                    write: e.filter == libc::EVFILT_WRITE,
                 })
             }
         })
@@ -283,6 +285,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                             let mut buf = application.ctx.platform.buf_pool.acquire();
                             let write = buf.write_with_len(event_data as _);
 
+                            /*
                             match connection.read_exact(write) {
                                 Ok(()) => {
                                     events.push(PlatformEvent::ConnectionOutput { handle, buf });
@@ -293,7 +296,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
                             }
-                            /*
+                            */
+                            //*
                             match read_from_connection(
                                 connection,
                                 &mut application.ctx.platform.buf_pool,
@@ -308,7 +312,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
                             }
-                            */
+                            // */
                         }
                     }
                     if let Some(ref mut connection) = client_connections[index] {
