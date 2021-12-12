@@ -304,6 +304,10 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                 event_data as _,
                             ) {
                                 Ok(buf) => {
+                                    if buf.as_bytes().len() != event_data as _ {
+                                        eprintln!("ue buf len: {} event len: {}", buf.as_bytes().len(), event_data);
+                                    }
+
                                     events.push(PlatformEvent::ConnectionOutput { handle, buf });
                                 }
                                 Err(()) => {
