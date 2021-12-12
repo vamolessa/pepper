@@ -40,11 +40,6 @@ fn errno() -> libc::c_int {
     unsafe { *libc::__error() }
 }
 
-enum EventKind {
-    Read,
-    Write,
-}
-
 enum Event {
     Resize,
     ReadOnlyFd(RawFd),
@@ -199,8 +194,6 @@ impl Drop for Kqueue {
 }
 
 fn run_server(config: ApplicationConfig, listener: UnixListener) {
-    use io::Write;
-
     const NONE_PROCESS: Option<Process> = None;
 
     let mut application = match ServerApplication::new(config) {
