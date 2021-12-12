@@ -475,15 +475,6 @@ impl Editor {
     }
 
     pub(crate) fn on_idle(&mut self) {
-        //*
-        static mut IDLE_COUNT: usize = 0;
-        unsafe {
-            IDLE_COUNT += 1;
-            self.status_bar
-                .write(crate::editor_utils::MessageKind::Info)
-                .fmt(format_args!("idle: {}", IDLE_COUNT));
-        }
-        // */
         self.events.enqueue(EditorEvent::Idle);
     }
 }
