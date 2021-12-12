@@ -274,6 +274,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     }
                 }
                 CLIENTS_START_INDEX..=CLIENTS_LAST_INDEX => {
+                    use io::Read;
+
                     let index = event_index - CLIENTS_START_INDEX;
                     let handle = ClientHandle(index as _);
                     if let Some(ref mut connection) = client_connections[index] {
