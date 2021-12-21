@@ -90,23 +90,30 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
 
         let buffer_handle = io.current_buffer_handle(ctx).ok();
         let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
-        match find_lsp_client_for_buffer(lsp, &ctx.editor, buffer_handle) {
+        let any_stopped = match find_lsp_client_for_buffer(lsp, &ctx.editor, buffer_handle) {
             Some(client) => {
                 let handle = client.handle();
                 lsp.release(client);
-                lsp.stop(&mut ctx.platform, handle);
+                lsp.stop(&mut ctx.platform, handle)
             }
             None => lsp.stop_all(&mut ctx.platform),
+        };
+        if any_stopped {
+            Ok(())
+        } else {
+            Err(CommandError::OtherStatic("no lsp server running"))
         }
-        Ok(())
     });
 
     r("lsp-stop-all", &[], |ctx, io| {
         io.args.assert_empty()?;
 
         let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
-        lsp.stop_all(&mut ctx.platform);
-        Ok(())
+        if lsp.stop_all(&mut ctx.platform) {
+            Ok(())
+        } else {
+            Err(CommandError::OtherStatic("no lsp server running"))
+        }
     });
 
     r("lsp-hover", &[], |ctx, io| {

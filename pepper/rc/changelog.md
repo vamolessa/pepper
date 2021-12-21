@@ -4,6 +4,7 @@
 - prevent deadlocks by writing asynchronously to clients from server
 - fix possible crash when listing lsp item references when there's a usage near the end of the buffer
 - added instructions on how to package the web version of the editor
+- added error to `lsp-stop` and `lsp-stop-all` when there is no lsp server running
 
 ## 0.20.0
 - use builtin word database for completions when plugins provide no suggestions

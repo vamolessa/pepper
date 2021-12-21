@@ -192,28 +192,36 @@ impl LspPlugin {
         handle
     }
 
-    pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
-        if let ClientEntry::Occupied(client) = &mut self.entries[handle.0 as usize] {
-            let _ = client.notify(platform, "exit", JsonObject::default());
-            if let Some(process_handle) = client.protocol.process_handle() {
-                platform.requests.enqueue(PlatformRequest::KillProcess {
-                    handle: process_handle,
-                });
-            }
-
-            self.entries[handle.0 as usize] = ClientEntry::Vacant;
-            for recipe in &mut self.recipes {
-                if recipe.running_client == Some(handle) {
-                    recipe.running_client = None;
+    pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) -> bool {
+        match &mut self.entries[handle.0 as usize] {
+            ClientEntry::Occupied(client) => {
+                let _ = client.notify(platform, "exit", JsonObject::default());
+                if let Some(process_handle) = client.protocol.process_handle() {
+                    platform.requests.enqueue(PlatformRequest::KillProcess {
+                        handle: process_handle,
+                    });
                 }
+
+                self.entries[handle.0 as usize] = ClientEntry::Vacant;
+                for recipe in &mut self.recipes {
+                    if recipe.running_client == Some(handle) {
+                        recipe.running_client = None;
+                    }
+                }
+
+                true
             }
+            _ => false,
         }
     }
 
-    pub fn stop_all(&mut self, platform: &mut Platform) {
+    pub fn stop_all(&mut self, platform: &mut Platform) -> bool {
+        let mut any_stopped = false;
         for i in 0..self.entries.len() {
-            self.stop(platform, ClientHandle(i as _));
+            any_stopped = any_stopped || self.stop(platform, ClientHandle(i as _));
         }
+
+        any_stopped
     }
 
     pub(crate) fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
@@ -542,3 +550,4 @@ fn on_completion(
 
     false
 }
+
