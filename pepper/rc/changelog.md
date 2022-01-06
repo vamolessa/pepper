@@ -1,5 +1,8 @@
 # changelog
 
+## 0.22.0
+- added quit instruction to the start screen
+
 ## 0.21.0
 - prevent deadlocks by writing asynchronously to clients from server
 - fix possible crash when listing lsp item references when there's a usage near the end of the buffer

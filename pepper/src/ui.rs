@@ -89,6 +89,7 @@ fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
         "type `:open <file-name><enter>` to edit a file",
         "or `:help<enter>` for help",
         "or `:help changelog<enter>` for the changelog",
+        "or `:quit<enter>` to quit",
     ];
 
     let width = ctx.viewport_size.0 as usize;
