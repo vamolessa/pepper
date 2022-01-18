@@ -847,6 +847,7 @@ impl<'a> PatternCompiler<'a> {
                 'u' => Op::Upper(okj, erj),
                 'd' => Op::Digit(okj, erj),
                 'w' => Op::Alphanumeric(okj, erj),
+                't' => Op::Char(okj, erj, '\t'),
                 'b' => {
                     self.ops.push(Op::WordBoundary(okj, erj));
                     return Ok(Length(0));
@@ -1122,6 +1123,7 @@ mod tests {
         assert_eq!(None, new_pattern(".").search_anchor());
         assert_eq!(None, new_pattern("%w").search_anchor());
         assert_eq!(None, new_pattern("%d").search_anchor());
+        assert_eq!(Some('\t'), new_pattern("%t").search_anchor());
         assert_eq!(Some('%'), new_pattern("%%").search_anchor());
         assert_eq!(None, new_pattern("[abc]").search_anchor());
         assert_eq!(None, new_pattern("{abc}").search_anchor());
