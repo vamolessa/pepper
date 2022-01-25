@@ -173,8 +173,7 @@ impl Kqueue {
                 let kind = match e.filter {
                     libc::EVFILT_READ | libc::EVFILT_SIGNAL => EventKind::Read,
                     libc::EVFILT_WRITE => EventKind::Write,
-                    //_ => unreachable!(),
-                    _ => panic!("ops wrong filter: {}", e.filter),
+                    _ => unreachable!(),
                 };
 
                 Ok(TriggeredEvent {
