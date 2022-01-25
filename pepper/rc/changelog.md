@@ -3,6 +3,7 @@
 ## 0.22.0
 - added quit instruction to the start screen
 - added '%t' to patterns to match a tab ('\t')
+- fix bad handling of BSD's resize signal on kqueue
 
 ## 0.21.0
 - prevent deadlocks by writing asynchronously to clients from server
