@@ -4,6 +4,7 @@
 - added quit instruction to the start screen
 - added '%t' to patterns to match a tab ('\t')
 - fix bad handling of BSD's resize signal on kqueue
+- changed default clipboard linux interface to `xclip` instead of `xsel`
 
 ## 0.21.0
 - prevent deadlocks by writing asynchronously to clients from server
