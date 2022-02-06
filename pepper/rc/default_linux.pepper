@@ -1,5 +1,5 @@
-copy-command "xclip -in"
-paste-command "xclip -out"
+copy-command "xclip -selection clipboard -in"
+paste-command "xclip -selection clipboard -out"
 
 map-normal <space>o [[: find-file "find . -type f -printf '%P\n'"<enter>]]
 map-normal <space>f [[: find-pattern 'grep --recursive --binary-files=without-match --with-filename --line-number "{}"'<enter>]]
