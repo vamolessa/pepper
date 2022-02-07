@@ -1,6 +1,6 @@
 copy-command "pbcopy"
 paste-command "pbpaste"
 
-map-normal <space>o [[: find-file "find . -type f -printf '%P\n'"<enter>]]
+map-normal <space>o [[: find-file "find . -type f -print"<enter>]]
 map-normal <space>f [[: find-pattern 'grep --recursive --binary-files=without-match --with-filename --line-number "{}"'<enter>]]
 
