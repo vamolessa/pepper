@@ -628,19 +628,18 @@ pub(crate) fn on_response(
                         }
                     }
 
-                    let surrounding_len = context_len - 1;
-                    let start =
-                        (location.range.start.line as usize).saturating_sub(surrounding_len);
-                    let end = context_buffer
-                        .lines()
-                        .len()
-                        .min(location.range.end.line as usize + surrounding_len);
+                    let line_count = context_buffer.lines().len();
+                    let start = line_count
+                        .min((location.range.start.line as usize).saturating_sub(context_len - 1));
+                    let end = line_count.min(location.range.end.line as usize + context_len);
 
-                    for line in context_buffer.lines()[start..=end]
-                        .iter()
-                        .skip_while(|l| l.as_str().is_empty())
-                    {
-                        text.push_str(line.as_str());
+                    for line in &context_buffer.lines()[start..end] {
+                        let line = line.as_str();
+                        if line.is_empty() {
+                            text.push('~');
+                        } else {
+                            text.push_str(line);
+                        }
                         text.push('\n');
                     }
                     text.push('\n');
@@ -1089,3 +1088,4 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(()),
     }
 }
+
