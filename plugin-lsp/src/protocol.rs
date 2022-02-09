@@ -25,7 +25,7 @@ pub enum Uri<'a> {
 }
 impl<'a> Uri<'a> {
     pub fn parse(root: &'a Path, uri: &'a str) -> Result<Self, UriParseError> {
-        let uri = uri.strip_prefix("file:///").ok_or(UriParseError)?;
+        let uri = uri.strip_prefix("file://").ok_or(UriParseError)?;
         let path = Path::new(uri);
         let path = path.strip_prefix(root).unwrap_or(path);
         Ok(Self::Path(path))
@@ -1115,5 +1115,24 @@ impl PendingRequestColection {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_uri() {
+        fn assert_uri(expect: &str, raw: &str) {
+            match Uri::parse(Path::new("/home"), raw) {
+                Ok(Uri::Path(uri)) => assert_eq!(Path::new(expect), uri),
+                Err(_) => panic!("could not parse uri {}", raw),
+            }
+        }
+
+        assert_uri("file.rs", "file:///home/file.rs");
+        assert_uri("dir/file.rs", "file:///home/dir/file.rs");
+        assert_uri("/etc/file.rs", "file:///etc/file.rs");
     }
 }
