@@ -3,6 +3,7 @@
 ## 0.23.0
 - changed default clipboard linux interface to `xclip` instead of `xsel`
 - fix crash when `lsp-references` would not load the context buffer
+- handle `<c-i>` (insert at end of line) by instead mapping it to tab on unix
 
 ## 0.22.0
 - added quit instruction to the start screen
