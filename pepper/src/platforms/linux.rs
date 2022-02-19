@@ -174,7 +174,11 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
     epoll.add(listener.as_raw_fd(), 0, 0);
     let mut epoll_events = EpollEvents::new();
 
+    let mut wait_count = 0;
     loop {
+        eprintln!("server epoll wait [{}]", wait_count);
+        wait_count += 1;
+
         let epoll_events = epoll.wait(&mut epoll_events, timeout);
         if epoll_events.len() == 0 {
             match timeout {
@@ -190,6 +194,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         }
 
         for (event_read, event_write, event_index) in epoll_events {
+            eprintln!("read: {} write: {}", event_read, event_write);
             match event_index {
                 0 => match listener.accept() {
                     Ok((connection, _)) => {
@@ -202,7 +207,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                 epoll.add(
                                     connection.as_raw_fd(),
                                     (CLIENTS_START_INDEX + i) as _,
-                                    libc::EPOLLET as _,
+                                    (libc::EPOLLOUT | libc::EPOLLET) as _,
                                 );
                                 *c = Some(connection);
                                 let handle = ClientHandle(i as _);
@@ -218,6 +223,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     let handle = ClientHandle(index as _);
                     if let Some(ref mut connection) = client_connections[index] {
                         if event_read {
+                            eprintln!("read from client");
                             match read_from_connection(
                                 connection,
                                 &mut application.ctx.platform.buf_pool,
@@ -236,6 +242,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     }
                     if let Some(ref mut connection) = client_connections[index] {
                         if event_write {
+                            eprintln!("write to client");
                             let result = write_to_connection(
                                 connection,
                                 &mut application.ctx.platform.buf_pool,
@@ -442,8 +449,18 @@ fn run_client(args: Args, mut connection: UnixStream) {
     };
     let mut buf = [0; BUF_LEN];
 
+    let mut event_count = 0;
     'main_loop: loop {
         for (_, _, event_index) in epoll.wait(&mut epoll_events, None) {
+            eprintln!("client epoll event [{}]: {}", event_count, match event_index {
+                0 => "input",
+                1 => "server",
+                2 => "resize",
+                3 => "stdin",
+                _ => unreachable!(),
+            });
+            event_count += 1;
+
             let mut resize = None;
             let mut stdin_bytes = None;
             let mut server_bytes = &[][..];

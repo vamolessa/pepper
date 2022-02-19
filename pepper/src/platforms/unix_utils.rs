@@ -303,6 +303,7 @@ pub(crate) fn write_to_connection(
             }
             Err(error) => match error.kind() {
                 io::ErrorKind::WouldBlock => {
+                    eprintln!("would block writing to connection");
                     write_queue.push_front(buf);
                     return Ok(());
                 }
