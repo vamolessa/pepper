@@ -183,7 +183,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     events.push(PlatformEvent::Idle);
                     timeout = None;
                 }
-                None => unreachable!(),
+                None => continue,
             }
         } else {
             timeout = Some(Duration::ZERO);

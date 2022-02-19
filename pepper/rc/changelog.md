@@ -1,5 +1,8 @@
 # changelog
 
+## 0.24.0
+- fix crash after pc wakeup on linux (possibly on bsd and mac as well)
+
 ## 0.23.0
 - changed default clipboard linux interface to `xclip` instead of `xsel`
 - fix crash when `lsp-references` would not load the context buffer
