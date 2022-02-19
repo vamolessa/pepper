@@ -1,7 +1,8 @@
 # changelog
 
-## 0.24.0
+## 0.23.1
 - fix crash after pc wakeup on linux (possibly on bsd and mac as well)
+- fix server occasionally dropping writes to client on linux
 
 ## 0.23.0
 - changed default clipboard linux interface to `xclip` instead of `xsel`
