@@ -1137,7 +1137,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                         events.push(PlatformEvent::Idle);
                         timeout = None;
                     }
-                    None => unreachable!(),
+                    None => continue,
                 }
 
                 if events.is_empty() && !need_redraw {
