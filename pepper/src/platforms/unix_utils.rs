@@ -138,9 +138,14 @@ impl Terminal {
         next_state.c_cc[libc::VMIN] = 0;
         next_state.c_cc[libc::VTIME] = 0;
         unsafe { libc::tcsetattr(self.fd, libc::TCSANOW, &next_state) };
+
+        // TODO: enable kitty keyboard protocol
+        // https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+        //write_all_bytes(self.fd, b"\x1b[>1u");
     }
 
     pub fn leave_raw_mode(&self) {
+        //write_all_bytes(self.fd, b"\x1b[<u");
         unsafe { libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.original_state) };
     }
 
@@ -172,6 +177,8 @@ impl Terminal {
                 &[0x1b, b'[', b'B', ref rest @ ..] => (Key::Down, rest),
                 &[0x1b, b'[', b'C', ref rest @ ..] => (Key::Right, rest),
                 &[0x1b, b'[', b'D', ref rest @ ..] => (Key::Left, rest),
+                &[0x1b, b'[', b'1', b'3', b'u', ref rest @ ..] => (Key::Enter, rest),
+                &[0x1b, b'[', b'2', b'7', b'u', ref rest @ ..] => (Key::Esc, rest),
                 &[0x1b, b'[', b'1', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'7', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'H', ref rest @ ..]
@@ -181,6 +188,11 @@ impl Terminal {
                 | &[0x1b, b'[', b'F', ref rest @ ..]
                 | &[0x1b, b'O', b'F', ref rest @ ..] => (Key::End, rest),
                 &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (Key::Delete, rest),
+                &[0x1b, b'[', b'9', b'u', ref rest @ ..] => (Key::Tab, rest),
+                &[0x1b, b'[', ref _rest @ .. ] => {
+                    // TODO: finish implementing this
+                    todo!();
+                }
                 &[0x1b, ref rest @ ..] => (Key::Esc, rest),
                 &[0x8, ref rest @ ..] => (Key::Backspace, rest),
                 &[b'\r', ref rest @ ..] => (Key::Enter, rest),
