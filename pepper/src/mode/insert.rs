@@ -8,7 +8,7 @@ use crate::{
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::AUTO_MACRO_REGISTER,
     mode::{ModeKind, ModeState},
-    platform::Key,
+    platform::{Key, KeyCode},
     plugin::{CompletionContext, PluginHandle},
     word_database::WordKind,
 };
@@ -70,8 +70,10 @@ impl ModeState for State {
         let register = ctx.editor.registers.get_mut(AUTO_MACRO_REGISTER);
         let _ = write!(register, "{}", key);
 
+        #[rustfmt::skip]
         match key {
-            Key::Esc | Key::Ctrl('c') => {
+            Key { code: KeyCode::Esc, shift: false, control: false, alt: false }
+            | Key { code: KeyCode::Char('c'), shift: false, control: true, alt: false } => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 ctx.editor
                     .buffers
@@ -80,7 +82,7 @@ impl ModeState for State {
                 ctx.editor.enter_mode(ModeKind::default());
                 return Some(EditorFlow::Continue);
             }
-            Key::Left => {
+            Key { code: KeyCode::Left, shift: false, control: false, alt: false } => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsBackward(1),
@@ -89,7 +91,7 @@ impl ModeState for State {
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
             }
-            Key::Down => {
+            Key { code: KeyCode::Down, shift: false, control: false, alt: false } => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesForward {
@@ -101,7 +103,7 @@ impl ModeState for State {
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
             }
-            Key::Up => {
+            Key { code: KeyCode::Up, shift: false, control: false, alt: false } => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesBackward {
@@ -113,7 +115,7 @@ impl ModeState for State {
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
             }
-            Key::Right => {
+            Key { code: KeyCode::Right, shift: false, control: false, alt: false } => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsForward(1),
@@ -122,7 +124,7 @@ impl ModeState for State {
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
             }
-            Key::Tab => {
+            Key { code: KeyCode::Char('\t'), shift: false, control: false, alt: false } => {
                 static SPACES_BUF: &[u8; u8::MAX as usize] = &[b' '; u8::MAX as usize];
                 let text = if ctx.editor.config.indent_with_tabs {
                     "\t"
@@ -141,7 +143,8 @@ impl ModeState for State {
                         &mut ctx.editor.events,
                     );
             }
-            Key::Enter | Key::Ctrl('m') => {
+            Key { code: KeyCode::Char('\n'), shift: false, control: false, alt: false }
+            | Key { code: KeyCode::Char('m'), shift: false, control: true, alt: false } => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
@@ -171,7 +174,7 @@ impl ModeState for State {
                 }
                 ctx.editor.string_pool.release(buf);
             }
-            Key::Char(c) => {
+            Key { code: KeyCode::Char(c), control: false, alt: false, .. } => {
                 let mut buf = [0; std::mem::size_of::<char>()];
                 let s = c.encode_utf8(&mut buf);
                 let buffer_view = ctx.editor.buffer_views.get(handle);
@@ -182,7 +185,8 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Backspace | Key::Ctrl('h') => {
+            Key { code: KeyCode::Backspace, shift: false, control: false, alt: false }
+            | Key { code: KeyCode::Char('h'), shift: false, control: true, alt: false } => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,
@@ -195,7 +199,7 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Delete => {
+            Key { code: KeyCode::Delete, shift: false, control: false, alt: false } => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,
@@ -208,7 +212,7 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Ctrl('w') => {
+            Key { code: KeyCode::Char('w'), shift: false, control: true, alt: false } => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,
@@ -221,11 +225,11 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Ctrl('n') => {
+            Key { code: KeyCode::Char('n'), shift: false, control: true, alt: false } => {
                 apply_completion(ctx, client_handle, handle, 1);
                 return Some(EditorFlow::Continue);
             }
-            Key::Ctrl('p') => {
+            Key { code: KeyCode::Char('p'), shift: false, control: true, alt: false } => {
                 apply_completion(ctx, client_handle, handle, -1);
                 return Some(EditorFlow::Continue);
             }
@@ -420,3 +424,4 @@ fn apply_completion(
     );
     ctx.editor.string_pool.release(completion);
 }
+

@@ -7,7 +7,7 @@ use crate::{
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
     mode::{ModeKind, ModeState},
     picker::Picker,
-    platform::{Key, PlatformRequest, ProcessTag},
+    platform::{Key, KeyCode, PlatformRequest, ProcessTag},
     word_database::WordIndicesIter,
 };
 
@@ -118,9 +118,16 @@ impl ModeState for State {
         if let ReadLinePoll::Pending = poll {
             keys.index = keys.index.saturating_sub(1);
             match keys.next(&ctx.editor.buffered_keys) {
-                Key::Ctrl('n') | Key::Down => ctx.editor.picker.move_cursor(1),
-                Key::Ctrl('p') | Key::Up => ctx.editor.picker.move_cursor(-1),
-                Key::Ctrl('j') | Key::PageDown => {
+                Key { code: KeyCode::Char('n'), shift: false, control: true, alt: false }
+                | Key { code: KeyCode::Down, shift: false, control: false, alt: false } => {
+                    ctx.editor.picker.move_cursor(1);
+                }
+                Key { code: KeyCode::Char('p'), shift: false, control: true, alt: false }
+                | Key { code: KeyCode::Up, shift: false, control: false, alt: false, } => {
+                    ctx.editor.picker.move_cursor(-1);
+                }
+                Key { code: KeyCode::Char('j'), shift: false, control: true, alt: false }
+                | Key { code: KeyCode::PageDown, shift: false, control: false, alt: false } => {
                     let picker_height = ctx
                         .editor
                         .picker
@@ -129,7 +136,8 @@ impl ModeState for State {
                         as isize;
                     ctx.editor.picker.move_cursor(picker_height / 2);
                 }
-                Key::Ctrl('k') | Key::PageUp => {
+                Key { code: KeyCode::Char('k'), shift: false, control: true, alt: false }
+                | Key { code: KeyCode::PageUp, shift: false, control: false, alt: false } => {
                     let picker_height = ctx
                         .editor
                         .picker
@@ -138,11 +146,13 @@ impl ModeState for State {
                         as isize;
                     ctx.editor.picker.move_cursor(-picker_height / 2);
                 }
-                Key::Ctrl('b') | Key::Home => {
+                Key { code: KeyCode::Char('b'), shift: false, control: true, alt: false }
+                | Key { code: KeyCode::Home, shift: false, control: false, alt: false } => {
                     let cursor = ctx.editor.picker.cursor().unwrap_or(0) as isize;
                     ctx.editor.picker.move_cursor(-cursor);
                 }
-                Key::Ctrl('e') | Key::End => {
+                Key { code: KeyCode::Char('e'), shift: false, control: true, alt: false }
+                | Key { code: KeyCode::End, shift: false, control: false, alt: false } => {
                     let cursor = ctx.editor.picker.cursor().unwrap_or(0) as isize;
                     let entry_count = ctx.editor.picker.len() as isize;
                     ctx.editor.picker.move_cursor(entry_count - cursor - 1);
@@ -314,3 +324,4 @@ pub mod find_file {
         ctx.editor.enter_mode(ModeKind::Picker);
     }
 }
+

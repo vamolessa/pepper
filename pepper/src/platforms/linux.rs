@@ -15,7 +15,8 @@ use crate::{
     },
     client::ClientHandle,
     platform::{
-        drop_request, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest, PooledBuf,
+        drop_request, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest,
+        PooledBuf,
     },
     Args,
 };
@@ -440,7 +441,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         resize_signal = Some(signal);
 
         let size = terminal.get_size();
-        let (_, bytes) = application.update(Some(size), &[Key::None], None, &[]);
+        let (_, bytes) = application.update(Some(size), &[Key::default()], None, &[]);
         if connection.write_all(bytes).is_err() {
             return;
         }

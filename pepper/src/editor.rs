@@ -21,7 +21,7 @@ use crate::{
     mode::{Mode, ModeKind},
     pattern::Pattern,
     picker::Picker,
-    platform::{Key, Platform, PlatformRequest},
+    platform::{Key, KeyCode, Platform, PlatformRequest},
     plugin::{PluginCollection, PluginHandle},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -47,7 +47,7 @@ impl KeysIterator {
             self.index += 1;
             next
         } else {
-            Key::None
+            Key::default()
         }
     }
 }
@@ -430,7 +430,7 @@ impl Editor {
                     ctx.editor.enter_mode(ModeKind::default());
                 }
 
-                if key != Key::None {
+                if key.code != KeyCode::None {
                     ctx.editor.status_bar.clear();
                 }
                 ctx.editor.buffered_keys.0.push(key);

@@ -7,10 +7,9 @@ use std::{
 use crate::{client::ClientHandle, editor_utils::parse_process_command, plugin::PluginHandle};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Key {
+pub enum KeyCode {
     None,
     Backspace,
-    Enter,
     Left,
     Right,
     Up,
@@ -19,13 +18,29 @@ pub enum Key {
     End,
     PageUp,
     PageDown,
-    Tab,
     Delete,
     F(u8),
     Char(char),
-    Ctrl(char),
-    Alt(char),
     Esc,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Key {
+    pub code: KeyCode,
+    pub shift: bool,
+    pub control: bool,
+    pub alt: bool,
+}
+
+impl Default for Key {
+    fn default() -> Self {
+        Self {
+            code: KeyCode::None,
+            shift: false,
+            control: false,
+            alt: false,
+        }
+    }
 }
 
 pub enum PlatformEvent {

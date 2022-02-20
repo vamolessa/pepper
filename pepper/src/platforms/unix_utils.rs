@@ -14,7 +14,7 @@ use std::{
 use crate::{
     application::{ApplicationConfig, ClientApplication},
     editor_utils::hash_bytes,
-    platform::{BufPool, Key, PooledBuf, ProcessTag},
+    platform::{BufPool, Key, KeyCode, PooledBuf, ProcessTag},
     Args,
 };
 
@@ -168,6 +168,7 @@ impl Terminal {
     pub fn parse_keys(&self, mut buf: &[u8], keys: &mut Vec<Key>) {
         let backspace_code = self.original_state.c_cc[libc::VERASE];
         loop {
+            /*
             let (key, rest) = match buf {
                 &[] => break,
                 &[b, ref rest @ ..] if b == backspace_code => (Key::Backspace, rest),
@@ -216,6 +217,16 @@ impl Terminal {
                     }
                 },
             };
+            */
+            // TODO: implement
+            let key = Key {
+                code: KeyCode::None,
+                shift: false,
+                control: false,
+                alt: false,
+            };
+            let rest = &[];
+
             buf = rest;
             keys.push(key);
         }
@@ -439,3 +450,4 @@ impl io::Write for ClientOutput {
         Ok(())
     }
 }
+
