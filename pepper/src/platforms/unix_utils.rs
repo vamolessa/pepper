@@ -14,7 +14,7 @@ use std::{
 use crate::{
     application::{ApplicationConfig, ClientApplication},
     editor_utils::hash_bytes,
-    platform::{BufPool, Key, PooledBuf, ProcessTag},
+    platform::{BufPool, AnsiKey, PooledBuf, ProcessTag},
     Args,
 };
 
@@ -165,53 +165,53 @@ impl Terminal {
         (size.ws_col as _, size.ws_row as _)
     }
 
-    pub fn parse_keys(&self, mut buf: &[u8], keys: &mut Vec<Key>) {
+    pub fn parse_keys(&self, mut buf: &[u8], keys: &mut Vec<AnsiKey>) {
         let backspace_code = self.original_state.c_cc[libc::VERASE];
         loop {
             let (key, rest) = match buf {
                 &[] => break,
-                &[b, ref rest @ ..] if b == backspace_code => (Key::Backspace, rest),
-                &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
-                &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
-                &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
-                &[0x1b, b'[', b'B', ref rest @ ..] => (Key::Down, rest),
-                &[0x1b, b'[', b'C', ref rest @ ..] => (Key::Right, rest),
-                &[0x1b, b'[', b'D', ref rest @ ..] => (Key::Left, rest),
-                &[0x1b, b'[', b'1', b'3', b'u', ref rest @ ..] => (Key::Enter, rest),
-                &[0x1b, b'[', b'2', b'7', b'u', ref rest @ ..] => (Key::Esc, rest),
+                &[b, ref rest @ ..] if b == backspace_code => (AnsiKey::Backspace, rest),
+                &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (AnsiKey::PageUp, rest),
+                &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (AnsiKey::PageDown, rest),
+                &[0x1b, b'[', b'A', ref rest @ ..] => (AnsiKey::Up, rest),
+                &[0x1b, b'[', b'B', ref rest @ ..] => (AnsiKey::Down, rest),
+                &[0x1b, b'[', b'C', ref rest @ ..] => (AnsiKey::Right, rest),
+                &[0x1b, b'[', b'D', ref rest @ ..] => (AnsiKey::Left, rest),
+                &[0x1b, b'[', b'1', b'3', b'u', ref rest @ ..] => (AnsiKey::Enter, rest),
+                &[0x1b, b'[', b'2', b'7', b'u', ref rest @ ..] => (AnsiKey::Esc, rest),
                 &[0x1b, b'[', b'1', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'7', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'H', ref rest @ ..]
-                | &[0x1b, b'O', b'H', ref rest @ ..] => (Key::Home, rest),
+                | &[0x1b, b'O', b'H', ref rest @ ..] => (AnsiKey::Home, rest),
                 &[0x1b, b'[', b'4', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'8', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'F', ref rest @ ..]
-                | &[0x1b, b'O', b'F', ref rest @ ..] => (Key::End, rest),
-                &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (Key::Delete, rest),
-                &[0x1b, b'[', b'9', b'u', ref rest @ ..] => (Key::Tab, rest),
+                | &[0x1b, b'O', b'F', ref rest @ ..] => (AnsiKey::End, rest),
+                &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (AnsiKey::Delete, rest),
+                &[0x1b, b'[', b'9', b'u', ref rest @ ..] => (AnsiKey::Tab, rest),
                 &[0x1b, b'[', ref _rest @ .. ] => {
                     // TODO: finish implementing this
                     todo!();
                 }
-                &[0x1b, ref rest @ ..] => (Key::Esc, rest),
-                &[0x8, ref rest @ ..] => (Key::Backspace, rest),
-                &[b'\r', ref rest @ ..] => (Key::Enter, rest),
-                &[b'\t', ref rest @ ..] => (Key::Tab, rest),
-                &[0x7f, ref rest @ ..] => (Key::Delete, rest),
+                &[0x1b, ref rest @ ..] => (AnsiKey::Esc, rest),
+                &[0x8, ref rest @ ..] => (AnsiKey::Backspace, rest),
+                &[b'\r', ref rest @ ..] => (AnsiKey::Enter, rest),
+                &[b'\t', ref rest @ ..] => (AnsiKey::Tab, rest),
+                &[0x7f, ref rest @ ..] => (AnsiKey::Delete, rest),
                 &[b @ 0b0..=0b11111, ref rest @ ..] => {
                     let byte = b | 0b01100000;
-                    (Key::Ctrl(byte as _), rest)
+                    (AnsiKey::Ctrl(byte as _), rest)
                 }
                 _ => match buf.iter().position(|b| b.is_ascii()).unwrap_or(buf.len()) {
-                    0 => (Key::Char(buf[0] as _), &buf[1..]),
+                    0 => (AnsiKey::Char(buf[0] as _), &buf[1..]),
                     len => {
                         let (c, rest) = buf.split_at(len);
                         match std::str::from_utf8(c) {
                             Ok(s) => match s.chars().next() {
-                                Some(c) => (Key::Char(c), rest),
-                                None => (Key::None, rest),
+                                Some(c) => (AnsiKey::Char(c), rest),
+                                None => (AnsiKey::None, rest),
                             },
-                            Err(_) => (Key::None, rest),
+                            Err(_) => (AnsiKey::None, rest),
                         }
                     }
                 },

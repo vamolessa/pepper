@@ -8,7 +8,7 @@ use crate::{
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::AUTO_MACRO_REGISTER,
     mode::{ModeKind, ModeState},
-    platform::Key,
+    platform::AnsiKey,
     plugin::{CompletionContext, PluginHandle},
     word_database::WordKind,
 };
@@ -71,7 +71,7 @@ impl ModeState for State {
         let _ = write!(register, "{}", key);
 
         match key {
-            Key::Esc | Key::Ctrl('c') => {
+            AnsiKey::Esc | AnsiKey::Ctrl('c') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 ctx.editor
                     .buffers
@@ -80,7 +80,7 @@ impl ModeState for State {
                 ctx.editor.enter_mode(ModeKind::default());
                 return Some(EditorFlow::Continue);
             }
-            Key::Left => {
+            AnsiKey::Left => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsBackward(1),
@@ -89,7 +89,7 @@ impl ModeState for State {
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
             }
-            Key::Down => {
+            AnsiKey::Down => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesForward {
@@ -101,7 +101,7 @@ impl ModeState for State {
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
             }
-            Key::Up => {
+            AnsiKey::Up => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::LinesBackward {
@@ -113,7 +113,7 @@ impl ModeState for State {
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
             }
-            Key::Right => {
+            AnsiKey::Right => {
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsForward(1),
@@ -122,7 +122,7 @@ impl ModeState for State {
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
             }
-            Key::Tab => {
+            AnsiKey::Tab => {
                 static SPACES_BUF: &[u8; u8::MAX as usize] = &[b' '; u8::MAX as usize];
                 let text = if ctx.editor.config.indent_with_tabs {
                     "\t"
@@ -141,7 +141,7 @@ impl ModeState for State {
                         &mut ctx.editor.events,
                     );
             }
-            Key::Enter | Key::Ctrl('m') => {
+            AnsiKey::Enter | AnsiKey::Ctrl('m') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
@@ -171,7 +171,7 @@ impl ModeState for State {
                 }
                 ctx.editor.string_pool.release(buf);
             }
-            Key::Char(c) => {
+            AnsiKey::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];
                 let s = c.encode_utf8(&mut buf);
                 let buffer_view = ctx.editor.buffer_views.get(handle);
@@ -182,7 +182,7 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Backspace | Key::Ctrl('h') => {
+            AnsiKey::Backspace | AnsiKey::Ctrl('h') => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,
@@ -195,7 +195,7 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Delete => {
+            AnsiKey::Delete => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,
@@ -208,7 +208,7 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Ctrl('w') => {
+            AnsiKey::Ctrl('w') => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.move_cursors(
                     &ctx.editor.buffers,
@@ -221,11 +221,11 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Ctrl('n') => {
+            AnsiKey::Ctrl('n') => {
                 apply_completion(ctx, client_handle, handle, 1);
                 return Some(EditorFlow::Continue);
             }
-            Key::Ctrl('p') => {
+            AnsiKey::Ctrl('p') => {
                 apply_completion(ctx, client_handle, handle, -1);
                 return Some(EditorFlow::Continue);
             }

@@ -6,14 +6,14 @@ use crate::{
     editor::{BufferedKeys, EditorContext, EditorFlow, KeysIterator},
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
-    platform::{Key, Platform},
+    platform::{AnsiKey, Platform},
     word_database::{WordIter, WordKind},
 };
 
 pub enum MatchResult<'a> {
     None,
     Prefix,
-    ReplaceWith(&'a [Key]),
+    ReplaceWith(&'a [AnsiKey]),
 }
 
 #[derive(Debug)]
@@ -33,8 +33,8 @@ impl fmt::Display for ParseKeyMapError {
 }
 
 struct KeyMap {
-    from: Vec<Key>,
-    to: Vec<Key>,
+    from: Vec<AnsiKey>,
+    to: Vec<AnsiKey>,
 }
 
 #[derive(Default)]
@@ -49,7 +49,7 @@ impl KeyMapCollection {
         from: &str,
         to: &str,
     ) -> Result<(), ParseKeyMapError> {
-        fn parse_keys(text: &str) -> Result<Vec<Key>, KeyParseAllError> {
+        fn parse_keys(text: &str) -> Result<Vec<AnsiKey>, KeyParseAllError> {
             let mut keys = Vec::new();
             for key in KeyParser::new(text) {
                 match key {
@@ -81,7 +81,7 @@ impl KeyMapCollection {
         Ok(())
     }
 
-    pub fn matches(&self, mode: ModeKind, keys: &[Key]) -> MatchResult<'_> {
+    pub fn matches(&self, mode: ModeKind, keys: &[AnsiKey]) -> MatchResult<'_> {
         if let ModeKind::Plugin = mode {
             return MatchResult::None;
         }
@@ -144,13 +144,13 @@ impl ReadLine {
         keys_iter: &mut KeysIterator,
     ) -> ReadLinePoll {
         match keys_iter.next(buffered_keys) {
-            Key::Esc | Key::Ctrl('c') => ReadLinePoll::Canceled,
-            Key::Enter | Key::Ctrl('m') => ReadLinePoll::Submitted,
-            Key::Home | Key::Ctrl('u') => {
+            AnsiKey::Esc | AnsiKey::Ctrl('c') => ReadLinePoll::Canceled,
+            AnsiKey::Enter | AnsiKey::Ctrl('m') => ReadLinePoll::Submitted,
+            AnsiKey::Home | AnsiKey::Ctrl('u') => {
                 self.input.clear();
                 ReadLinePoll::Pending
             }
-            Key::Ctrl('w') => {
+            AnsiKey::Ctrl('w') => {
                 let mut words = WordIter(&self.input);
                 (&mut words)
                     .filter(|w| w.kind == WordKind::Identifier)
@@ -159,20 +159,20 @@ impl ReadLine {
                 self.input.truncate(len);
                 ReadLinePoll::Pending
             }
-            Key::Backspace | Key::Ctrl('h') => {
+            AnsiKey::Backspace | AnsiKey::Ctrl('h') => {
                 if let Some((last_char_index, _)) = self.input.char_indices().next_back() {
                     self.input.truncate(last_char_index);
                 }
                 ReadLinePoll::Pending
             }
-            Key::Ctrl('y') => {
+            AnsiKey::Ctrl('y') => {
                 let mut text = string_pool.acquire();
                 platform.read_from_clipboard(&mut text);
                 self.input.push_str(&text);
                 string_pool.release(text);
                 ReadLinePoll::Pending
             }
-            Key::Char(c) => {
+            AnsiKey::Char(c) => {
                 self.input.push(c);
                 ReadLinePoll::Pending
             }

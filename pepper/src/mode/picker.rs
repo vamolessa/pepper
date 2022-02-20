@@ -7,7 +7,7 @@ use crate::{
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
     mode::{ModeKind, ModeState},
     picker::Picker,
-    platform::{Key, PlatformRequest, ProcessTag},
+    platform::{AnsiKey, PlatformRequest, ProcessTag},
     word_database::WordIndicesIter,
 };
 
@@ -118,9 +118,9 @@ impl ModeState for State {
         if let ReadLinePoll::Pending = poll {
             keys.index = keys.index.saturating_sub(1);
             match keys.next(&ctx.editor.buffered_keys) {
-                Key::Ctrl('n') | Key::Down => ctx.editor.picker.move_cursor(1),
-                Key::Ctrl('p') | Key::Up => ctx.editor.picker.move_cursor(-1),
-                Key::Ctrl('j') | Key::PageDown => {
+                AnsiKey::Ctrl('n') | AnsiKey::Down => ctx.editor.picker.move_cursor(1),
+                AnsiKey::Ctrl('p') | AnsiKey::Up => ctx.editor.picker.move_cursor(-1),
+                AnsiKey::Ctrl('j') | AnsiKey::PageDown => {
                     let picker_height = ctx
                         .editor
                         .picker
@@ -129,7 +129,7 @@ impl ModeState for State {
                         as isize;
                     ctx.editor.picker.move_cursor(picker_height / 2);
                 }
-                Key::Ctrl('k') | Key::PageUp => {
+                AnsiKey::Ctrl('k') | AnsiKey::PageUp => {
                     let picker_height = ctx
                         .editor
                         .picker
@@ -138,11 +138,11 @@ impl ModeState for State {
                         as isize;
                     ctx.editor.picker.move_cursor(-picker_height / 2);
                 }
-                Key::Ctrl('b') | Key::Home => {
+                AnsiKey::Ctrl('b') | AnsiKey::Home => {
                     let cursor = ctx.editor.picker.cursor().unwrap_or(0) as isize;
                     ctx.editor.picker.move_cursor(-cursor);
                 }
-                Key::Ctrl('e') | Key::End => {
+                AnsiKey::Ctrl('e') | AnsiKey::End => {
                     let cursor = ctx.editor.picker.cursor().unwrap_or(0) as isize;
                     let entry_count = ctx.editor.picker.len() as isize;
                     ctx.editor.picker.move_cursor(entry_count - cursor - 1);

@@ -1481,7 +1481,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
 
     if let Some(handle) = &console_output_handle {
         let size = get_console_size(handle);
-        let (_, bytes) = application.update(Some(size), &[Key::None], None, &[]);
+        let (_, bytes) = application.update(Some(size), &[AnsiKey::None], None, &[]);
         if !connection.write(bytes) {
             return;
         }
@@ -1548,7 +1548,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
                     parse_console_events(console_events, &mut keys, &mut resize);
                 }
             }
-            1 => keys.push(Key::Ctrl('c')),
+            1 => keys.push(AnsiKey::Ctrl('c')),
             2 => match connection.read_async() {
                 Ok(bytes) => server_bytes = bytes,
                 Err(()) => break,
@@ -1603,23 +1603,23 @@ fn parse_console_events(
                 const CHAR_A: i32 = b'A' as _;
                 const CHAR_Z: i32 = b'Z' as _;
                 let key = match keycode {
-                    VK_BACK => Key::Backspace,
-                    VK_RETURN => Key::Enter,
-                    VK_LEFT => Key::Left,
-                    VK_RIGHT => Key::Right,
-                    VK_UP => Key::Up,
-                    VK_DOWN => Key::Down,
-                    VK_HOME => Key::Home,
-                    VK_END => Key::End,
-                    VK_PRIOR => Key::PageUp,
-                    VK_NEXT => Key::PageDown,
-                    VK_TAB => Key::Tab,
-                    VK_DELETE => Key::Delete,
-                    VK_F1..=VK_F24 => Key::F((keycode - VK_F1 + 1) as _),
-                    VK_ESCAPE => Key::Esc,
+                    VK_BACK => AnsiKey::Backspace,
+                    VK_RETURN => AnsiKey::Enter,
+                    VK_LEFT => AnsiKey::Left,
+                    VK_RIGHT => AnsiKey::Right,
+                    VK_UP => AnsiKey::Up,
+                    VK_DOWN => AnsiKey::Down,
+                    VK_HOME => AnsiKey::Home,
+                    VK_END => AnsiKey::End,
+                    VK_PRIOR => AnsiKey::PageUp,
+                    VK_NEXT => AnsiKey::PageDown,
+                    VK_TAB => AnsiKey::Tab,
+                    VK_DELETE => AnsiKey::Delete,
+                    VK_F1..=VK_F24 => AnsiKey::F((keycode - VK_F1 + 1) as _),
+                    VK_ESCAPE => AnsiKey::Esc,
                     VK_SPACE => {
                         match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                            Some(Ok(c)) => Key::Char(c),
+                            Some(Ok(c)) => AnsiKey::Char(c),
                             _ => continue,
                         }
                     }
@@ -1629,19 +1629,19 @@ fn parse_console_events(
 
                         if control_key_state & ALT_PRESSED_MASK != 0 {
                             let c = (keycode - CHAR_A) as u8 + b'a';
-                            Key::Alt(c.to_ascii_lowercase() as _)
+                            AnsiKey::Alt(c.to_ascii_lowercase() as _)
                         } else if control_key_state & CTRL_PRESSED_MASK != 0 {
                             let c = (keycode - CHAR_A) as u8 + b'a';
-                            Key::Ctrl(c.to_ascii_lowercase() as _)
+                            AnsiKey::Ctrl(c.to_ascii_lowercase() as _)
                         } else {
                             match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                                Some(Ok(c)) => Key::Char(c),
+                                Some(Ok(c)) => AnsiKey::Char(c),
                                 _ => continue,
                             }
                         }
                     }
                     _ => match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                        Some(Ok(c)) if c.is_ascii_graphic() => Key::Char(c),
+                        Some(Ok(c)) if c.is_ascii_graphic() => AnsiKey::Char(c),
                         _ => continue,
                     },
                 };

@@ -7,7 +7,7 @@ use std::{
 use crate::{client::ClientHandle, editor_utils::parse_process_command, plugin::PluginHandle};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Key {
+pub enum AnsiKey {
     None,
     Backspace,
     Enter,
