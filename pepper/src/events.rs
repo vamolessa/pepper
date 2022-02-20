@@ -6,7 +6,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::ClientHandle,
     cursor::Cursor,
-    platform::Key,
+    platform::{Key, KeyCode},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
@@ -348,29 +348,38 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
 
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Key::None => Ok(()),
-            Key::Backspace => f.write_str("<backspace>"),
-            Key::Enter => f.write_str("<enter>"),
-            Key::Left => f.write_str("<left>"),
-            Key::Right => f.write_str("<right>"),
-            Key::Up => f.write_str("<up>"),
-            Key::Down => f.write_str("<down>"),
-            Key::Home => f.write_str("<home>"),
-            Key::End => f.write_str("<end>"),
-            Key::PageUp => f.write_str("<pageup>"),
-            Key::PageDown => f.write_str("<pagedown>"),
-            Key::Tab => f.write_str("<tab>"),
-            Key::Delete => f.write_str("<delete>"),
-            Key::F(n) => write!(f, "<f{}>", n),
-            Key::Char(' ') => f.write_str("<space>"),
-            Key::Char('<') => f.write_str("<less>"),
-            Key::Char('>') => f.write_str("<greater>"),
-            Key::Char(c) => write!(f, "{}", c),
-            Key::Ctrl(c) => write!(f, "<c-{}>", c),
-            Key::Alt(c) => write!(f, "<a-{}>", c),
-            Key::Esc => f.write_str("<esc>"),
+        f.write_str("<")?;
+        if self.shift {
+            f.write_str("s-")?;
         }
+        if self.control {
+            f.write_str("c-")?;
+        }
+        if self.alt {
+            f.write_str("a-")?;
+        }
+        match self.code {
+            KeyCode::None => f.write_str("none")?,
+            KeyCode::Backspace => f.write_str("backspace")?,
+            KeyCode::Left => f.write_str("left")?,
+            KeyCode::Right => f.write_str("right")?,
+            KeyCode::Up => f.write_str("up")?,
+            KeyCode::Down => f.write_str("down")?,
+            KeyCode::Home => f.write_str("home")?,
+            KeyCode::End => f.write_str("end")?,
+            KeyCode::PageUp => f.write_str("pageup")?,
+            KeyCode::PageDown => f.write_str("pagedown")?,
+            KeyCode::Delete => f.write_str("delete")?,
+            KeyCode::F(n) => write!(f, "f{}", n)?,
+            KeyCode::Char('\n') => f.write_str("enter")?,
+            KeyCode::Char('\t') => f.write_str("tab")?,
+            KeyCode::Char(' ') => f.write_str("space")?,
+            KeyCode::Char('<') => f.write_str("less")?,
+            KeyCode::Char('>') => f.write_str("greater")?,
+            KeyCode::Char(c) => write!(f, "{}", c)?,
+            KeyCode::Esc => f.write_str("esc>")?,
+        }
+        f.write_str(">")?,
     }
 }
 
@@ -378,37 +387,33 @@ fn serialize_key<S>(key: Key, serializer: &mut S)
 where
     S: Serializer,
 {
-    match key {
-        Key::None => 0u8.serialize(serializer),
-        Key::Backspace => 1u8.serialize(serializer),
-        Key::Enter => 2u8.serialize(serializer),
-        Key::Left => 3u8.serialize(serializer),
-        Key::Right => 4u8.serialize(serializer),
-        Key::Up => 5u8.serialize(serializer),
-        Key::Down => 6u8.serialize(serializer),
-        Key::Home => 7u8.serialize(serializer),
-        Key::End => 8u8.serialize(serializer),
-        Key::PageUp => 9u8.serialize(serializer),
-        Key::PageDown => 10u8.serialize(serializer),
-        Key::Tab => 11u8.serialize(serializer),
-        Key::Delete => 12u8.serialize(serializer),
-        Key::F(n) => {
-            13u8.serialize(serializer);
+    let mut flags = 0u8;
+    flags |= key.shift as u8 << 0;
+    flags |= key.control as u8 << 1;
+    flags |= key.alt as u8 << 2;
+    flags.serialize(serializer);
+
+    match key.code {
+        KeyCode::None => 0u8.serialize(serializer),
+        KeyCode::Backspace => 1u8.serialize(serializer),
+        KeyCode::Left => 2u8.serialize(serializer),
+        KeyCode::Right => 3u8.serialize(serializer),
+        KeyCode::Up => 4u8.serialize(serializer),
+        KeyCode::Down => 5u8.serialize(serializer),
+        KeyCode::Home => 6u8.serialize(serializer),
+        KeyCode::End => 7u8.serialize(serializer),
+        KeyCode::PageUp => 8u8.serialize(serializer),
+        KeyCode::PageDown => 9u8.serialize(serializer),
+        KeyCode::Delete => 10u8.serialize(serializer),
+        KeyCode::F(n) => {
+            11u8.serialize(serializer);
             n.serialize(serializer);
         }
-        Key::Char(c) => {
-            14u8.serialize(serializer);
+        KeyCode::Char(c) => {
+            12u8.serialize(serializer);
             c.serialize(serializer);
         }
-        Key::Ctrl(c) => {
-            15u8.serialize(serializer);
-            c.serialize(serializer);
-        }
-        Key::Alt(c) => {
-            16u8.serialize(serializer);
-            c.serialize(serializer);
-        }
-        Key::Esc => 17u8.serialize(serializer),
+        KeyCode::Esc => 13u8.serialize(serializer),
     }
 }
 
@@ -416,40 +421,43 @@ fn deserialize_key<'de, D>(deserializer: &mut D) -> Result<Key, DeserializeError
 where
     D: Deserializer<'de>,
 {
-    let discriminant = u8::deserialize(deserializer)?;
-    match discriminant {
-        0 => Ok(Key::None),
-        1 => Ok(Key::Backspace),
-        2 => Ok(Key::Enter),
-        3 => Ok(Key::Left),
-        4 => Ok(Key::Right),
-        5 => Ok(Key::Up),
-        6 => Ok(Key::Down),
-        7 => Ok(Key::Home),
-        8 => Ok(Key::End),
-        9 => Ok(Key::PageUp),
-        10 => Ok(Key::PageDown),
-        11 => Ok(Key::Tab),
-        12 => Ok(Key::Delete),
-        13 => {
+    let flags = u8::deserialize(deserializer)?;
+    let shift = (flags & 0b001) != 0;
+    let control = (flags & 0b010) != 0;
+    let alt = (flags & 0b100) != 0;
+
+    let code_discriminant = u8::deserialize(deserializer)?;
+    let code = match code_discriminant {
+        0 => KeyCode::None,
+        1 => KeyCode::Backspace,
+        2 => KeyCode::Left,
+        3 => KeyCode::Right,
+        4 => KeyCode::Up,
+        5 => KeyCode::Down,
+        6 => KeyCode::Home,
+        7 => KeyCode::End,
+        8 => KeyCode::PageUp,
+        9 => KeyCode::PageDown,
+        10 => KeyCode::Delete,
+        11 => {
             let n = Serialize::deserialize(deserializer)?;
-            Ok(Key::F(n))
+            KeyCode::F(n)
         }
-        14 => {
+        12 => {
             let c = Serialize::deserialize(deserializer)?;
-            Ok(Key::Char(c))
+            KeyCode::Char(c)
         }
-        15 => {
-            let c = Serialize::deserialize(deserializer)?;
-            Ok(Key::Ctrl(c))
-        }
-        16 => {
-            let c = Serialize::deserialize(deserializer)?;
-            Ok(Key::Alt(c))
-        }
-        17 => Ok(Key::Esc),
-        _ => Err(DeserializeError::InvalidData),
-    }
+        13 => KeyCode::Esc,
+        _ => return Err(DeserializeError::InvalidData),
+    };
+
+    let key = Key {
+        code,
+        shift,
+        control,
+        alt,
+    };
+    Ok(Key)
 }
 
 pub enum ServerEvent<'a> {
