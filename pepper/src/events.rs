@@ -6,7 +6,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::ClientHandle,
     cursor::Cursor,
-    platform::AnsiKey,
+    platform::Key,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
@@ -167,7 +167,7 @@ impl<'a> KeyParser<'a> {
     }
 }
 impl<'a> Iterator for KeyParser<'a> {
-    type Item = Result<AnsiKey, KeyParseAllError>;
+    type Item = Result<Key, KeyParseAllError>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.chars.as_str().is_empty() {
             return None;
@@ -188,7 +188,7 @@ impl<'a> Iterator for KeyParser<'a> {
     }
 }
 
-fn parse_key(chars: &mut Chars) -> Result<AnsiKey, KeyParseError> {
+fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
     fn next(chars: &mut impl Iterator<Item = char>) -> Result<char, KeyParseError> {
         match chars.next() {
             Some(c) => Ok(c),
@@ -216,27 +216,27 @@ fn parse_key(chars: &mut Chars) -> Result<AnsiKey, KeyParseError> {
         '<' => match next(chars)? {
             'b' => {
                 consume_str(chars, "ackspace>")?;
-                Ok(AnsiKey::Backspace)
+                Ok(Key::Backspace)
             }
             's' => {
                 consume_str(chars, "pace>")?;
-                Ok(AnsiKey::Char(' '))
+                Ok(Key::Char(' '))
             }
             'e' => match next(chars)? {
                 'n' => match next(chars)? {
                     't' => {
                         consume_str(chars, "er>")?;
-                        Ok(AnsiKey::Enter)
+                        Ok(Key::Enter)
                     }
                     'd' => {
                         consume(chars, '>')?;
-                        Ok(AnsiKey::End)
+                        Ok(Key::End)
                     }
                     c => Err(KeyParseError::InvalidCharacter(c)),
                 },
                 's' => {
                     consume_str(chars, "c>")?;
-                    Ok(AnsiKey::Esc)
+                    Ok(Key::Esc)
                 }
                 c => Err(KeyParseError::InvalidCharacter(c)),
             },
@@ -245,59 +245,59 @@ fn parse_key(chars: &mut Chars) -> Result<AnsiKey, KeyParseError> {
                 match next(chars)? {
                     's' => {
                         consume_str(chars, "s>")?;
-                        Ok(AnsiKey::Char('<'))
+                        Ok(Key::Char('<'))
                     }
                     'f' => {
                         consume_str(chars, "t>")?;
-                        Ok(AnsiKey::Left)
+                        Ok(Key::Left)
                     }
                     c => Err(KeyParseError::InvalidCharacter(c)),
                 }
             }
             'g' => {
                 consume_str(chars, "reater>")?;
-                Ok(AnsiKey::Char('>'))
+                Ok(Key::Char('>'))
             }
             'r' => {
                 consume_str(chars, "ight>")?;
-                Ok(AnsiKey::Right)
+                Ok(Key::Right)
             }
             'u' => {
                 consume_str(chars, "p>")?;
-                Ok(AnsiKey::Up)
+                Ok(Key::Up)
             }
             'd' => match next(chars)? {
                 'o' => {
                     consume_str(chars, "wn>")?;
-                    Ok(AnsiKey::Down)
+                    Ok(Key::Down)
                 }
                 'e' => {
                     consume_str(chars, "lete>")?;
-                    Ok(AnsiKey::Delete)
+                    Ok(Key::Delete)
                 }
                 c => Err(KeyParseError::InvalidCharacter(c)),
             },
             'h' => {
                 consume_str(chars, "ome>")?;
-                Ok(AnsiKey::Home)
+                Ok(Key::Home)
             }
             'p' => {
                 consume_str(chars, "age")?;
                 match next(chars)? {
                     'u' => {
                         consume_str(chars, "p>")?;
-                        Ok(AnsiKey::PageUp)
+                        Ok(Key::PageUp)
                     }
                     'd' => {
                         consume_str(chars, "own>")?;
-                        Ok(AnsiKey::PageDown)
+                        Ok(Key::PageDown)
                     }
                     c => Err(KeyParseError::InvalidCharacter(c)),
                 }
             }
             't' => {
                 consume_str(chars, "ab>")?;
-                Ok(AnsiKey::Tab)
+                Ok(Key::Tab)
             }
             'f' => {
                 let c = next(chars)?;
@@ -308,10 +308,10 @@ fn parse_key(chars: &mut Chars) -> Result<AnsiKey, KeyParseError> {
                             Some(d1) => {
                                 consume(chars, '>')?;
                                 let n = d0 * 10 + d1;
-                                Ok(AnsiKey::F(n as _))
+                                Ok(Key::F(n as _))
                             }
                             None => match c {
-                                '>' => Ok(AnsiKey::F(d0 as _)),
+                                '>' => Ok(Key::F(d0 as _)),
                                 _ => Err(KeyParseError::InvalidCharacter(c)),
                             },
                         }
@@ -324,7 +324,7 @@ fn parse_key(chars: &mut Chars) -> Result<AnsiKey, KeyParseError> {
                 let c = next(chars)?;
                 if c.is_ascii_alphanumeric() {
                     consume(chars, '>')?;
-                    Ok(AnsiKey::Ctrl(c))
+                    Ok(Key::Ctrl(c))
                 } else {
                     Err(KeyParseError::InvalidCharacter(c))
                 }
@@ -334,7 +334,7 @@ fn parse_key(chars: &mut Chars) -> Result<AnsiKey, KeyParseError> {
                 let c = next(chars)?;
                 if c.is_ascii_alphanumeric() {
                     consume(chars, '>')?;
-                    Ok(AnsiKey::Alt(c))
+                    Ok(Key::Alt(c))
                 } else {
                     Err(KeyParseError::InvalidCharacter(c))
                 }
@@ -342,112 +342,112 @@ fn parse_key(chars: &mut Chars) -> Result<AnsiKey, KeyParseError> {
             c => Err(KeyParseError::InvalidCharacter(c)),
         },
         '>' => Err(KeyParseError::InvalidCharacter('>')),
-        c => Ok(AnsiKey::Char(c)),
+        c => Ok(Key::Char(c)),
     }
 }
 
-impl fmt::Display for AnsiKey {
+impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            AnsiKey::None => Ok(()),
-            AnsiKey::Backspace => f.write_str("<backspace>"),
-            AnsiKey::Enter => f.write_str("<enter>"),
-            AnsiKey::Left => f.write_str("<left>"),
-            AnsiKey::Right => f.write_str("<right>"),
-            AnsiKey::Up => f.write_str("<up>"),
-            AnsiKey::Down => f.write_str("<down>"),
-            AnsiKey::Home => f.write_str("<home>"),
-            AnsiKey::End => f.write_str("<end>"),
-            AnsiKey::PageUp => f.write_str("<pageup>"),
-            AnsiKey::PageDown => f.write_str("<pagedown>"),
-            AnsiKey::Tab => f.write_str("<tab>"),
-            AnsiKey::Delete => f.write_str("<delete>"),
-            AnsiKey::F(n) => write!(f, "<f{}>", n),
-            AnsiKey::Char(' ') => f.write_str("<space>"),
-            AnsiKey::Char('<') => f.write_str("<less>"),
-            AnsiKey::Char('>') => f.write_str("<greater>"),
-            AnsiKey::Char(c) => write!(f, "{}", c),
-            AnsiKey::Ctrl(c) => write!(f, "<c-{}>", c),
-            AnsiKey::Alt(c) => write!(f, "<a-{}>", c),
-            AnsiKey::Esc => f.write_str("<esc>"),
+            Key::None => Ok(()),
+            Key::Backspace => f.write_str("<backspace>"),
+            Key::Enter => f.write_str("<enter>"),
+            Key::Left => f.write_str("<left>"),
+            Key::Right => f.write_str("<right>"),
+            Key::Up => f.write_str("<up>"),
+            Key::Down => f.write_str("<down>"),
+            Key::Home => f.write_str("<home>"),
+            Key::End => f.write_str("<end>"),
+            Key::PageUp => f.write_str("<pageup>"),
+            Key::PageDown => f.write_str("<pagedown>"),
+            Key::Tab => f.write_str("<tab>"),
+            Key::Delete => f.write_str("<delete>"),
+            Key::F(n) => write!(f, "<f{}>", n),
+            Key::Char(' ') => f.write_str("<space>"),
+            Key::Char('<') => f.write_str("<less>"),
+            Key::Char('>') => f.write_str("<greater>"),
+            Key::Char(c) => write!(f, "{}", c),
+            Key::Ctrl(c) => write!(f, "<c-{}>", c),
+            Key::Alt(c) => write!(f, "<a-{}>", c),
+            Key::Esc => f.write_str("<esc>"),
         }
     }
 }
 
-fn serialize_key<S>(key: AnsiKey, serializer: &mut S)
+fn serialize_key<S>(key: Key, serializer: &mut S)
 where
     S: Serializer,
 {
     match key {
-        AnsiKey::None => 0u8.serialize(serializer),
-        AnsiKey::Backspace => 1u8.serialize(serializer),
-        AnsiKey::Enter => 2u8.serialize(serializer),
-        AnsiKey::Left => 3u8.serialize(serializer),
-        AnsiKey::Right => 4u8.serialize(serializer),
-        AnsiKey::Up => 5u8.serialize(serializer),
-        AnsiKey::Down => 6u8.serialize(serializer),
-        AnsiKey::Home => 7u8.serialize(serializer),
-        AnsiKey::End => 8u8.serialize(serializer),
-        AnsiKey::PageUp => 9u8.serialize(serializer),
-        AnsiKey::PageDown => 10u8.serialize(serializer),
-        AnsiKey::Tab => 11u8.serialize(serializer),
-        AnsiKey::Delete => 12u8.serialize(serializer),
-        AnsiKey::F(n) => {
+        Key::None => 0u8.serialize(serializer),
+        Key::Backspace => 1u8.serialize(serializer),
+        Key::Enter => 2u8.serialize(serializer),
+        Key::Left => 3u8.serialize(serializer),
+        Key::Right => 4u8.serialize(serializer),
+        Key::Up => 5u8.serialize(serializer),
+        Key::Down => 6u8.serialize(serializer),
+        Key::Home => 7u8.serialize(serializer),
+        Key::End => 8u8.serialize(serializer),
+        Key::PageUp => 9u8.serialize(serializer),
+        Key::PageDown => 10u8.serialize(serializer),
+        Key::Tab => 11u8.serialize(serializer),
+        Key::Delete => 12u8.serialize(serializer),
+        Key::F(n) => {
             13u8.serialize(serializer);
             n.serialize(serializer);
         }
-        AnsiKey::Char(c) => {
+        Key::Char(c) => {
             14u8.serialize(serializer);
             c.serialize(serializer);
         }
-        AnsiKey::Ctrl(c) => {
+        Key::Ctrl(c) => {
             15u8.serialize(serializer);
             c.serialize(serializer);
         }
-        AnsiKey::Alt(c) => {
+        Key::Alt(c) => {
             16u8.serialize(serializer);
             c.serialize(serializer);
         }
-        AnsiKey::Esc => 17u8.serialize(serializer),
+        Key::Esc => 17u8.serialize(serializer),
     }
 }
 
-fn deserialize_key<'de, D>(deserializer: &mut D) -> Result<AnsiKey, DeserializeError>
+fn deserialize_key<'de, D>(deserializer: &mut D) -> Result<Key, DeserializeError>
 where
     D: Deserializer<'de>,
 {
     let discriminant = u8::deserialize(deserializer)?;
     match discriminant {
-        0 => Ok(AnsiKey::None),
-        1 => Ok(AnsiKey::Backspace),
-        2 => Ok(AnsiKey::Enter),
-        3 => Ok(AnsiKey::Left),
-        4 => Ok(AnsiKey::Right),
-        5 => Ok(AnsiKey::Up),
-        6 => Ok(AnsiKey::Down),
-        7 => Ok(AnsiKey::Home),
-        8 => Ok(AnsiKey::End),
-        9 => Ok(AnsiKey::PageUp),
-        10 => Ok(AnsiKey::PageDown),
-        11 => Ok(AnsiKey::Tab),
-        12 => Ok(AnsiKey::Delete),
+        0 => Ok(Key::None),
+        1 => Ok(Key::Backspace),
+        2 => Ok(Key::Enter),
+        3 => Ok(Key::Left),
+        4 => Ok(Key::Right),
+        5 => Ok(Key::Up),
+        6 => Ok(Key::Down),
+        7 => Ok(Key::Home),
+        8 => Ok(Key::End),
+        9 => Ok(Key::PageUp),
+        10 => Ok(Key::PageDown),
+        11 => Ok(Key::Tab),
+        12 => Ok(Key::Delete),
         13 => {
             let n = Serialize::deserialize(deserializer)?;
-            Ok(AnsiKey::F(n))
+            Ok(Key::F(n))
         }
         14 => {
             let c = Serialize::deserialize(deserializer)?;
-            Ok(AnsiKey::Char(c))
+            Ok(Key::Char(c))
         }
         15 => {
             let c = Serialize::deserialize(deserializer)?;
-            Ok(AnsiKey::Ctrl(c))
+            Ok(Key::Ctrl(c))
         }
         16 => {
             let c = Serialize::deserialize(deserializer)?;
-            Ok(AnsiKey::Alt(c))
+            Ok(Key::Alt(c))
         }
-        17 => Ok(AnsiKey::Esc),
+        17 => Ok(Key::Esc),
         _ => Err(DeserializeError::InvalidData),
     }
 }
@@ -541,7 +541,7 @@ impl<'de> Serialize<'de> for TargetClient {
 }
 
 pub enum ClientEvent<'a> {
-    Key(TargetClient, AnsiKey),
+    Key(TargetClient, Key),
     Resize(u16, u16),
     Command(TargetClient, &'a str),
     StdinInput(TargetClient, &'a [u8]),
@@ -669,50 +669,50 @@ mod tests {
     #[test]
     fn key_parsing() {
         assert_eq!(
-            AnsiKey::Backspace,
+            Key::Backspace,
             parse_key(&mut "<backspace>".chars()).unwrap()
         );
-        assert_eq!(AnsiKey::Char(' '), parse_key(&mut "<space>".chars()).unwrap());
-        assert_eq!(AnsiKey::Enter, parse_key(&mut "<enter>".chars()).unwrap());
-        assert_eq!(AnsiKey::Left, parse_key(&mut "<left>".chars()).unwrap());
-        assert_eq!(AnsiKey::Right, parse_key(&mut "<right>".chars()).unwrap());
-        assert_eq!(AnsiKey::Up, parse_key(&mut "<up>".chars()).unwrap());
-        assert_eq!(AnsiKey::Down, parse_key(&mut "<down>".chars()).unwrap());
-        assert_eq!(AnsiKey::Home, parse_key(&mut "<home>".chars()).unwrap());
-        assert_eq!(AnsiKey::End, parse_key(&mut "<end>".chars()).unwrap());
-        assert_eq!(AnsiKey::PageUp, parse_key(&mut "<pageup>".chars()).unwrap());
-        assert_eq!(AnsiKey::PageDown, parse_key(&mut "<pagedown>".chars()).unwrap());
-        assert_eq!(AnsiKey::Tab, parse_key(&mut "<tab>".chars()).unwrap());
-        assert_eq!(AnsiKey::Delete, parse_key(&mut "<delete>".chars()).unwrap());
-        assert_eq!(AnsiKey::Esc, parse_key(&mut "<esc>".chars()).unwrap());
+        assert_eq!(Key::Char(' '), parse_key(&mut "<space>".chars()).unwrap());
+        assert_eq!(Key::Enter, parse_key(&mut "<enter>".chars()).unwrap());
+        assert_eq!(Key::Left, parse_key(&mut "<left>".chars()).unwrap());
+        assert_eq!(Key::Right, parse_key(&mut "<right>".chars()).unwrap());
+        assert_eq!(Key::Up, parse_key(&mut "<up>".chars()).unwrap());
+        assert_eq!(Key::Down, parse_key(&mut "<down>".chars()).unwrap());
+        assert_eq!(Key::Home, parse_key(&mut "<home>".chars()).unwrap());
+        assert_eq!(Key::End, parse_key(&mut "<end>".chars()).unwrap());
+        assert_eq!(Key::PageUp, parse_key(&mut "<pageup>".chars()).unwrap());
+        assert_eq!(Key::PageDown, parse_key(&mut "<pagedown>".chars()).unwrap());
+        assert_eq!(Key::Tab, parse_key(&mut "<tab>".chars()).unwrap());
+        assert_eq!(Key::Delete, parse_key(&mut "<delete>".chars()).unwrap());
+        assert_eq!(Key::Esc, parse_key(&mut "<esc>".chars()).unwrap());
 
         for n in 1..=99 {
             let s = format!("<f{}>", n);
-            assert_eq!(AnsiKey::F(n as _), parse_key(&mut s.chars()).unwrap());
+            assert_eq!(Key::F(n as _), parse_key(&mut s.chars()).unwrap());
         }
 
-        assert_eq!(AnsiKey::Ctrl('z'), parse_key(&mut "<c-z>".chars()).unwrap());
-        assert_eq!(AnsiKey::Ctrl('0'), parse_key(&mut "<c-0>".chars()).unwrap());
-        assert_eq!(AnsiKey::Ctrl('9'), parse_key(&mut "<c-9>".chars()).unwrap());
+        assert_eq!(Key::Ctrl('z'), parse_key(&mut "<c-z>".chars()).unwrap());
+        assert_eq!(Key::Ctrl('0'), parse_key(&mut "<c-0>".chars()).unwrap());
+        assert_eq!(Key::Ctrl('9'), parse_key(&mut "<c-9>".chars()).unwrap());
 
-        assert_eq!(AnsiKey::Alt('a'), parse_key(&mut "<a-a>".chars()).unwrap());
-        assert_eq!(AnsiKey::Alt('z'), parse_key(&mut "<a-z>".chars()).unwrap());
-        assert_eq!(AnsiKey::Alt('0'), parse_key(&mut "<a-0>".chars()).unwrap());
-        assert_eq!(AnsiKey::Alt('9'), parse_key(&mut "<a-9>".chars()).unwrap());
+        assert_eq!(Key::Alt('a'), parse_key(&mut "<a-a>".chars()).unwrap());
+        assert_eq!(Key::Alt('z'), parse_key(&mut "<a-z>".chars()).unwrap());
+        assert_eq!(Key::Alt('0'), parse_key(&mut "<a-0>".chars()).unwrap());
+        assert_eq!(Key::Alt('9'), parse_key(&mut "<a-9>".chars()).unwrap());
 
-        assert_eq!(AnsiKey::Char('a'), parse_key(&mut "a".chars()).unwrap());
-        assert_eq!(AnsiKey::Char('z'), parse_key(&mut "z".chars()).unwrap());
-        assert_eq!(AnsiKey::Char('0'), parse_key(&mut "0".chars()).unwrap());
-        assert_eq!(AnsiKey::Char('9'), parse_key(&mut "9".chars()).unwrap());
-        assert_eq!(AnsiKey::Char('_'), parse_key(&mut "_".chars()).unwrap());
-        assert_eq!(AnsiKey::Char('<'), parse_key(&mut "<less>".chars()).unwrap());
-        assert_eq!(AnsiKey::Char('>'), parse_key(&mut "<greater>".chars()).unwrap());
-        assert_eq!(AnsiKey::Char('\\'), parse_key(&mut "\\".chars()).unwrap());
+        assert_eq!(Key::Char('a'), parse_key(&mut "a".chars()).unwrap());
+        assert_eq!(Key::Char('z'), parse_key(&mut "z".chars()).unwrap());
+        assert_eq!(Key::Char('0'), parse_key(&mut "0".chars()).unwrap());
+        assert_eq!(Key::Char('9'), parse_key(&mut "9".chars()).unwrap());
+        assert_eq!(Key::Char('_'), parse_key(&mut "_".chars()).unwrap());
+        assert_eq!(Key::Char('<'), parse_key(&mut "<less>".chars()).unwrap());
+        assert_eq!(Key::Char('>'), parse_key(&mut "<greater>".chars()).unwrap());
+        assert_eq!(Key::Char('\\'), parse_key(&mut "\\".chars()).unwrap());
     }
 
     #[test]
     fn key_serialization() {
-        fn assert_key_serialization(key: AnsiKey) {
+        fn assert_key_serialization(key: Key) {
             let mut buf = Vec::new();
             let _ = serialize_key(key, &mut buf);
             let mut slice = buf.as_slice();
@@ -723,45 +723,45 @@ mod tests {
             }
         }
 
-        assert_key_serialization(AnsiKey::None);
-        assert_key_serialization(AnsiKey::Backspace);
-        assert_key_serialization(AnsiKey::Enter);
-        assert_key_serialization(AnsiKey::Left);
-        assert_key_serialization(AnsiKey::Right);
-        assert_key_serialization(AnsiKey::Up);
-        assert_key_serialization(AnsiKey::Down);
-        assert_key_serialization(AnsiKey::Home);
-        assert_key_serialization(AnsiKey::End);
-        assert_key_serialization(AnsiKey::PageUp);
-        assert_key_serialization(AnsiKey::PageDown);
-        assert_key_serialization(AnsiKey::Tab);
-        assert_key_serialization(AnsiKey::Delete);
-        assert_key_serialization(AnsiKey::F(0));
-        assert_key_serialization(AnsiKey::F(9));
-        assert_key_serialization(AnsiKey::F(12));
-        assert_key_serialization(AnsiKey::F(99));
-        assert_key_serialization(AnsiKey::Char('a'));
-        assert_key_serialization(AnsiKey::Char('z'));
-        assert_key_serialization(AnsiKey::Char('A'));
-        assert_key_serialization(AnsiKey::Char('Z'));
-        assert_key_serialization(AnsiKey::Char('0'));
-        assert_key_serialization(AnsiKey::Char('9'));
-        assert_key_serialization(AnsiKey::Char('$'));
-        assert_key_serialization(AnsiKey::Ctrl('a'));
-        assert_key_serialization(AnsiKey::Ctrl('z'));
-        assert_key_serialization(AnsiKey::Ctrl('A'));
-        assert_key_serialization(AnsiKey::Ctrl('Z'));
-        assert_key_serialization(AnsiKey::Ctrl('0'));
-        assert_key_serialization(AnsiKey::Ctrl('9'));
-        assert_key_serialization(AnsiKey::Ctrl('$'));
-        assert_key_serialization(AnsiKey::Alt('a'));
-        assert_key_serialization(AnsiKey::Alt('z'));
-        assert_key_serialization(AnsiKey::Alt('A'));
-        assert_key_serialization(AnsiKey::Alt('Z'));
-        assert_key_serialization(AnsiKey::Alt('0'));
-        assert_key_serialization(AnsiKey::Alt('9'));
-        assert_key_serialization(AnsiKey::Alt('$'));
-        assert_key_serialization(AnsiKey::Esc);
+        assert_key_serialization(Key::None);
+        assert_key_serialization(Key::Backspace);
+        assert_key_serialization(Key::Enter);
+        assert_key_serialization(Key::Left);
+        assert_key_serialization(Key::Right);
+        assert_key_serialization(Key::Up);
+        assert_key_serialization(Key::Down);
+        assert_key_serialization(Key::Home);
+        assert_key_serialization(Key::End);
+        assert_key_serialization(Key::PageUp);
+        assert_key_serialization(Key::PageDown);
+        assert_key_serialization(Key::Tab);
+        assert_key_serialization(Key::Delete);
+        assert_key_serialization(Key::F(0));
+        assert_key_serialization(Key::F(9));
+        assert_key_serialization(Key::F(12));
+        assert_key_serialization(Key::F(99));
+        assert_key_serialization(Key::Char('a'));
+        assert_key_serialization(Key::Char('z'));
+        assert_key_serialization(Key::Char('A'));
+        assert_key_serialization(Key::Char('Z'));
+        assert_key_serialization(Key::Char('0'));
+        assert_key_serialization(Key::Char('9'));
+        assert_key_serialization(Key::Char('$'));
+        assert_key_serialization(Key::Ctrl('a'));
+        assert_key_serialization(Key::Ctrl('z'));
+        assert_key_serialization(Key::Ctrl('A'));
+        assert_key_serialization(Key::Ctrl('Z'));
+        assert_key_serialization(Key::Ctrl('0'));
+        assert_key_serialization(Key::Ctrl('9'));
+        assert_key_serialization(Key::Ctrl('$'));
+        assert_key_serialization(Key::Alt('a'));
+        assert_key_serialization(Key::Alt('z'));
+        assert_key_serialization(Key::Alt('A'));
+        assert_key_serialization(Key::Alt('Z'));
+        assert_key_serialization(Key::Alt('0'));
+        assert_key_serialization(Key::Alt('9'));
+        assert_key_serialization(Key::Alt('$'));
+        assert_key_serialization(Key::Esc);
     }
 
     #[test]
@@ -771,8 +771,8 @@ mod tests {
 
         fn check_next_event(events: &mut ClientEventIter, receiver: &ClientEventReceiver) -> bool {
             match events.next(receiver) {
-                Some(ClientEvent::Key(_, AnsiKey::Char(CHAR))) => true,
-                Some(ClientEvent::Key(_, AnsiKey::Char(c))) => {
+                Some(ClientEvent::Key(_, Key::Char(CHAR))) => true,
+                Some(ClientEvent::Key(_, Key::Char(c))) => {
                     panic!("received char {} instead of {}", c, CHAR);
                 }
                 Some(event) => panic!(
@@ -784,7 +784,7 @@ mod tests {
         }
 
         let client_handle = ClientHandle(0);
-        let event = ClientEvent::Key(TargetClient::Sender, AnsiKey::Char(CHAR));
+        let event = ClientEvent::Key(TargetClient::Sender, Key::Char(CHAR));
         let mut bytes = Vec::new();
         for _ in 0..EVENT_COUNT {
             event.serialize(&mut bytes);

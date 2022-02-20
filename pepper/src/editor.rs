@@ -21,7 +21,7 @@ use crate::{
     mode::{Mode, ModeKind},
     pattern::Pattern,
     picker::Picker,
-    platform::{AnsiKey, Platform, PlatformRequest},
+    platform::{Key, Platform, PlatformRequest},
     plugin::{PluginCollection, PluginHandle},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -41,13 +41,13 @@ pub struct KeysIterator {
     pub index: usize,
 }
 impl KeysIterator {
-    pub fn next(&mut self, keys: &BufferedKeys) -> AnsiKey {
+    pub fn next(&mut self, keys: &BufferedKeys) -> Key {
         if self.index < keys.0.len() {
             let next = keys.0[self.index];
             self.index += 1;
             next
         } else {
-            AnsiKey::None
+            Key::None
         }
     }
 }
@@ -63,9 +63,9 @@ impl<'a> fmt::Display for BufferedKeysParseError<'a> {
 }
 
 #[derive(Default)]
-pub struct BufferedKeys(Vec<AnsiKey>);
+pub struct BufferedKeys(Vec<Key>);
 impl BufferedKeys {
-    pub fn as_slice(&self) -> &[AnsiKey] {
+    pub fn as_slice(&self) -> &[Key] {
         &self.0
     }
 
@@ -430,7 +430,7 @@ impl Editor {
                     ctx.editor.enter_mode(ModeKind::default());
                 }
 
-                if key != AnsiKey::None {
+                if key != Key::None {
                     ctx.editor.status_bar.clear();
                 }
                 ctx.editor.buffered_keys.0.push(key);

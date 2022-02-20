@@ -9,7 +9,7 @@ use crate::{
     editor::{Editor, EditorContext, EditorFlow},
     editor_utils::{load_config, MessageKind},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
-    platform::{drop_event, AnsiKey, Platform, PlatformEvent, PlatformRequest, ProcessTag},
+    platform::{drop_event, Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
     serialization::{DeserializeError, Serialize},
     ui, Args, ResourceFile,
@@ -277,7 +277,7 @@ where
 
         self.reinit_screen();
         if !args.quit && !args.as_focused_client {
-            ClientEvent::Key(self.target_client, AnsiKey::None).serialize(&mut self.server_write_buf);
+            ClientEvent::Key(self.target_client, Key::None).serialize(&mut self.server_write_buf);
         }
 
         let mut commands = String::new();
@@ -319,7 +319,7 @@ where
     pub fn update(
         &mut self,
         resize: Option<(u16, u16)>,
-        keys: &[AnsiKey],
+        keys: &[Key],
         stdin_bytes: Option<&[u8]>,
         server_bytes: &[u8],
     ) -> (bool, &'_ [u8]) {

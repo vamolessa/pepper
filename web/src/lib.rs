@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 use pepper::{
     application::{ApplicationConfig, ClientApplication, ServerApplication},
     client::ClientHandle,
-    platform::{AnsiKey, PlatformEvent, PlatformRequest, PooledBuf},
+    platform::{Key, PlatformEvent, PlatformRequest, PooledBuf},
     Args,
 };
 
@@ -58,7 +58,7 @@ pub fn pepper_init(app: *mut Application, terminal_width: u16, terminal_height: 
 
     let (_, bytes) = app.client.update(
         Some((terminal_width, terminal_height)),
-        &[AnsiKey::None],
+        &[Key::None],
         None,
         &[],
     );
@@ -83,7 +83,7 @@ pub fn pepper_on_event(
     }
 
     let key = parse_key(key_name, key_ctrl, key_alt);
-    if key != AnsiKey::None {
+    if key != Key::None {
         let (_, bytes) = app.client.update(None, &[key], None, &[]);
         let buf = app.server.ctx.platform.buf_pool.acquire();
         enqueue_client_bytes(&mut app.events, buf, bytes);
@@ -128,50 +128,50 @@ fn process_requests(app: &mut Application) {
     }
 }
 
-fn parse_key(name: &str, has_ctrl: bool, has_alt: bool) -> AnsiKey {
+fn parse_key(name: &str, has_ctrl: bool, has_alt: bool) -> Key {
     match name {
-        "" => AnsiKey::None,
-        "Backspace" => AnsiKey::Backspace,
-        "Enter" => AnsiKey::Enter,
-        "ArrowLeft" => AnsiKey::Left,
-        "ArrowRight" => AnsiKey::Right,
-        "ArrowUp" => AnsiKey::Up,
-        "ArrowDown" => AnsiKey::Down,
-        "Home" => AnsiKey::Home,
-        "End" => AnsiKey::End,
-        "PageUp" => AnsiKey::PageUp,
-        "PageDown" => AnsiKey::PageDown,
-        "Tab" => AnsiKey::Tab,
-        "Delete" => AnsiKey::Delete,
-        "F1" => AnsiKey::F(1),
-        "F2" => AnsiKey::F(2),
-        "F3" => AnsiKey::F(3),
-        "F4" => AnsiKey::F(4),
-        "F5" => AnsiKey::F(5),
-        "F6" => AnsiKey::F(6),
-        "F7" => AnsiKey::F(7),
-        "F8" => AnsiKey::F(8),
-        "F9" => AnsiKey::F(9),
-        "F10" => AnsiKey::F(10),
-        "F11" => AnsiKey::F(11),
-        "F12" => AnsiKey::F(12),
-        "Escape" => AnsiKey::Esc,
+        "" => Key::None,
+        "Backspace" => Key::Backspace,
+        "Enter" => Key::Enter,
+        "ArrowLeft" => Key::Left,
+        "ArrowRight" => Key::Right,
+        "ArrowUp" => Key::Up,
+        "ArrowDown" => Key::Down,
+        "Home" => Key::Home,
+        "End" => Key::End,
+        "PageUp" => Key::PageUp,
+        "PageDown" => Key::PageDown,
+        "Tab" => Key::Tab,
+        "Delete" => Key::Delete,
+        "F1" => Key::F(1),
+        "F2" => Key::F(2),
+        "F3" => Key::F(3),
+        "F4" => Key::F(4),
+        "F5" => Key::F(5),
+        "F6" => Key::F(6),
+        "F7" => Key::F(7),
+        "F8" => Key::F(8),
+        "F9" => Key::F(9),
+        "F10" => Key::F(10),
+        "F11" => Key::F(11),
+        "F12" => Key::F(12),
+        "Escape" => Key::Esc,
         _ => {
             let mut chars = name.chars();
             match chars.next() {
                 Some(c) => match chars.next() {
-                    Some(_) => AnsiKey::None,
+                    Some(_) => Key::None,
                     None => {
                         if has_ctrl {
-                            AnsiKey::Ctrl(c)
+                            Key::Ctrl(c)
                         } else if has_alt {
-                            AnsiKey::Alt(c)
+                            Key::Alt(c)
                         } else {
-                            AnsiKey::Char(c)
+                            Key::Char(c)
                         }
                     }
                 },
-                None => AnsiKey::None,
+                None => Key::None,
             }
         }
     }

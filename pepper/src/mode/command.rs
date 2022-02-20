@@ -7,7 +7,7 @@ use crate::{
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{ModeKind, ModeState},
     picker::Picker,
-    platform::AnsiKey,
+    platform::Key,
     word_database::WordIndicesIter,
 };
 
@@ -67,7 +67,7 @@ impl ModeState for State {
             ReadLinePoll::Pending => {
                 keys.index = keys.index.saturating_sub(1);
                 match keys.next(&ctx.editor.buffered_keys) {
-                    AnsiKey::Ctrl('n' | 'j') | AnsiKey::Down => match state.read_state {
+                    Key::Ctrl('n' | 'j') | Key::Down => match state.read_state {
                         ReadCommandState::NavigatingHistory(ref mut i) => {
                             *i = ctx
                                 .editor
@@ -82,7 +82,7 @@ impl ModeState for State {
                         }
                         ReadCommandState::TypingCommand => apply_completion(ctx, 1),
                     },
-                    AnsiKey::Ctrl('p' | 'k') | AnsiKey::Up => match state.read_state {
+                    Key::Ctrl('p' | 'k') | Key::Up => match state.read_state {
                         ReadCommandState::NavigatingHistory(ref mut i) => {
                             *i = i.saturating_sub(1);
                             let entry = ctx.editor.commands.history_entry(*i);
