@@ -189,14 +189,14 @@ impl<'a> Iterator for KeyParser<'a> {
 }
 
 fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
-    fn next(chars: &mut impl Iterator<Item = char>) -> Result<char, KeyParseError> {
+    fn next(chars: &mut Chars) -> Result<char, KeyParseError> {
         match chars.next() {
             Some(c) => Ok(c),
             None => Err(KeyParseError::UnexpectedEnd),
         }
     }
 
-    fn consume(chars: &mut impl Iterator<Item = char>, c: char) -> Result<(), KeyParseError> {
+    fn consume(chars: &mut Chars, c: char) -> Result<(), KeyParseError> {
         let next = next(chars)?;
         if c == next {
             Ok(())
@@ -205,144 +205,154 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
         }
     }
 
-    fn consume_str(chars: &mut impl Iterator<Item = char>, s: &str) -> Result<(), KeyParseError> {
+    fn consume_str(chars: &mut Chars, s: &str) -> Result<(), KeyParseError> {
         for c in s.chars() {
             consume(chars, c)?
         }
         Ok(())
     }
 
+    fn check_modifier(chars: &mut Chars, c: char) -> bool {
+        let saved = chars.clone();
+        if chars.next() == Some(c) {
+            if chars.next() == Some('-') {
+                return true;
+            }
+        }
+
+        *chars = saved;
+        false
+    }
+
     match next(chars)? {
-        '<' => match next(chars)? {
-            'b' => {
-                consume_str(chars, "ackspace>")?;
-                Ok(Key::Backspace)
-            }
-            's' => {
-                consume_str(chars, "pace>")?;
-                Ok(Key::Char(' '))
-            }
-            'e' => match next(chars)? {
-                'n' => match next(chars)? {
-                    't' => {
-                        consume_str(chars, "er>")?;
-                        Ok(Key::Enter)
-                    }
-                    'd' => {
-                        consume(chars, '>')?;
-                        Ok(Key::End)
-                    }
-                    c => Err(KeyParseError::InvalidCharacter(c)),
-                },
+        '<' => {
+            let shift = check_modifier(chars, 's');
+            let control = check_modifier(chars, 'c');
+            let alt = check_modifier(chars, 'a');
+
+            let code = match next(chars)? {
+                'b' => {
+                    consume_str(chars, "ackspace>")?;
+                    KeyCode::Backspace
+                }
                 's' => {
-                    consume_str(chars, "c>")?;
-                    Ok(Key::Esc)
+                    consume_str(chars, "pace>")?;
+                    KeyCode::Char(' ')
                 }
-                c => Err(KeyParseError::InvalidCharacter(c)),
-            },
-            'l' => {
-                consume(chars, 'e')?;
-                match next(chars)? {
-                    's' => {
-                        consume_str(chars, "s>")?;
-                        Ok(Key::Char('<'))
-                    }
-                    'f' => {
-                        consume_str(chars, "t>")?;
-                        Ok(Key::Left)
-                    }
-                    c => Err(KeyParseError::InvalidCharacter(c)),
-                }
-            }
-            'g' => {
-                consume_str(chars, "reater>")?;
-                Ok(Key::Char('>'))
-            }
-            'r' => {
-                consume_str(chars, "ight>")?;
-                Ok(Key::Right)
-            }
-            'u' => {
-                consume_str(chars, "p>")?;
-                Ok(Key::Up)
-            }
-            'd' => match next(chars)? {
-                'o' => {
-                    consume_str(chars, "wn>")?;
-                    Ok(Key::Down)
-                }
-                'e' => {
-                    consume_str(chars, "lete>")?;
-                    Ok(Key::Delete)
-                }
-                c => Err(KeyParseError::InvalidCharacter(c)),
-            },
-            'h' => {
-                consume_str(chars, "ome>")?;
-                Ok(Key::Home)
-            }
-            'p' => {
-                consume_str(chars, "age")?;
-                match next(chars)? {
-                    'u' => {
-                        consume_str(chars, "p>")?;
-                        Ok(Key::PageUp)
-                    }
-                    'd' => {
-                        consume_str(chars, "own>")?;
-                        Ok(Key::PageDown)
-                    }
-                    c => Err(KeyParseError::InvalidCharacter(c)),
-                }
-            }
-            't' => {
-                consume_str(chars, "ab>")?;
-                Ok(Key::Tab)
-            }
-            'f' => {
-                let c = next(chars)?;
-                match c.to_digit(10) {
-                    Some(d0) => {
-                        let c = next(chars)?;
-                        match c.to_digit(10) {
-                            Some(d1) => {
-                                consume(chars, '>')?;
-                                let n = d0 * 10 + d1;
-                                Ok(Key::F(n as _))
-                            }
-                            None => match c {
-                                '>' => Ok(Key::F(d0 as _)),
-                                _ => Err(KeyParseError::InvalidCharacter(c)),
-                            },
+                'e' => match next(chars)? {
+                    'n' => match next(chars)? {
+                        't' => {
+                            consume_str(chars, "er>")?;
+                            KeyCode::Char('\n')
                         }
+                        'd' => {
+                            consume(chars, '>')?;
+                            KeyCode::End
+                        }
+                        c => return Err(KeyParseError::InvalidCharacter(c)),
+                    },
+                    's' => {
+                        consume_str(chars, "c>")?;
+                        KeyCode::Esc
                     }
-                    None => Err(KeyParseError::InvalidCharacter(c)),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'l' => {
+                    consume(chars, 'e')?;
+                    match next(chars)? {
+                        's' => {
+                            consume_str(chars, "s>")?;
+                            KeyCode::Char('<')
+                        }
+                        'f' => {
+                            consume_str(chars, "t>")?;
+                            KeyCode::Left
+                        }
+                        c => return Err(KeyParseError::InvalidCharacter(c)),
+                    }
                 }
-            }
-            'c' => {
-                consume(chars, '-')?;
-                let c = next(chars)?;
-                if c.is_ascii_alphanumeric() {
-                    consume(chars, '>')?;
-                    Ok(Key::Ctrl(c))
-                } else {
-                    Err(KeyParseError::InvalidCharacter(c))
+                'g' => {
+                    consume_str(chars, "reater>")?;
+                    KeyCode::Char('>')
                 }
-            }
-            'a' => {
-                consume(chars, '-')?;
-                let c = next(chars)?;
-                if c.is_ascii_alphanumeric() {
-                    consume(chars, '>')?;
-                    Ok(Key::Alt(c))
-                } else {
-                    Err(KeyParseError::InvalidCharacter(c))
+                'r' => {
+                    consume_str(chars, "ight>")?;
+                    KeyCode::Right
                 }
-            }
-            c => Err(KeyParseError::InvalidCharacter(c)),
-        },
+                'u' => {
+                    consume_str(chars, "p>")?;
+                    KeyCode::Up
+                }
+                'd' => match next(chars)? {
+                    'o' => {
+                        consume_str(chars, "wn>")?;
+                        KeyCode::Down
+                    }
+                    'e' => {
+                        consume_str(chars, "lete>")?;
+                        KeyCode::Delete
+                    }
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'h' => {
+                    consume_str(chars, "ome>")?;
+                    KeyCode::Home
+                }
+                'p' => {
+                    consume_str(chars, "age")?;
+                    match next(chars)? {
+                        'u' => {
+                            consume_str(chars, "p>")?;
+                            KeyCode::PageUp
+                        }
+                        'd' => {
+                            consume_str(chars, "own>")?;
+                            KeyCode::PageDown
+                        }
+                        c => return Err(KeyParseError::InvalidCharacter(c)),
+                    }
+                }
+                't' => {
+                    consume_str(chars, "ab>")?;
+                    KeyCode::Char('\t')
+                }
+                'f' => {
+                    let c = next(chars)?;
+                    match c.to_digit(10) {
+                        Some(d0) => {
+                            let c = next(chars)?;
+                            match c.to_digit(10) {
+                                Some(d1) => {
+                                    consume(chars, '>')?;
+                                    let n = d0 * 10 + d1;
+                                    KeyCode::F(n as _)
+                                }
+                                None => match c {
+                                    '>' => KeyCode::F(d0 as _),
+                                    _ => return Err(KeyParseError::InvalidCharacter(c)),
+                                },
+                            }
+                        }
+                        None => return Err(KeyParseError::InvalidCharacter(c)),
+                    }
+                }
+                c => return Err(KeyParseError::InvalidCharacter(c)),
+            };
+
+            Ok(Key {
+                code,
+                shift,
+                control,
+                alt,
+            })
+        }
         '>' => Err(KeyParseError::InvalidCharacter('>')),
-        c => Ok(Key::Char(c)),
+        c => Ok(Key {
+            code: KeyCode::Char(c),
+            shift: c.is_ascii_uppercase(),
+            control: false,
+            alt: false,
+        }),
     }
 }
 
@@ -379,7 +389,8 @@ impl fmt::Display for Key {
             KeyCode::Char(c) => write!(f, "{}", c)?,
             KeyCode::Esc => f.write_str("esc>")?,
         }
-        f.write_str(">")?,
+        f.write_str(">")?;
+        Ok(())
     }
 }
 
@@ -388,9 +399,9 @@ where
     S: Serializer,
 {
     let mut flags = 0u8;
-    flags |= key.shift as u8 << 0;
-    flags |= key.control as u8 << 1;
-    flags |= key.alt as u8 << 2;
+    flags |= (key.shift as u8) << 0;
+    flags |= (key.control as u8) << 1;
+    flags |= (key.alt as u8) << 2;
     flags.serialize(serializer);
 
     match key.code {
@@ -451,13 +462,12 @@ where
         _ => return Err(DeserializeError::InvalidData),
     };
 
-    let key = Key {
+    Ok(Key {
         code,
         shift,
         control,
         alt,
-    };
-    Ok(Key)
+    })
 }
 
 pub enum ServerEvent<'a> {
