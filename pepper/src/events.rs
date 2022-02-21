@@ -816,29 +816,15 @@ mod tests {
 
     #[test]
     fn client_event_deserialize_splitted() {
-        const CHAR: char = 'x';
+        const KEY: Key = Key { code: KeyCode::Char('x'), shift: false, control: false, alt: false };
         const EVENT_COUNT: usize = 100;
 
         fn check_next_event(events: &mut ClientEventIter, receiver: &ClientEventReceiver) -> bool {
             match events.next(receiver) {
                 Some(ClientEvent::Key(
                     _,
-                    Key {
-                        code: KeyCode::Char(CHAR),
-                        control: false,
-                        alt: false,
-                        ..
-                    },
+                    KEY,
                 )) => true,
-                Some(ClientEvent::Key(
-                    _,
-                    Key {
-                        code: KeyCode::Char(c),
-                        ..
-                    },
-                )) => {
-                    panic!("received char {} instead of {}", c, CHAR);
-                }
                 Some(event) => panic!(
                     "received other kind of event. discriminant: {:?}",
                     std::mem::discriminant(&event),
@@ -850,12 +836,7 @@ mod tests {
         let client_handle = ClientHandle(0);
         let event = ClientEvent::Key(
             TargetClient::Sender,
-            Key {
-                code: KeyCode::Char(CHAR),
-                shift: false,
-                control: false,
-                alt: false,
-            },
+            KEY,
         );
         let mut bytes = Vec::new();
         for _ in 0..EVENT_COUNT {
@@ -887,8 +868,11 @@ mod tests {
         let mut event_count = 0;
         let mut receiver = ClientEventReceiver::default();
 
+        const FIRST_SLICE_LEN: usize = 503;
+        const FIRST_READ_LEN: usize = 496;
+
         {
-            let mut events = receiver.receive_events(client_handle, &bytes[..512]);
+            let events = receiver.receive_events(client_handle, &bytes[..FIRST_READ_LEN]);
             let mut events = Events {
                 receiver: &mut receiver,
                 events: Some(events),
@@ -897,11 +881,11 @@ mod tests {
             while events.check_next_event() {
                 event_count += 1;
             }
-            assert_eq!(511, events.read_len());
+            assert_eq!(FIRST_READ_LEN, events.read_len());
         }
 
         {
-            let mut events = receiver.receive_events(client_handle, &bytes[..512]);
+            let events = receiver.receive_events(client_handle, &bytes[FIRST_READ_LEN..]);
             let mut events = Events {
                 receiver: &mut receiver,
                 events: Some(events),
