@@ -863,21 +863,54 @@ mod tests {
         }
         assert_eq!(800, bytes.len());
 
+        struct Events<'a> {
+            pub receiver: &'a mut ClientEventReceiver,
+            pub events: Option<ClientEventIter>,
+        }
+        impl<'a> Events<'a> {
+            pub fn check_next_event(&mut self) -> bool {
+                check_next_event(self.events.as_mut().unwrap(), &self.receiver)
+            }
+
+            pub fn read_len(&self) -> usize {
+                self.events.as_ref().unwrap().read_len
+            }
+        }
+        impl<'a> Drop for Events<'a> {
+            fn drop(&mut self) {
+                if let Some(events) = self.events.take() {
+                    events.finish(self.receiver);
+                }
+            }
+        }
+
         let mut event_count = 0;
         let mut receiver = ClientEventReceiver::default();
 
-        let mut events = receiver.receive_events(client_handle, &bytes[..512]);
-        while check_next_event(&mut events, &receiver) {
-            event_count += 1;
-        }
-        assert_eq!(511, events.read_len);
-        events.finish(&mut receiver);
+        {
+            let mut events = receiver.receive_events(client_handle, &bytes[..512]);
+            let mut events = Events {
+                receiver: &mut receiver,
+                events: Some(events),
+            };
 
-        let mut events = receiver.receive_events(client_handle, &bytes[512..]);
-        while check_next_event(&mut events, &receiver) {
-            event_count += 1;
+            while events.check_next_event() {
+                event_count += 1;
+            }
+            assert_eq!(511, events.read_len());
         }
-        events.finish(&mut receiver);
+
+        {
+            let mut events = receiver.receive_events(client_handle, &bytes[..512]);
+            let mut events = Events {
+                receiver: &mut receiver,
+                events: Some(events),
+            };
+
+            while events.check_next_event() {
+                event_count += 1;
+            }
+        }
 
         assert_eq!(0, receiver.bufs[client_handle.0 as usize].len());
         assert_eq!(EVENT_COUNT, event_count);
