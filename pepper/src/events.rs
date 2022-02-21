@@ -853,7 +853,7 @@ mod tests {
         for _ in 0..EVENT_COUNT {
             event.serialize(&mut bytes);
         }
-        assert_eq!(700, bytes.len());
+        assert_eq!(800, bytes.len());
 
         let mut event_count = 0;
         let mut receiver = ClientEventReceiver::default();
