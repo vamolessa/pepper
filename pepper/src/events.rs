@@ -226,7 +226,7 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
 
     match next(chars)? {
         '<' => {
-            let shift = check_modifier(chars, 's');
+            let mut shift = check_modifier(chars, 's');
             let control = check_modifier(chars, 'c');
             let alt = check_modifier(chars, 'a');
 
@@ -336,7 +336,15 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
                         None => return Err(KeyParseError::InvalidCharacter(c)),
                     }
                 }
-                c => return Err(KeyParseError::InvalidCharacter(c)),
+                mut c => {
+                    if shift {
+                        c = c.to_ascii_uppercase();
+                    } else {
+                        shift = c.is_ascii_uppercase();
+                    }
+
+                    KeyCode::Char(c)
+                }
             };
 
             Ok(Key {

@@ -1,2 +1,6 @@
 config indent_with_tabs false
 lsp-start "rust-analyzer"
+
+map-normal <space>b ": build<enter>"
+map-normal <space>t ": test<enter>"
+
