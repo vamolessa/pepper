@@ -1140,7 +1140,10 @@ mod tests {
         assert_uri("file.rs", "file:///home/file.rs");
         assert_uri("dir/file.rs", "file:///home/dir/file.rs");
         assert_uri("/etc/file.rs", "file:///etc/file.rs");
-        assert_uri("C:/file.rs", "file:///C:/file.rs");
-        assert_uri("c:/file.rs", "file:///c:/file.rs");
+
+        if cfg!(windows) {
+            assert_uri("C:/file.rs", "file:///C:/file.rs");
+            assert_uri("c:/file.rs", "file:///c:/file.rs");
+        }
     }
 }
