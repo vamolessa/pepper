@@ -27,7 +27,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos, windows]
-        rust: [stable]
+        rust: [1.58]
 
     steps:
     - uses: hecrj/setup-rust-action@v1
@@ -62,7 +62,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos, windows]
-        rust: [stable]
+        rust: [1.58]
 
     steps:
     - uses: hecrj/setup-rust-action@v1
