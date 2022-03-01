@@ -277,7 +277,8 @@ where
 
         self.reinit_screen();
         if !args.quit && !args.as_focused_client {
-            ClientEvent::Key(self.target_client, Key::default()).serialize(&mut self.server_write_buf);
+            ClientEvent::Key(self.target_client, Key::default())
+                .serialize(&mut self.server_write_buf);
         }
 
         let mut commands = String::new();

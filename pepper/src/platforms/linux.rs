@@ -15,8 +15,7 @@ use crate::{
     },
     client::ClientHandle,
     platform::{
-        drop_request, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest,
-        PooledBuf,
+        drop_request, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest, PooledBuf,
     },
     Args,
 };
@@ -520,4 +519,3 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
-

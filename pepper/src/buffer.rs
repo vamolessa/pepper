@@ -3,7 +3,7 @@ use std::{
     fs::File,
     io,
     ops::{Add, RangeBounds, Sub},
-    path::{Path, PathBuf, Component},
+    path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     str::CharIndices,
 };

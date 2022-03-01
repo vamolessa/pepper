@@ -424,4 +424,3 @@ fn apply_completion(
     );
     ctx.editor.string_pool.release(completion);
 }
-

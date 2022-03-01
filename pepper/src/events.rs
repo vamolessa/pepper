@@ -352,25 +352,23 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
                     c => return Err(KeyParseError::InvalidCharacter(c)),
                 },
                 'f' => match next(chars)? {
-                    c @ '0'..='9' => {
-                        match c.to_digit(10) {
-                            Some(d0) => {
-                                let c = next(chars)?;
-                                match c.to_digit(10) {
-                                    Some(d1) => {
-                                        consume(chars, '>')?;
-                                        let n = d0 * 10 + d1;
-                                        KeyCode::F(n as _)
-                                    }
-                                    None => match c {
-                                        '>' => KeyCode::F(d0 as _),
-                                        _ => return Err(KeyParseError::InvalidCharacter(c)),
-                                    },
+                    c @ '0'..='9' => match c.to_digit(10) {
+                        Some(d0) => {
+                            let c = next(chars)?;
+                            match c.to_digit(10) {
+                                Some(d1) => {
+                                    consume(chars, '>')?;
+                                    let n = d0 * 10 + d1;
+                                    KeyCode::F(n as _)
                                 }
+                                None => match c {
+                                    '>' => KeyCode::F(d0 as _),
+                                    _ => return Err(KeyParseError::InvalidCharacter(c)),
+                                },
                             }
-                            None => return Err(KeyParseError::InvalidCharacter(c)),
                         }
-                    }
+                        None => return Err(KeyParseError::InvalidCharacter(c)),
+                    },
                     '>' => KeyCode::Char('f'),
                     c => return Err(KeyParseError::InvalidCharacter(c)),
                 },
@@ -963,4 +961,3 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
-
