@@ -26,6 +26,12 @@ pub enum Uri<'a> {
 impl<'a> Uri<'a> {
     pub fn parse(root: &'a Path, uri: &'a str) -> Result<Self, UriParseError> {
         let uri = uri.strip_prefix("file://").ok_or(UriParseError)?;
+        let uri_without_root = uri.strip_prefix("/").ok_or(UriParseError)?;
+        let uri = match Path::new(uri_without_root).components().next() {
+            Some(Component::Prefix(_)) => uri_without_root,
+            _ => uri,
+        };
+
         let path = Path::new(uri);
         let path = path.strip_prefix(root).unwrap_or(path);
         Ok(Self::Path(path))
@@ -1134,5 +1140,7 @@ mod tests {
         assert_uri("file.rs", "file:///home/file.rs");
         assert_uri("dir/file.rs", "file:///home/dir/file.rs");
         assert_uri("/etc/file.rs", "file:///etc/file.rs");
+        assert_uri("C:/file.rs", "file:///C:/file.rs");
+        assert_uri("c:/file.rs", "file:///c:/file.rs");
     }
 }
