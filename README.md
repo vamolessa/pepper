@@ -38,7 +38,7 @@ you can run `cargo install pepper-plugin-lsp` which will install the pepper edit
 
 ## from source
 ```
-cargo install --git https://github.com/vamolessa/pepper
+cargo install --git https://github.com/vamolessa/pepper pepper
 ```
 
 **NOTE(1)**: installing from source still requires `cargo` (at least it's easier this way).

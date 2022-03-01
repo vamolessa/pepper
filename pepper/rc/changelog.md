@@ -1,5 +1,12 @@
 # changelog
 
+## 0.23.3
+- fix failing lsp protocol test that should only run on windows
+- force redeploy on github actions
+
+## 0.23.2
+- fix URI parsing on windows
+
 ## 0.23.1
 - fix crash after pc wakeup on linux (possibly on bsd and mac as well)
 - fix server occasionally dropping writes to client on linux
