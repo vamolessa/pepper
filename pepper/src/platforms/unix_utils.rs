@@ -170,9 +170,9 @@ impl Terminal {
         loop {
             let mut shift = false;
             let mut control = false;
-            let mut alt = false;
+            let alt = false;
 
-            let (code, rest) = match buf {
+            let (mut code, rest) = match buf {
                 &[] => break,
                 &[b, ref rest @ ..] if b == backspace_code => (KeyCode::Backspace, rest),
                 &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (KeyCode::PageUp, rest),
