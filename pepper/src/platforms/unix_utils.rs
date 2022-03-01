@@ -168,64 +168,70 @@ impl Terminal {
     pub fn parse_keys(&self, mut buf: &[u8], keys: &mut Vec<Key>) {
         let backspace_code = self.original_state.c_cc[libc::VERASE];
         loop {
-            /*
-            let (key, rest) = match buf {
+            let mut shift = false;
+            let mut control = false;
+            let mut alt = false;
+
+            let (code, rest) = match buf {
                 &[] => break,
-                &[b, ref rest @ ..] if b == backspace_code => (Key::Backspace, rest),
-                &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
-                &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
-                &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
-                &[0x1b, b'[', b'B', ref rest @ ..] => (Key::Down, rest),
-                &[0x1b, b'[', b'C', ref rest @ ..] => (Key::Right, rest),
-                &[0x1b, b'[', b'D', ref rest @ ..] => (Key::Left, rest),
-                &[0x1b, b'[', b'1', b'3', b'u', ref rest @ ..] => (Key::Enter, rest),
-                &[0x1b, b'[', b'2', b'7', b'u', ref rest @ ..] => (Key::Esc, rest),
+                &[b, ref rest @ ..] if b == backspace_code => (KeyCode::Backspace, rest),
+                &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (KeyCode::PageUp, rest),
+                &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (KeyCode::PageDown, rest),
+                &[0x1b, b'[', b'A', ref rest @ ..] => (KeyCode::Up, rest),
+                &[0x1b, b'[', b'B', ref rest @ ..] => (KeyCode::Down, rest),
+                &[0x1b, b'[', b'C', ref rest @ ..] => (KeyCode::Right, rest),
+                &[0x1b, b'[', b'D', ref rest @ ..] => (KeyCode::Left, rest),
+                &[0x1b, b'[', b'1', b'3', b'u', ref rest @ ..] => (KeyCode::Char('\n'), rest),
+                &[0x1b, b'[', b'2', b'7', b'u', ref rest @ ..] => (KeyCode::Esc, rest),
                 &[0x1b, b'[', b'1', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'7', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'H', ref rest @ ..]
-                | &[0x1b, b'O', b'H', ref rest @ ..] => (Key::Home, rest),
+                | &[0x1b, b'O', b'H', ref rest @ ..] => (KeyCode::Home, rest),
                 &[0x1b, b'[', b'4', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'8', b'~', ref rest @ ..]
                 | &[0x1b, b'[', b'F', ref rest @ ..]
-                | &[0x1b, b'O', b'F', ref rest @ ..] => (Key::End, rest),
-                &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (Key::Delete, rest),
-                &[0x1b, b'[', b'9', b'u', ref rest @ ..] => (Key::Tab, rest),
-                &[0x1b, b'[', ref _rest @ .. ] => {
-                    // TODO: finish implementing this
-                    todo!();
-                }
-                &[0x1b, ref rest @ ..] => (Key::Esc, rest),
-                &[0x8, ref rest @ ..] => (Key::Backspace, rest),
-                &[b'\r', ref rest @ ..] => (Key::Enter, rest),
-                &[b'\t', ref rest @ ..] => (Key::Tab, rest),
-                &[0x7f, ref rest @ ..] => (Key::Delete, rest),
+                | &[0x1b, b'O', b'F', ref rest @ ..] => (KeyCode::End, rest),
+                &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (KeyCode::Delete, rest),
+                &[0x1b, b'[', b'9', b'u', ref rest @ ..] => (KeyCode::Char('\t'), rest),
+                &[0x1b, ref rest @ ..] => (KeyCode::Esc, rest),
+                &[0x8, ref rest @ ..] => (KeyCode::Backspace, rest),
+                &[b'\r', ref rest @ ..] => (KeyCode::Char('\n'), rest),
+                &[b'\t', ref rest @ ..] => (KeyCode::Char('\t'), rest),
+                &[0x7f, ref rest @ ..] => (KeyCode::Delete, rest),
                 &[b @ 0b0..=0b11111, ref rest @ ..] => {
+                    control = true;
                     let byte = b | 0b01100000;
-                    (Key::Ctrl(byte as _), rest)
+                    (KeyCode::Char(byte as _), rest)
                 }
                 _ => match buf.iter().position(|b| b.is_ascii()).unwrap_or(buf.len()) {
-                    0 => (Key::Char(buf[0] as _), &buf[1..]),
+                    0 => (KeyCode::Char(buf[0] as _), &buf[1..]),
                     len => {
                         let (c, rest) = buf.split_at(len);
                         match std::str::from_utf8(c) {
                             Ok(s) => match s.chars().next() {
-                                Some(c) => (Key::Char(c), rest),
-                                None => (Key::None, rest),
+                                Some(c) => (KeyCode::Char(c), rest),
+                                None => (KeyCode::None, rest),
                             },
-                            Err(_) => (Key::None, rest),
+                            Err(_) => (KeyCode::None, rest),
                         }
                     }
                 },
             };
-            */
-            // TODO: implement
+
+            if let KeyCode::Char(c) = &mut code {
+                if shift {
+                    *c = c.to_ascii_uppercase();
+                } else {
+                    shift = c.is_ascii_uppercase();
+                }
+            }
+
             let key = Key {
-                code: KeyCode::None,
-                shift: false,
-                control: false,
-                alt: false,
+                code,
+                shift,
+                control,
+                alt,
             };
-            let rest = &[];
 
             buf = rest;
             keys.push(key);
