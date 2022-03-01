@@ -1,5 +1,9 @@
 # changelog
 
+## 0.23.3
+- fix failing lsp protocol test that should only run on windows
+- force redeploy on github actions
+
 ## 0.23.2
 - fix URI parsing on windows
 
