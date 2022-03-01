@@ -327,8 +327,7 @@ impl Editor {
         } else {
             let path = path.strip_prefix(&self.current_directory).unwrap_or(path);
             let buffer = self.buffers.add_new();
-            buffer.path.clear();
-            buffer.path.push(path);
+            buffer.set_path(path);
             buffer.properties = properties;
 
             match buffer.read_from_file(&mut self.word_database, &mut self.events) {

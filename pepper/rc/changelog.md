@@ -1,5 +1,8 @@
 # changelog
 
+## 0.24.0
+- handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)
+
 ## 0.23.3
 - fix failing lsp protocol test that should only run on windows
 - force redeploy on github actions

@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, path::Path};
 
 use crate::{
     buffer::{BufferHandle, BufferProperties, CharDisplayDistances},
@@ -160,8 +160,7 @@ impl Client {
 
                 let mut path = editor.string_pool.acquire_with("pipe.");
                 let _ = write!(path, "{}", self.handle().0);
-                buffer.path.clear();
-                buffer.path.push(&path);
+                buffer.set_path(Path::new(&path));
                 editor.string_pool.release(path);
 
                 buffer.properties = BufferProperties::text();
@@ -298,3 +297,4 @@ impl ClientManager {
         }
     }
 }
+

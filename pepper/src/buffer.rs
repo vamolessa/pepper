@@ -3,7 +3,7 @@ use std::{
     fs::File,
     io,
     ops::{Add, RangeBounds, Sub},
-    path::{Path, PathBuf},
+    path::{Path, PathBuf, Component},
     process::{Command, Stdio},
     str::CharIndices,
 };
@@ -1022,6 +1022,16 @@ impl Buffer {
         self.handle
     }
 
+    pub fn set_path(&mut self, path: &Path) {
+        self.path.clear();
+        let mut components = path.components();
+        match components.next() {
+            Some(Component::CurDir) => self.path.push(components.as_path()),
+            Some(_) => self.path.push(path),
+            None => (),
+        }
+    }
+
     pub fn highlighted(&self) -> &HighlightedBuffer {
         &self.highlighted
     }
@@ -1377,8 +1387,7 @@ impl Buffer {
             Some(path) => {
                 self.properties.saving_enabled = true;
                 self.properties.is_file = true;
-                self.path.clear();
-                self.path.push(path);
+                self.set_path(path);
                 true
             }
             None => false,
@@ -1453,9 +1462,11 @@ impl BufferCollection {
     }
 
     pub fn find_with_path(&self, buffers_root: &Path, path: &Path) -> Option<BufferHandle> {
-        if path.as_os_str().is_empty() {
-            return None;
-        }
+        let mut components = path.components();
+        let path = match components.next()? {
+            Component::CurDir => components.as_path(),
+            _ => path,
+        };
 
         for buffer in self.iter() {
             let buffer_path = buffer.path.as_path();

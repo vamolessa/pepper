@@ -627,8 +627,7 @@ impl WorkspaceEdit {
                             let buffer = editor.buffers.add_new();
                             buffer.properties = BufferProperties::scratch();
                             buffer.properties.saving_enabled = true;
-                            buffer.path.clear();
-                            buffer.path.push(path);
+                            buffer.set_path(path);
                             let _ = buffer
                                 .read_from_file(&mut editor.word_database, &mut editor.events);
                             (true, buffer.handle())
