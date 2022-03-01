@@ -48,7 +48,7 @@ use winapi::{
         },
         wincontypes::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
-            RIGHT_CTRL_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
+            RIGHT_CTRL_PRESSED, SHIFT_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
         },
         winnls::CP_UTF8,
         winnt::{
@@ -71,7 +71,7 @@ use crate::{
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
-        drop_request, BufPool, Key, PlatformEvent, PlatformProcessHandle, PlatformRequest,
+        drop_request, BufPool, Key, KeyCode, PlatformEvent, PlatformProcessHandle, PlatformRequest,
         PooledBuf, ProcessTag,
     },
     Args,
@@ -1481,7 +1481,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
 
     if let Some(handle) = &console_output_handle {
         let size = get_console_size(handle);
-        let (_, bytes) = application.update(Some(size), &[Key::None], None, &[]);
+        let (_, bytes) = application.update(Some(size), &[Key::default()], None, &[]);
         if !connection.write(bytes) {
             return;
         }
@@ -1548,7 +1548,12 @@ fn run_client(args: Args, pipe_path: &[u16]) {
                     parse_console_events(console_events, &mut keys, &mut resize);
                 }
             }
-            1 => keys.push(Key::Ctrl('c')),
+            1 => keys.push(Key {
+                code: KeyCode::Char('c'),
+                shift: false,
+                control: true,
+                alt: false,
+            }),
             2 => match connection.read_async() {
                 Ok(bytes) => server_bytes = bytes,
                 Err(()) => break,
@@ -1600,50 +1605,59 @@ fn parse_console_events(
                 let unicode_char = unsafe { *event.uChar.UnicodeChar() };
                 let repeat_count = event.wRepeatCount as usize;
 
+                let mut shift = control_key_state & SHIFT_PRESSED != 0;
+                let control = control_key_state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED) != 0;
+                let alt = control_key_state & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED) != 0;
+
                 const CHAR_A: i32 = b'A' as _;
                 const CHAR_Z: i32 = b'Z' as _;
-                let key = match keycode {
-                    VK_BACK => Key::Backspace,
-                    VK_RETURN => Key::Enter,
-                    VK_LEFT => Key::Left,
-                    VK_RIGHT => Key::Right,
-                    VK_UP => Key::Up,
-                    VK_DOWN => Key::Down,
-                    VK_HOME => Key::Home,
-                    VK_END => Key::End,
-                    VK_PRIOR => Key::PageUp,
-                    VK_NEXT => Key::PageDown,
-                    VK_TAB => Key::Tab,
-                    VK_DELETE => Key::Delete,
-                    VK_F1..=VK_F24 => Key::F((keycode - VK_F1 + 1) as _),
-                    VK_ESCAPE => Key::Esc,
-                    VK_SPACE => {
-                        match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                            Some(Ok(c)) => Key::Char(c),
-                            _ => continue,
-                        }
-                    }
-                    CHAR_A..=CHAR_Z => {
-                        const ALT_PRESSED_MASK: DWORD = LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED;
-                        const CTRL_PRESSED_MASK: DWORD = LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED;
-
-                        if control_key_state & ALT_PRESSED_MASK != 0 {
-                            let c = (keycode - CHAR_A) as u8 + b'a';
-                            Key::Alt(c.to_ascii_lowercase() as _)
-                        } else if control_key_state & CTRL_PRESSED_MASK != 0 {
-                            let c = (keycode - CHAR_A) as u8 + b'a';
-                            Key::Ctrl(c.to_ascii_lowercase() as _)
-                        } else {
-                            match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                                Some(Ok(c)) => Key::Char(c),
-                                _ => continue,
-                            }
-                        }
-                    }
-                    _ => match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                        Some(Ok(c)) if c.is_ascii_graphic() => Key::Char(c),
+                let code = match keycode {
+                    VK_BACK => KeyCode::Backspace,
+                    VK_RETURN => KeyCode::Char('\n'),
+                    VK_LEFT => KeyCode::Left,
+                    VK_RIGHT => KeyCode::Right,
+                    VK_UP => KeyCode::Up,
+                    VK_DOWN => KeyCode::Down,
+                    VK_HOME => KeyCode::Home,
+                    VK_END => KeyCode::End,
+                    VK_PRIOR => KeyCode::PageUp,
+                    VK_NEXT => KeyCode::PageDown,
+                    VK_TAB => KeyCode::Char('\t'),
+                    VK_DELETE => KeyCode::Delete,
+                    VK_F1..=VK_F24 => KeyCode::F((keycode - VK_F1 + 1) as _),
+                    VK_ESCAPE => KeyCode::Esc,
+                    VK_SPACE => match std::char::decode_utf16(std::iter::once(unicode_char)).next()
+                    {
+                        Some(Ok(c)) => KeyCode::Char(c),
                         _ => continue,
                     },
+                    CHAR_A..=CHAR_Z => {
+                        let mut c = if control || alt {
+                            ((keycode - CHAR_A) as u8 + b'a') as char
+                        } else {
+                            match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
+                                Some(Ok(c)) => c,
+                                _ => continue,
+                            }
+                        };
+                        if shift {
+                            c = c.to_ascii_uppercase();
+                        } else {
+                            shift = c.is_ascii_uppercase();
+                        }
+                        KeyCode::Char(c)
+                    }
+                    _ => match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
+                        Some(Ok(c)) if c.is_ascii_graphic() => KeyCode::Char(c),
+                        _ => continue,
+                    },
+                };
+
+                let key = Key {
+                    code,
+                    shift,
+                    control,
+                    alt,
                 };
 
                 for _ in 0..repeat_count {
@@ -1658,3 +1672,4 @@ fn parse_console_events(
         }
     }
 }
+

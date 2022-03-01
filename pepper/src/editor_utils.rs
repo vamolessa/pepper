@@ -6,7 +6,7 @@ use crate::{
     editor::{BufferedKeys, EditorContext, EditorFlow, KeysIterator},
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
-    platform::{Key, Platform},
+    platform::{Key, KeyCode, Platform},
     word_database::{WordIter, WordKind},
 };
 
@@ -144,13 +144,20 @@ impl ReadLine {
         keys_iter: &mut KeysIterator,
     ) -> ReadLinePoll {
         match keys_iter.next(buffered_keys) {
-            Key::Esc | Key::Ctrl('c') => ReadLinePoll::Canceled,
-            Key::Enter | Key::Ctrl('m') => ReadLinePoll::Submitted,
-            Key::Home | Key::Ctrl('u') => {
+            Key { code: KeyCode::Esc, shift: false, control: false, alt: false }
+            | Key { code: KeyCode::Char('c'), shift: false, control: true, alt: false } => {
+                ReadLinePoll::Canceled
+            }
+            Key { code: KeyCode::Char('\n'), shift: false, control: false, alt: false }
+            | Key { code: KeyCode::Char('m'), shift: false, control: true, alt: false } => {
+                ReadLinePoll::Submitted
+            }
+            Key { code: KeyCode::Home, shift: false, control: false, alt: false }
+            | Key { code: KeyCode::Char('u'), shift: false, control: true, alt: false } => {
                 self.input.clear();
                 ReadLinePoll::Pending
             }
-            Key::Ctrl('w') => {
+            Key { code: KeyCode::Char('w'), shift: false, control: true, alt: false } => {
                 let mut words = WordIter(&self.input);
                 (&mut words)
                     .filter(|w| w.kind == WordKind::Identifier)
@@ -159,20 +166,21 @@ impl ReadLine {
                 self.input.truncate(len);
                 ReadLinePoll::Pending
             }
-            Key::Backspace | Key::Ctrl('h') => {
+            Key { code: KeyCode::Backspace, shift: false, control: false, alt: false }
+            | Key { code: KeyCode::Char('h'), shift: false, control: true, alt: false } => {
                 if let Some((last_char_index, _)) = self.input.char_indices().next_back() {
                     self.input.truncate(last_char_index);
                 }
                 ReadLinePoll::Pending
             }
-            Key::Ctrl('y') => {
+            Key { code: KeyCode::Char('y'), shift: false, control: true, alt: false } => {
                 let mut text = string_pool.acquire();
                 platform.read_from_clipboard(&mut text);
                 self.input.push_str(&text);
                 string_pool.release(text);
                 ReadLinePoll::Pending
             }
-            Key::Char(c) => {
+            Key { code: KeyCode::Char(c), control: false, alt: false, .. } => {
                 self.input.push(c);
                 ReadLinePoll::Pending
             }
@@ -594,3 +602,4 @@ mod tests {
         );
     }
 }
+

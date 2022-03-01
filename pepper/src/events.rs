@@ -6,7 +6,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::ClientHandle,
     cursor::Cursor,
-    platform::Key,
+    platform::{Key, KeyCode},
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
@@ -189,14 +189,14 @@ impl<'a> Iterator for KeyParser<'a> {
 }
 
 fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
-    fn next(chars: &mut impl Iterator<Item = char>) -> Result<char, KeyParseError> {
+    fn next(chars: &mut Chars) -> Result<char, KeyParseError> {
         match chars.next() {
             Some(c) => Ok(c),
             None => Err(KeyParseError::UnexpectedEnd),
         }
     }
 
-    fn consume(chars: &mut impl Iterator<Item = char>, c: char) -> Result<(), KeyParseError> {
+    fn consume(chars: &mut Chars, c: char) -> Result<(), KeyParseError> {
         let next = next(chars)?;
         if c == next {
             Ok(())
@@ -205,172 +205,238 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
         }
     }
 
-    fn consume_str(chars: &mut impl Iterator<Item = char>, s: &str) -> Result<(), KeyParseError> {
+    fn consume_str(chars: &mut Chars, s: &str) -> Result<(), KeyParseError> {
         for c in s.chars() {
             consume(chars, c)?
         }
         Ok(())
     }
 
+    fn check_modifier(chars: &mut Chars, c: char) -> bool {
+        let saved = chars.clone();
+        if chars.next() == Some(c) {
+            if chars.next() == Some('-') {
+                return true;
+            }
+        }
+
+        *chars = saved;
+        false
+    }
+
     match next(chars)? {
-        '<' => match next(chars)? {
-            'b' => {
-                consume_str(chars, "ackspace>")?;
-                Ok(Key::Backspace)
-            }
-            's' => {
-                consume_str(chars, "pace>")?;
-                Ok(Key::Char(' '))
-            }
-            'e' => match next(chars)? {
-                'n' => match next(chars)? {
-                    't' => {
-                        consume_str(chars, "er>")?;
-                        Ok(Key::Enter)
+        '<' => {
+            let mut shift = check_modifier(chars, 's');
+            let control = check_modifier(chars, 'c');
+            let alt = check_modifier(chars, 'a');
+
+            let code = match next(chars)? {
+                'b' => match next(chars)? {
+                    'a' => {
+                        consume_str(chars, "ckspace>")?;
+                        KeyCode::Backspace
                     }
-                    'd' => {
-                        consume(chars, '>')?;
-                        Ok(Key::End)
-                    }
-                    c => Err(KeyParseError::InvalidCharacter(c)),
+                    '>' => KeyCode::Char('b'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
                 },
-                's' => {
-                    consume_str(chars, "c>")?;
-                    Ok(Key::Esc)
-                }
-                c => Err(KeyParseError::InvalidCharacter(c)),
-            },
-            'l' => {
-                consume(chars, 'e')?;
-                match next(chars)? {
+                's' => match next(chars)? {
+                    'p' => {
+                        consume_str(chars, "ace>")?;
+                        KeyCode::Char(' ')
+                    }
+                    '>' => KeyCode::Char('s'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'e' => match next(chars)? {
+                    'n' => match next(chars)? {
+                        't' => {
+                            consume_str(chars, "er>")?;
+                            KeyCode::Char('\n')
+                        }
+                        'd' => {
+                            consume(chars, '>')?;
+                            KeyCode::End
+                        }
+                        c => return Err(KeyParseError::InvalidCharacter(c)),
+                    },
                     's' => {
-                        consume_str(chars, "s>")?;
-                        Ok(Key::Char('<'))
+                        consume_str(chars, "c>")?;
+                        KeyCode::Esc
                     }
-                    'f' => {
-                        consume_str(chars, "t>")?;
-                        Ok(Key::Left)
+                    '>' => KeyCode::Char('e'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'l' => match next(chars)? {
+                    'e' => match next(chars)? {
+                        's' => {
+                            consume_str(chars, "s>")?;
+                            KeyCode::Char('<')
+                        }
+                        'f' => {
+                            consume_str(chars, "t>")?;
+                            KeyCode::Left
+                        }
+                        c => return Err(KeyParseError::InvalidCharacter(c)),
+                    },
+                    '>' => KeyCode::Char('l'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'g' => match next(chars)? {
+                    'r' => {
+                        consume_str(chars, "eater>")?;
+                        KeyCode::Char('>')
                     }
-                    c => Err(KeyParseError::InvalidCharacter(c)),
-                }
-            }
-            'g' => {
-                consume_str(chars, "reater>")?;
-                Ok(Key::Char('>'))
-            }
-            'r' => {
-                consume_str(chars, "ight>")?;
-                Ok(Key::Right)
-            }
-            'u' => {
-                consume_str(chars, "p>")?;
-                Ok(Key::Up)
-            }
-            'd' => match next(chars)? {
-                'o' => {
-                    consume_str(chars, "wn>")?;
-                    Ok(Key::Down)
-                }
-                'e' => {
-                    consume_str(chars, "lete>")?;
-                    Ok(Key::Delete)
-                }
-                c => Err(KeyParseError::InvalidCharacter(c)),
-            },
-            'h' => {
-                consume_str(chars, "ome>")?;
-                Ok(Key::Home)
-            }
-            'p' => {
-                consume_str(chars, "age")?;
-                match next(chars)? {
-                    'u' => {
-                        consume_str(chars, "p>")?;
-                        Ok(Key::PageUp)
+                    '>' => KeyCode::Char('g'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'r' => match next(chars)? {
+                    'i' => {
+                        consume_str(chars, "ght>")?;
+                        KeyCode::Right
                     }
-                    'd' => {
-                        consume_str(chars, "own>")?;
-                        Ok(Key::PageDown)
+                    '>' => KeyCode::Char('r'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'u' => match next(chars)? {
+                    'p' => {
+                        consume(chars, '>')?;
+                        KeyCode::Up
                     }
-                    c => Err(KeyParseError::InvalidCharacter(c)),
-                }
-            }
-            't' => {
-                consume_str(chars, "ab>")?;
-                Ok(Key::Tab)
-            }
-            'f' => {
-                let c = next(chars)?;
-                match c.to_digit(10) {
-                    Some(d0) => {
-                        let c = next(chars)?;
-                        match c.to_digit(10) {
-                            Some(d1) => {
-                                consume(chars, '>')?;
-                                let n = d0 * 10 + d1;
-                                Ok(Key::F(n as _))
+                    '>' => KeyCode::Char('l'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'd' => match next(chars)? {
+                    'o' => {
+                        consume_str(chars, "wn>")?;
+                        KeyCode::Down
+                    }
+                    'e' => {
+                        consume_str(chars, "lete>")?;
+                        KeyCode::Delete
+                    }
+                    '>' => KeyCode::Char('d'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'h' => match next(chars)? {
+                    'o' => {
+                        consume_str(chars, "me>")?;
+                        KeyCode::Home
+                    }
+                    '>' => KeyCode::Char('h'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'p' => match next(chars)? {
+                    'a' => {
+                        consume_str(chars, "ge")?;
+                        match next(chars)? {
+                            'u' => {
+                                consume_str(chars, "p>")?;
+                                KeyCode::PageUp
                             }
-                            None => match c {
-                                '>' => Ok(Key::F(d0 as _)),
-                                _ => Err(KeyParseError::InvalidCharacter(c)),
-                            },
+                            'd' => {
+                                consume_str(chars, "own>")?;
+                                KeyCode::PageDown
+                            }
+                            c => return Err(KeyParseError::InvalidCharacter(c)),
                         }
                     }
-                    None => Err(KeyParseError::InvalidCharacter(c)),
-                }
-            }
-            'c' => {
-                consume(chars, '-')?;
-                let c = next(chars)?;
-                if c.is_ascii_alphanumeric() {
+                    '>' => KeyCode::Char('p'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                't' => match next(chars)? {
+                    'a' => {
+                        consume_str(chars, "b>")?;
+                        KeyCode::Char('\t')
+                    }
+                    '>' => KeyCode::Char('t'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                'f' => match next(chars)? {
+                    c @ '0'..='9' => {
+                        match c.to_digit(10) {
+                            Some(d0) => {
+                                let c = next(chars)?;
+                                match c.to_digit(10) {
+                                    Some(d1) => {
+                                        consume(chars, '>')?;
+                                        let n = d0 * 10 + d1;
+                                        KeyCode::F(n as _)
+                                    }
+                                    None => match c {
+                                        '>' => KeyCode::F(d0 as _),
+                                        _ => return Err(KeyParseError::InvalidCharacter(c)),
+                                    },
+                                }
+                            }
+                            None => return Err(KeyParseError::InvalidCharacter(c)),
+                        }
+                    }
+                    '>' => KeyCode::Char('f'),
+                    c => return Err(KeyParseError::InvalidCharacter(c)),
+                },
+                mut c => {
                     consume(chars, '>')?;
-                    Ok(Key::Ctrl(c))
-                } else {
-                    Err(KeyParseError::InvalidCharacter(c))
+                    if shift {
+                        c = c.to_ascii_uppercase();
+                    } else {
+                        shift = c.is_ascii_uppercase();
+                    }
+                    KeyCode::Char(c)
                 }
-            }
-            'a' => {
-                consume(chars, '-')?;
-                let c = next(chars)?;
-                if c.is_ascii_alphanumeric() {
-                    consume(chars, '>')?;
-                    Ok(Key::Alt(c))
-                } else {
-                    Err(KeyParseError::InvalidCharacter(c))
-                }
-            }
-            c => Err(KeyParseError::InvalidCharacter(c)),
-        },
+            };
+
+            Ok(Key {
+                code,
+                shift,
+                control,
+                alt,
+            })
+        }
         '>' => Err(KeyParseError::InvalidCharacter('>')),
-        c => Ok(Key::Char(c)),
+        c => Ok(Key {
+            code: KeyCode::Char(c),
+            shift: c.is_ascii_uppercase(),
+            control: false,
+            alt: false,
+        }),
     }
 }
 
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Key::None => Ok(()),
-            Key::Backspace => f.write_str("<backspace>"),
-            Key::Enter => f.write_str("<enter>"),
-            Key::Left => f.write_str("<left>"),
-            Key::Right => f.write_str("<right>"),
-            Key::Up => f.write_str("<up>"),
-            Key::Down => f.write_str("<down>"),
-            Key::Home => f.write_str("<home>"),
-            Key::End => f.write_str("<end>"),
-            Key::PageUp => f.write_str("<pageup>"),
-            Key::PageDown => f.write_str("<pagedown>"),
-            Key::Tab => f.write_str("<tab>"),
-            Key::Delete => f.write_str("<delete>"),
-            Key::F(n) => write!(f, "<f{}>", n),
-            Key::Char(' ') => f.write_str("<space>"),
-            Key::Char('<') => f.write_str("<less>"),
-            Key::Char('>') => f.write_str("<greater>"),
-            Key::Char(c) => write!(f, "{}", c),
-            Key::Ctrl(c) => write!(f, "<c-{}>", c),
-            Key::Alt(c) => write!(f, "<a-{}>", c),
-            Key::Esc => f.write_str("<esc>"),
+        f.write_str("<")?;
+        if self.shift {
+            f.write_str("s-")?;
         }
+        if self.control {
+            f.write_str("c-")?;
+        }
+        if self.alt {
+            f.write_str("a-")?;
+        }
+        match self.code {
+            KeyCode::None => f.write_str("none")?,
+            KeyCode::Backspace => f.write_str("backspace")?,
+            KeyCode::Left => f.write_str("left")?,
+            KeyCode::Right => f.write_str("right")?,
+            KeyCode::Up => f.write_str("up")?,
+            KeyCode::Down => f.write_str("down")?,
+            KeyCode::Home => f.write_str("home")?,
+            KeyCode::End => f.write_str("end")?,
+            KeyCode::PageUp => f.write_str("pageup")?,
+            KeyCode::PageDown => f.write_str("pagedown")?,
+            KeyCode::Delete => f.write_str("delete")?,
+            KeyCode::F(n) => write!(f, "f{}", n)?,
+            KeyCode::Char('\n') => f.write_str("enter")?,
+            KeyCode::Char('\t') => f.write_str("tab")?,
+            KeyCode::Char(' ') => f.write_str("space")?,
+            KeyCode::Char('<') => f.write_str("less")?,
+            KeyCode::Char('>') => f.write_str("greater")?,
+            KeyCode::Char(c) => write!(f, "{}", c)?,
+            KeyCode::Esc => f.write_str("esc")?,
+        }
+        f.write_str(">")?;
+        Ok(())
     }
 }
 
@@ -378,37 +444,33 @@ fn serialize_key<S>(key: Key, serializer: &mut S)
 where
     S: Serializer,
 {
-    match key {
-        Key::None => 0u8.serialize(serializer),
-        Key::Backspace => 1u8.serialize(serializer),
-        Key::Enter => 2u8.serialize(serializer),
-        Key::Left => 3u8.serialize(serializer),
-        Key::Right => 4u8.serialize(serializer),
-        Key::Up => 5u8.serialize(serializer),
-        Key::Down => 6u8.serialize(serializer),
-        Key::Home => 7u8.serialize(serializer),
-        Key::End => 8u8.serialize(serializer),
-        Key::PageUp => 9u8.serialize(serializer),
-        Key::PageDown => 10u8.serialize(serializer),
-        Key::Tab => 11u8.serialize(serializer),
-        Key::Delete => 12u8.serialize(serializer),
-        Key::F(n) => {
-            13u8.serialize(serializer);
+    let mut flags = 0u8;
+    flags |= (key.shift as u8) << 0;
+    flags |= (key.control as u8) << 1;
+    flags |= (key.alt as u8) << 2;
+    flags.serialize(serializer);
+
+    match key.code {
+        KeyCode::None => 0u8.serialize(serializer),
+        KeyCode::Backspace => 1u8.serialize(serializer),
+        KeyCode::Left => 2u8.serialize(serializer),
+        KeyCode::Right => 3u8.serialize(serializer),
+        KeyCode::Up => 4u8.serialize(serializer),
+        KeyCode::Down => 5u8.serialize(serializer),
+        KeyCode::Home => 6u8.serialize(serializer),
+        KeyCode::End => 7u8.serialize(serializer),
+        KeyCode::PageUp => 8u8.serialize(serializer),
+        KeyCode::PageDown => 9u8.serialize(serializer),
+        KeyCode::Delete => 10u8.serialize(serializer),
+        KeyCode::F(n) => {
+            11u8.serialize(serializer);
             n.serialize(serializer);
         }
-        Key::Char(c) => {
-            14u8.serialize(serializer);
+        KeyCode::Char(c) => {
+            12u8.serialize(serializer);
             c.serialize(serializer);
         }
-        Key::Ctrl(c) => {
-            15u8.serialize(serializer);
-            c.serialize(serializer);
-        }
-        Key::Alt(c) => {
-            16u8.serialize(serializer);
-            c.serialize(serializer);
-        }
-        Key::Esc => 17u8.serialize(serializer),
+        KeyCode::Esc => 13u8.serialize(serializer),
     }
 }
 
@@ -416,40 +478,42 @@ fn deserialize_key<'de, D>(deserializer: &mut D) -> Result<Key, DeserializeError
 where
     D: Deserializer<'de>,
 {
-    let discriminant = u8::deserialize(deserializer)?;
-    match discriminant {
-        0 => Ok(Key::None),
-        1 => Ok(Key::Backspace),
-        2 => Ok(Key::Enter),
-        3 => Ok(Key::Left),
-        4 => Ok(Key::Right),
-        5 => Ok(Key::Up),
-        6 => Ok(Key::Down),
-        7 => Ok(Key::Home),
-        8 => Ok(Key::End),
-        9 => Ok(Key::PageUp),
-        10 => Ok(Key::PageDown),
-        11 => Ok(Key::Tab),
-        12 => Ok(Key::Delete),
-        13 => {
+    let flags = u8::deserialize(deserializer)?;
+    let shift = (flags & 0b001) != 0;
+    let control = (flags & 0b010) != 0;
+    let alt = (flags & 0b100) != 0;
+
+    let code_discriminant = u8::deserialize(deserializer)?;
+    let code = match code_discriminant {
+        0 => KeyCode::None,
+        1 => KeyCode::Backspace,
+        2 => KeyCode::Left,
+        3 => KeyCode::Right,
+        4 => KeyCode::Up,
+        5 => KeyCode::Down,
+        6 => KeyCode::Home,
+        7 => KeyCode::End,
+        8 => KeyCode::PageUp,
+        9 => KeyCode::PageDown,
+        10 => KeyCode::Delete,
+        11 => {
             let n = Serialize::deserialize(deserializer)?;
-            Ok(Key::F(n))
+            KeyCode::F(n)
         }
-        14 => {
+        12 => {
             let c = Serialize::deserialize(deserializer)?;
-            Ok(Key::Char(c))
+            KeyCode::Char(c)
         }
-        15 => {
-            let c = Serialize::deserialize(deserializer)?;
-            Ok(Key::Ctrl(c))
-        }
-        16 => {
-            let c = Serialize::deserialize(deserializer)?;
-            Ok(Key::Alt(c))
-        }
-        17 => Ok(Key::Esc),
-        _ => Err(DeserializeError::InvalidData),
-    }
+        13 => KeyCode::Esc,
+        _ => return Err(DeserializeError::InvalidData),
+    };
+
+    Ok(Key {
+        code,
+        shift,
+        control,
+        alt,
+    })
 }
 
 pub enum ServerEvent<'a> {
@@ -668,113 +732,144 @@ mod tests {
 
     #[test]
     fn key_parsing() {
-        assert_eq!(
-            Key::Backspace,
-            parse_key(&mut "<backspace>".chars()).unwrap()
-        );
-        assert_eq!(Key::Char(' '), parse_key(&mut "<space>".chars()).unwrap());
-        assert_eq!(Key::Enter, parse_key(&mut "<enter>".chars()).unwrap());
-        assert_eq!(Key::Left, parse_key(&mut "<left>".chars()).unwrap());
-        assert_eq!(Key::Right, parse_key(&mut "<right>".chars()).unwrap());
-        assert_eq!(Key::Up, parse_key(&mut "<up>".chars()).unwrap());
-        assert_eq!(Key::Down, parse_key(&mut "<down>".chars()).unwrap());
-        assert_eq!(Key::Home, parse_key(&mut "<home>".chars()).unwrap());
-        assert_eq!(Key::End, parse_key(&mut "<end>".chars()).unwrap());
-        assert_eq!(Key::PageUp, parse_key(&mut "<pageup>".chars()).unwrap());
-        assert_eq!(Key::PageDown, parse_key(&mut "<pagedown>".chars()).unwrap());
-        assert_eq!(Key::Tab, parse_key(&mut "<tab>".chars()).unwrap());
-        assert_eq!(Key::Delete, parse_key(&mut "<delete>".chars()).unwrap());
-        assert_eq!(Key::Esc, parse_key(&mut "<esc>".chars()).unwrap());
+        fn assert_key_simple(expected_code: KeyCode, text: &str) {
+            let parsed = parse_key(&mut text.chars()).unwrap();
+            assert_eq!(expected_code, parsed.code);
+            assert!(!parsed.shift);
+            assert!(!parsed.control);
+            assert!(!parsed.alt);
+        }
+
+        assert_key_simple(KeyCode::Backspace, "<backspace>");
+        assert_key_simple(KeyCode::Char(' '), "<space>");
+        assert_key_simple(KeyCode::Char('\n'), "<enter>");
+        assert_key_simple(KeyCode::Left, "<left>");
+        assert_key_simple(KeyCode::Right, "<right>");
+        assert_key_simple(KeyCode::Up, "<up>");
+        assert_key_simple(KeyCode::Down, "<down>");
+        assert_key_simple(KeyCode::Home, "<home>");
+        assert_key_simple(KeyCode::End, "<end>");
+        assert_key_simple(KeyCode::PageUp, "<pageup>");
+        assert_key_simple(KeyCode::PageDown, "<pagedown>");
+        assert_key_simple(KeyCode::Char('\t'), "<tab>");
+        assert_key_simple(KeyCode::Delete, "<delete>");
+        assert_key_simple(KeyCode::Esc, "<esc>");
 
         for n in 1..=99 {
             let s = format!("<f{}>", n);
-            assert_eq!(Key::F(n as _), parse_key(&mut s.chars()).unwrap());
+            assert_key_simple(KeyCode::F(n as _), &s);
         }
 
-        assert_eq!(Key::Ctrl('z'), parse_key(&mut "<c-z>".chars()).unwrap());
-        assert_eq!(Key::Ctrl('0'), parse_key(&mut "<c-0>".chars()).unwrap());
-        assert_eq!(Key::Ctrl('9'), parse_key(&mut "<c-9>".chars()).unwrap());
+        assert_key_simple(KeyCode::Char('a'), "a");
+        assert_key_simple(KeyCode::Char('z'), "z");
+        assert_key_simple(KeyCode::Char('0'), "0");
+        assert_key_simple(KeyCode::Char('9'), "9");
+        assert_key_simple(KeyCode::Char('_'), "_");
+        assert_key_simple(KeyCode::Char('<'), "<less>");
+        assert_key_simple(KeyCode::Char('>'), "<greater>");
+        assert_key_simple(KeyCode::Char('\\'), "\\");
 
-        assert_eq!(Key::Alt('a'), parse_key(&mut "<a-a>".chars()).unwrap());
-        assert_eq!(Key::Alt('z'), parse_key(&mut "<a-z>".chars()).unwrap());
-        assert_eq!(Key::Alt('0'), parse_key(&mut "<a-0>".chars()).unwrap());
-        assert_eq!(Key::Alt('9'), parse_key(&mut "<a-9>".chars()).unwrap());
+        fn assert_key_with_modifiers(expected_code: KeyCode, control: bool, alt: bool, text: &str) {
+            let parsed = parse_key(&mut text.chars()).unwrap();
+            assert_eq!(expected_code, parsed.code);
+            assert!(!parsed.shift);
+            assert_eq!(control, parsed.control);
+            assert_eq!(alt, parsed.alt);
+        }
 
-        assert_eq!(Key::Char('a'), parse_key(&mut "a".chars()).unwrap());
-        assert_eq!(Key::Char('z'), parse_key(&mut "z".chars()).unwrap());
-        assert_eq!(Key::Char('0'), parse_key(&mut "0".chars()).unwrap());
-        assert_eq!(Key::Char('9'), parse_key(&mut "9".chars()).unwrap());
-        assert_eq!(Key::Char('_'), parse_key(&mut "_".chars()).unwrap());
-        assert_eq!(Key::Char('<'), parse_key(&mut "<less>".chars()).unwrap());
-        assert_eq!(Key::Char('>'), parse_key(&mut "<greater>".chars()).unwrap());
-        assert_eq!(Key::Char('\\'), parse_key(&mut "\\".chars()).unwrap());
+        assert_key_with_modifiers(KeyCode::Char('c'), true, false, "<c-c>");
+        assert_key_with_modifiers(KeyCode::Char('z'), true, false, "<c-z>");
+        assert_key_with_modifiers(KeyCode::Char('s'), true, false, "<c-s>");
+        assert_key_with_modifiers(KeyCode::Char('0'), true, false, "<c-0>");
+        assert_key_with_modifiers(KeyCode::Char('9'), true, false, "<c-9>");
+
+        assert_key_with_modifiers(KeyCode::Char('a'), false, true, "<a-a>");
+        assert_key_with_modifiers(KeyCode::Char('z'), false, true, "<a-z>");
+        assert_key_with_modifiers(KeyCode::Char('s'), false, true, "<a-s>");
+        assert_key_with_modifiers(KeyCode::Char('0'), false, true, "<a-0>");
+        assert_key_with_modifiers(KeyCode::Char('9'), false, true, "<a-9>");
+
+        assert_key_with_modifiers(KeyCode::Char('a'), true, true, "<c-a-a>");
+        assert_key_with_modifiers(KeyCode::Char('c'), true, true, "<c-a-c>");
+        assert_key_with_modifiers(KeyCode::Char('s'), true, true, "<c-a-s>");
     }
 
     #[test]
     fn key_serialization() {
-        fn assert_key_serialization(key: Key) {
-            let mut buf = Vec::new();
-            let _ = serialize_key(key, &mut buf);
-            let mut slice = buf.as_slice();
-            assert!(!slice.is_empty());
-            match deserialize_key(&mut slice) {
-                Ok(k) => assert_eq!(key, k),
-                Err(_) => assert!(false),
+        fn assert_key_serialization(buf: &mut Vec<u8>, code: KeyCode) {
+            fn check(buf: &mut Vec<u8>, code: KeyCode, shift: bool, control: bool, alt: bool) {
+                let shift = match code {
+                    KeyCode::Char(c) if c.is_ascii_uppercase() => true,
+                    _ => shift,
+                };
+                let key = Key {
+                    code,
+                    shift,
+                    control,
+                    alt,
+                };
+                buf.clear();
+                let _ = serialize_key(key, buf);
+                let mut slice = buf.as_slice();
+                assert!(!slice.is_empty());
+                match deserialize_key(&mut slice) {
+                    Ok(k) => assert_eq!(key, k),
+                    Err(_) => assert!(false),
+                }
+                assert!(slice.is_empty());
+            }
+
+            for s in 0..=1 {
+                for c in 0..=1 {
+                    for a in 0..=1 {
+                        check(buf, code, s == 1, c == 1, a == 1);
+                    }
+                }
             }
         }
 
-        assert_key_serialization(Key::None);
-        assert_key_serialization(Key::Backspace);
-        assert_key_serialization(Key::Enter);
-        assert_key_serialization(Key::Left);
-        assert_key_serialization(Key::Right);
-        assert_key_serialization(Key::Up);
-        assert_key_serialization(Key::Down);
-        assert_key_serialization(Key::Home);
-        assert_key_serialization(Key::End);
-        assert_key_serialization(Key::PageUp);
-        assert_key_serialization(Key::PageDown);
-        assert_key_serialization(Key::Tab);
-        assert_key_serialization(Key::Delete);
-        assert_key_serialization(Key::F(0));
-        assert_key_serialization(Key::F(9));
-        assert_key_serialization(Key::F(12));
-        assert_key_serialization(Key::F(99));
-        assert_key_serialization(Key::Char('a'));
-        assert_key_serialization(Key::Char('z'));
-        assert_key_serialization(Key::Char('A'));
-        assert_key_serialization(Key::Char('Z'));
-        assert_key_serialization(Key::Char('0'));
-        assert_key_serialization(Key::Char('9'));
-        assert_key_serialization(Key::Char('$'));
-        assert_key_serialization(Key::Ctrl('a'));
-        assert_key_serialization(Key::Ctrl('z'));
-        assert_key_serialization(Key::Ctrl('A'));
-        assert_key_serialization(Key::Ctrl('Z'));
-        assert_key_serialization(Key::Ctrl('0'));
-        assert_key_serialization(Key::Ctrl('9'));
-        assert_key_serialization(Key::Ctrl('$'));
-        assert_key_serialization(Key::Alt('a'));
-        assert_key_serialization(Key::Alt('z'));
-        assert_key_serialization(Key::Alt('A'));
-        assert_key_serialization(Key::Alt('Z'));
-        assert_key_serialization(Key::Alt('0'));
-        assert_key_serialization(Key::Alt('9'));
-        assert_key_serialization(Key::Alt('$'));
-        assert_key_serialization(Key::Esc);
+        let mut buf = Vec::new();
+
+        assert_key_serialization(&mut buf, KeyCode::None);
+        assert_key_serialization(&mut buf, KeyCode::Backspace);
+        assert_key_serialization(&mut buf, KeyCode::Left);
+        assert_key_serialization(&mut buf, KeyCode::Right);
+        assert_key_serialization(&mut buf, KeyCode::Up);
+        assert_key_serialization(&mut buf, KeyCode::Down);
+        assert_key_serialization(&mut buf, KeyCode::Home);
+        assert_key_serialization(&mut buf, KeyCode::End);
+        assert_key_serialization(&mut buf, KeyCode::PageUp);
+        assert_key_serialization(&mut buf, KeyCode::PageDown);
+        assert_key_serialization(&mut buf, KeyCode::Delete);
+        assert_key_serialization(&mut buf, KeyCode::F(0));
+        assert_key_serialization(&mut buf, KeyCode::F(9));
+        assert_key_serialization(&mut buf, KeyCode::F(12));
+        assert_key_serialization(&mut buf, KeyCode::F(99));
+        assert_key_serialization(&mut buf, KeyCode::Char('a'));
+        assert_key_serialization(&mut buf, KeyCode::Char('z'));
+        assert_key_serialization(&mut buf, KeyCode::Char('A'));
+        assert_key_serialization(&mut buf, KeyCode::Char('Z'));
+        assert_key_serialization(&mut buf, KeyCode::Char('0'));
+        assert_key_serialization(&mut buf, KeyCode::Char('9'));
+        assert_key_serialization(&mut buf, KeyCode::Char('$'));
+        assert_key_serialization(&mut buf, KeyCode::Char('\n'));
+        assert_key_serialization(&mut buf, KeyCode::Char('\t'));
+        assert_key_serialization(&mut buf, KeyCode::Esc);
     }
 
     #[test]
     fn client_event_deserialize_splitted() {
-        const CHAR: char = 'x';
+        const KEY: Key = Key {
+            code: KeyCode::Char('x'),
+            shift: false,
+            control: false,
+            alt: false,
+        };
         const EVENT_COUNT: usize = 100;
 
         fn check_next_event(events: &mut ClientEventIter, receiver: &ClientEventReceiver) -> bool {
             match events.next(receiver) {
-                Some(ClientEvent::Key(_, Key::Char(CHAR))) => true,
-                Some(ClientEvent::Key(_, Key::Char(c))) => {
-                    panic!("received char {} instead of {}", c, CHAR);
-                }
+                Some(ClientEvent::Key(_, KEY)) => true,
                 Some(event) => panic!(
                     "received other kind of event. discriminant: {:?}",
                     std::mem::discriminant(&event),
@@ -784,30 +879,88 @@ mod tests {
         }
 
         let client_handle = ClientHandle(0);
-        let event = ClientEvent::Key(TargetClient::Sender, Key::Char(CHAR));
+        let event = ClientEvent::Key(TargetClient::Sender, KEY);
         let mut bytes = Vec::new();
         for _ in 0..EVENT_COUNT {
             event.serialize(&mut bytes);
         }
-        assert_eq!(700, bytes.len());
+        assert_eq!(800, bytes.len());
+
+        struct Events<'a> {
+            pub receiver: &'a mut ClientEventReceiver,
+            pub events: Option<ClientEventIter>,
+        }
+        impl<'a> Events<'a> {
+            pub fn check_next_event(&mut self) -> bool {
+                check_next_event(self.events.as_mut().unwrap(), &self.receiver)
+            }
+
+            pub fn read_len(&self) -> usize {
+                self.events.as_ref().unwrap().read_len
+            }
+        }
+        impl<'a> Drop for Events<'a> {
+            fn drop(&mut self) {
+                if let Some(events) = self.events.take() {
+                    events.finish(self.receiver);
+                }
+            }
+        }
 
         let mut event_count = 0;
         let mut receiver = ClientEventReceiver::default();
 
-        let mut events = receiver.receive_events(client_handle, &bytes[..512]);
-        while check_next_event(&mut events, &receiver) {
-            event_count += 1;
-        }
-        assert_eq!(511, events.read_len);
-        events.finish(&mut receiver);
+        const FIRST_READ_LEN: usize = 496;
 
-        let mut events = receiver.receive_events(client_handle, &bytes[512..]);
-        while check_next_event(&mut events, &receiver) {
-            event_count += 1;
+        {
+            let events = receiver.receive_events(client_handle, &bytes[..FIRST_READ_LEN]);
+            let mut events = Events {
+                receiver: &mut receiver,
+                events: Some(events),
+            };
+
+            while events.check_next_event() {
+                event_count += 1;
+            }
+            assert_eq!(FIRST_READ_LEN, events.read_len());
         }
-        events.finish(&mut receiver);
+
+        {
+            let events = receiver.receive_events(client_handle, &bytes[FIRST_READ_LEN..]);
+            let mut events = Events {
+                receiver: &mut receiver,
+                events: Some(events),
+            };
+
+            while events.check_next_event() {
+                event_count += 1;
+            }
+        }
 
         assert_eq!(0, receiver.bufs[client_handle.0 as usize].len());
         assert_eq!(EVENT_COUNT, event_count);
     }
+
+    #[test]
+    fn key_parser() {
+        fn assert_key(expect_code: KeyCode, expect_control: bool, key: Key) {
+            assert_eq!(expect_code, key.code);
+            assert_eq!(false, key.shift);
+            assert_eq!(expect_control, key.control);
+            assert_eq!(false, key.alt);
+        }
+
+        let mut parser = KeyParser::new("<c-c>");
+        assert_key(KeyCode::Char('c'), true, parser.next().unwrap().unwrap());
+        assert!(parser.next().is_none());
+
+        let mut parser = KeyParser::new("a<enter><c-c>d<c-space>");
+        assert_key(KeyCode::Char('a'), false, parser.next().unwrap().unwrap());
+        assert_key(KeyCode::Char('\n'), false, parser.next().unwrap().unwrap());
+        assert_key(KeyCode::Char('c'), true, parser.next().unwrap().unwrap());
+        assert_key(KeyCode::Char('d'), false, parser.next().unwrap().unwrap());
+        assert_key(KeyCode::Char(' '), true, parser.next().unwrap().unwrap());
+        assert!(parser.next().is_none());
+    }
 }
+

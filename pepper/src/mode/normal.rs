@@ -15,7 +15,7 @@ use crate::{
     mode::{picker, read_line, ModeKind, ModeState},
     navigation_history::{NavigationHistory, NavigationMovement},
     pattern::PatternEscaper,
-    platform::Key,
+    platform::{Key, KeyCode},
     word_database::WordKind,
 };
 
@@ -85,12 +85,22 @@ impl State {
         let state = &mut ctx.editor.mode.normal_state;
         let keys_from_index = keys.index;
         match keys.next(&ctx.editor.buffered_keys) {
-            Key::Char('h') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
+            Key {
+                code: KeyCode::Char('h'),
+                control: false,
+                alt: false,
+                ..
+            } => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::ColumnsBackward(state.count.max(1) as _),
                 state.movement_kind,
             ),
-            Key::Char('j') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
+            Key {
+                code: KeyCode::Char('j'),
+                control: false,
+                alt: false,
+                ..
+            } => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::LinesForward {
                     count: state.count.max(1) as _,
@@ -98,7 +108,12 @@ impl State {
                 },
                 state.movement_kind,
             ),
-            Key::Char('k') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
+            Key {
+                code: KeyCode::Char('k'),
+                control: false,
+                alt: false,
+                ..
+            } => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::LinesBackward {
                     count: state.count.max(1) as _,
@@ -106,27 +121,52 @@ impl State {
                 },
                 state.movement_kind,
             ),
-            Key::Char('l') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
+            Key {
+                code: KeyCode::Char('l'),
+                control: false,
+                alt: false,
+                ..
+            } => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::ColumnsForward(state.count.max(1) as _),
                 state.movement_kind,
             ),
-            Key::Char('w') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
+            Key {
+                code: KeyCode::Char('w'),
+                control: false,
+                alt: false,
+                ..
+            } => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::WordsForward(state.count.max(1) as _),
                 state.movement_kind,
             ),
-            Key::Char('b') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
+            Key {
+                code: KeyCode::Char('b'),
+                control: false,
+                alt: false,
+                ..
+            } => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::WordsBackward(state.count.max(1) as _),
                 state.movement_kind,
             ),
-            Key::Char('e') => ctx.editor.buffer_views.get_mut(handle).move_cursors(
+            Key {
+                code: KeyCode::Char('e'),
+                control: false,
+                alt: false,
+                ..
+            } => ctx.editor.buffer_views.get_mut(handle).move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::WordEndForward(state.count.max(1) as _),
                 state.movement_kind,
             ),
-            Key::Char('n') => {
+            Key {
+                code: KeyCode::Char('n'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let count = state.count.max(1);
                 move_to_search_match(ctx, client_handle, |len, r| {
                     let index = match r {
@@ -136,7 +176,12 @@ impl State {
                     index % len
                 });
             }
-            Key::Char('p') => {
+            Key {
+                code: KeyCode::Char('p'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let count = state.count.max(1) as usize;
                 move_to_search_match(ctx, client_handle, |len, r| {
                     let index = match r {
@@ -146,7 +191,12 @@ impl State {
                     (index + len - count % len) % len
                 });
             }
-            Key::Char('N') => {
+            Key {
+                code: KeyCode::Char('N'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 search_word_or_move_to_it(ctx, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index + 1,
@@ -155,7 +205,12 @@ impl State {
                     index % len
                 });
             }
-            Key::Char('P') => {
+            Key {
+                code: KeyCode::Char('P'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 search_word_or_move_to_it(ctx, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index,
@@ -164,7 +219,12 @@ impl State {
                     (index + len - 1) % len
                 });
             }
-            Key::Char('a') => {
+            Key {
+                code: KeyCode::Char('a'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 fn balanced_brackets(
                     buffer: &BufferContent,
                     cursors: &mut [Cursor],
@@ -195,15 +255,28 @@ impl State {
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Char('w' | 'W') => {
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char('w' | 'W'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         for cursor in &mut cursors[..] {
                             let word = buffer.word_at(cursor.position);
                             cursor.anchor = word.position;
                             cursor.position = word.end_position();
                         }
                     }
-                    Key::Char('a' | 'A') => {
+                    Key {
+                        code: KeyCode::Char('a' | 'A'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         let last_line_index = buffer.lines().len() - 1;
                         let last_line_len = buffer.lines()[last_line_index].as_str().len();
 
@@ -216,20 +289,65 @@ impl State {
                             ),
                         });
                     }
-                    Key::Char('(' | ')') => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
-                    Key::Char('[' | ']') => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
-                    Key::Char('{' | '}') => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
-                    Key::Char('<' | '>') => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
-                    Key::Char('|') => delimiter_pair(buffer, &mut cursors[..], '|'),
-                    Key::Char('"') => delimiter_pair(buffer, &mut cursors[..], '"'),
-                    Key::Char('\'') => delimiter_pair(buffer, &mut cursors[..], '\''),
-                    Key::Char('`') => delimiter_pair(buffer, &mut cursors[..], '`'),
+                    Key {
+                        code: KeyCode::Char('(' | ')'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
+                    Key {
+                        code: KeyCode::Char('[' | ']'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
+                    Key {
+                        code: KeyCode::Char('{' | '}'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
+                    Key {
+                        code: KeyCode::Char('<' | '>'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
+                    Key {
+                        code: KeyCode::Char('|'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => delimiter_pair(buffer, &mut cursors[..], '|'),
+                    Key {
+                        code: KeyCode::Char('"'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => delimiter_pair(buffer, &mut cursors[..], '"'),
+                    Key {
+                        code: KeyCode::Char('\''),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => delimiter_pair(buffer, &mut cursors[..], '\''),
+                    Key {
+                        code: KeyCode::Char('`'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => delimiter_pair(buffer, &mut cursors[..], '`'),
                     _ => (),
                 }
 
                 state.movement_kind = CursorMovementKind::PositionOnly;
             }
-            Key::Char('A') => {
+            Key {
+                code: KeyCode::Char('A'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 fn balanced_brackets(
                     buffer: &BufferContent,
                     cursors: &mut [Cursor],
@@ -276,8 +394,16 @@ impl State {
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Char('w' | 'W') => {
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char('w' | 'W'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         for cursor in &mut cursors[..] {
                             let (word, mut left_words, mut right_words) =
                                 buffer.words_from(cursor.position);
@@ -293,7 +419,12 @@ impl State {
                             };
                         }
                     }
-                    Key::Char('a' | 'A') => {
+                    Key {
+                        code: KeyCode::Char('a' | 'A'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         let last_line_index = buffer.lines().len() - 1;
                         let last_line_len = buffer.lines()[last_line_index].as_str().len();
 
@@ -306,23 +437,71 @@ impl State {
                             ),
                         });
                     }
-                    Key::Char('(' | ')') => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
-                    Key::Char('[' | ']') => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
-                    Key::Char('{' | '}') => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
-                    Key::Char('<' | '>') => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
-                    Key::Char('|') => delimiter_pair(buffer, &mut cursors[..], '|'),
-                    Key::Char('"') => delimiter_pair(buffer, &mut cursors[..], '"'),
-                    Key::Char('\'') => delimiter_pair(buffer, &mut cursors[..], '\''),
+                    Key {
+                        code: KeyCode::Char('(' | ')'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
+                    Key {
+                        code: KeyCode::Char('[' | ']'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
+                    Key {
+                        code: KeyCode::Char('{' | '}'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
+                    Key {
+                        code: KeyCode::Char('<' | '>'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
+                    Key {
+                        code: KeyCode::Char('|'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => delimiter_pair(buffer, &mut cursors[..], '|'),
+                    Key {
+                        code: KeyCode::Char('"'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => delimiter_pair(buffer, &mut cursors[..], '"'),
+                    Key {
+                        code: KeyCode::Char('\''),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => delimiter_pair(buffer, &mut cursors[..], '\''),
                     _ => (),
                 }
 
                 state.movement_kind = CursorMovementKind::PositionOnly;
             }
-            Key::Char('g' | 'G') => {
+            Key {
+                code: KeyCode::Char('g' | 'G'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Char('g') => {
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char('g'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         if state.count > 0 {
                             NavigationHistory::save_snapshot(
                                 ctx.clients.get_mut(client_handle),
@@ -349,12 +528,22 @@ impl State {
                             read_line::goto::enter_mode(ctx, client_handle);
                         }
                     }
-                    Key::Char('h') => buffer_view.move_cursors(
+                    Key {
+                        code: KeyCode::Char('h'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => buffer_view.move_cursors(
                         &ctx.editor.buffers,
                         CursorMovement::Home,
                         state.movement_kind,
                     ),
-                    Key::Char('j') => {
+                    Key {
+                        code: KeyCode::Char('j'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         NavigationHistory::save_snapshot(
                             ctx.clients.get_mut(client_handle),
                             &ctx.editor.buffer_views,
@@ -366,7 +555,12 @@ impl State {
                             state.movement_kind,
                         );
                     }
-                    Key::Char('k') => {
+                    Key {
+                        code: KeyCode::Char('k'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         NavigationHistory::save_snapshot(
                             ctx.clients.get_mut(client_handle),
                             &ctx.editor.buffer_views,
@@ -378,17 +572,32 @@ impl State {
                             state.movement_kind,
                         );
                     }
-                    Key::Char('l') => buffer_view.move_cursors(
+                    Key {
+                        code: KeyCode::Char('l'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => buffer_view.move_cursors(
                         &ctx.editor.buffers,
                         CursorMovement::End,
                         state.movement_kind,
                     ),
-                    Key::Char('i') => buffer_view.move_cursors(
+                    Key {
+                        code: KeyCode::Char('i'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => buffer_view.move_cursors(
                         &ctx.editor.buffers,
                         CursorMovement::HomeNonWhitespace,
                         state.movement_kind,
                     ),
-                    Key::Char('m') => {
+                    Key {
+                        code: KeyCode::Char('m'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             let mut position = cursor.position;
@@ -439,7 +648,12 @@ impl State {
                             }
                         }
                     }
-                    Key::Char(c @ ('f' | 'F')) => {
+                    Key {
+                        code: KeyCode::Char(c @ ('f' | 'F')),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         let should_close_current_buffer = c == 'F';
                         let buffer_handle = buffer_view.buffer_handle;
 
@@ -561,27 +775,53 @@ impl State {
                     _ => (),
                 }
             }
-            Key::Char('[') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return None,
-                Key::Char('[') => match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Tab => {
-                        state.last_char_jump = CharJump::Inclusive('\t');
-                        find_char(ctx, client_handle, false);
-                    }
-                    Key::Char(ch) => {
+            Key {
+                code: KeyCode::Char('['),
+                control: false,
+                alt: false,
+                ..
+            } => match keys.next(&ctx.editor.buffered_keys) {
+                Key {
+                    code: KeyCode::None,
+                    ..
+                } => return None,
+                Key {
+                    code: KeyCode::Char('['),
+                    control: false,
+                    alt: false,
+                    ..
+                } => match keys.next(&ctx.editor.buffered_keys) {
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char(ch),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         state.last_char_jump = CharJump::Inclusive(ch);
                         find_char(ctx, client_handle, false);
                     }
                     _ => (),
                 },
-                Key::Char(']') => match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Tab => {
-                        state.last_char_jump = CharJump::Exclusive('\t');
-                        find_char(ctx, client_handle, false);
-                    }
-                    Key::Char(ch) => {
+                Key {
+                    code: KeyCode::Char(']'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => match keys.next(&ctx.editor.buffered_keys) {
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char(ch),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         state.last_char_jump = CharJump::Exclusive(ch);
                         find_char(ctx, client_handle, false);
                     }
@@ -589,27 +829,53 @@ impl State {
                 },
                 _ => (),
             },
-            Key::Char(']') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return None,
-                Key::Char('[') => match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Tab => {
-                        state.last_char_jump = CharJump::Exclusive('\t');
-                        find_char(ctx, client_handle, true);
-                    }
-                    Key::Char(ch) => {
+            Key {
+                code: KeyCode::Char(']'),
+                control: false,
+                alt: false,
+                ..
+            } => match keys.next(&ctx.editor.buffered_keys) {
+                Key {
+                    code: KeyCode::None,
+                    ..
+                } => return None,
+                Key {
+                    code: KeyCode::Char('['),
+                    control: false,
+                    alt: false,
+                    ..
+                } => match keys.next(&ctx.editor.buffered_keys) {
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char(ch),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         state.last_char_jump = CharJump::Exclusive(ch);
                         find_char(ctx, client_handle, true);
                     }
                     _ => (),
                 },
-                Key::Char(']') => match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Tab => {
-                        state.last_char_jump = CharJump::Inclusive('\t');
-                        find_char(ctx, client_handle, true);
-                    }
-                    Key::Char(ch) => {
+                Key {
+                    code: KeyCode::Char(']'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => match keys.next(&ctx.editor.buffered_keys) {
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char(ch),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         state.last_char_jump = CharJump::Inclusive(ch);
                         find_char(ctx, client_handle, true);
                     }
@@ -617,13 +883,28 @@ impl State {
                 },
                 _ => (),
             },
-            Key::Char('{') => {
+            Key {
+                code: KeyCode::Char('{'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 find_char(ctx, client_handle, false);
             }
-            Key::Char('}') => {
+            Key {
+                code: KeyCode::Char('}'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 find_char(ctx, client_handle, true);
             }
-            Key::Char('v') => {
+            Key {
+                code: KeyCode::Char('v'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 state.movement_kind = match state.movement_kind {
                     CursorMovementKind::PositionAndAnchor => CursorMovementKind::PositionOnly,
                     CursorMovementKind::PositionOnly => {
@@ -635,7 +916,12 @@ impl State {
                     }
                 };
             }
-            Key::Char('V') => {
+            Key {
+                code: KeyCode::Char('V'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
@@ -673,17 +959,46 @@ impl State {
                 }
                 state.movement_kind = CursorMovementKind::PositionOnly;
             }
-            Key::Char('z') => {
+            Key {
+                code: KeyCode::Char('z'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let client = ctx.clients.get_mut(client_handle);
                 match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Char('z') => client.set_view_anchor(&ctx.editor, ViewAnchor::Center),
-                    Key::Char('j') => client.set_view_anchor(&ctx.editor, ViewAnchor::Bottom),
-                    Key::Char('k') => client.set_view_anchor(&ctx.editor, ViewAnchor::Top),
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char('z'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => client.set_view_anchor(&ctx.editor, ViewAnchor::Center),
+                    Key {
+                        code: KeyCode::Char('j'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => client.set_view_anchor(&ctx.editor, ViewAnchor::Bottom),
+                    Key {
+                        code: KeyCode::Char('k'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => client.set_view_anchor(&ctx.editor, ViewAnchor::Top),
                     _ => (),
                 }
             }
-            Key::Ctrl('j') => {
+            Key {
+                code: KeyCode::Char('j'),
+                shift: false,
+                control: true,
+                alt: false,
+                ..
+            } => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
@@ -721,7 +1036,13 @@ impl State {
                     }
                 }
             }
-            Key::Ctrl('k') => {
+            Key {
+                code: KeyCode::Char('k'),
+                shift: false,
+                control: true,
+                alt: false,
+                ..
+            } => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
@@ -759,7 +1080,13 @@ impl State {
                     }
                 }
             }
-            Key::Ctrl('d') => {
+            Key {
+                code: KeyCode::Char('d'),
+                shift: false,
+                control: true,
+                alt: false,
+                ..
+            } => {
                 let half_height = ctx.clients.get(client_handle).viewport_size.1 / 2;
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
@@ -770,7 +1097,13 @@ impl State {
                     state.movement_kind,
                 );
             }
-            Key::Ctrl('u') => {
+            Key {
+                code: KeyCode::Char('u'),
+                shift: false,
+                control: true,
+                alt: false,
+                ..
+            } => {
                 let half_height = ctx.clients.get(client_handle).viewport_size.1 / 2;
                 ctx.editor.buffer_views.get_mut(handle).move_cursors(
                     &ctx.editor.buffers,
@@ -781,7 +1114,12 @@ impl State {
                     state.movement_kind,
                 );
             }
-            Key::Char('d') => {
+            Key {
+                code: KeyCode::Char('d'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
@@ -797,7 +1135,12 @@ impl State {
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
                 return Some(EditorFlow::Continue);
             }
-            Key::Char('i') => {
+            Key {
+                code: KeyCode::Char('i'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
@@ -809,7 +1152,12 @@ impl State {
                 ctx.editor.enter_mode(ModeKind::Insert);
                 return Some(EditorFlow::Continue);
             }
-            Key::Char('<') => {
+            Key {
+                code: KeyCode::Char('<'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
@@ -854,7 +1202,12 @@ impl State {
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
                 return Some(EditorFlow::Continue);
             }
-            Key::Char('>') => {
+            Key {
+                code: KeyCode::Char('>'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let cursor_count = ctx.editor.buffer_views.get(handle).cursors[..].len();
 
                 let extender = if ctx.editor.config.indent_with_tabs {
@@ -888,15 +1241,33 @@ impl State {
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
                 return Some(EditorFlow::Continue);
             }
-            Key::Char('c' | 'C') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return None,
-                Key::Char('c') => {
+            Key {
+                code: KeyCode::Char('c' | 'C'),
+                control: false,
+                alt: false,
+                ..
+            } => match keys.next(&ctx.editor.buffered_keys) {
+                Key {
+                    code: KeyCode::None,
+                    ..
+                } => return None,
+                Key {
+                    code: KeyCode::Char('c'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                         std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                     }
                 }
-                Key::Char('C') => {
+                Key {
+                    code: KeyCode::Char('C'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                         if cursor.position < cursor.anchor {
@@ -904,7 +1275,12 @@ impl State {
                         }
                     }
                 }
-                Key::Char('l') => {
+                Key {
+                    code: KeyCode::Char('l'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
@@ -963,17 +1339,32 @@ impl State {
                         }
                     }
                 }
-                Key::Char('d') => {
+                Key {
+                    code: KeyCode::Char('d'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
                     let main_cursor = *cursors.main_cursor();
                     cursors.clear();
                     cursors.add(main_cursor);
                     state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 }
-                Key::Char('v') => {
+                Key {
+                    code: KeyCode::Char('v'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     state.movement_kind = CursorMovementKind::PositionOnly;
                 }
-                Key::Char('V') => {
+                Key {
+                    code: KeyCode::Char('V'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     for cursor in
                         &mut ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard()[..]
                     {
@@ -981,7 +1372,12 @@ impl State {
                     }
                     state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 }
-                Key::Char('j') => {
+                Key {
+                    code: KeyCode::Char('j'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                     let mut cursors = buffer_view.cursors.mut_guard();
@@ -1000,7 +1396,12 @@ impl State {
                         }
                     }
                 }
-                Key::Char('k') => {
+                Key {
+                    code: KeyCode::Char('k'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                     let mut cursors = buffer_view.cursors.mut_guard();
@@ -1019,7 +1420,12 @@ impl State {
                         }
                     }
                 }
-                Key::Char('n') => {
+                Key {
+                    code: KeyCode::Char('n'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     let cursors = &mut ctx.editor.buffer_views.get_mut(handle).cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
@@ -1032,7 +1438,12 @@ impl State {
                         ranges.rotate_right(offset);
                     }
                 }
-                Key::Char('p') => {
+                Key {
+                    code: KeyCode::Char('p'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     let cursors = &mut ctx.editor.buffer_views.get_mut(handle).cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
@@ -1045,21 +1456,72 @@ impl State {
                         ranges.rotate_left(offset);
                     }
                 }
-                Key::Char('f') => read_line::filter_cursors::enter_filter_mode(ctx),
-                Key::Char('F') => read_line::filter_cursors::enter_except_mode(ctx),
-                Key::Char('s') => read_line::split_cursors::enter_by_pattern_mode(ctx),
-                Key::Char('S') => read_line::split_cursors::enter_by_separators_mode(ctx),
+                Key {
+                    code: KeyCode::Char('f'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => read_line::filter_cursors::enter_filter_mode(ctx),
+                Key {
+                    code: KeyCode::Char('F'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => read_line::filter_cursors::enter_except_mode(ctx),
+                Key {
+                    code: KeyCode::Char('s'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => read_line::split_cursors::enter_by_pattern_mode(ctx),
+                Key {
+                    code: KeyCode::Char('S'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => read_line::split_cursors::enter_by_separators_mode(ctx),
                 _ => (),
             },
-            Key::Char('r') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return None,
-                Key::Char('n') => move_to_lint(ctx, client_handle, true),
-                Key::Char('p') => move_to_lint(ctx, client_handle, false),
+            Key {
+                code: KeyCode::Char('r'),
+                control: false,
+                alt: false,
+                ..
+            } => match keys.next(&ctx.editor.buffered_keys) {
+                Key {
+                    code: KeyCode::None,
+                    ..
+                } => return None,
+                Key {
+                    code: KeyCode::Char('n'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => move_to_lint(ctx, client_handle, true),
+                Key {
+                    code: KeyCode::Char('p'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => move_to_lint(ctx, client_handle, false),
                 _ => (),
             },
-            Key::Char('m') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return None,
-                Key::Char(c) => {
+            Key {
+                code: KeyCode::Char('m'),
+                control: false,
+                alt: false,
+                ..
+            } => match keys.next(&ctx.editor.buffered_keys) {
+                Key {
+                    code: KeyCode::None,
+                    ..
+                } => return None,
+                Key {
+                    code: KeyCode::Char(c),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     if let Some(key) = RegisterKey::from_char(c) {
                         let register = ctx.editor.registers.get_mut(key);
                         register.clear();
@@ -1081,8 +1543,18 @@ impl State {
                 }
                 _ => (),
             },
-            Key::Char('s') => read_line::search::enter_mode(ctx, client_handle),
-            Key::Char('y') => {
+            Key {
+                code: KeyCode::Char('s'),
+                control: false,
+                alt: false,
+                ..
+            } => read_line::search::enter_mode(ctx, client_handle),
+            Key {
+                code: KeyCode::Char('y'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let mut text = ctx.editor.string_pool.acquire();
                 copy_text(ctx, handle, &mut text);
                 if !text.is_empty() {
@@ -1090,16 +1562,35 @@ impl State {
                 }
                 ctx.editor.string_pool.release(text);
             }
-            Key::Char('Y') => {
+            Key {
+                code: KeyCode::Char('Y'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let mut text = ctx.editor.string_pool.acquire();
                 ctx.platform.read_from_clipboard(&mut text);
                 paste_text(ctx, handle, &text);
                 ctx.editor.string_pool.release(text);
                 return Some(EditorFlow::Continue);
             }
-            Key::Ctrl('y') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return None,
-                Key::Char(c) => {
+            Key {
+                code: KeyCode::Char('y'),
+                shift: false,
+                control: true,
+                alt: false,
+                ..
+            } => match keys.next(&ctx.editor.buffered_keys) {
+                Key {
+                    code: KeyCode::None,
+                    ..
+                } => return None,
+                Key {
+                    code: KeyCode::Char(c),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     let key = c.to_ascii_lowercase();
                     if key == c {
                         if let Some(key) = RegisterKey::from_char(key) {
@@ -1124,9 +1615,24 @@ impl State {
                 }
                 _ => (),
             },
-            Key::Char('|') => read_line::process::enter_replace_mode(ctx),
-            Key::Char('!') => read_line::process::enter_insert_mode(ctx),
-            Key::Char('u') => {
+            Key {
+                code: KeyCode::Char('|'),
+                control: false,
+                alt: false,
+                ..
+            } => read_line::process::enter_replace_mode(ctx),
+            Key {
+                code: KeyCode::Char('!'),
+                control: false,
+                alt: false,
+                ..
+            } => read_line::process::enter_insert_mode(ctx),
+            Key {
+                code: KeyCode::Char('u'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.undo(
                     &mut ctx.editor.buffers,
@@ -1136,7 +1642,12 @@ impl State {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return Some(EditorFlow::Continue);
             }
-            Key::Char('U') => {
+            Key {
+                code: KeyCode::Char('U'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 buffer_view.redo(
                     &mut ctx.editor.buffers,
@@ -1231,13 +1742,35 @@ impl ModeState for State {
         let previous_index = keys.index;
 
         match keys.next(&ctx.editor.buffered_keys) {
-            Key::None => handled_keys = true,
-            Key::Ctrl('z') => return Some(EditorFlow::Suspend),
-            Key::Char('q') => match ctx.editor.recording_macro.take() {
+            Key {
+                code: KeyCode::None,
+                ..
+            } => handled_keys = true,
+            Key {
+                code: KeyCode::Char('z'),
+                shift: false,
+                control: true,
+                alt: false,
+                ..
+            } => return Some(EditorFlow::Suspend),
+            Key {
+                code: KeyCode::Char('q'),
+                control: false,
+                alt: false,
+                ..
+            } => match ctx.editor.recording_macro.take() {
                 Some(_) => handled_keys = true,
                 None => match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Char(c) => {
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char(c),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         if let Some(key) = RegisterKey::from_char(c) {
                             handled_keys = true;
                             ctx.editor.registers.get_mut(key).clear();
@@ -1247,12 +1780,25 @@ impl ModeState for State {
                     _ => (),
                 },
             },
-            Key::Char('Q') => {
+            Key {
+                code: KeyCode::Char('Q'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 handled_keys = true;
                 ctx.editor.recording_macro = None;
                 match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return None,
-                    Key::Char(c) => {
+                    Key {
+                        code: KeyCode::None,
+                        ..
+                    } => return None,
+                    Key {
+                        code: KeyCode::Char(c),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => {
                         if let Some(key) = RegisterKey::from_char(c.to_ascii_lowercase()) {
                             for _ in 0..state.count.max(1) {
                                 let keys = ctx.editor.registers.get(key);
@@ -1275,9 +1821,22 @@ impl ModeState for State {
                     _ => (),
                 }
             }
-            Key::Char('M') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return None,
-                Key::Char(c) => {
+            Key {
+                code: KeyCode::Char('M'),
+                control: false,
+                alt: false,
+                ..
+            } => match keys.next(&ctx.editor.buffered_keys) {
+                Key {
+                    code: KeyCode::None,
+                    ..
+                } => return None,
+                Key {
+                    code: KeyCode::Char(c),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
                     handled_keys = true;
                     let c = c.to_ascii_lowercase();
                     if let Some(key) = RegisterKey::from_char(c) {
@@ -1322,30 +1881,63 @@ impl ModeState for State {
                 }
                 _ => (),
             },
-            Key::Char('$') => {
+            Key {
+                code: KeyCode::Char('$'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 handled_keys = true;
                 read_line::process::enter_run_mode(ctx);
             }
-            Key::Char(':') => {
+            Key {
+                code: KeyCode::Char(':'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 handled_keys = true;
                 ctx.editor.enter_mode(ModeKind::Command);
             }
-            Key::Char('g' | 'G') => {
+            Key {
+                code: KeyCode::Char('g' | 'G'),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 if state.count == 0 {
                     match keys.next(&ctx.editor.buffered_keys) {
-                        Key::None => return None,
-                        Key::Char('o') => {
+                        Key {
+                            code: KeyCode::None,
+                            ..
+                        } => return None,
+                        Key {
+                            code: KeyCode::Char('o'),
+                            control: false,
+                            alt: false,
+                            ..
+                        } => {
                             handled_keys = true;
                             picker::opened_buffers::enter_mode(ctx);
                         }
-                        Key::Char('b') => {
+                        Key {
+                            code: KeyCode::Char('b'),
+                            control: false,
+                            alt: false,
+                            ..
+                        } => {
                             handled_keys = true;
                             NavigationHistory::move_to_previous_buffer(
                                 ctx.clients.get_mut(client_handle),
                                 &mut ctx.editor,
                             );
                         }
-                        Key::Char('B') => {
+                        Key {
+                            code: KeyCode::Char('B'),
+                            control: false,
+                            alt: false,
+                            ..
+                        } => {
                             handled_keys = true;
                             let previous_client_handle = ctx.clients.previous_focused_client()?;
                             let previous_client = ctx.clients.get_mut(previous_client_handle);
@@ -1376,7 +1968,13 @@ impl ModeState for State {
                     }
                 }
             }
-            Key::Ctrl('n') => {
+            Key {
+                code: KeyCode::Char('n'),
+                shift: false,
+                control: true,
+                alt: false,
+                ..
+            } => {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 NavigationHistory::move_in_history(
                     ctx.clients.get_mut(client_handle),
@@ -1385,7 +1983,13 @@ impl ModeState for State {
                 );
                 handled_keys = true;
             }
-            Key::Ctrl('p') => {
+            Key {
+                code: KeyCode::Char('p'),
+                shift: false,
+                control: true,
+                alt: false,
+                ..
+            } => {
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
                 NavigationHistory::move_in_history(
                     ctx.clients.get_mut(client_handle),
@@ -1394,7 +1998,12 @@ impl ModeState for State {
                 );
                 handled_keys = true;
             }
-            Key::Char(c) => {
+            Key {
+                code: KeyCode::Char(c),
+                control: false,
+                alt: false,
+                ..
+            } => {
                 if let Some(n) = c.to_digit(10) {
                     state.count = state.count.saturating_mul(10).saturating_add(n);
                     return Some(EditorFlow::Continue);
@@ -1745,3 +2354,4 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
+
