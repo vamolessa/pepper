@@ -402,6 +402,15 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
 
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if !self.control
+            && !self.alt
+            && !matches!(self.code, KeyCode::Char('\n' | '\t' | ' ' | '<' | '>'))
+        {
+            if let KeyCode::Char(c) = self.code {
+                return write!(f, "{}", c);
+            }
+        }
+
         f.write_str("<")?;
         if self.shift {
             f.write_str("s-")?;
@@ -961,3 +970,4 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
+
