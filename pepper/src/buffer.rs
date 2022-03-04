@@ -561,12 +561,13 @@ impl BufferContent {
             self.line_display_lens.push(DisplayLen::zero());
         }
 
+        let byte_order_mark = b"\xef\xbb\xbf";
         if self.lines[0]
             .as_str()
             .as_bytes()
-            .starts_with(b"\xef\xbb\xbf")
+            .starts_with(byte_order_mark)
         {
-            self.lines[0].delete_range(&mut self.line_display_lens[0], ..3);
+            self.lines[0].delete_range(&mut self.line_display_lens[0], ..byte_order_mark.len());
         }
 
         Ok(())
