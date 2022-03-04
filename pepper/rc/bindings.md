@@ -91,8 +91,7 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `<c-y><uppercase-char>` | delete selected text and paste the contents of register `<char>` |
 | `u`, `U` | undo/redo |
 | <code>A&#124;</code> | pass each selection as stdin to a command line and substitute each for its stdout |
-| `!` | substitute each selection with the stdout of a command line |
-| `$` | simply execute a command line (ignoring its output) |
+| `!` | execute a command line (with closed stdin and ignoring its output) |
 
 | binding | expands to | action |
 | --- | --- | --- |

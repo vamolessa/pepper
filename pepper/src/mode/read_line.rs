@@ -644,7 +644,7 @@ pub mod process {
             match poll {
                 ReadLinePoll::Pending => Some(EditorFlow::Continue),
                 ReadLinePoll::Submitted => {
-                    spawn_process(ctx, client_handle, true);
+                    spawn_process(ctx, client_handle);
                     ctx.editor.enter_mode(ModeKind::default());
                     Some(EditorFlow::Continue)
                 }
@@ -656,32 +656,6 @@ pub mod process {
         }
 
         ctx.editor.read_line.set_prompt("replace-with-output:");
-        ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
-        ctx.editor.enter_mode(ModeKind::ReadLine);
-    }
-
-    pub fn enter_insert_mode(ctx: &mut EditorContext) {
-        fn on_client_keys(
-            ctx: &mut EditorContext,
-            client_handle: ClientHandle,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) -> Option<EditorFlow> {
-            match poll {
-                ReadLinePoll::Pending => Some(EditorFlow::Continue),
-                ReadLinePoll::Submitted => {
-                    spawn_process(ctx, client_handle, false);
-                    ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorFlow::Continue)
-                }
-                ReadLinePoll::Canceled => {
-                    ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorFlow::Continue)
-                }
-            }
-        }
-
-        ctx.editor.read_line.set_prompt("insert-from-output:");
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
@@ -726,7 +700,7 @@ pub mod process {
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 
-    fn spawn_process(ctx: &mut EditorContext, client_handle: ClientHandle, pipe: bool) {
+    fn spawn_process(ctx: &mut EditorContext, client_handle: ClientHandle) {
         let buffer_view_handle = match ctx.clients.get(client_handle).buffer_view_handle() {
             Some(handle) => handle,
             None => return,
@@ -737,16 +711,18 @@ pub mod process {
         const NONE_POOLED_BUF: Option<PooledBuf> = None;
         let mut stdins = [NONE_POOLED_BUF; CursorCollection::capacity()];
 
-        if pipe {
-            for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-                let range = cursor.to_range();
+        for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
+            let range = cursor.to_range();
 
-                let mut buf = ctx.platform.buf_pool.acquire();
-                let write = buf.write();
-                for text in content.text_range(range) {
-                    write.extend_from_slice(text.as_bytes());
-                }
+            let mut buf = ctx.platform.buf_pool.acquire();
+            let write = buf.write();
+            for text in content.text_range(range) {
+                write.extend_from_slice(text.as_bytes());
+            }
 
+            if write.is_empty() {
+                ctx.platform.buf_pool.release(buf);
+            } else {
                 stdins[i] = Some(buf);
             }
         }
