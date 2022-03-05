@@ -17,7 +17,7 @@ It's mission is to be a minimal and fast code editor with an orthogonal set of b
 ## [config recipes](./pepper/rc/config_recipes.md)
 ## [changelog](./pepper/rc/changelog.md)
 
-### [try it on your browser!](./web)
+### [try it on your browser!](https://vamolessa.github.io/pepper/web)
 
 # installation
 
