@@ -120,6 +120,10 @@ Pepper is heavily inspired by Kakoune's selection based workflow and multiple cu
 However its cursors behave like caret ranges instead of block selections.
 That is, the cursor is not a one-char selection but only a visual cue to indicate the caret location.
 
+# keybindings at a glance
+
+![keybindings](./.github/images/keybindings.png)
+
 # development thread
 It's possible to kinda follow Pepper's development history in this
 [twitter thread](https://twitter.com/ahvamolessa/status/1276978064166182913)
