@@ -86,6 +86,7 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     }
 }
 
+// TODO: parse unicode database and implement this
 pub fn char_display_len(_: char) -> u8 {
     1
 }
