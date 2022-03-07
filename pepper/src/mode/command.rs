@@ -155,7 +155,7 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
     let mut tokens = CommandTokenizer(input);
 
     let mut last_token = match tokens.next() {
-        Some(token) => token,
+        Some(token) => token.slice,
         None => {
             ctx.editor.picker.clear();
             state.completion_index = input.len();
@@ -179,13 +179,13 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
 
     for token in tokens {
         arg_count += 1;
-        last_token = token;
+        last_token = token.slice;
     }
 
     if ends_with_whitespace || arg_count > 0 {
         if let Some(aliased) = ctx.editor.commands.aliases.find(command_name) {
             let mut aliased_tokens = CommandTokenizer(aliased);
-            command_name = aliased_tokens.next().unwrap_or("");
+            command_name = aliased_tokens.next().map(|t| t.slice).unwrap_or("");
 
             for _ in aliased_tokens {
                 arg_count += 1;

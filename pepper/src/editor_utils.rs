@@ -527,10 +527,10 @@ impl ResidualStrBytes {
 
 pub fn parse_process_command(command: &str) -> Option<Command> {
     let mut tokenizer = CommandTokenizer(command);
-    let name = tokenizer.next()?;
+    let name = tokenizer.next()?.slice;
     let mut command = Command::new(name);
     for arg in tokenizer {
-        command.arg(arg);
+        command.arg(arg.slice);
     }
     Some(command)
 }
