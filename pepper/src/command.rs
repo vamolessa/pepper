@@ -227,7 +227,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                             return Some(CommandToken {
                                 can_expand_variables,
                                 slice,
-                            });
+                            })
                         }
                         None => {
                             let end = next_literal_end(rest);
@@ -236,7 +236,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                             return Some(CommandToken {
                                 can_expand_variables,
                                 slice,
-                            });
+                            })
                         }
                     }
                 }
@@ -262,7 +262,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                     return Some(CommandToken {
                         can_expand_variables,
                         slice,
-                    });
+                    })
                 }
             }
         }
@@ -443,6 +443,8 @@ impl CommandManager {
         client_handle: Option<ClientHandle>,
         command: &mut String,
     ) -> Result<EditorFlow, CommandError> {
+        expand_variables(ctx, command);
+
         if let Some(token) = CommandTokenizer(command).next() {
             let alias = token.slice.trim_end_matches('!');
             if let Some(aliased) = ctx.editor.commands.aliases.find(alias) {
@@ -483,6 +485,41 @@ impl CommandManager {
         };
         command_fn(ctx, &mut io)?;
         Ok(io.flow)
+    }
+}
+
+fn expand_variables(_ctx: &EditorContext, text: &mut String) {
+    let text_ptr = text.as_ptr() as usize;
+
+    let mut i = 0;
+    loop {
+        let mut tokens = CommandTokenizer(&text[i..]);
+        let token = match tokens.next() {
+            Some(token) => token,
+            None => return,
+        };
+        i = tokens.0.as_ptr() as usize - text_ptr;
+
+        if !token.can_expand_variables {
+            continue;
+        }
+
+        let expanded = match token.slice {
+            "@buffer_path" => "example/buffer/path",
+            _ => continue,
+        };
+
+        let token_len = token.slice.len();
+        let token_start = token.slice.as_ptr() as usize - text_ptr;
+        let token_end = token_start + token_len;
+
+        if expanded.len() < token_len {
+            i -= token_len - expanded.len();
+        } else {
+            i += token_len - expanded.len();
+        }
+
+        text.replace_range(token_start..token_end, expanded);
     }
 }
 
@@ -571,3 +608,4 @@ mod tests {
         assert_eq!(None, tokens.next().map(|t| t.slice));
     }
 }
+
