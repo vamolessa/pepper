@@ -17,7 +17,7 @@ use crate::{
 
 pub fn register_commands(commands: &mut CommandManager) {
     let mut r = |name, completions, command_fn| {
-        commands.register(None, name, completions, command_fn);
+        commands.register_command(None, name, completions, command_fn);
     };
 
     static HELP_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Commands];

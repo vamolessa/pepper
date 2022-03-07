@@ -227,7 +227,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                             return Some(CommandToken {
                                 can_expand_variables,
                                 slice,
-                            })
+                            });
                         }
                         None => {
                             let end = next_literal_end(rest);
@@ -236,7 +236,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                             return Some(CommandToken {
                                 can_expand_variables,
                                 slice,
-                            })
+                            });
                         }
                     }
                 }
@@ -262,7 +262,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                     return Some(CommandToken {
                         can_expand_variables,
                         slice,
-                    })
+                    });
                 }
             }
         }
@@ -366,7 +366,7 @@ impl CommandManager {
         this
     }
 
-    pub fn register(
+    pub fn register_command(
         &mut self,
         plugin_handle: Option<PluginHandle>,
         name: &'static str,
@@ -571,4 +571,3 @@ mod tests {
         assert_eq!(None, tokens.next().map(|t| t.slice));
     }
 }
-

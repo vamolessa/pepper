@@ -970,4 +970,3 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
-
