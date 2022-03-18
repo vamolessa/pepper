@@ -60,7 +60,7 @@ Pepper ships with a simple pattern finder (bound to `<space>f`) that uses a patt
 However, it's possible to customize it by rebinding `<space>f` to another command.
 For example, if you wish to use [`ripgrep`](https://github.com/BurntSushi/ripgrep) instead, you can:
 
-`map-normal <space>f [[: find-pattern 'rg --no-ignore-global --path-separator / --line-number "{}"'<enter>]]`
+`map-normal <space>f {{: find-pattern 'rg --no-ignore-global --path-separator / --line-number "{}"'<enter>}}`
 
 Note that it uses the [`find-pattern`](command_reference.md#find-pattern) command.
 

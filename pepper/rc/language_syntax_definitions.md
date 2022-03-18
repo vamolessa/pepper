@@ -9,9 +9,9 @@ Here's an example of syntax definition for the lua language:
 ```
 syntax "**/*.lua"
 syntax-keywords and|break|do|elseif|else|end|for|function|if|in|local|not|or|repeat|return|then|until|while
-syntax-symbols [[+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.]]
+syntax-symbols {{+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%.}}
 syntax-literals nil|false|true|_G|_ENV|%d{%d_}%.%w{%w_}|%d{%w_}
-syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}|%[%[{!(%]%]).}]]
+syntax-strings {={'{(\\)(\')!'.}|"{(\\)(\")!".}|%[%[{!(%]%]).}}=}
 syntax-comments --{.}|--%[%[{!(%]%]).$}
 ```
 
