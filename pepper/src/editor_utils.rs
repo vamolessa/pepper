@@ -2,7 +2,7 @@ use std::{fmt, process::Command};
 
 use crate::{
     buffer::char_display_len,
-    command::{CommandManager, CommandTokenizer},
+    command::{CommandIter, CommandManager, CommandTokenizer},
     editor::{BufferedKeys, EditorContext, EditorFlow, KeysIterator},
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
@@ -536,12 +536,8 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
 }
 
 pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &str) -> EditorFlow {
-    for (line_index, line) in config_content.lines().enumerate() {
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        let mut command = ctx.editor.string_pool.acquire_with(line);
+    for command_text in CommandIter(config_content) {
+        let mut command = ctx.editor.string_pool.acquire_with(command_text);
         let result = CommandManager::try_eval(ctx, None, &mut command);
         ctx.editor.string_pool.release(command);
 
@@ -551,6 +547,9 @@ pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &
                 _ => return flow,
             },
             Err(error) => {
+                let len = command_text.as_ptr() as usize - config_content.as_ptr() as usize;
+                let line_index = config_content[..len].chars().filter(|&c| c == '\n').count();
+
                 ctx.editor
                     .status_bar
                     .write(MessageKind::Error)
@@ -558,7 +557,7 @@ pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &
                         "{}:{}\n{}\n{}",
                         config_name,
                         line_index + 1,
-                        line,
+                        command_text,
                         error
                     ));
                 break;
@@ -653,3 +652,4 @@ mod tests {
         );
     }
 }
+
