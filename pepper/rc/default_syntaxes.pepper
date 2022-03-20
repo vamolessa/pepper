@@ -6,7 +6,8 @@ syntax-texts {%w_-}
 
 syntax "**/*.pepper"
 syntax-keywords ""
-syntax-strings {={"{!".}|'{!'.}|%{%{{!(%}%}).}|%{=%{{!(%}=%}).}}=}
+syntax-symbols {={%{|%}|=}=}
+syntax-strings {={"{!".}|'{!'.}}=}
 syntax-comments ^#{.}
 
 # https://doc.rust-lang.org/reference/keywords.html

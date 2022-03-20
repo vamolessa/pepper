@@ -383,6 +383,51 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r(
+        "on-platforms",
+        &[CompletionSource::Custom(&[
+            "windows", "linux", "bsd", "macos",
+        ])],
+        |ctx, io| {
+            let current_platform = if cfg!(target_os = "windows") {
+                "windows"
+            } else if cfg!(target_os = "linux") {
+                "linux"
+            } else if cfg!(any(
+                target_os = "freebsd",
+                target_os = "netbsd",
+                target_os = "openbsd",
+                target_os = "dragonfly",
+            )) {
+                "bsd"
+            } else if cfg!(target_os = "macos") {
+                "macos"
+            } else {
+                ""
+            };
+
+            let mut block = "";
+            let mut should_execute = false;
+            while let Some(arg) = io.args.try_next() {
+                if should_execute {
+                    block = arg;
+                }
+
+                if arg == current_platform {
+                    should_execute = true;
+                }
+            }
+
+            if should_execute {
+                let mut command = ctx.editor.string_pool.acquire_with(block);
+                CommandManager::try_eval(ctx, io.client_handle, &mut command)?;
+                ctx.editor.string_pool.release(command);
+            }
+
+            Ok(())
+        },
+    );
+
     r("find-file", &[], |ctx, io| {
         let command = io.args.next()?;
         let prompt = io.args.try_next().unwrap_or("open:");
@@ -437,3 +482,4 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
+

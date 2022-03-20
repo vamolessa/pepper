@@ -153,6 +153,40 @@ impl<'a> CommandIO<'a> {
     }
 }
 
+const WHITESPACE: &[char] = &[' ', '\t', '\r', '\n'];
+
+pub struct CommandIter<'a>(pub &'a str);
+impl<'a> Iterator for CommandIter<'a> {
+    type Item = &'a str;
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut rest = self.0;
+        if rest.is_empty() {
+            return None;
+        }
+
+        loop {
+            rest = rest.trim_start_matches(&[' ', '\t', '\r']);
+            if rest.starts_with('\n') {
+                let len = rest.as_ptr() as usize - self.0.as_ptr() as usize;
+                let command = &self.0[..len];
+
+                self.0 = rest.trim_start_matches(WHITESPACE);
+                return Some(command);
+            }
+
+            let mut tokens = CommandTokenizer(rest);
+            match tokens.next() {
+                Some(_) => rest = tokens.0,
+                None => {
+                    let command = self.0;
+                    self.0 = "";
+                    return Some(command);
+                }
+            }
+        }
+    }
+}
+
 pub struct CommandToken<'a> {
     pub can_expand_variables: bool,
     pub slice: &'a str,
@@ -163,8 +197,6 @@ pub struct CommandTokenizer<'a>(pub &'a str);
 impl<'a> Iterator for CommandTokenizer<'a> {
     type Item = CommandToken<'a>;
     fn next(&mut self) -> Option<Self::Item> {
-        static WHITESPACE: &[char] = &[' ', '\t', '\n'];
-
         fn next_literal_end(s: &str) -> usize {
             match s.find(WHITESPACE) {
                 Some(i) => i,
@@ -172,7 +204,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
             }
         }
 
-        fn parse_balanced_token(s: &str) -> Option<(&str, &str)> {
+        fn parse_balanced_command_token(s: &str) -> Option<(&str, &str)> {
             let mut chars = s.chars();
             let mut depth = 0;
             loop {
@@ -209,7 +241,6 @@ impl<'a> Iterator for CommandTokenizer<'a> {
 
             Some((token, rest))
         }
-
         self.0 = self.0.trim_start_matches(WHITESPACE);
 
         let previous_text = self.0;
@@ -222,8 +253,8 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                 }
                 delim @ ('"' | '\'') => {
                     let rest = &self.0[1..];
-                    match rest.find(delim) {
-                        Some(i) => {
+                    match rest.find(&[delim, '\n']) {
+                        Some(i) if rest[i..].starts_with(delim) => {
                             let slice = &rest[..i];
                             self.0 = &rest[i + 1..];
                             return Some(CommandToken {
@@ -231,7 +262,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                                 slice,
                             });
                         }
-                        None => {
+                        _ => {
                             let end = next_literal_end(rest);
                             let (slice, rest) = self.0.split_at(end + 1);
                             self.0 = rest;
@@ -244,7 +275,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                 }
                 c => {
                     if c == '{' {
-                        if let Some((slice, rest)) = parse_balanced_token(&self.0[1..]) {
+                        if let Some((slice, rest)) = parse_balanced_command_token(&self.0[1..]) {
                             self.0 = rest;
                             return Some(CommandToken {
                                 can_expand_variables,
@@ -530,7 +561,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_tokens() {
+    fn command_iter() {
+        let mut commands = CommandIter("cmd");
+        assert_eq!(Some("cmd"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("cmd1\ncmd2");
+        assert_eq!(Some("cmd1"), commands.next());
+        assert_eq!(Some("cmd2"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("cmd1 {{\narg1\n}} arg2\ncmd2 {={\narg1}=}\n \t \n ");
+        assert_eq!(Some("cmd1 {{\narg1\n}} arg2"), commands.next());
+        assert_eq!(Some("cmd2 {={\narg1}=}"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("cmd1 '\ncmd2 arg'");
+        assert_eq!(Some("cmd1 '"), commands.next());
+        assert_eq!(Some("cmd2 arg'"), commands.next());
+        assert_eq!(None, commands.next());
+    }
+
+    #[test]
+    fn command_tokenizer() {
         let mut tokens = CommandTokenizer("cmd arg");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
@@ -556,6 +609,12 @@ mod tests {
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg\"0"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg'1"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd 'arg1\narg2'");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2'"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd {{arg}}");
@@ -610,3 +669,4 @@ mod tests {
         assert_eq!(None, tokens.next().map(|t| t.slice));
     }
 }
+
