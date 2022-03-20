@@ -159,18 +159,28 @@ pub struct CommandIter<'a>(pub &'a str);
 impl<'a> Iterator for CommandIter<'a> {
     type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut rest = self.0;
-        if rest.is_empty() {
+        loop {
+            self.0 = self.0.trim_start_matches(WHITESPACE);
+            if !self.0.starts_with('#') {
+                break;
+            }
+            match self.0.find('\n') {
+                Some(i) => self.0 = &self.0[i + 1..],
+                None => self.0 = "",
+            }
+        }
+
+        if self.0.is_empty() {
             return None;
         }
 
+        let mut rest = self.0;
         loop {
             rest = rest.trim_start_matches(&[' ', '\t', '\r']);
             if rest.starts_with('\n') {
                 let len = rest.as_ptr() as usize - self.0.as_ptr() as usize;
                 let command = &self.0[..len];
-
-                self.0 = rest.trim_start_matches(WHITESPACE);
+                self.0 = rest;
                 return Some(command);
             }
 
@@ -579,6 +589,11 @@ mod tests {
         let mut commands = CommandIter("cmd1 '\ncmd2 arg'");
         assert_eq!(Some("cmd1 '"), commands.next());
         assert_eq!(Some("cmd2 arg'"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter(" #cmd1\ncmd2 arg #arg2\n \t #cmd3 arg\ncmd4 arg'");
+        assert_eq!(Some("cmd2 arg #arg2"), commands.next());
+        assert_eq!(Some("cmd4 arg'"), commands.next());
         assert_eq!(None, commands.next());
     }
 
