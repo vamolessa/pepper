@@ -4,7 +4,7 @@ use crate::{
     buffer::{parse_path_and_position, BufferProperties},
     buffer_position::BufferPosition,
     client::ViewAnchor,
-    command::{CommandError, CommandIO, CommandManager, CompletionSource},
+    command::{CommandError, CommandIO, CommandIter, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
     editor::{EditorContext, EditorFlow},
@@ -419,9 +419,11 @@ pub fn register_commands(commands: &mut CommandManager) {
             }
 
             if should_execute {
-                let mut command = ctx.editor.string_pool.acquire_with(block);
-                CommandManager::try_eval(ctx, io.client_handle, &mut command)?;
-                ctx.editor.string_pool.release(command);
+                for command in CommandIter(block) {
+                    let mut command = ctx.editor.string_pool.acquire_with(command);
+                    CommandManager::try_eval(ctx, io.client_handle, &mut command)?;
+                    ctx.editor.string_pool.release(command);
+                }
             }
 
             Ok(())
