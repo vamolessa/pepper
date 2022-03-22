@@ -531,7 +531,7 @@ impl CommandManager {
     }
 }
 
-fn expand_variables(_ctx: &EditorContext, text: &mut String) {
+fn expand_variables(ctx: &EditorContext, text: &mut String) {
     let text_ptr = text.as_ptr() as usize;
 
     let mut i = 0;
@@ -547,22 +547,24 @@ fn expand_variables(_ctx: &EditorContext, text: &mut String) {
             continue;
         }
 
-        let expanded = match token.slice {
-            "@buffer_path" => "example/buffer/path",
-            _ => continue,
-        };
+        loop {
+            let expanded = match token.slice {
+                "@buffer_path" => "example/buffer/path",
+                _ => continue,
+            };
 
-        let token_len = token.slice.len();
-        let token_start = token.slice.as_ptr() as usize - text_ptr;
-        let token_end = token_start + token_len;
+            let token_len = token.slice.len();
+            let token_start = token.slice.as_ptr() as usize - text_ptr;
+            let token_end = token_start + token_len;
 
-        if expanded.len() < token_len {
-            i -= token_len - expanded.len();
-        } else {
-            i += token_len - expanded.len();
+            if expanded.len() < token_len {
+                i -= token_len - expanded.len();
+            } else {
+                i += token_len - expanded.len();
+            }
+
+            text.replace_range(token_start..token_end, expanded);
         }
-
-        text.replace_range(token_start..token_end, expanded);
     }
 }
 
@@ -595,6 +597,11 @@ mod tests {
         assert_eq!(Some("cmd2 arg #arg2"), commands.next());
         assert_eq!(Some("cmd4 arg'"), commands.next());
         assert_eq!(None, commands.next());
+    }
+
+    #[test]
+    fn variable_expansion() {
+        //
     }
 
     #[test]

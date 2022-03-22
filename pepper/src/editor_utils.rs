@@ -525,6 +525,7 @@ impl ResidualStrBytes {
     }
 }
 
+// TODO: expand variables before parsing
 pub fn parse_process_command(command: &str) -> Option<Command> {
     let mut tokenizer = CommandTokenizer(command);
     let name = tokenizer.next()?.slice;
