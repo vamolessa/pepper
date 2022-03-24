@@ -531,11 +531,42 @@ impl CommandManager {
     }
 }
 
+fn get_expansion_variable_value<'ctx>(
+    ctx: &'ctx EditorContext,
+    variable_name: &str,
+    args: &str,
+) -> Option<&'ctx str> {
+    let args = args.trim();
+    let value = match variable_name {
+        "buffer-path" => "example/buffer/path",
+        _ => return None,
+    };
+    Some(value)
+}
+
 fn expand_variables(ctx: &EditorContext, text: &mut String) {
-    let text_ptr = text.as_ptr() as usize;
+    fn parse_variable_name(text: &str) -> Result<&str, usize> {
+        let mut chars = text.chars();
+        loop {
+            match chars.next() {
+                Some('a'..='z' | '-') => (),
+                Some('(') => {
+                    let name = &text[..text.len() - chars.as_str().len() - 1];
+                    return Ok(name);
+                }
+                _ => return Err(text.len() - chars.as_str().len()),
+            }
+        }
+    }
+
+    fn parse_variable_args(text: &str) -> Option<&str> {
+        let i = text.find(')')?;
+        Some(&text[..i])
+    }
 
     let mut rest_index = 0;
     loop {
+        let text_ptr = text.as_ptr() as usize;
         let mut tokens = CommandTokenizer(&text[rest_index..]);
         let token = match tokens.next() {
             Some(token) => token,
@@ -547,43 +578,35 @@ fn expand_variables(ctx: &EditorContext, text: &mut String) {
             continue;
         }
 
-        let mut token_rest_start = token.slice.as_ptr() as usize - text_ptr;
-        let token_end = token_rest_start + token.slice.len();
+        let mut token_rest_index = token.slice.as_ptr() as usize - text_ptr;
+        let token_end = token_rest_index + token.slice.len();
 
-        'find_variables: loop {
-            let token = &text[token_rest_start..token_end];
-            let (variable, args) = match token.find('@') {
-                Some(i) => {
-                    let token = &token[i + 1..];
-                    let mut chars = token.chars();
-                    loop {
-                        match chars.next() {
-                            Some('(') => {
-                                let variable = &token[..token.len() - chars.as_str().len() - 1];
-                                // TODO: parse args
-                                chars.next();
-                                token_rest_start += 1 + token.len() - chars.as_str().len();
-                                break (variable, "");
-                            }
-                            Some('a'..='z' | '-') => (),
-                            _ => {
-                                token_rest_start += token.len() - chars.as_str().len();
-                                continue 'find_variables;
-                            }
-                        }
-                    }
-                }
+        loop {
+            let token = &text[token_rest_index..token_end];
+            let variable_start = match token.find('@') {
+                Some(i) => token_rest_index + i,
                 None => break,
             };
+            let variable_name = match parse_variable_name(&text[variable_start + 1..]) {
+                Ok(name) => name,
+                Err(skip) => {
+                    token_rest_index += skip;
+                    continue;
+                }
+            };
+            token_rest_index += 1 + variable_name.len() + 1;
+            let variable_args = match parse_variable_args(&text[token_rest_index..]) {
+                Some(args) => args,
+                None => continue,
+            };
+            token_rest_index += variable_args.len() + 1;
 
-            let expanded = match variable {
-                "" => break,
-                "buffer-path" => "example/buffer/path",
-                _ => continue,
+            let expanded = match get_expansion_variable_value(ctx, variable_name, variable_args) {
+                Some(value) => value,
+                None => continue,
             };
 
-            let variable_start = variable.as_ptr() as usize - 1 - text_ptr;
-            let variable_len = token_rest_start - variable_start;
+            let variable_len = token_rest_index - variable_start;
 
             if expanded.len() < variable_len {
                 rest_index -= variable_len - expanded.len();
@@ -591,7 +614,7 @@ fn expand_variables(ctx: &EditorContext, text: &mut String) {
                 rest_index += expanded.len() - variable_len;
             }
 
-            text.replace_range(variable_start..token_rest_start, expanded);
+            text.replace_range(variable_start..token_rest_index, expanded);
         }
     }
 }
@@ -651,7 +674,17 @@ mod tests {
 
         assert_expansion("cmd", &ctx, "cmd");
         assert_expansion("example/buffer/path", &ctx, "@buffer-path()");
-        assert_expansion("cmd example/buffer/path asd example/buffer/path", &ctx, "cmd @buffer-path() asd @buffer-path()");
+        assert_expansion(
+            "cmd example/buffer/path asd example/buffer/path",
+            &ctx,
+            "cmd @buffer-path() asd @buffer-path()",
+        );
+
+        assert_expansion(
+            "cmd example/buffer/path asd example/buffer/path",
+            &ctx,
+            "cmd @buffer-path(a) asd @buffer-path(bb)",
+        );
     }
 
     #[test]
