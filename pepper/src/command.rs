@@ -534,36 +534,64 @@ impl CommandManager {
 fn expand_variables(ctx: &EditorContext, text: &mut String) {
     let text_ptr = text.as_ptr() as usize;
 
-    let mut i = 0;
+    let mut rest_index = 0;
     loop {
-        let mut tokens = CommandTokenizer(&text[i..]);
+        let mut tokens = CommandTokenizer(&text[rest_index..]);
         let token = match tokens.next() {
             Some(token) => token,
             None => return,
         };
-        i = tokens.0.as_ptr() as usize - text_ptr;
+        rest_index = tokens.0.as_ptr() as usize - text_ptr;
 
         if !token.can_expand_variables {
             continue;
         }
 
-        loop {
-            let expanded = match token.slice {
-                "@buffer_path" => "example/buffer/path",
+        let mut token_rest_start = token.slice.as_ptr() as usize - text_ptr;
+        let token_end = token_rest_start + token.slice.len();
+
+        'find_variables: loop {
+            let token = &text[token_rest_start..token_end];
+            let (variable, args) = match token.find('@') {
+                Some(i) => {
+                    let token = &token[i + 1..];
+                    let mut chars = token.chars();
+                    loop {
+                        match chars.next() {
+                            Some('(') => {
+                                let variable = &token[..token.len() - chars.as_str().len() - 1];
+                                // TODO: parse args
+                                chars.next();
+                                token_rest_start += 1 + token.len() - chars.as_str().len();
+                                break (variable, "");
+                            }
+                            Some('a'..='z' | '-') => (),
+                            _ => {
+                                token_rest_start += token.len() - chars.as_str().len();
+                                continue 'find_variables;
+                            }
+                        }
+                    }
+                }
+                None => break,
+            };
+
+            let expanded = match variable {
+                "" => break,
+                "buffer-path" => "example/buffer/path",
                 _ => continue,
             };
 
-            let token_len = token.slice.len();
-            let token_start = token.slice.as_ptr() as usize - text_ptr;
-            let token_end = token_start + token_len;
+            let variable_start = variable.as_ptr() as usize - 1 - text_ptr;
+            let variable_len = token_rest_start - variable_start;
 
-            if expanded.len() < token_len {
-                i -= token_len - expanded.len();
+            if expanded.len() < variable_len {
+                rest_index -= variable_len - expanded.len();
             } else {
-                i += token_len - expanded.len();
+                rest_index += expanded.len() - variable_len;
             }
 
-            text.replace_range(token_start..token_end, expanded);
+            text.replace_range(variable_start..token_rest_start, expanded);
         }
     }
 }
@@ -571,6 +599,12 @@ fn expand_variables(ctx: &EditorContext, text: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::{env, path::PathBuf};
+
+    use crate::{
+        client::ClientManager, editor::Editor, platform::Platform, plugin::PluginCollection,
+    };
 
     #[test]
     fn command_iter() {
@@ -601,7 +635,23 @@ mod tests {
 
     #[test]
     fn variable_expansion() {
-        //
+        fn assert_expansion(expected: &str, ctx: &EditorContext, text: &str) {
+            let mut text = text.into();
+            expand_variables(ctx, &mut text);
+            assert_eq!(expected, &text);
+        }
+
+        let current_dir = env::current_dir().unwrap_or(PathBuf::new());
+        let ctx = EditorContext {
+            editor: Editor::new(current_dir),
+            platform: Platform::default(),
+            clients: ClientManager::default(),
+            plugins: PluginCollection::default(),
+        };
+
+        assert_expansion("cmd", &ctx, "cmd");
+        assert_expansion("example/buffer/path", &ctx, "@buffer-path()");
+        assert_expansion("cmd example/buffer/path asd example/buffer/path", &ctx, "cmd @buffer-path() asd @buffer-path()");
     }
 
     #[test]

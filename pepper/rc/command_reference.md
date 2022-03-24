@@ -201,6 +201,13 @@ By default, this is set per platform:
 Enqueue keys as if they were typed in the current client.
 - usage: `enqueue-keys <keys>`
 
+## `on-platforms`
+Given a `<platforms...>` argument list, execute `<commands>` if we're on any of such platforms.
+Note that `<commands>` are interpreted the same way a config file is interpreted
+(that is, line by line but also supporting multiline commands).
+- usage: `on-platforms <platforms...> <commands>`
+
+
 ## `find-file`
 Executes external command `<command>` and fills the picker menu from each line of its stdout.
 When an entry is selected, it's opened as a buffer path.
