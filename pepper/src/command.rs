@@ -875,4 +875,3 @@ mod tests {
         assert_eq!(None, tokens.next().map(|t| t.slice));
     }
 }
-
