@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt};
+use std::{collections::VecDeque, fmt, io};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
@@ -6,7 +6,7 @@ use crate::{
     client::ClientHandle,
     config::ParseConfigError,
     editor::{EditorContext, EditorFlow},
-    editor_utils::{MessageKind, ParseKeyMapError},
+    editor_utils::{MessageKind, ParseKeyMapError, RegisterKey},
     events::KeyParseAllError,
     glob::InvalidGlobError,
     pattern::PatternError,
@@ -486,7 +486,7 @@ impl CommandManager {
         client_handle: Option<ClientHandle>,
         command: &mut String,
     ) -> Result<EditorFlow, CommandError> {
-        expand_variables(ctx, command);
+        expand_variables(ctx, client_handle, command);
 
         if let Some(token) = CommandTokenizer(command).next() {
             let alias = token.slice.trim_end_matches('!');
@@ -533,18 +533,76 @@ impl CommandManager {
 
 fn get_expansion_variable_value<'ctx>(
     ctx: &'ctx EditorContext,
+    client_handle: Option<ClientHandle>,
     variable_name: &str,
     args: &str,
+    buf: &'ctx mut [u8],
 ) -> Option<&'ctx str> {
+    fn assert_empty_args(args: &str) -> Option<()> {
+        if args.is_empty() {
+            Some(())
+        } else {
+            None
+        }
+    }
+
+    fn current_buffer(ctx: &EditorContext, client_handle: Option<ClientHandle>) -> Option<&Buffer> {
+        let buffer_view_handle = ctx.clients.get(client_handle?).buffer_view_handle()?;
+        let buffer_handle = ctx
+            .editor
+            .buffer_views
+            .get(buffer_view_handle)
+            .buffer_handle;
+        let buffer = ctx.editor.buffers.get(buffer_handle);
+        Some(buffer)
+    }
+
+    fn write_int_to_buf(buf: &mut [u8], n: u32) -> &str {
+        use io::Write;
+        let mut cursor = io::Cursor::new(buf);
+        let _ = write!(cursor, "{}", n);
+        let len = cursor.position() as usize;
+        let buf = cursor.into_inner();
+        unsafe { std::str::from_utf8_unchecked(&buf[..len]) }
+    }
+
     let args = args.trim();
     let value = match variable_name {
-        "buffer-path" => "example/buffer/path",
+        "buffer-index" => {
+            assert_empty_args(args)?;
+            let buffer = current_buffer(ctx, client_handle)?;
+            let buffer_index = buffer.handle().0;
+            write_int_to_buf(buf, buffer_index)
+        }
+        "buffer-path" => {
+            let buffer = if args.is_empty() {
+                current_buffer(ctx, client_handle)?
+            } else {
+                let handle = BufferHandle(args.parse().ok()?);
+                ctx.editor.buffers.try_get(handle)?
+            };
+            buffer.path.to_str()?
+        }
+        "readline-input" => {
+            assert_empty_args(args)?;
+            ctx.editor.read_line.input()
+        }
+        "register" => {
+            let mut args_chars = args.chars();
+            let c = args_chars.next()?;
+            if args_chars.next().is_some() {
+                return None;
+            }
+            let key = RegisterKey::from_char(c)?;
+            ctx.editor.registers.get(key)
+        }
         _ => return None,
     };
+
     Some(value)
 }
 
-fn expand_variables(ctx: &EditorContext, text: &mut String) {
+fn expand_variables(ctx: &EditorContext, client_handle: Option<ClientHandle>, text: &mut String) {
     fn parse_variable_name(text: &str) -> Result<&str, usize> {
         let mut chars = text.chars();
         loop {
@@ -564,6 +622,7 @@ fn expand_variables(ctx: &EditorContext, text: &mut String) {
         Some(&text[..i])
     }
 
+    let mut buf = [0; 16];
     let mut rest_index = 0;
     loop {
         let text_ptr = text.as_ptr() as usize;
@@ -579,7 +638,7 @@ fn expand_variables(ctx: &EditorContext, text: &mut String) {
         }
 
         let mut token_rest_index = token.slice.as_ptr() as usize - text_ptr;
-        let token_end = token_rest_index + token.slice.len();
+        let mut token_end = token_rest_index + token.slice.len();
 
         loop {
             let token = &text[token_rest_index..token_end];
@@ -601,20 +660,28 @@ fn expand_variables(ctx: &EditorContext, text: &mut String) {
             };
             token_rest_index += variable_args.len() + 1;
 
-            let expanded = match get_expansion_variable_value(ctx, variable_name, variable_args) {
+            let expanded = match get_expansion_variable_value(
+                ctx,
+                client_handle,
+                variable_name,
+                variable_args,
+                &mut buf,
+            ) {
                 Some(value) => value,
                 None => continue,
             };
 
-            let variable_len = token_rest_index - variable_start;
+            text.replace_range(variable_start..token_rest_index, expanded);
 
+            let variable_len = token_rest_index - variable_start;
             if expanded.len() < variable_len {
-                rest_index -= variable_len - expanded.len();
+                let delta = variable_len - expanded.len();
+                rest_index -= delta;
+                token_rest_index -= delta;
+                token_end -= delta;
             } else {
                 rest_index += expanded.len() - variable_len;
             }
-
-            text.replace_range(variable_start..token_rest_index, expanded);
         }
     }
 }
@@ -623,7 +690,10 @@ fn expand_variables(ctx: &EditorContext, text: &mut String) {
 mod tests {
     use super::*;
 
-    use std::{env, path::PathBuf};
+    use std::{
+        env,
+        path::{Path, PathBuf},
+    };
 
     use crate::{
         client::ClientManager, editor::Editor, platform::Platform, plugin::PluginCollection,
@@ -660,30 +730,61 @@ mod tests {
     fn variable_expansion() {
         fn assert_expansion(expected: &str, ctx: &EditorContext, text: &str) {
             let mut text = text.into();
-            expand_variables(ctx, &mut text);
+            expand_variables(ctx, Some(ClientHandle(0)), &mut text);
             assert_eq!(expected, &text);
         }
 
         let current_dir = env::current_dir().unwrap_or(PathBuf::new());
-        let ctx = EditorContext {
+        let mut ctx = EditorContext {
             editor: Editor::new(current_dir),
             platform: Platform::default(),
             clients: ClientManager::default(),
             plugins: PluginCollection::default(),
         };
 
+        let register_contents = "my register contents";
+        let register = ctx
+            .editor
+            .registers
+            .get_mut(RegisterKey::from_char('x').unwrap());
+        register.clear();
+        register.push_str(register_contents);
+
+        let buffer = ctx.editor.buffers.add_new();
+        assert_eq!(0, buffer.handle().0);
+        buffer.set_path(Path::new("buffer/path0"));
+        let buffer = ctx.editor.buffers.add_new();
+        assert_eq!(1, buffer.handle().0);
+        buffer.set_path(Path::new("buffer/veryverylong/path1"));
+
+        let client_handle = ClientHandle(0);
+        let buffer_view_handle = ctx
+            .editor
+            .buffer_views
+            .add_new(client_handle, BufferHandle(0));
+
+        ctx.clients.on_client_joined(client_handle);
+        ctx.clients
+            .get_mut(client_handle)
+            .set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
+
         assert_expansion("cmd", &ctx, "cmd");
-        assert_expansion("example/buffer/path", &ctx, "@buffer-path()");
+
+        assert_expansion(register_contents, &ctx, "@register(x)");
+        assert_expansion("@register()", &ctx, "@register()");
+        assert_expansion("@register(xx)", &ctx, "@register(xx)");
+
+        assert_expansion("buffer/path0", &ctx, "@buffer-path()");
         assert_expansion(
-            "cmd example/buffer/path asd example/buffer/path",
+            "cmd buffer/path0 asd buffer/path0",
             &ctx,
             "cmd @buffer-path() asd @buffer-path()",
         );
 
         assert_expansion(
-            "cmd example/buffer/path asd example/buffer/path",
+            "cmd buffer/path0 asd buffer/veryverylong/path1 fgh @buffer-path(2)",
             &ctx,
-            "cmd @buffer-path(a) asd @buffer-path(bb)",
+            "cmd @buffer-path(0) asd @buffer-path(1) fgh @buffer-path(2)",
         );
     }
 

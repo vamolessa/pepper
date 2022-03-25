@@ -1455,6 +1455,19 @@ impl BufferCollection {
         buffer
     }
 
+    pub fn try_get(&self, handle: BufferHandle) -> Option<&Buffer> {
+        let index = handle.0 as usize;
+        if self.buffers.len() <= index {
+            return None;
+        }
+        let buffer = &self.buffers[index];
+        if buffer.alive {
+            Some(buffer)
+        } else {
+            None
+        }
+    }
+
     pub fn get(&self, handle: BufferHandle) -> &Buffer {
         &self.buffers[handle.0 as usize]
     }
