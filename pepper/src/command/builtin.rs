@@ -420,9 +420,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
             if should_execute {
                 for command in CommandIter(block) {
-                    let mut command = ctx.editor.string_pool.acquire_with(command);
-                    CommandManager::try_eval(ctx, io.client_handle, &mut command)?;
-                    ctx.editor.string_pool.release(command);
+                    CommandManager::try_eval(ctx, io.client_handle, command)?;
                 }
             }
 
@@ -443,15 +441,6 @@ pub fn register_commands(commands: &mut CommandManager) {
         let prompt = io.args.try_next().unwrap_or("find:");
         io.args.assert_empty()?;
         read_line::find_pattern::enter_mode(ctx, command, prompt);
-        Ok(())
-    });
-
-    r("pid", &[], |ctx, io| {
-        io.args.assert_empty()?;
-        ctx.editor
-            .status_bar
-            .write(MessageKind::Info)
-            .fmt(format_args!("{}", std::process::id()));
         Ok(())
     });
 }

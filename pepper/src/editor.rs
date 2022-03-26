@@ -449,11 +449,7 @@ impl Editor {
                     },
                 };
 
-                let mut command = ctx.editor.string_pool.acquire_with(command);
-                let flow =
-                    CommandManager::eval_and_write_error(ctx, Some(client_handle), &mut command);
-                ctx.editor.string_pool.release(command);
-                flow
+                CommandManager::eval_and_write_error(ctx, Some(client_handle), command)
             }
             ClientEvent::StdinInput(target, bytes) => {
                 let client_handle = match target {

@@ -122,9 +122,9 @@ impl ModeState for State {
                 let input = ctx.editor.read_line.input();
                 ctx.editor.commands.add_to_history(input);
 
-                let mut command = ctx.editor.string_pool.acquire_with(input);
+                let command = ctx.editor.string_pool.acquire_with(input);
                 let flow =
-                    CommandManager::eval_and_write_error(ctx, Some(client_handle), &mut command);
+                    CommandManager::eval_and_write_error(ctx, Some(client_handle), &command);
                 ctx.editor.string_pool.release(command);
 
                 if ctx.editor.mode.kind() == ModeKind::Command {

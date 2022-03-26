@@ -419,6 +419,15 @@ impl RegisterKey {
         }
     }
 
+    pub fn from_str(key: &str) -> Option<Self> {
+        let mut chars = key.chars();
+        let c = chars.next()?;
+        if chars.next().is_some() {
+            return None;
+        }
+        Self::from_char(c)
+    }
+
     pub fn as_u8(&self) -> u8 {
         self.0 + b'a'
     }
@@ -537,10 +546,8 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
 }
 
 pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &str) -> EditorFlow {
-    for command_text in CommandIter(config_content) {
-        let mut command = ctx.editor.string_pool.acquire_with(command_text);
-        let result = CommandManager::try_eval(ctx, None, &mut command);
-        ctx.editor.string_pool.release(command);
+    for command in CommandIter(config_content) {
+        let result = CommandManager::try_eval(ctx, None, command);
 
         match result {
             Ok(flow) => match flow {
@@ -548,7 +555,7 @@ pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &
                 _ => return flow,
             },
             Err(error) => {
-                let len = command_text.as_ptr() as usize - config_content.as_ptr() as usize;
+                let len = command.as_ptr() as usize - config_content.as_ptr() as usize;
                 let line_index = config_content[..len].chars().filter(|&c| c == '\n').count();
 
                 ctx.editor
@@ -558,7 +565,7 @@ pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &
                         "{}:{}\n{}\n{}",
                         config_name,
                         line_index + 1,
-                        command_text,
+                        command,
                         error
                     ));
                 break;
