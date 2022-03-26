@@ -486,7 +486,9 @@ impl CommandManager {
         client_handle: Option<ClientHandle>,
         command: &mut String,
     ) -> Result<EditorFlow, CommandError> {
-        expand_variables(ctx, client_handle, command);
+        let mut token_ranges = [(0, 0); u8::MAX as _];
+        let token_ranges = expand_variables(ctx, client_handle, command, &mut token_ranges);
+        let _ = token_ranges;
 
         if let Some(token) = CommandTokenizer(command).next() {
             let alias = token.slice.trim_end_matches('!');
@@ -536,7 +538,7 @@ fn get_expansion_variable_value<'ctx>(
     client_handle: Option<ClientHandle>,
     variable_name: &str,
     args: &str,
-    buf: &'ctx mut [u8],
+    write_int_buf: &'ctx mut [u8],
 ) -> Option<&'ctx str> {
     fn assert_empty_args(args: &str) -> Option<()> {
         if args.is_empty() {
@@ -557,7 +559,7 @@ fn get_expansion_variable_value<'ctx>(
         Some(buffer)
     }
 
-    fn write_int_to_buf(buf: &mut [u8], n: u32) -> &str {
+    fn write_int(buf: &mut [u8], n: u32) -> &str {
         use io::Write;
         let mut cursor = io::Cursor::new(buf);
         let _ = write!(cursor, "{}", n);
@@ -572,7 +574,7 @@ fn get_expansion_variable_value<'ctx>(
             assert_empty_args(args)?;
             let buffer = current_buffer(ctx, client_handle)?;
             let buffer_index = buffer.handle().0;
-            write_int_to_buf(buf, buffer_index)
+            write_int(write_int_buf, buffer_index)
         }
         "buffer-path" => {
             let buffer = if args.is_empty() {
@@ -602,7 +604,12 @@ fn get_expansion_variable_value<'ctx>(
     Some(value)
 }
 
-fn expand_variables(ctx: &EditorContext, client_handle: Option<ClientHandle>, text: &mut String) {
+fn expand_variables<'a>(
+    ctx: &EditorContext,
+    client_handle: Option<ClientHandle>,
+    text: &mut String,
+    token_ranges_buf: &'a mut [(u32, u32)],
+) -> Option<&'a [(u32, u32)]> {
     fn parse_variable_name(text: &str) -> Result<&str, usize> {
         let mut chars = text.chars();
         loop {
@@ -622,23 +629,32 @@ fn expand_variables(ctx: &EditorContext, client_handle: Option<ClientHandle>, te
         Some(&text[..i])
     }
 
-    let mut buf = [0; 16];
+    let mut write_int_buf = [0; 16];
     let mut rest_index = 0;
+    let mut token_count = 0;
+
     loop {
         let text_ptr = text.as_ptr() as usize;
         let mut tokens = CommandTokenizer(&text[rest_index..]);
         let token = match tokens.next() {
             Some(token) => token,
-            None => return,
+            None => return Some(&token_ranges_buf[..token_count]),
         };
         rest_index = tokens.0.as_ptr() as usize - text_ptr;
 
-        if !token.can_expand_variables {
-            continue;
+        if token_count >= token_ranges_buf.len() {
+            return None;
         }
 
-        let mut token_rest_index = token.slice.as_ptr() as usize - text_ptr;
+        let token_start = token.slice.as_ptr() as usize - text_ptr;
+        let mut token_rest_index = token_start;
         let mut token_end = token_rest_index + token.slice.len();
+
+        if !token.can_expand_variables {
+            token_ranges_buf[token_count] = (token_start as _, token_end as _);
+            token_count += 1;
+            continue;
+        }
 
         loop {
             let token = &text[token_rest_index..token_end];
@@ -653,7 +669,7 @@ fn expand_variables(ctx: &EditorContext, client_handle: Option<ClientHandle>, te
                     continue;
                 }
             };
-            token_rest_index += 1 + variable_name.len() + 1;
+            token_rest_index = variable_start + 1 + variable_name.len() + 1;
             let variable_args = match parse_variable_args(&text[token_rest_index..]) {
                 Some(args) => args,
                 None => continue,
@@ -665,7 +681,7 @@ fn expand_variables(ctx: &EditorContext, client_handle: Option<ClientHandle>, te
                 client_handle,
                 variable_name,
                 variable_args,
-                &mut buf,
+                &mut write_int_buf,
             ) {
                 Some(value) => value,
                 None => continue,
@@ -680,9 +696,15 @@ fn expand_variables(ctx: &EditorContext, client_handle: Option<ClientHandle>, te
                 token_rest_index -= delta;
                 token_end -= delta;
             } else {
-                rest_index += expanded.len() - variable_len;
+                let delta = expanded.len() - variable_len;
+                rest_index += delta;
+                token_rest_index += delta;
+                token_end += delta;
             }
         }
+
+        token_ranges_buf[token_count] = (token_start as _, token_end as _);
+        token_count += 1;
     }
 }
 
@@ -728,10 +750,18 @@ mod tests {
 
     #[test]
     fn variable_expansion() {
-        fn assert_expansion(expected: &str, ctx: &EditorContext, text: &str) {
+        fn assert_expansion(
+            expected_expanded: &str,
+            expected_token_count: u8,
+            ctx: &EditorContext,
+            text: &str,
+        ) {
             let mut text = text.into();
-            expand_variables(ctx, Some(ClientHandle(0)), &mut text);
-            assert_eq!(expected, &text);
+            let mut token_ranges = [(0, 0); u8::MAX as _];
+            let token_ranges =
+                expand_variables(ctx, Some(ClientHandle(0)), &mut text, &mut token_ranges);
+            assert_eq!(expected_expanded, &text);
+            assert_eq!(expected_token_count as usize, token_ranges.unwrap().len());
         }
 
         let current_dir = env::current_dir().unwrap_or(PathBuf::new());
@@ -742,13 +772,26 @@ mod tests {
             plugins: PluginCollection::default(),
         };
 
-        let register_contents = "my register contents";
         let register = ctx
             .editor
             .registers
             .get_mut(RegisterKey::from_char('x').unwrap());
         register.clear();
-        register.push_str(register_contents);
+        register.push_str("my register contents");
+
+        let register = ctx
+            .editor
+            .registers
+            .get_mut(RegisterKey::from_char('l').unwrap());
+        register.clear();
+        register.push_str("very long register contents");
+
+        let register = ctx
+            .editor
+            .registers
+            .get_mut(RegisterKey::from_char('s').unwrap());
+        register.clear();
+        register.push_str("short");
 
         let buffer = ctx.editor.buffers.add_new();
         assert_eq!(0, buffer.handle().0);
@@ -768,24 +811,40 @@ mod tests {
             .get_mut(client_handle)
             .set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
 
-        assert_expansion("cmd", &ctx, "cmd");
+        assert_expansion("cmd", 1, &ctx, "cmd");
 
-        assert_expansion(register_contents, &ctx, "@register(x)");
-        assert_expansion("@register()", &ctx, "@register()");
-        assert_expansion("@register(xx)", &ctx, "@register(xx)");
+        assert_expansion("my register contents", 1, &ctx, "@register(x)");
+        assert_expansion("@register()", 1, &ctx, "@register()");
+        assert_expansion("@register(xx)", 1, &ctx, "@register(xx)");
+        assert_expansion("{{very long register contents short}}", 1, &ctx, "{{@register(l) @register(s)}}");
+        assert_expansion("{{short very long register contents}}", 1, &ctx, "{{@register(s) @register(l)}}");
 
-        assert_expansion("buffer/path0", &ctx, "@buffer-path()");
+        assert_expansion("buffer/path0", 1, &ctx, "@buffer-path()");
         assert_expansion(
             "cmd buffer/path0 asd buffer/path0",
+            4,
             &ctx,
             "cmd @buffer-path() asd @buffer-path()",
         );
 
         assert_expansion(
             "cmd buffer/path0 asd buffer/veryverylong/path1 fgh @buffer-path(2)",
+            6,
             &ctx,
             "cmd @buffer-path(0) asd @buffer-path(1) fgh @buffer-path(2)",
         );
+
+        let mut text = "  ".into();
+        let mut token_ranges = [(0, 0); 0];
+        let token_ranges =
+            expand_variables(&ctx, Some(ClientHandle(0)), &mut text, &mut token_ranges);
+        assert_eq!(Some(&[][..]), token_ranges);
+
+        let mut text = "two args".into();
+        let mut token_ranges = [(0, 0); 1];
+        let token_ranges =
+            expand_variables(&ctx, Some(ClientHandle(0)), &mut text, &mut token_ranges);
+        assert!(token_ranges.is_none());
     }
 
     #[test]
@@ -875,3 +934,4 @@ mod tests {
         assert_eq!(None, tokens.next().map(|t| t.slice));
     }
 }
+
