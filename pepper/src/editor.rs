@@ -449,7 +449,7 @@ impl Editor {
                     },
                 };
 
-                CommandManager::eval_and_write_error(ctx, Some(client_handle), command)
+                CommandManager::eval_and_write_error(ctx, Some(client_handle), command).1
             }
             ClientEvent::StdinInput(target, bytes) => {
                 let client_handle = match target {

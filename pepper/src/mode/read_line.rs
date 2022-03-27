@@ -1,10 +1,9 @@
-use std::process::Stdio;
-
 use crate::{
     buffer::{BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferPositionIndex},
     buffer_view::CursorMovementKind,
     client::ClientHandle,
+    command::{CommandIter, CommandManager},
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLinePoll, ResidualStrBytes},
@@ -12,7 +11,6 @@ use crate::{
     mode::{ModeKind, ModeState},
     navigation_history::NavigationHistory,
     pattern::Pattern,
-    platform::{PlatformRequest, PooledBuf, ProcessTag},
     word_database::WordDatabase,
 };
 
@@ -20,6 +18,7 @@ pub struct State {
     pub on_client_keys:
         fn(&mut EditorContext, ClientHandle, &mut KeysIterator, ReadLinePoll) -> Option<EditorFlow>,
     previous_position: BufferPosition,
+    continuation: String,
     find_pattern_command: String,
     find_pattern_buffer_handle: Option<BufferHandle>,
     find_pattern_residual_bytes: ResidualStrBytes,
@@ -72,6 +71,7 @@ impl Default for State {
         Self {
             on_client_keys: |_, _, _, _| Some(EditorFlow::Continue),
             previous_position: BufferPosition::zero(),
+            continuation: String::new(),
             find_pattern_command: String::new(),
             find_pattern_buffer_handle: None,
             find_pattern_residual_bytes: ResidualStrBytes::default(),
@@ -631,10 +631,10 @@ pub mod goto {
     }
 }
 
-pub mod process {
+pub mod custom {
     use super::*;
 
-    pub fn enter_replace_mode(ctx: &mut EditorContext) {
+    pub fn enter_mode(ctx: &mut EditorContext, continuation: &str, prompt: &str) {
         fn on_client_keys(
             ctx: &mut EditorContext,
             client_handle: ClientHandle,
@@ -642,115 +642,40 @@ pub mod process {
             poll: ReadLinePoll,
         ) -> Option<EditorFlow> {
             match poll {
-                ReadLinePoll::Pending => Some(EditorFlow::Continue),
+                ReadLinePoll::Pending => (),
                 ReadLinePoll::Submitted => {
-                    spawn_process(ctx, client_handle);
-                    ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorFlow::Continue)
-                }
-                ReadLinePoll::Canceled => {
-                    ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorFlow::Continue)
-                }
-            }
-        }
-
-        ctx.editor.read_line.set_prompt("replace-with-output:");
-        ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
-        ctx.editor.enter_mode(ModeKind::ReadLine);
-    }
-
-    pub fn enter_run_mode(ctx: &mut EditorContext) {
-        fn on_client_keys(
-            ctx: &mut EditorContext,
-            _: ClientHandle,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) -> Option<EditorFlow> {
-            match poll {
-                ReadLinePoll::Pending => Some(EditorFlow::Continue),
-                ReadLinePoll::Submitted => {
-                    let command = ctx.editor.read_line.input();
-                    if let Some(mut command) = parse_process_command(command) {
-                        command.stdin(Stdio::null());
-                        command.stdout(Stdio::null());
-                        command.stderr(Stdio::null());
-
-                        ctx.platform
-                            .requests
-                            .enqueue(PlatformRequest::SpawnProcess {
-                                tag: ProcessTag::Ignored,
-                                command,
-                                buf_len: 0,
-                            });
+                    let continuation = &ctx.editor.mode.read_line_state.continuation;
+                    let continuation = ctx.editor.string_pool.acquire_with(continuation);
+                    let mut flow = EditorFlow::Continue;
+                    for command in CommandIter(&continuation) {
+                        let (success, next_flow) = CommandManager::eval_and_write_error(
+                            ctx,
+                            Some(client_handle),
+                            command,
+                        );
+                        if !success {
+                            break;
+                        }
+                        if !matches!(next_flow, EditorFlow::Continue) {
+                            flow = next_flow;
+                            break;
+                        }
                     }
-
+                    ctx.editor.string_pool.release(continuation);
                     ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorFlow::Continue)
+                    return Some(flow);
                 }
-                ReadLinePoll::Canceled => {
-                    ctx.editor.enter_mode(ModeKind::default());
-                    Some(EditorFlow::Continue)
-                }
+                ReadLinePoll::Canceled => ctx.editor.enter_mode(ModeKind::default()),
             }
+            Some(EditorFlow::Continue)
         }
 
-        ctx.editor.read_line.set_prompt("run-command:");
-        ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
+        ctx.editor.read_line.set_prompt(prompt);
+        let state = &mut ctx.editor.mode.read_line_state;
+        state.on_client_keys = on_client_keys;
+        state.continuation.clear();
+        state.continuation.push_str(continuation);
         ctx.editor.enter_mode(ModeKind::ReadLine);
-    }
-
-    fn spawn_process(ctx: &mut EditorContext, client_handle: ClientHandle) {
-        let buffer_view_handle = match ctx.clients.get(client_handle).buffer_view_handle() {
-            Some(handle) => handle,
-            None => return,
-        };
-        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
-        let content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
-
-        const NONE_POOLED_BUF: Option<PooledBuf> = None;
-        let mut stdins = [NONE_POOLED_BUF; CursorCollection::capacity()];
-
-        for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-            let range = cursor.to_range();
-
-            let mut buf = ctx.platform.buf_pool.acquire();
-            let write = buf.write();
-            for text in content.text_range(range) {
-                write.extend_from_slice(text.as_bytes());
-            }
-
-            if write.is_empty() {
-                ctx.platform.buf_pool.release(buf);
-            } else {
-                stdins[i] = Some(buf);
-            }
-        }
-
-        buffer_view.delete_text_in_cursor_ranges(
-            &mut ctx.editor.buffers,
-            &mut ctx.editor.word_database,
-            &mut ctx.editor.events,
-        );
-
-        ctx.trigger_event_handlers();
-
-        let command = ctx.editor.read_line.input();
-        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
-        for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-            let command = match parse_process_command(command) {
-                Some(command) => command,
-                None => continue,
-            };
-
-            ctx.editor.buffers.spawn_insert_process(
-                &mut ctx.platform,
-                command,
-                buffer_view.buffer_handle,
-                cursor.position,
-                stdins[i].take(),
-            );
-        }
     }
 }
 
@@ -902,3 +827,4 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
         position,
     });
 }
+

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, process::Stdio};
 
 use crate::{
     buffer::{parse_path_and_position, BufferProperties},
@@ -6,11 +6,12 @@ use crate::{
     client::ViewAnchor,
     command::{CommandError, CommandIO, CommandIter, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
-    cursor::Cursor,
+    cursor::{Cursor, CursorCollection},
     editor::{EditorContext, EditorFlow},
-    editor_utils::MessageKind,
+    editor_utils::{parse_process_command, MessageKind},
     help,
     mode::{picker, read_line, ModeKind},
+    platform::{PlatformRequest, PooledBuf, ProcessTag},
     syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
 };
@@ -383,6 +384,93 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("readline", &[], |ctx, io| {
+        let arg = io.args.next()?;
+        let (prompt, continuation) = match io.args.try_next() {
+            Some(continuation) => (arg, continuation),
+            None => ("readline:", arg),
+        };
+        io.args.assert_empty()?;
+        read_line::custom::enter_mode(ctx, continuation, prompt);
+        Ok(())
+    });
+
+    r("run", &[], |ctx, io| {
+        let command = io.args.next()?;
+        io.args.assert_empty()?;
+
+        if let Some(mut command) = parse_process_command(command) {
+            command.stdin(Stdio::null());
+            command.stdout(Stdio::null());
+            command.stderr(Stdio::null());
+
+            ctx.platform
+                .requests
+                .enqueue(PlatformRequest::SpawnProcess {
+                    tag: ProcessTag::Ignored,
+                    command,
+                    buf_len: 0,
+                });
+        }
+
+        Ok(())
+    });
+
+    r("replace", &[], |ctx, io| {
+        let command = io.args.next()?;
+        io.args.assert_empty()?;
+
+        let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
+        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+        let content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
+
+        // TODO: `stdins` may not be needed
+        const NONE_POOLED_BUF: Option<PooledBuf> = None;
+        let mut stdins = [NONE_POOLED_BUF; CursorCollection::capacity()];
+
+        for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
+            let range = cursor.to_range();
+
+            let mut buf = ctx.platform.buf_pool.acquire();
+            let write = buf.write();
+            for text in content.text_range(range) {
+                write.extend_from_slice(text.as_bytes());
+            }
+
+            if write.is_empty() {
+                ctx.platform.buf_pool.release(buf);
+            } else {
+                stdins[i] = Some(buf);
+            }
+        }
+
+        buffer_view.delete_text_in_cursor_ranges(
+            &mut ctx.editor.buffers,
+            &mut ctx.editor.word_database,
+            &mut ctx.editor.events,
+        );
+
+        ctx.trigger_event_handlers();
+
+        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+        for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
+            let command = match parse_process_command(command) {
+                Some(command) => command,
+                None => continue,
+            };
+
+            ctx.editor.buffers.spawn_insert_process(
+                &mut ctx.platform,
+                command,
+                buffer_view.buffer_handle,
+                cursor.position,
+                stdins[i].take(),
+            );
+        }
+
+        Ok(())
+    });
+
     r(
         "on-platforms",
         &[CompletionSource::Custom(&[
@@ -406,11 +494,11 @@ pub fn register_commands(commands: &mut CommandManager) {
                 ""
             };
 
-            let mut block = "";
+            let mut continuation = "";
             let mut should_execute = false;
             while let Some(arg) = io.args.try_next() {
                 if should_execute {
-                    block = arg;
+                    continuation = arg;
                 }
 
                 if arg == current_platform {
@@ -419,7 +507,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             }
 
             if should_execute {
-                for command in CommandIter(block) {
+                for command in CommandIter(continuation) {
                     CommandManager::try_eval(ctx, io.client_handle, command)?;
                 }
             }
@@ -473,3 +561,4 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
+

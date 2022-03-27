@@ -201,6 +201,15 @@ By default, this is set per platform:
 Enqueue keys as if they were typed in the current client.
 - usage: `enqueue-keys <keys>`
 
+## `readline`
+TODO: write doc
+
+## `run`
+TODO: write doc
+
+## `replace`
+TODO: write doc
+
 ## `on-platforms`
 Given a `<platforms...>` argument list, execute `<commands>` if we're on any of such platforms.
 Note that `<commands>` are interpreted the same way a config file is interpreted
