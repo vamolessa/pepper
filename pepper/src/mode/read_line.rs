@@ -649,11 +649,8 @@ pub mod custom {
                     let continuation = ctx.editor.string_pool.acquire_with(continuation);
                     let mut flow = EditorFlow::Continue;
                     for command in CommandIter(&continuation) {
-                        let (success, next_flow) = CommandManager::eval_and_write_error(
-                            ctx,
-                            Some(client_handle),
-                            command,
-                        );
+                        let (success, next_flow) =
+                            CommandManager::eval_and_write_error(ctx, Some(client_handle), command);
                         if !success {
                             break;
                         }
@@ -828,4 +825,3 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
         position,
     });
 }
-

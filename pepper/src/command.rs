@@ -495,7 +495,7 @@ impl CommandManager {
         let mut force_bang = false;
         let mut tokens = CommandTokenizer(command);
         if let Some(token) = tokens.next() {
-            let alias= match token.slice.strip_suffix('!') {
+            let alias = match token.slice.strip_suffix('!') {
                 Some(token) => {
                     force_bang = true;
                     token
@@ -1047,4 +1047,3 @@ mod tests {
         assert_eq!(None, tokens.next().map(|t| t.slice));
     }
 }
-

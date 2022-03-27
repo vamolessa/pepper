@@ -432,4 +432,3 @@ pub mod find_file {
         ctx.editor.enter_mode(ModeKind::Picker);
     }
 }
-
