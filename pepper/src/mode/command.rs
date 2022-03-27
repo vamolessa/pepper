@@ -227,7 +227,9 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
                     ctx.editor.picker.add_custom_entry(command.name);
                 }
                 for (from, _) in ctx.editor.commands.aliases.iter() {
-                    ctx.editor.picker.add_custom_entry(from);
+                    if !from.starts_with('-') {
+                        ctx.editor.picker.add_custom_entry(from);
+                    }
                 }
             }
             CompletionSource::Buffers => {

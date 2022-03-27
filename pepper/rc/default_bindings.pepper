@@ -11,32 +11,3 @@ map-normal o dgli<enter>
 map-normal O dgii<enter><up>
 map-normal J djgivkgli<space><esc>
 
-on-platforms windows {={
-    map-normal <space>o ": find-file 'cmd /c dir /a-d /s /b'<enter>"
-    map-normal <space>f {{: find-pattern 'findstr /s /r /p /n "/c:{}" *'<enter>}}
-}=}
-
-on-platforms linux {={
-    copy-command "xclip -selection clipboard -in"
-    paste-command "xclip -selection clipboard -out"
-
-    map-normal <space>o {{: find-file "find . -type f -printf '%P\n'"<enter>}}
-    map-normal <space>f {{: find-pattern 'grep --recursive --binary-files=without-match --with-filename --line-number "{}"'<enter>}}
-}=}
-
-on-platforms bsd {={
-    copy-command "xclip -in"
-    paste-command "xclip -out"
-
-    map-normal <space>o {{: find-file "find . -type f -printf '%P\n'"<enter>}}
-    map-normal <space>f {{: find-pattern 'grep --recursive --binary-files=without-match --with-filename --line-number "{}"'<enter>}}
-}=}
-
-on-platforms macos {={
-    copy-command "pbcopy"
-    paste-command "pbpaste"
-
-    map-normal <space>o {{: find-file "find . -type f -print"<enter>}}
-    map-normal <space>f {{: find-pattern 'grep --recursive --binary-files=without-match --with-filename --line-number "{}"'<enter>}}
-}=}
-

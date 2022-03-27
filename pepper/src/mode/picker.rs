@@ -38,7 +38,7 @@ impl State {
         self.find_file_buf.extend_from_slice(bytes);
 
         {
-            let mut filtered_entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
             if let Some(i) = self.find_file_buf.iter().rposition(|&b| b == b'\n') {
                 for line in self
                     .find_file_buf
@@ -50,7 +50,7 @@ impl State {
                         continue;
                     }
                     if let Ok(line) = std::str::from_utf8(line) {
-                        filtered_entry_adder.add(line);
+                        entry_adder.add(line);
                     }
                 }
             }
@@ -67,13 +67,13 @@ impl State {
         self.find_file_waiting_for_process = false;
 
         {
-            let mut filtered_entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
             for line in self.find_file_buf.split(|&b| b == b'\n') {
                 if line.is_empty() {
                     continue;
                 }
                 if let Ok(line) = std::str::from_utf8(line) {
-                    filtered_entry_adder.add(line);
+                    entry_adder.add(line);
                 }
             }
         }

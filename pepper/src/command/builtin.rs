@@ -406,6 +406,24 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("set-picker-entries", &[], |ctx, io| {
+        ctx.editor.picker.clear();
+        let filter = ctx.editor.read_line.input();
+        let mut entry_adder = ctx.editor.picker.add_custom_filtered_entries(filter);
+        while let Some(arg) = io.args.try_next() {
+            entry_adder.add(arg);
+        }
+        Ok(())
+    });
+
+    r("set-picker-entries-from-lines", &[], |ctx, io| {
+        let command = io.args.next()?;
+        io.args.assert_empty()?;
+        //TODO: implement
+        //picker::custom::enter_mode(ctx, continuation, prompt);
+        Ok(())
+    });
+
     r("run", &[], |ctx, io| {
         let command = io.args.next()?;
         io.args.assert_empty()?;
@@ -427,7 +445,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("replace", &[], |ctx, io| {
+    r("replace-with", &[], |ctx, io| {
         let command = io.args.next()?;
         io.args.assert_empty()?;
 

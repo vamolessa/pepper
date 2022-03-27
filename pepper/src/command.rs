@@ -492,9 +492,16 @@ impl CommandManager {
     ) -> Result<EditorFlow, CommandError> {
         let mut expanded = ctx.editor.string_pool.acquire();
 
+        let mut force_bang = false;
         let mut tokens = CommandTokenizer(command);
         if let Some(token) = tokens.next() {
-            let alias = token.slice.trim_end_matches('!');
+            let alias= match token.slice.strip_suffix('!') {
+                Some(token) => {
+                    force_bang = true;
+                    token
+                }
+                None => token.slice,
+            };
             if let Some(aliased) = ctx.editor.commands.aliases.find(alias) {
                 expand_variables(ctx, client_handle, aliased, &mut expanded);
                 command = tokens.0;
@@ -503,7 +510,7 @@ impl CommandManager {
 
         expand_variables(ctx, client_handle, command, &mut expanded);
 
-        let result = Self::eval(ctx, client_handle, &expanded);
+        let result = Self::eval(ctx, client_handle, &expanded, force_bang);
         ctx.editor.string_pool.release(expanded);
         result
     }
@@ -512,6 +519,7 @@ impl CommandManager {
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &str,
+        force_bang: bool,
     ) -> Result<EditorFlow, CommandError> {
         let mut args = CommandArgs(command);
         let command = match args.try_next() {
@@ -520,7 +528,7 @@ impl CommandManager {
         };
         let (command, bang) = match command.strip_suffix('!') {
             Some(command) => (command, true),
-            None => (command, false),
+            None => (command, force_bang),
         };
         let (plugin_handle, command_fn) = match ctx.editor.commands.find_command(command) {
             Some(command) => (command.plugin_handle, command.command_fn),
@@ -643,7 +651,7 @@ fn write_variable_expansion<'ctx>(
             assert_empty_args(args)?;
             output.push_str(ctx.editor.read_line.input());
         }
-        "picker-selected" => {
+        "picker-entry" => {
             assert_empty_args(args)?;
             let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
                 Some(entry) => entry.1,

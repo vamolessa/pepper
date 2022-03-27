@@ -204,10 +204,19 @@ Enqueue keys as if they were typed in the current client.
 ## `readline`
 TODO: write doc
 
+## `pick`
+TODO: write doc
+
+## `set-picker-entries`
+TODO: write doc
+
+## `set-picker-entries-from-lines`
+TODO: write doc
+
 ## `run`
 TODO: write doc
 
-## `replace`
+## `replace-with`
 TODO: write doc
 
 ## `on-platforms`
@@ -216,13 +225,14 @@ Note that `<commands>` are interpreted the same way a config file is interpreted
 (that is, line by line but also supporting multiline commands).
 - usage: `on-platforms <platforms...> <commands>`
 
-
+TODO: remove
 ## `find-file`
 Executes external command `<command>` and fills the picker menu from each line of its stdout.
 When an entry is selected, it's opened as a buffer path.
 Also, it's possible to customize the `<prompt>` that is shown on the picker ui.
 - usage: `find-file <command> [<prompt>]`
 
+TODO: remove
 ## `find-pattern`
 Shows a readline ui that queries for the search pattern.
 When it's submitted, the external command `<command>` whose stdout will be inserted into a buffer named `<command>.refs`.

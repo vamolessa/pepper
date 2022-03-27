@@ -1,5 +1,9 @@
 # changelog
 
+## 0.25.0
+- new variable expansion mechanism when evaluating commands
+- command aliases that start with `-` won't show up in auto completions
+
 ## 0.24.0
 - handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)
 - command `$` is now `!` and what was `!` is now removed; that is, there's no longer a 'only insert from command output', just 'replace with command output' (`|` command) and if the selection is empty, it behaves as if it was the old `!`

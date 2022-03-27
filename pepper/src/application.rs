@@ -33,6 +33,7 @@ impl Default for ApplicationConfig {
             args: Args::parse(),
             static_configs: vec![
                 crate::DEFAULT_BINDINGS_CONFIG,
+                crate::DEFAULT_COMMANDS_CONFIG,
                 crate::DEFAULT_ALIASES_CONFIG,
                 crate::DEFAULT_SYNTAXES_CONFIG,
             ],
