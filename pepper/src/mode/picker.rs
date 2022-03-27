@@ -3,6 +3,7 @@ use std::process::Stdio;
 use crate::{
     buffer::BufferProperties,
     client::ClientHandle,
+    command::{CommandIter, CommandManager},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
     mode::{ModeKind, ModeState},
@@ -18,6 +19,7 @@ pub struct State {
         &mut KeysIterator,
         ReadLinePoll,
     ) -> Option<EditorFlow>,
+    continuation: String,
     find_file_waiting_for_process: bool,
     find_file_buf: Vec<u8>,
 }
@@ -85,6 +87,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _, _| Some(EditorFlow::Continue),
+            continuation: String::new(),
             find_file_waiting_for_process: false,
             find_file_buf: Vec::new(),
         }
@@ -298,6 +301,51 @@ pub mod opened_buffers {
     }
 }
 
+pub mod custom {
+    use super::*;
+
+    pub fn enter_mode(ctx: &mut EditorContext, continuation: &str, prompt: &str) {
+        fn on_client_keys(
+            ctx: &mut EditorContext,
+            client_handle: ClientHandle,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<EditorFlow> {
+            match poll {
+                ReadLinePoll::Pending => (),
+                ReadLinePoll::Submitted => {
+                    let continuation = &ctx.editor.mode.picker_state.continuation;
+                    let continuation = ctx.editor.string_pool.acquire_with(continuation);
+                    let mut flow = EditorFlow::Continue;
+                    for command in CommandIter(&continuation) {
+                        let (success, next_flow) =
+                            CommandManager::eval_and_write_error(ctx, Some(client_handle), command);
+                        if !success {
+                            break;
+                        }
+                        if !matches!(next_flow, EditorFlow::Continue) {
+                            flow = next_flow;
+                            break;
+                        }
+                    }
+                    ctx.editor.string_pool.release(continuation);
+                    ctx.editor.enter_mode(ModeKind::default());
+                    return Some(flow);
+                }
+                ReadLinePoll::Canceled => ctx.editor.enter_mode(ModeKind::default()),
+            }
+            Some(EditorFlow::Continue)
+        }
+
+        ctx.editor.read_line.set_prompt(prompt);
+        let state = &mut ctx.editor.mode.picker_state;
+        state.on_client_keys = on_client_keys;
+        state.continuation.clear();
+        state.continuation.push_str(continuation);
+        ctx.editor.enter_mode(ModeKind::Picker);
+    }
+}
+
 pub mod find_file {
     use super::*;
 
@@ -384,3 +432,4 @@ pub mod find_file {
         ctx.editor.enter_mode(ModeKind::Picker);
     }
 }
+

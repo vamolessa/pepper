@@ -19,6 +19,7 @@ pub struct State {
         fn(&mut EditorContext, ClientHandle, &mut KeysIterator, ReadLinePoll) -> Option<EditorFlow>,
     previous_position: BufferPosition,
     continuation: String,
+    // TODO: remove find_pattern stuff
     find_pattern_command: String,
     find_pattern_buffer_handle: Option<BufferHandle>,
     find_pattern_residual_bytes: ResidualStrBytes,

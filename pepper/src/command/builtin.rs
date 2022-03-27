@@ -395,6 +395,17 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("pick", &[], |ctx, io| {
+        let arg = io.args.next()?;
+        let (prompt, continuation) = match io.args.try_next() {
+            Some(continuation) => (arg, continuation),
+            None => ("pick:", arg),
+        };
+        io.args.assert_empty()?;
+        picker::custom::enter_mode(ctx, continuation, prompt);
+        Ok(())
+    });
+
     r("run", &[], |ctx, io| {
         let command = io.args.next()?;
         io.args.assert_empty()?;

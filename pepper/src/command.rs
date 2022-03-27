@@ -2,10 +2,10 @@ use std::{collections::VecDeque, fmt};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
-    cursor::Cursor,
-    buffer_view::{BufferViewHandle, BufferView},
+    buffer_view::{BufferView, BufferViewHandle},
     client::ClientHandle,
     config::ParseConfigError,
+    cursor::Cursor,
     editor::{EditorContext, EditorFlow},
     editor_utils::{MessageKind, ParseKeyMapError, RegisterKey},
     events::KeyParseAllError,
@@ -554,12 +554,12 @@ fn write_variable_expansion<'ctx>(
         }
     }
 
-    fn current_buffer_view(ctx: &EditorContext, client_handle: Option<ClientHandle>) -> Option<&BufferView> {
+    fn current_buffer_view(
+        ctx: &EditorContext,
+        client_handle: Option<ClientHandle>,
+    ) -> Option<&BufferView> {
         let buffer_view_handle = ctx.clients.get(client_handle?).buffer_view_handle()?;
-        let buffer_view = ctx
-            .editor
-            .buffer_views
-            .get(buffer_view_handle);
+        let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
         Some(buffer_view)
     }
 
@@ -569,7 +569,11 @@ fn write_variable_expansion<'ctx>(
         Some(buffer)
     }
 
-    fn cursor(ctx: &EditorContext, client_handle: Option<ClientHandle>, args: &str) -> Option<Cursor> {
+    fn cursor(
+        ctx: &EditorContext,
+        client_handle: Option<ClientHandle>,
+        args: &str,
+    ) -> Option<Cursor> {
         let cursors = &current_buffer_view(ctx, client_handle)?.cursors;
         let index = if args.is_empty() {
             cursors.main_cursor_index()
@@ -612,11 +616,6 @@ fn write_variable_expansion<'ctx>(
                 output.push('\n');
             }
         }
-        "cursor-count" => {
-            assert_empty_args(args)?;
-            let buffer_view = current_buffer_view(ctx, client_handle)?;
-            let _ = write!(output, "{}", buffer_view.cursors[..].len());
-        }
         "cursor-anchor-column" => {
             let cursor = cursor(ctx, client_handle, args)?;
             let _ = write!(output, "{}", cursor.anchor.column_byte_index);
@@ -643,6 +642,14 @@ fn write_variable_expansion<'ctx>(
         "readline-input" => {
             assert_empty_args(args)?;
             output.push_str(ctx.editor.read_line.input());
+        }
+        "picker-selected" => {
+            assert_empty_args(args)?;
+            let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
+                Some(entry) => entry.1,
+                None => "",
+            };
+            output.push_str(entry);
         }
         "register" => {
             let key = RegisterKey::from_str(args)?;
@@ -727,7 +734,9 @@ fn expand_variables<'a>(
 
             rest = &rest[args_skip + variable_args.len() + 1..];
 
-            if write_variable_expansion(ctx, client_handle, variable_name, variable_args, output).is_none() {
+            if write_variable_expansion(ctx, client_handle, variable_name, variable_args, output)
+                .is_none()
+            {
                 output.push('@');
                 output.push_str(variable_name);
                 output.push('(');
@@ -899,11 +908,7 @@ mod tests {
             .get_mut(client_handle)
             .set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
 
-        fn assert_expansion(
-            expected_expanded: &str,
-            ctx: &EditorContext,
-            text: &str,
-        ) {
+        fn assert_expansion(expected_expanded: &str, ctx: &EditorContext, text: &str) {
             let mut expanded = String::new();
             expand_variables(ctx, Some(ClientHandle(0)), text, &mut expanded);
             assert_eq!(expected_expanded, &expanded);
@@ -922,8 +927,16 @@ mod tests {
         assert_expansion("my register contents\0", &ctx, "@register(x)");
         assert_expansion("@register()\0", &ctx, "@register()");
         assert_expansion("@register(xx)\0", &ctx, "@register(xx)");
-        assert_expansion("very long register contents short\0", &ctx, "{{@register(l) @register(s)}}");
-        assert_expansion("short very long register contents\0", &ctx, "{{@register(s) @register(l)}}");
+        assert_expansion(
+            "very long register contents short\0",
+            &ctx,
+            "{{@register(l) @register(s)}}",
+        );
+        assert_expansion(
+            "short very long register contents\0",
+            &ctx,
+            "{{@register(s) @register(l)}}",
+        );
 
         assert_expansion("buffer/path0\0", &ctx, "@buffer-path()");
         assert_expansion(
