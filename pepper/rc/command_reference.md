@@ -207,10 +207,10 @@ TODO: write doc
 ## `pick`
 TODO: write doc
 
-## `set-picker-entries`
+## `picker-entries`
 TODO: write doc
 
-## `set-picker-entries-from-lines`
+## `picker-entries-from-lines`
 TODO: write doc
 
 ## `run`

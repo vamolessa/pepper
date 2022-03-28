@@ -146,9 +146,9 @@ impl ReadLine {
         match keys_iter.next(buffered_keys) {
             Key {
                 code: KeyCode::Esc,
-                shift: false,
                 control: false,
                 alt: false,
+                ..
             }
             | Key {
                 code: KeyCode::Char('c'),
@@ -158,9 +158,9 @@ impl ReadLine {
             } => ReadLinePoll::Canceled,
             Key {
                 code: KeyCode::Char('\n'),
-                shift: false,
                 control: false,
                 alt: false,
+                ..
             }
             | Key {
                 code: KeyCode::Char('m'),
