@@ -63,6 +63,11 @@ impl fmt::Display for CommandError {
     }
 }
 
+pub struct CommandErrorWithContext {
+    pub error: CommandError,
+    pub command_index: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionSource {
     Commands,
@@ -530,24 +535,44 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    pub fn eval_and_write_error(
+    pub fn unwrap_eval_result(
         ctx: &mut EditorContext,
-        client_handle: Option<ClientHandle>,
-        command: &str,
-    ) -> (bool, EditorFlow) {
-        match Self::try_eval(ctx, client_handle, command) {
-            Ok(flow) => (true, flow),
+        result: Result<EditorFlow, CommandErrorWithContext>,
+    ) -> EditorFlow {
+        match result {
+            Ok(flow) => flow,
             Err(error) => {
                 ctx.editor
                     .status_bar
                     .write(MessageKind::Error)
-                    .fmt(format_args!("{}", error));
-                (false, EditorFlow::Continue)
+                    .fmt(format_args!("{}", error.error));
+                EditorFlow::Continue
             }
         }
     }
 
-    pub fn try_eval(
+    pub fn eval(
+        ctx: &mut EditorContext,
+        client_handle: Option<ClientHandle>,
+        source: &str,
+    ) -> Result<EditorFlow, CommandErrorWithContext> {
+        for (i, command) in CommandIter(source).enumerate() {
+            match Self::eval_single(ctx, client_handle, command) {
+                Ok(EditorFlow::Continue) => (),
+                Ok(flow) => return Ok(flow),
+                Err(error) => {
+                    return Err(CommandErrorWithContext {
+                        error,
+                        command_index: i,
+                    });
+                }
+            }
+        }
+
+        Ok(EditorFlow::Continue)
+    }
+
+    fn eval_single(
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         mut command: &str,
@@ -572,12 +597,12 @@ impl CommandManager {
 
         expand_variables(ctx, client_handle, command, &mut expanded);
 
-        let result = Self::eval(ctx, client_handle, &expanded, force_bang);
+        let result = Self::eval_single_impl(ctx, client_handle, &expanded, force_bang);
         ctx.editor.string_pool.release(expanded);
         result
     }
 
-    fn eval(
+    fn eval_single_impl(
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &str,
@@ -595,7 +620,10 @@ impl CommandManager {
 
         if let Some(macro_source) = ctx.editor.commands.macros.find(command_name) {
             let macro_source = ctx.editor.string_pool.acquire_with(macro_source);
-            let result = Self::try_eval(ctx, client_handle, &macro_source);
+            let mut result = Ok(EditorFlow::Continue);
+            for command in CommandIter(&macro_source) {
+                result = Self::eval_single(ctx, client_handle, command);
+            }
             ctx.editor.string_pool.release(macro_source);
             return result;
         }
@@ -1048,4 +1076,3 @@ mod tests {
         assert_eq!(None, tokens.next().map(|t| t.slice));
     }
 }
-

@@ -614,7 +614,7 @@ impl<'de> Serialize<'de> for TargetClient {
 pub enum ClientEvent<'a> {
     Key(TargetClient, Key),
     Resize(u16, u16),
-    Command(TargetClient, &'a str),
+    Commands(TargetClient, &'a str),
     StdinInput(TargetClient, &'a [u8]),
 }
 impl<'de> Serialize<'de> for ClientEvent<'de> {
@@ -633,7 +633,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 width.serialize(serializer);
                 height.serialize(serializer);
             }
-            Self::Command(target, command) => {
+            Self::Commands(target, command) => {
                 2u8.serialize(serializer);
                 target.serialize(serializer);
                 command.serialize(serializer);
@@ -665,7 +665,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
             2 => {
                 let target = Serialize::deserialize(deserializer)?;
                 let command = Serialize::deserialize(deserializer)?;
-                Ok(Self::Command(target, command))
+                Ok(Self::Commands(target, command))
             }
             3 => {
                 let target = Serialize::deserialize(deserializer)?;

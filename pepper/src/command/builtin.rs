@@ -4,7 +4,7 @@ use crate::{
     buffer::{parse_path_and_position, BufferProperties},
     buffer_position::BufferPosition,
     client::ViewAnchor,
-    command::{CommandError, CommandIO, CommandIter, CommandManager, CompletionSource},
+    command::{CommandError, CommandIO, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::{Cursor, CursorCollection},
     editor::{EditorContext, EditorFlow},
@@ -410,10 +410,11 @@ pub fn register_commands(commands: &mut CommandManager) {
 
     r("picker-entries", &[], |ctx, io| {
         ctx.editor.picker.clear();
-        let filter = ctx.editor.read_line.input();
-        let mut entry_adder = ctx.editor.picker.add_custom_filtered_entries(filter);
+        //let filter = ctx.editor.read_line.input();
+        //let mut entry_adder = ctx.editor.picker.add_custom_filtered_entries(filter);
         while let Some(arg) = io.args.try_next() {
-            entry_adder.add(arg);
+            ctx.editor.picker.add_custom_entry(arg);
+            //entry_adder.add(arg);
         }
         Ok(())
     });
@@ -512,12 +513,15 @@ pub fn register_commands(commands: &mut CommandManager) {
 
     // TODO: this may not be needed (delete if so)
     r("eval", &[], |ctx, io| {
-        let continuation = io.args.next()?;
+        let source = io.args.next()?;
         io.args.assert_empty()?;
-        for command in CommandIter(continuation) {
-            CommandManager::try_eval(ctx, io.client_handle, command)?;
+        match CommandManager::eval(ctx, io.client_handle, source) {
+            Ok(flow) => {
+                io.flow = flow;
+                Ok(())
+            }
+            Err(error) => Err(error.error),
         }
-        Ok(())
     });
 
     r(
@@ -555,13 +559,17 @@ pub fn register_commands(commands: &mut CommandManager) {
                 }
             }
 
-            if should_execute {
-                for command in CommandIter(continuation) {
-                    CommandManager::try_eval(ctx, io.client_handle, command)?;
-                }
+            if !should_execute {
+                return Ok(());
             }
 
-            Ok(())
+            match CommandManager::eval(ctx, io.client_handle, continuation) {
+                Ok(flow) => {
+                    io.flow = flow;
+                    Ok(())
+                }
+                Err(error) => Err(error.error),
+            }
         },
     );
 
@@ -610,4 +618,3 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
-

@@ -440,7 +440,7 @@ impl Editor {
                 client.viewport_size = (width, height);
                 EditorFlow::Continue
             }
-            ClientEvent::Command(target, command) => {
+            ClientEvent::Commands(target, commands) => {
                 let client_handle = match target {
                     TargetClient::Sender => client_handle,
                     TargetClient::Focused => match ctx.clients.focused_client() {
@@ -449,7 +449,8 @@ impl Editor {
                     },
                 };
 
-                CommandManager::eval_and_write_error(ctx, Some(client_handle), command).1
+                let result = CommandManager::eval(ctx, Some(client_handle), commands);
+                CommandManager::unwrap_eval_result(ctx, result)
             }
             ClientEvent::StdinInput(target, bytes) => {
                 let client_handle = match target {

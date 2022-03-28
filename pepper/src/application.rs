@@ -287,12 +287,12 @@ where
             commands.push_str("open \"");
             commands.push_str(path);
             commands.push('"');
-            ClientEvent::Command(self.target_client, &commands)
+            ClientEvent::Commands(self.target_client, &commands)
                 .serialize(&mut self.server_write_buf);
         }
 
         if args.quit {
-            ClientEvent::Command(TargetClient::Sender, "quit")
+            ClientEvent::Commands(TargetClient::Sender, "quit")
                 .serialize(&mut self.server_write_buf);
         }
 

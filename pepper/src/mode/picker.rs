@@ -3,7 +3,7 @@ use std::process::Stdio;
 use crate::{
     buffer::BufferProperties,
     client::ClientHandle,
-    command::{CommandIter, CommandManager},
+    command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
     mode::{ModeKind, ModeState},
@@ -316,18 +316,8 @@ pub mod custom {
                 ReadLinePoll::Submitted => {
                     let continuation = &ctx.editor.mode.picker_state.continuation;
                     let continuation = ctx.editor.string_pool.acquire_with(continuation);
-                    let mut flow = EditorFlow::Continue;
-                    for command in CommandIter(&continuation) {
-                        let (success, next_flow) =
-                            CommandManager::eval_and_write_error(ctx, Some(client_handle), command);
-                        if !success {
-                            break;
-                        }
-                        if !matches!(next_flow, EditorFlow::Continue) {
-                            flow = next_flow;
-                            break;
-                        }
-                    }
+                    let result = CommandManager::eval(ctx, Some(client_handle), &continuation);
+                    let flow = CommandManager::unwrap_eval_result(ctx, result);
                     ctx.editor.string_pool.release(continuation);
                     ctx.editor.enter_mode(ModeKind::default());
                     return Some(flow);

@@ -1,6 +1,6 @@
 on-platforms windows @{=={
     macro -find-file @{={
-        picker-entries-from-lines "cmd /c dir /a-d /s /b"
+        picker-entries "pepper/src/buffer.rs" "pepper/src/editor.rs"
         pick "open:" @{{
             open "@picker-entry()"
         }}
@@ -15,29 +15,51 @@ on-platforms windows @{=={
     }=}
 }==}
 
-on-platforms linux @{={
+on-platforms linux @{=={
     copy-command "xclip -selection clipboard -in"
     paste-command "xclip -selection clipboard -out"
 
-    map-normal <space>o {{: find-file "find . -type f -printf '%P\n'"<enter>}}
-    map-normal <space>f {{: find-pattern 'grep --recursive --binary-files=without-match --with-filename --line-number "{}"'<enter>}}
-}=}
+    macro -find-file @{={
+        picker-entries-from-lines "find . -type f -printf '%P\n'"
+        pick "open:" @{{
+            open "@picker-entry()"
+        }}
+    }=}
+}==}
 
-on-platforms bsd @{={
+on-platforms bsd @{=={
     copy-command "xclip -in"
     paste-command "xclip -out"
 
-    map-normal <space>o {{: find-file "find . -type f -printf '%P\n'"<enter>}}
-    map-normal <space>f {{: find-pattern 'grep --recursive --binary-files=without-match --with-filename --line-number "{}"'<enter>}}
-}=}
+    macro -find-file @{={
+        picker-entries-from-lines "find . -type f -printf '%P\n'"
+        pick "open:" @{{
+            open "@picker-entry()"
+        }}
+    }=}
+}==}
 
-on-platforms macos @{={
+on-platforms macos @{=={
     copy-command "pbcopy"
     paste-command "pbpaste"
 
-    map-normal <space>o {{: find-file "find . -type f -print"<enter>}}
-    map-normal <space>f {{: find-pattern 'grep --recursive --binary-files=without-match --with-filename --line-number "{}"'<enter>}}
-}=}
+    macro -find-file @{={
+        picker-entries-from-lines "find . -type f -print"
+        pick "open:" @{{
+            open "@picker-entry()"
+        }}
+    }=}
+}==}
+
+on-platforms linux bsd macos @{=={
+    macro -find-pattern @{={
+        readline "find:" @{{
+            open "@readline-input().refs" scratch
+            enqueue-keys "aad"
+            replace-with 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
+        }}
+    }=}
+}==}
 
 map-normal <space>o ": -find-file<enter>"
 map-normal <space>f ": -find-pattern<enter>"
