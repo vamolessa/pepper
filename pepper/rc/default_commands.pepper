@@ -1,3 +1,7 @@
+macro test @{{
+    print eeeee
+}}
+
 on-platforms windows @{=={
     alias -find-file @{={
         set-picker-entries-from-lines "cmd /c dir /a-d /s /b"

@@ -219,6 +219,12 @@ TODO: write doc
 ## `replace-with`
 TODO: write doc
 
+## `macro`
+TODO: write doc
+
+## `eval`
+TODO: write doc
+
 ## `on-platforms`
 Given a `<platforms...>` argument list, execute `<commands>` if we're on any of such platforms.
 Note that `<commands>` are interpreted the same way a config file is interpreted

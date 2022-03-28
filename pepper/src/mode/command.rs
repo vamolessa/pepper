@@ -227,9 +227,14 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
                 for command in ctx.editor.commands.commands() {
                     ctx.editor.picker.add_custom_entry(command.name);
                 }
-                for (from, _) in ctx.editor.commands.aliases.iter() {
-                    if !from.starts_with('-') {
-                        ctx.editor.picker.add_custom_entry(from);
+                for name in ctx.editor.commands.macros.names() {
+                    if !name.starts_with('-') {
+                        ctx.editor.picker.add_custom_entry(name);
+                    }
+                }
+                for name in ctx.editor.commands.aliases.names() {
+                    if !name.starts_with('-') {
+                        ctx.editor.picker.add_custom_entry(name);
                     }
                 }
             }

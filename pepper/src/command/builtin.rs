@@ -306,6 +306,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
+    // TODO: maybe change this to one command `map` that receives a mode param
     r("map-normal", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
     r("map-insert", &[], |ctx, io| map(ctx, io, ModeKind::Insert));
     r("map-command", &[], |ctx, io| {
@@ -326,6 +327,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
+    // TODO: maybe change this to one command `syntax` that may receive a token kind param
     r("syntax", &[], |ctx, io| {
         let glob = io.args.next()?;
         io.args.assert_empty()?;
@@ -406,7 +408,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("set-picker-entries", &[], |ctx, io| {
+    r("picker-entries", &[], |ctx, io| {
         ctx.editor.picker.clear();
         let filter = ctx.editor.read_line.input();
         let mut entry_adder = ctx.editor.picker.add_custom_filtered_entries(filter);
@@ -416,7 +418,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("set-picker-entries-from-lines", &[], |ctx, io| {
+    r("picker-entries-from-lines", &[], |ctx, io| {
         let command = io.args.next()?;
         io.args.assert_empty()?;
         //TODO: implement
@@ -497,6 +499,24 @@ pub fn register_commands(commands: &mut CommandManager) {
             );
         }
 
+        Ok(())
+    });
+
+    r("macro", &[], |ctx, io| {
+        let name = io.args.next()?;
+        let source = io.args.next()?;
+        io.args.assert_empty()?;
+        ctx.editor.commands.macros.add(name, source);
+        Ok(())
+    });
+
+    // TODO: this may not be needed (delete if so)
+    r("eval", &[], |ctx, io| {
+        let continuation = io.args.next()?;
+        io.args.assert_empty()?;
+        for command in CommandIter(continuation) {
+            CommandManager::try_eval(ctx, io.client_handle, command)?;
+        }
         Ok(())
     });
 
@@ -590,3 +610,4 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
+

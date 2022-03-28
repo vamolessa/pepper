@@ -325,6 +325,68 @@ pub struct Command {
     command_fn: CommandFn,
 }
 
+struct Macro {
+    name_start: u16,
+    name_end: u16,
+    source_start: u32,
+    source_end: u32,
+}
+impl Macro {
+    pub fn name<'a>(&self, names: &'a str) -> &'a str {
+        &names[self.name_start as usize..self.name_end as usize]
+    }
+
+    pub fn source<'a>(&self, sources: &'a str) -> &'a str {
+        &sources[self.source_start as usize..self.source_end as usize]
+    }
+}
+
+#[derive(Default)]
+pub struct MacroCollection {
+    macros: Vec<Macro>,
+    names: String,
+    sources: String,
+}
+impl MacroCollection {
+    pub fn add(&mut self, name: &str, source: &str) {
+        let name_start = self.names.len();
+        self.names.push_str(name);
+        let name_end = self.names.len();
+
+        if name_end > u16::MAX as _ {
+            return;
+        }
+
+        let source_start = self.sources.len();
+        self.sources.push_str(source);
+        let source_end = self.sources.len();
+        if source_end > u32::MAX as _ {
+            return;
+        }
+
+        self.macros.push(Macro {
+            name_start: name_start as _,
+            name_end: name_end as _,
+            source_start: source_start as _,
+            source_end: source_end as _,
+        });
+    }
+
+    pub fn find(&self, name: &str) -> Option<&str> {
+        for m in &self.macros {
+            if name == m.name(&self.names) {
+                return Some(m.source(&self.sources));
+            }
+        }
+
+        None
+    }
+
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.macros.iter().map(move |m| m.name(&self.names))
+    }
+}
+
 struct Alias {
     start: u32,
     from_len: u16,
@@ -389,15 +451,14 @@ impl AliasCollection {
         None
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        self.aliases
-            .iter()
-            .map(move |a| (a.from(&self.texts), a.to(&self.texts)))
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.aliases.iter().map(move |a| a.from(&self.texts))
     }
 }
 
 pub struct CommandManager {
     commands: Vec<Command>,
+    pub macros: MacroCollection,
     history: VecDeque<String>,
     pub aliases: AliasCollection,
 }
@@ -406,6 +467,7 @@ impl CommandManager {
     pub fn new() -> Self {
         let mut this = Self {
             commands: Vec::new(),
+            macros: MacroCollection::default(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
             aliases: AliasCollection::default(),
         };
@@ -522,28 +584,37 @@ impl CommandManager {
         force_bang: bool,
     ) -> Result<EditorFlow, CommandError> {
         let mut args = CommandArgs(command);
-        let command = match args.try_next() {
+        let command_name = match args.try_next() {
             Some(command) => command,
             None => return Err(CommandError::NoSuchCommand),
         };
-        let (command, bang) = match command.strip_suffix('!') {
+        let (command_name, bang) = match command_name.strip_suffix('!') {
             Some(command) => (command, true),
-            None => (command, force_bang),
-        };
-        let (plugin_handle, command_fn) = match ctx.editor.commands.find_command(command) {
-            Some(command) => (command.plugin_handle, command.command_fn),
-            None => return Err(CommandError::NoSuchCommand),
+            None => (command_name, force_bang),
         };
 
-        let mut io = CommandIO {
-            client_handle,
-            plugin_handle,
-            args,
-            bang,
-            flow: EditorFlow::Continue,
-        };
-        command_fn(ctx, &mut io)?;
-        Ok(io.flow)
+        if let Some(macro_source) = ctx.editor.commands.macros.find(command_name) {
+            let macro_source = ctx.editor.string_pool.acquire_with(macro_source);
+            let result = Self::try_eval(ctx, client_handle, &macro_source);
+            ctx.editor.string_pool.release(macro_source);
+            return result;
+        }
+
+        if let Some(command) = ctx.editor.commands.find_command(command_name) {
+            let plugin_handle = command.plugin_handle;
+            let command_fn = command.command_fn;
+            let mut io = CommandIO {
+                client_handle,
+                plugin_handle,
+                args,
+                bang,
+                flow: EditorFlow::Continue,
+            };
+            command_fn(ctx, &mut io)?;
+            return Ok(io.flow);
+        }
+
+        Err(CommandError::NoSuchCommand)
     }
 }
 
@@ -755,76 +826,6 @@ fn expand_variables<'a>(
 
         output.push('\0');
     }
-
-    /*
-    let mut rest_index = 0;
-    let mut token_count = 0;
-
-    loop {
-        let text_ptr = text.as_ptr() as usize;
-        let mut tokens = CommandTokenizer(&text[rest_index..]);
-        let token = match tokens.next() {
-            Some(token) => token,
-            None => return,
-        };
-        rest_index = tokens.0.as_ptr() as usize - text_ptr;
-
-        let token_start = token.slice.as_ptr() as usize - text_ptr;
-        let mut token_rest_index = token_start;
-        let mut token_end = token_rest_index + token.slice.len();
-
-        if !token.can_expand_variables {
-            continue;
-        }
-
-        loop {
-            let token = &text[token_rest_index..token_end];
-            let variable_start = match token.find('@') {
-                Some(i) => token_rest_index + i,
-                None => break,
-            };
-            let variable_name = match parse_variable_name(&text[variable_start + 1..]) {
-                Ok(name) => name,
-                Err(skip) => {
-                    token_rest_index += skip;
-                    continue;
-                }
-            };
-            token_rest_index = variable_start + 1 + variable_name.len() + 1;
-            let variable_args = match parse_variable_args(&text[token_rest_index..]) {
-                Some(args) => args,
-                None => continue,
-            };
-            token_rest_index += variable_args.len() + 1;
-
-            let variable_value = match get_expansion_variable_value(
-                ctx,
-                client_handle,
-                variable_name,
-                variable_args,
-                &mut write_int_buf,
-            ) {
-                Some(value) => value,
-                None => continue,
-            };
-
-            text.replace_range(variable_start..token_rest_index, variable_value);
-
-            let variable_len = token_rest_index - variable_start;
-            if variable_value.len() < variable_len {
-                let delta = variable_len - variable_value.len();
-                rest_index -= delta;
-                token_rest_index -= delta;
-                token_end -= delta;
-            } else {
-                let delta = variable_value.len() - variable_len;
-                rest_index += delta;
-                token_rest_index += delta;
-                token_end += delta;
-            }
-        }
-    }
-    */
 }
 
 #[cfg(test)]
@@ -1047,3 +1048,4 @@ mod tests {
         assert_eq!(None, tokens.next().map(|t| t.slice));
     }
 }
+
