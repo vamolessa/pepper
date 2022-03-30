@@ -511,7 +511,6 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    // TODO: this may not be needed (delete if so)
     r("eval", &[], |ctx, io| {
         let source = io.args.next()?;
         io.args.assert_empty()?;

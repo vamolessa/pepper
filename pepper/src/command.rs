@@ -222,20 +222,29 @@ impl<'a> Iterator for CommandTokenizer<'a> {
         }
 
         fn parse_string_token(delim: char, s: &str) -> Option<(&str, &str)> {
-            let i = s.find(&[delim, '\n', '\r'])?;
-            if !s[i..].starts_with(delim) {
-                return None;
+            let mut chars = s.chars();
+            loop {
+                match chars.next()? {
+                    '\\' => {
+                        chars.next();
+                    }
+                    '\n'|'\r' => break None,
+                    c if c == delim => {
+                        let rest = chars.as_str();
+                        let len = rest.as_ptr() as usize - s.as_ptr() as usize - 1;
+                        let slice = &s[..len];
+                        break Some((slice, rest));
+                    }
+                    _ => (),
+                }
             }
-            let slice = &s[..i];
-            let rest = &s[i + 1..];
-            Some((slice, rest))
         }
 
         fn parse_block_token(s: &str) -> Option<(&str, &str)> {
             let mut rest = s;
             let mut balance = 1;
             loop {
-                let i = rest.find(&['{', '}', '"', '\'', '\n'])?;
+                let i = rest.find(&['{', '}', '"', '\'', '\n', '\\'])?;
                 rest = &rest[i..];
                 let b = rest.as_bytes()[0];
                 rest = &rest[1..];
@@ -256,7 +265,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                         balance -= 1;
                         if balance == 0 {
                             let len = rest.as_ptr() as usize - s.as_ptr() as usize - 1;
-                            return Some((&s[..len], rest));
+                            break Some((&s[..len], rest));
                         }
                     }
                     b'\n' => {
@@ -264,6 +273,11 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                         if rest.starts_with('#') {
                             let i = rest.find('\n')?;
                             rest = &rest[i..];
+                        }
+                    }
+                    b'\\' => {
+                        if let Some(c) = rest.chars().next() {
+                            rest = &rest[c.len_utf8()..];
                         }
                     }
                     _ => unreachable!(),
@@ -946,6 +960,11 @@ mod tests {
         assert_eq!(Some("\"arg1"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
+        let mut tokens = CommandTokenizer("cmd \"aaa\\\"bbb\"");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("aaa\\\"bbb"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
         let mut tokens = CommandTokenizer("cmd 'arg\"0' \"arg'1\"");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg\"0"), tokens.next().map(|t| t.slice));
@@ -964,6 +983,11 @@ mod tests {
         assert_eq!(Some("'arg1"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
+        let mut tokens = CommandTokenizer("cmd 'aaa\\'bbb'");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("aaa\\'bbb"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
         let mut tokens = CommandTokenizer("cmd arg1'arg2'arg3");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
@@ -973,6 +997,17 @@ mod tests {
 
         let mut tokens = CommandTokenizer("cmd {arg}");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {arg\\}}");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg\\}"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {aa\\{ bb} arg");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("aa\\{ bb"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
