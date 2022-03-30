@@ -938,6 +938,18 @@ mod tests {
         assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
+        let mut tokens = CommandTokenizer("cmd arg1\\'arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1\\"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1\\'arg2'");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1\\"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
         let mut tokens = CommandTokenizer("cmd 'arg0 \"arg1 ");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("'arg0"), tokens.next().map(|t| t.slice));
