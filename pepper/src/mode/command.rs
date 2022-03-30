@@ -2,7 +2,7 @@ use std::fs;
 
 use crate::{
     client::ClientHandle,
-    command::{CommandManager, CommandTokenizer, CompletionSource},
+    command::{CommandManager, CommandTokenizer, CompletionSource, CommandErrorWithContext},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{ModeKind, ModeState},
@@ -123,7 +123,8 @@ impl ModeState for State {
                 ctx.editor.commands.add_to_history(input);
 
                 let command = ctx.editor.string_pool.acquire_with(input);
-                let result = CommandManager::eval(ctx, Some(client_handle), &command);
+                let result = CommandManager::eval_single(ctx, Some(client_handle), &command);
+                let result = result.map_err(|e| CommandErrorWithContext {error: e, command_index: 0});
                 let flow = CommandManager::unwrap_eval_result(ctx, result);
                 ctx.editor.string_pool.release(command);
 

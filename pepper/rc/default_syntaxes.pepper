@@ -8,7 +8,7 @@ syntax "**/*.pepper"
 syntax-keywords ""
 syntax-symbols {={%{|%}|=}=}
 syntax-strings {={"{!".}|'{!'.}}=}
-syntax-comments ^#{.}
+syntax-comments ^{ %t}#{.}
 
 # https://doc.rust-lang.org/reference/keywords.html
 syntax "**/*.rs"

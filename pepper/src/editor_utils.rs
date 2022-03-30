@@ -2,7 +2,6 @@ use std::{fmt, process::Command};
 
 use crate::{
     buffer::char_display_len,
-    command::{CommandIter, CommandManager, CommandTokenizer},
     editor::{BufferedKeys, EditorContext, EditorFlow, KeysIterator},
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
@@ -534,8 +533,10 @@ impl ResidualStrBytes {
     }
 }
 
-// TODO: expand variables before parsing
 pub fn parse_process_command(command: &str) -> Option<Command> {
+    // TODO: implement
+    None
+    /*
     let mut tokenizer = CommandTokenizer(command);
     let name = tokenizer.next()?.slice;
     let mut command = Command::new(name);
@@ -543,9 +544,13 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
         command.arg(arg.slice);
     }
     Some(command)
+    */
 }
 
 pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &str) -> EditorFlow {
+    // TODO: implement
+    EditorFlow::Continue
+    /*
     match CommandManager::eval(ctx, None, config_content) {
         Ok(flow) => flow,
         Err(error) => {
@@ -572,6 +577,7 @@ pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &
             EditorFlow::Continue
         }
     }
+    */
 }
 
 #[cfg(test)]
@@ -658,3 +664,4 @@ mod tests {
         );
     }
 }
+
