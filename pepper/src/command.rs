@@ -225,10 +225,10 @@ impl<'a> Iterator for CommandTokenizer<'a> {
             let mut chars = s.chars();
             loop {
                 match chars.next()? {
+                    '\n'|'\r' => break None,
                     '\\' => {
                         chars.next();
                     }
-                    '\n'|'\r' => break None,
                     c if c == delim => {
                         let rest = chars.as_str();
                         let len = rest.as_ptr() as usize - s.as_ptr() as usize - 1;
@@ -241,46 +241,42 @@ impl<'a> Iterator for CommandTokenizer<'a> {
         }
 
         fn parse_block_token(s: &str) -> Option<(&str, &str)> {
-            let mut rest = s;
+            let mut chars = s.chars();
             let mut balance = 1;
             loop {
-                let i = rest.find(&['{', '}', '"', '\'', '\n', '\\'])?;
-                rest = &rest[i..];
-                let b = rest.as_bytes()[0];
-                rest = &rest[1..];
-
-                match b {
-                    delim @ (b'"' | b'\'') => {
-                        let delim = delim as char;
-                        match parse_string_token(delim, rest) {
-                            Some((_, r)) => rest = r,
-                            None => {
-                                let len = next_literal_end(rest);
-                                rest = &rest[len..];
-                            }
-                        }
-                    }
-                    b'{' => balance += 1,
-                    b'}' => {
+                match chars.next()? {
+                    '{' => balance += 1,
+                    '}' => {
                         balance -= 1;
                         if balance == 0 {
+                            let rest = chars.as_str();
                             let len = rest.as_ptr() as usize - s.as_ptr() as usize - 1;
                             break Some((&s[..len], rest));
                         }
                     }
-                    b'\n' => {
-                        rest = rest.trim_start_matches(&[' ', '\t']);
+                    delim @ ('"' | '\'') => {
+                        let rest = chars.as_str();
+                        let rest = match parse_string_token(delim, rest) {
+                            Some((_, rest)) => rest,
+                            None => {
+                                let len = next_literal_end(rest);
+                                &rest[len..]
+                            }
+                        };
+                        chars = rest.chars();
+                    }
+                    '\n' => {
+                        let mut rest = chars.as_str().trim_start_matches(&[' ', '\t']);
                         if rest.starts_with('#') {
                             let i = rest.find('\n')?;
                             rest = &rest[i..];
                         }
+                        chars = rest.chars();
                     }
-                    b'\\' => {
-                        if let Some(c) = rest.chars().next() {
-                            rest = &rest[c.len_utf8()..];
-                        }
+                    '\\' => {
+                        chars.next();
                     }
-                    _ => unreachable!(),
+                    _ => (),
                 }
             }
         }
