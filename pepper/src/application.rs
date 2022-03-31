@@ -176,8 +176,6 @@ impl ServerApplication {
                             .editor
                             .picker_entries_process_buf
                             .on_process_spawned(),
-                        ProcessTag::FindFiles => (),
-                        ProcessTag::FindPattern => (),
                         ProcessTag::Plugin { plugin_handle, id } => {
                             PluginCollection::on_process_spawned(
                                 &mut self.ctx,
@@ -208,21 +206,6 @@ impl ServerApplication {
                                 &self.ctx.editor.read_line,
                                 bytes,
                             ),
-                        ProcessTag::FindFiles => {
-                            self.ctx.editor.mode.picker_state.on_process_output(
-                                &mut self.ctx.editor.picker,
-                                &self.ctx.editor.read_line,
-                                bytes,
-                            )
-                        }
-                        ProcessTag::FindPattern => {
-                            self.ctx.editor.mode.read_line_state.on_process_output(
-                                &mut self.ctx.editor.buffers,
-                                &mut self.ctx.editor.word_database,
-                                bytes,
-                                &mut self.ctx.editor.events,
-                            )
-                        }
                         ProcessTag::Plugin { plugin_handle, id } => {
                             PluginCollection::on_process_output(
                                 &mut self.ctx,
@@ -247,17 +230,6 @@ impl ServerApplication {
                             self.ctx.editor.picker_entries_process_buf.on_process_exit(
                                 &mut self.ctx.editor.picker,
                                 &self.ctx.editor.read_line,
-                            )
-                        }
-                        ProcessTag::FindFiles => self.ctx.editor.mode.picker_state.on_process_exit(
-                            &mut self.ctx.editor.picker,
-                            &self.ctx.editor.read_line,
-                        ),
-                        ProcessTag::FindPattern => {
-                            self.ctx.editor.mode.read_line_state.on_process_exit(
-                                &mut self.ctx.editor.buffers,
-                                &mut self.ctx.editor.word_database,
-                                &mut self.ctx.editor.events,
                             )
                         }
                         ProcessTag::Plugin { plugin_handle, id } => {

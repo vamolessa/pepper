@@ -100,8 +100,6 @@ pub enum ProcessTag {
     Ignored,
     Buffer(u32),
     PickerEntries,
-    FindFiles,
-    FindPattern,
     Plugin {
         plugin_handle: PluginHandle,
         id: u32,

@@ -1,14 +1,11 @@
-use std::process::Stdio;
-
 use crate::{
     buffer::BufferProperties,
     client::ClientHandle,
     command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{parse_process_command, MessageKind, ReadLine, ReadLinePoll},
+    editor_utils::{MessageKind, ReadLinePoll},
     mode::{ModeKind, ModeState},
-    picker::Picker,
-    platform::{Key, KeyCode, PlatformRequest, ProcessTag},
+    platform::{Key, KeyCode},
     word_database::WordIndicesIter,
 };
 
@@ -20,68 +17,6 @@ pub struct State {
         ReadLinePoll,
     ) -> Option<EditorFlow>,
     continuation: String,
-    // TODO: remove find_file stuff
-    find_file_waiting_for_process: bool,
-    find_file_buf: Vec<u8>,
-}
-
-impl State {
-    pub(crate) fn on_process_output(
-        &mut self,
-        picker: &mut Picker,
-        read_line: &ReadLine,
-        bytes: &[u8],
-    ) {
-        if !self.find_file_waiting_for_process {
-            return;
-        }
-
-        self.find_file_buf.extend_from_slice(bytes);
-
-        {
-            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
-            if let Some(i) = self.find_file_buf.iter().rposition(|&b| b == b'\n') {
-                for line in self
-                    .find_file_buf
-                    .drain(..i + 1)
-                    .as_slice()
-                    .split(|&b| matches!(b, b'\n' | b'\r'))
-                {
-                    if line.is_empty() {
-                        continue;
-                    }
-                    if let Ok(line) = std::str::from_utf8(line) {
-                        entry_adder.add(line);
-                    }
-                }
-            }
-        }
-
-        picker.move_cursor(0);
-    }
-
-    pub(crate) fn on_process_exit(&mut self, picker: &mut Picker, read_line: &ReadLine) {
-        if !self.find_file_waiting_for_process {
-            return;
-        }
-
-        self.find_file_waiting_for_process = false;
-
-        {
-            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
-            for line in self.find_file_buf.split(|&b| b == b'\n') {
-                if line.is_empty() {
-                    continue;
-                }
-                if let Ok(line) = std::str::from_utf8(line) {
-                    entry_adder.add(line);
-                }
-            }
-        }
-
-        self.find_file_buf.clear();
-        picker.move_cursor(0);
-    }
 }
 
 impl Default for State {
@@ -89,8 +24,6 @@ impl Default for State {
         Self {
             on_client_keys: |_, _, _, _| Some(EditorFlow::Continue),
             continuation: String::new(),
-            find_file_waiting_for_process: false,
-            find_file_buf: Vec::new(),
         }
     }
 }
@@ -102,7 +35,6 @@ impl ModeState for State {
 
     fn on_exit(editor: &mut Editor) {
         editor.mode.plugin_handle = None;
-        editor.mode.picker_state.find_file_waiting_for_process = false;
         editor.read_line.input_mut().clear();
         editor.picker.clear();
     }
@@ -343,93 +275,6 @@ pub mod custom {
         state.on_client_keys = on_client_keys;
         state.continuation.clear();
         state.continuation.push_str(continuation);
-        ctx.editor.enter_mode(ModeKind::Picker);
-    }
-}
-
-pub mod find_file {
-    use super::*;
-
-    use std::path::Path;
-
-    pub fn enter_mode(ctx: &mut EditorContext, command: &str, prompt: &str) {
-        fn on_client_keys(
-            ctx: &mut EditorContext,
-            client_handle: ClientHandle,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) -> Option<EditorFlow> {
-            match poll {
-                ReadLinePoll::Pending => return Some(EditorFlow::Continue),
-                ReadLinePoll::Submitted => (),
-                ReadLinePoll::Canceled => {
-                    ctx.editor.enter_mode(ModeKind::default());
-                    return Some(EditorFlow::Continue);
-                }
-            }
-
-            let path = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
-                Some((_, entry)) => entry,
-                _ => {
-                    ctx.editor.enter_mode(ModeKind::default());
-                    return Some(EditorFlow::Continue);
-                }
-            };
-
-            let path = ctx.editor.string_pool.acquire_with(path);
-            match ctx.editor.buffer_view_handle_from_path(
-                client_handle,
-                Path::new(&path),
-                BufferProperties::text(),
-                false,
-            ) {
-                Ok(buffer_view_handle) => {
-                    let client = ctx.clients.get_mut(client_handle);
-                    client
-                        .set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
-                }
-                Err(error) => ctx
-                    .editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("{}", error)),
-            }
-            ctx.editor.string_pool.release(path);
-
-            ctx.editor.enter_mode(ModeKind::default());
-            Some(EditorFlow::Continue)
-        }
-
-        ctx.editor.read_line.set_prompt(prompt);
-        ctx.editor.picker.clear();
-
-        let command = match parse_process_command(command) {
-            Some(mut command) => {
-                command.stdin(Stdio::null());
-                command.stdout(Stdio::piped());
-                command.stderr(Stdio::null());
-
-                command
-            }
-            None => {
-                ctx.editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("invalid find file command '{}'", command));
-                return;
-            }
-        };
-
-        ctx.editor.mode.picker_state.find_file_waiting_for_process = true;
-        ctx.platform
-            .requests
-            .enqueue(PlatformRequest::SpawnProcess {
-                tag: ProcessTag::FindFiles,
-                command,
-                buf_len: 4 * 1024,
-            });
-
-        ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
         ctx.editor.enter_mode(ModeKind::Picker);
     }
 }

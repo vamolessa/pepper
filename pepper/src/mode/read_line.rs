@@ -1,17 +1,14 @@
 use crate::{
-    buffer::{BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferPositionIndex},
     buffer_view::CursorMovementKind,
     client::ClientHandle,
     command::CommandManager,
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{parse_process_command, MessageKind, ReadLinePoll, ResidualStrBytes},
-    events::EditorEventQueue,
+    editor_utils::{MessageKind, ReadLinePoll},
     mode::{ModeKind, ModeState},
     navigation_history::NavigationHistory,
     pattern::Pattern,
-    word_database::WordDatabase,
 };
 
 pub struct State {
@@ -19,52 +16,6 @@ pub struct State {
         fn(&mut EditorContext, ClientHandle, &mut KeysIterator, ReadLinePoll) -> Option<EditorFlow>,
     previous_position: BufferPosition,
     continuation: String,
-    // TODO: remove find_pattern stuff
-    find_pattern_command: String,
-    find_pattern_buffer_handle: Option<BufferHandle>,
-    find_pattern_residual_bytes: ResidualStrBytes,
-}
-
-impl State {
-    pub(crate) fn on_buffer_close(&mut self, buffer_handle: BufferHandle) {
-        if self.find_pattern_buffer_handle == Some(buffer_handle) {
-            self.find_pattern_buffer_handle = None;
-        }
-    }
-
-    pub(crate) fn on_process_output(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        bytes: &[u8],
-        events: &mut EditorEventQueue,
-    ) {
-        if let Some(buffer_handle) = self.find_pattern_buffer_handle {
-            let mut buf = Default::default();
-            let texts = self
-                .find_pattern_residual_bytes
-                .receive_bytes(&mut buf, bytes);
-
-            let buffer = buffers.get_mut(buffer_handle);
-            for text in texts {
-                let position = buffer.content().end();
-                buffer.insert_text(word_database, position, text, events);
-            }
-        }
-    }
-
-    pub(crate) fn on_process_exit(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
-    ) {
-        self.on_process_output(buffers, word_database, &[], events);
-
-        self.find_pattern_command.clear();
-        self.find_pattern_buffer_handle = None;
-        self.find_pattern_residual_bytes = ResidualStrBytes::default();
-    }
 }
 
 impl Default for State {
@@ -73,9 +24,6 @@ impl Default for State {
             on_client_keys: |_, _, _, _| Some(EditorFlow::Continue),
             previous_position: BufferPosition::zero(),
             continuation: String::new(),
-            find_pattern_command: String::new(),
-            find_pattern_buffer_handle: None,
-            find_pattern_residual_bytes: ResidualStrBytes::default(),
         }
     }
 }
@@ -87,7 +35,6 @@ impl ModeState for State {
 
     fn on_exit(editor: &mut Editor) {
         editor.mode.plugin_handle = None;
-        editor.mode.read_line_state.find_pattern_command.clear();
         editor.read_line.input_mut().clear();
     }
 
@@ -668,131 +615,6 @@ pub mod custom {
         state.on_client_keys = on_client_keys;
         state.continuation.clear();
         state.continuation.push_str(continuation);
-        ctx.editor.enter_mode(ModeKind::ReadLine);
-    }
-}
-
-pub mod find_pattern {
-    use super::*;
-
-    use std::{path::Path, process::Stdio};
-
-    use crate::{
-        buffer::BufferProperties,
-        buffer_position::BufferRange,
-        platform::{PlatformRequest, ProcessTag},
-    };
-
-    pub fn enter_mode(ctx: &mut EditorContext, command: &str, prompt: &str) {
-        fn on_client_keys(
-            ctx: &mut EditorContext,
-            client_handle: ClientHandle,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) -> Option<EditorFlow> {
-            match poll {
-                ReadLinePoll::Pending => return Some(EditorFlow::Continue),
-                ReadLinePoll::Submitted => (),
-                ReadLinePoll::Canceled => {
-                    ctx.editor.enter_mode(ModeKind::default());
-                    return Some(EditorFlow::Continue);
-                }
-            }
-
-            let mut buffer_name = ctx.editor.string_pool.acquire();
-            buffer_name.push_str(ctx.editor.read_line.input());
-            buffer_name.push_str(".refs");
-            let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
-                client_handle,
-                Path::new(&buffer_name),
-                BufferProperties::scratch(),
-                true,
-            );
-            ctx.editor.string_pool.release(buffer_name);
-
-            let buffer_view_handle = match buffer_view_handle {
-                Ok(handle) => handle,
-                Err(error) => {
-                    ctx.editor
-                        .status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!("{}", error));
-                    return Some(EditorFlow::Continue);
-                }
-            };
-
-            let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
-            let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
-
-            buffer.properties = BufferProperties::scratch();
-            let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
-            buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
-
-            let state = &mut ctx.editor.mode.read_line_state;
-            state.find_pattern_buffer_handle = Some(buffer.handle());
-            state.find_pattern_residual_bytes = ResidualStrBytes::default();
-
-            const REPLACE_PATTERN: &str = "{}";
-            if let Some(i) = state.find_pattern_command.find(REPLACE_PATTERN) {
-                state
-                    .find_pattern_command
-                    .replace_range(i..i + REPLACE_PATTERN.len(), ctx.editor.read_line.input());
-            }
-
-            let command = match parse_process_command(&state.find_pattern_command) {
-                Some(mut command) => {
-                    command.stdin(Stdio::null());
-                    command.stdout(Stdio::piped());
-                    command.stderr(Stdio::null());
-
-                    command
-                }
-                None => {
-                    ctx.editor
-                        .status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!(
-                            "invalid find pattern command '{}'",
-                            &state.find_pattern_command
-                        ));
-                    return Some(EditorFlow::Continue);
-                }
-            };
-
-            ctx.platform
-                .requests
-                .enqueue(PlatformRequest::SpawnProcess {
-                    tag: ProcessTag::FindPattern,
-                    command,
-                    buf_len: 4 * 1024,
-                });
-
-            let client = ctx.clients.get_mut(client_handle);
-            client.set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
-
-            {
-                let mut cursors = ctx
-                    .editor
-                    .buffer_views
-                    .get_mut(buffer_view_handle)
-                    .cursors
-                    .mut_guard();
-                cursors.clear();
-                cursors.add(Cursor {
-                    anchor: BufferPosition::zero(),
-                    position: BufferPosition::zero(),
-                });
-            }
-
-            ctx.editor.enter_mode(ModeKind::default());
-            Some(EditorFlow::Continue)
-        }
-
-        ctx.editor.read_line.set_prompt(prompt);
-        let state = &mut ctx.editor.mode.read_line_state;
-        state.on_client_keys = on_client_keys;
-        state.find_pattern_command.clear();
-        state.find_pattern_command.push_str(command);
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
 }
