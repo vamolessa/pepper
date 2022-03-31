@@ -2,7 +2,10 @@
 
 ## 0.25.0
 - new variable expansion mechanism when evaluating commands
+- changed string syntax for commands
+- command strings now support some escapings
 - command aliases that start with `-` won't show up in auto completions
+- removed `find-file` and `find-command` commands as they're now implementable using other builtin commands (see `default_commands.pepper` for an example)
 
 ## 0.24.0
 - handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)
