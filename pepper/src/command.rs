@@ -225,7 +225,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
             let mut chars = s.chars();
             loop {
                 match chars.next()? {
-                    '\n'|'\r' => break None,
+                    '\n' | '\r' => break None,
                     '\\' => {
                         chars.next();
                     }
@@ -559,14 +559,31 @@ impl CommandManager {
     pub fn unwrap_eval_result(
         ctx: &mut EditorContext,
         result: Result<EditorFlow, CommandErrorWithContext>,
+        source: &str,
+        name: Option<&str>,
     ) -> EditorFlow {
         match result {
             Ok(flow) => flow,
             Err(error) => {
-                ctx.editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("{}", error.error));
+                let command = match CommandIter(source).nth(error.command_index) {
+                    Some(command) => command,
+                    None => &source[..0],
+                };
+                let offset = command.as_ptr() as usize - source.as_ptr() as usize;
+                let line_index = source[..offset].chars().filter(|&c| c == '\n').count();
+
+                let mut write = ctx.editor.status_bar.write(MessageKind::Error);
+                match name {
+                    Some(name) => write.fmt(format_args!(
+                        "{}:{}\n{}\n{}",
+                        name,
+                        line_index + 1,
+                        command,
+                        error.error,
+                    )),
+                    None => write.fmt(format_args!("{}", error.error)),
+                }
+
                 EditorFlow::Continue
             }
         }
@@ -665,11 +682,6 @@ impl CommandManager {
 
         Err(CommandError::NoSuchCommand)
     }
-}
-
-pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &str) -> EditorFlow {
-    // TODO move config loading to here
-    todo!();
 }
 
 fn write_variable_expansion<'ctx>(
@@ -927,7 +939,10 @@ mod tests {
         assert_eq!(None, commands.next());
 
         let mut commands = CommandIter("cmd1 {\ncmd2 arg #arg2\n \t #cmd3 arg}\ncmd4 arg'}");
-        assert_eq!(Some("cmd1 {\ncmd2 arg #arg2\n \t #cmd3 arg}\ncmd4 arg'}"), commands.next());
+        assert_eq!(
+            Some("cmd1 {\ncmd2 arg #arg2\n \t #cmd3 arg}\ncmd4 arg'}"),
+            commands.next()
+        );
         assert_eq!(None, commands.next());
     }
 
@@ -1166,4 +1181,3 @@ mod tests {
         );
     }
 }
-

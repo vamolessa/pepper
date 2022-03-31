@@ -2,7 +2,7 @@ use std::{fmt, process::Command};
 
 use crate::{
     buffer::char_display_len,
-    editor::{BufferedKeys, EditorContext, EditorFlow, KeysIterator},
+    editor::{BufferedKeys, KeysIterator},
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
     platform::{Key, KeyCode, Platform},
@@ -547,39 +547,6 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
     */
 }
 
-pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &str) -> EditorFlow {
-    // TODO: implement
-    EditorFlow::Continue
-    /*
-    match CommandManager::eval(ctx, None, config_content) {
-        Ok(flow) => flow,
-        Err(error) => {
-            let command = match CommandIter(config_content).nth(error.command_index) {
-                Some(command) => command,
-                None => &config_content[..0],
-            };
-            let offset = command.as_ptr() as usize - config_content.as_ptr() as usize;
-            let line_index = config_content[..offset]
-                .chars()
-                .filter(|&c| c == '\n')
-                .count();
-
-            ctx.editor
-                .status_bar
-                .write(MessageKind::Error)
-                .fmt(format_args!(
-                    "{}:{}\n{}\n{}",
-                    config_name,
-                    line_index + 1,
-                    command,
-                    error.error,
-                ));
-            EditorFlow::Continue
-        }
-    }
-    */
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -664,4 +631,3 @@ mod tests {
         );
     }
 }
-

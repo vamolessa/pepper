@@ -6,8 +6,9 @@ use std::{
 
 use crate::{
     client::ClientManager,
+    command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow},
-    editor_utils::{load_config, MessageKind},
+    editor_utils::MessageKind,
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     platform::{drop_event, Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
@@ -65,10 +66,16 @@ impl ServerApplication {
         }
 
         for config in &config.static_configs {
-            match load_config(&mut ctx, config.name, config.content) {
-                EditorFlow::Continue => (),
-                _ => return None,
-            };
+            let result = CommandManager::eval(&mut ctx, None, config.content);
+            let flow = CommandManager::unwrap_eval_result(
+                &mut ctx,
+                result,
+                config.content,
+                Some(config.name),
+            );
+            if !matches!(flow, EditorFlow::Continue) {
+                return None;
+            }
         }
 
         for config in config.args.configs {
@@ -77,10 +84,15 @@ impl ServerApplication {
                 continue;
             }
             match fs::read_to_string(path) {
-                Ok(source) => match load_config(&mut ctx, &config.path, &source) {
-                    EditorFlow::Continue => (),
-                    _ => return None,
-                },
+                Ok(source) => {
+                    let path = path.to_str().unwrap_or("");
+                    let result = CommandManager::eval(&mut ctx, None, &source);
+                    let flow =
+                        CommandManager::unwrap_eval_result(&mut ctx, result, &source, Some(path));
+                    if !matches!(flow, EditorFlow::Continue) {
+                        return None;
+                    }
+                }
                 Err(_) => ctx
                     .editor
                     .status_bar
