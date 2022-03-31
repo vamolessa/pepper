@@ -20,6 +20,7 @@ pub struct State {
         ReadLinePoll,
     ) -> Option<EditorFlow>,
     continuation: String,
+    // TODO: remove find_file stuff
     find_file_waiting_for_process: bool,
     find_file_buf: Vec<u8>,
 }

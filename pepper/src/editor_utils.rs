@@ -2,6 +2,7 @@ use std::{fmt, process::Command};
 
 use crate::{
     buffer::char_display_len,
+    command::CommandTokenizer,
     editor::{BufferedKeys, KeysIterator},
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
@@ -534,17 +535,13 @@ impl ResidualStrBytes {
 }
 
 pub fn parse_process_command(command: &str) -> Option<Command> {
-    // TODO: implement
-    None
-    /*
-    let mut tokenizer = CommandTokenizer(command);
-    let name = tokenizer.next()?.slice;
+    let mut tokens = CommandTokenizer(command);
+    let name = tokens.next()?.slice;
     let mut command = Command::new(name);
-    for arg in tokenizer {
+    for arg in tokens {
         command.arg(arg.slice);
     }
     Some(command)
-    */
 }
 
 #[cfg(test)]
