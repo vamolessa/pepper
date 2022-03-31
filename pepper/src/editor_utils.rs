@@ -6,6 +6,7 @@ use crate::{
     editor::{BufferedKeys, KeysIterator},
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
+    picker::Picker,
     platform::{Key, KeyCode, Platform},
     word_database::{WordIter, WordKind},
 };
@@ -456,6 +457,74 @@ impl RegisterCollection {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct PickerEntriesProcessBuf {
+    buf: Vec<u8>,
+    waiting_for_process: bool,
+}
+impl PickerEntriesProcessBuf {
+    pub(crate) fn on_process_spawned(&mut self) {
+        self.waiting_for_process = true;
+    }
+
+    pub(crate) fn on_process_output(
+        &mut self,
+        picker: &mut Picker,
+        read_line: &ReadLine,
+        bytes: &[u8],
+    ) {
+        if !self.waiting_for_process {
+            return;
+        }
+
+        self.buf.extend_from_slice(bytes);
+
+        {
+            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            if let Some(i) = self.buf.iter().rposition(|&b| b == b'\n') {
+                for line in self
+                    .buf
+                    .drain(..i + 1)
+                    .as_slice()
+                    .split(|&b| matches!(b, b'\n' | b'\r'))
+                {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if let Ok(line) = std::str::from_utf8(line) {
+                        entry_adder.add(line);
+                    }
+                }
+            }
+        }
+
+        picker.move_cursor(0);
+    }
+
+    pub(crate) fn on_process_exit(&mut self, picker: &mut Picker, read_line: &ReadLine) {
+        if !self.waiting_for_process {
+            return;
+        }
+
+        self.waiting_for_process = false;
+
+        {
+            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            for line in self.buf.split(|&b| b == b'\n') {
+                if line.is_empty() {
+                    continue;
+                }
+                if let Ok(line) = std::str::from_utf8(line) {
+                    entry_adder.add(line);
+                }
+            }
+        }
+
+        self.buf.clear();
+        picker.move_cursor(0);
+    }
+}
+
 // FNV-1a : https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
 pub const fn hash_bytes(mut bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
@@ -628,3 +697,4 @@ mod tests {
         );
     }
 }
+

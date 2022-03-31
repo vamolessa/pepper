@@ -13,6 +13,7 @@ use crate::{
     editor_utils::{
         KeyMapCollection, MatchResult, ReadLine, RegisterCollection, RegisterKey, StatusBar,
         StatusBarDisplay, StringPool,
+        PickerEntriesProcessBuf,
     },
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
@@ -281,6 +282,8 @@ pub struct Editor {
 
     pub commands: CommandManager,
     pub events: EditorEventQueue,
+
+    pub(crate) picker_entries_process_buf: PickerEntriesProcessBuf,
 }
 impl Editor {
     pub fn new(current_directory: PathBuf) -> Self {
@@ -309,6 +312,8 @@ impl Editor {
 
             commands: CommandManager::new(),
             events: EditorEventQueue::default(),
+
+            picker_entries_process_buf: PickerEntriesProcessBuf::default(),
         }
     }
 

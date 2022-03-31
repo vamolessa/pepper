@@ -171,6 +171,11 @@ impl ServerApplication {
                             index,
                             handle,
                         ),
+                        ProcessTag::PickerEntries => self
+                            .ctx
+                            .editor
+                            .picker_entries_process_buf
+                            .on_process_spawned(),
                         ProcessTag::FindFiles => (),
                         ProcessTag::FindPattern => (),
                         ProcessTag::Plugin { plugin_handle, id } => {
@@ -194,6 +199,15 @@ impl ServerApplication {
                             bytes,
                             &mut self.ctx.editor.events,
                         ),
+                        ProcessTag::PickerEntries => self
+                            .ctx
+                            .editor
+                            .picker_entries_process_buf
+                            .on_process_output(
+                                &mut self.ctx.editor.picker,
+                                &self.ctx.editor.read_line,
+                                bytes,
+                            ),
                         ProcessTag::FindFiles => {
                             self.ctx.editor.mode.picker_state.on_process_output(
                                 &mut self.ctx.editor.picker,
@@ -229,6 +243,12 @@ impl ServerApplication {
                             index,
                             &mut self.ctx.editor.events,
                         ),
+                        ProcessTag::PickerEntries => {
+                            self.ctx.editor.picker_entries_process_buf.on_process_exit(
+                                &mut self.ctx.editor.picker,
+                                &self.ctx.editor.read_line,
+                            )
+                        }
                         ProcessTag::FindFiles => self.ctx.editor.mode.picker_state.on_process_exit(
                             &mut self.ctx.editor.picker,
                             &self.ctx.editor.read_line,
@@ -400,3 +420,4 @@ where
         self.restore_screen();
     }
 }
+

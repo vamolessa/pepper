@@ -1,6 +1,6 @@
 on-platforms windows @{
     macro -find-file @{
-        picker-entries "pepper/src/buffer.rs" "pepper/src/editor.rs"
+        picker-entries-from-lines "cmd /c dir /a-d /s /b"
         pick "open:" @{
             open "@picker-entry()"
         }
@@ -20,7 +20,7 @@ on-platforms linux @{
     paste-command "xclip -selection clipboard -out"
 
     macro -find-file @{
-        picker-entries-from-lines "find . -type f -printf '%P\n'"
+        picker-entries-from-lines "find . -type f -printf '%P\\n'"
         pick "open:" @{
             open "@picker-entry()"
         }
@@ -32,7 +32,7 @@ on-platforms bsd @{
     paste-command "xclip -out"
 
     macro -find-file @{
-        picker-entries-from-lines "find . -type f -printf '%P\n'"
+        picker-entries-from-lines "find . -type f -printf '%P\\n'"
         pick "open:" @{
             open "@picker-entry()"
         }

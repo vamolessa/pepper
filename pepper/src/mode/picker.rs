@@ -315,6 +315,11 @@ pub mod custom {
             match poll {
                 ReadLinePoll::Pending => (),
                 ReadLinePoll::Submitted => {
+                    if ctx.editor.picker.cursor().is_none() {
+                        ctx.editor.enter_mode(ModeKind::default());
+                        return Some(EditorFlow::Continue);
+                    }
+
                     let continuation = &ctx.editor.mode.picker_state.continuation;
                     let continuation = ctx.editor.string_pool.acquire_with(continuation);
                     let result = CommandManager::eval(ctx, Some(client_handle), &continuation);
@@ -428,3 +433,4 @@ pub mod find_file {
         ctx.editor.enter_mode(ModeKind::Picker);
     }
 }
+

@@ -423,8 +423,31 @@ pub fn register_commands(commands: &mut CommandManager) {
     r("picker-entries-from-lines", &[], |ctx, io| {
         let command = io.args.next()?;
         io.args.assert_empty()?;
-        //TODO: implement
-        //picker::custom::enter_mode(ctx, continuation, prompt);
+
+        ctx.editor.picker.clear();
+
+        match parse_process_command(command) {
+            Some(mut command) => {
+                command.stdin(Stdio::null());
+                command.stdout(Stdio::piped());
+                command.stderr(Stdio::null());
+
+                ctx.platform
+                    .requests
+                    .enqueue(PlatformRequest::SpawnProcess {
+                        tag: ProcessTag::PickerEntries,
+                        command,
+                        buf_len: 4 * 1024,
+                    });
+            }
+            None => {
+                ctx.editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!("invalid command '{}'", command));
+            }
+        }
+
         Ok(())
     });
 
@@ -618,3 +641,4 @@ fn syntax_pattern(
         Err(error) => Err(CommandError::PatternError(error)),
     }
 }
+

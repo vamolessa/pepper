@@ -216,6 +216,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         fn next_literal_end(s: &str) -> usize {
             match s.find(&[' ', '\t', '\r', '\n', '"', '\'', '{', '}']) {
+                Some(0) => 1,
                 Some(i) => i,
                 None => s.len(),
             }
@@ -258,10 +259,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                         let rest = chars.as_str();
                         let rest = match parse_string_token(delim, rest) {
                             Some((_, rest)) => rest,
-                            None => {
-                                let len = next_literal_end(rest);
-                                &rest[len..]
-                            }
+                            None => rest,
                         };
                         chars = rest.chars();
                     }
@@ -286,13 +284,14 @@ impl<'a> Iterator for CommandTokenizer<'a> {
         let previous_text = self.0;
         let mut can_expand_variables = true;
         loop {
-            match self.0.chars().next()? {
+            let mut chars = self.0.chars();
+            match chars.next()? {
                 '@' => {
                     can_expand_variables = false;
-                    self.0 = &self.0[1..];
+                    self.0 = chars.as_str();
                 }
                 delim @ ('"' | '\'') => {
-                    let rest = &self.0[1..];
+                    let rest = chars.as_str();
                     match parse_string_token(delim, rest) {
                         Some((slice, rest)) => {
                             self.0 = rest;
@@ -302,8 +301,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                             });
                         }
                         None => {
-                            let end = next_literal_end(rest);
-                            let (slice, rest) = self.0.split_at(end + 1);
+                            let slice = &self.0[..1];
                             self.0 = rest;
                             return Some(CommandToken {
                                 can_expand_variables,
@@ -315,7 +313,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                 '\n' | '\r' => return None,
                 c => {
                     if c == '{' {
-                        if let Some((slice, rest)) = parse_block_token(&self.0[1..]) {
+                        if let Some((slice, rest)) = parse_block_token(chars.as_str()) {
                             self.0 = rest;
                             return Some(CommandToken {
                                 can_expand_variables,
@@ -923,6 +921,11 @@ mod tests {
         assert_eq!(Some("cmd2 {\narg1}"), commands.next());
         assert_eq!(None, commands.next());
 
+        let mut commands = CommandIter("cmd1 ' arg\ncmd2 arg'");
+        assert_eq!(Some("cmd1 ' arg"), commands.next());
+        assert_eq!(Some("cmd2 arg'"), commands.next());
+        assert_eq!(None, commands.next());
+
         let mut commands = CommandIter("cmd1 '\ncmd2 arg'");
         assert_eq!(Some("cmd1 '"), commands.next());
         assert_eq!(Some("cmd2 arg'"), commands.next());
@@ -948,15 +951,17 @@ mod tests {
 
     #[test]
     fn command_tokenizer() {
-        let mut tokens = CommandTokenizer("cmd arg");
+        let mut tokens = CommandTokenizer("cmd arg1 arg2");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
-        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd arg1\\'arg2");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg1\\"), tokens.next().map(|t| t.slice));
-        assert_eq!(Some("'arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd arg1\\'arg2'");
@@ -967,20 +972,24 @@ mod tests {
 
         let mut tokens = CommandTokenizer("cmd 'arg0 \"arg1 ");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
-        assert_eq!(Some("'arg0"), tokens.next().map(|t| t.slice));
-        assert_eq!(Some("\"arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg0"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd arg0'arg1 ");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg0"), tokens.next().map(|t| t.slice));
-        assert_eq!(Some("'arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd arg0\"arg1 ");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg0"), tokens.next().map(|t| t.slice));
-        assert_eq!(Some("\"arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd \"aaa\\\"bbb\"");
@@ -1001,14 +1010,43 @@ mod tests {
         assert_eq!(Some("arg3"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
+        let mut tokens = CommandTokenizer("cmd arg1 \" arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1 \"arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
         let mut tokens = CommandTokenizer("cmd 'arg1\narg2'");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
-        assert_eq!(Some("'arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd 'aaa\\'bbb'");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("aaa\\'bbb"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1 ' arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1 'arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd arg1'arg2'arg3");
@@ -1049,6 +1087,38 @@ mod tests {
         let mut tokens = CommandTokenizer("cmd {arg'}}=}}=='}");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
         assert_eq!(Some("arg'}}=}}=='"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd }arg");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("}"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {arg");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("{"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg}'{\"arg");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("}"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("{"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {arg'}");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg'"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {\"{(\\\")!\".\\}|'{(\\')!'.\\}}");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\"{(\\\")!\".\\}|'{(\\')!'.\\}"), tokens.next().map(|t| t.slice));
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("@'aa'");

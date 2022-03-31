@@ -99,6 +99,7 @@ pub enum PlatformRequest {
 pub enum ProcessTag {
     Ignored,
     Buffer(u32),
+    PickerEntries,
     FindFiles,
     FindPattern,
     Plugin {
