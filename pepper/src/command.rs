@@ -205,8 +205,9 @@ impl<'a> Iterator for CommandIter<'a> {
 }
 
 pub struct CommandToken<'a> {
-    pub can_expand_variables: bool,
     pub slice: &'a str,
+    pub can_expand_variables: bool,
+    pub has_escaping: bool,
 }
 
 #[derive(Clone)]
@@ -222,28 +223,31 @@ impl<'a> Iterator for CommandTokenizer<'a> {
             }
         }
 
-        fn parse_string_token(delim: char, s: &str) -> Option<(&str, &str)> {
+        fn parse_string_token(delim: char, s: &str) -> Option<(&str, &str, bool)> {
             let mut chars = s.chars();
+            let mut has_escaping = false;
             loop {
                 match chars.next()? {
                     '\n' | '\r' => break None,
                     '\\' => {
                         chars.next();
+                        has_escaping = true;
                     }
                     c if c == delim => {
                         let rest = chars.as_str();
                         let len = rest.as_ptr() as usize - s.as_ptr() as usize - 1;
                         let slice = &s[..len];
-                        break Some((slice, rest));
+                        break Some((slice, rest, has_escaping));
                     }
                     _ => (),
                 }
             }
         }
 
-        fn parse_block_token(s: &str) -> Option<(&str, &str)> {
+        fn parse_block_token(s: &str) -> Option<(&str, &str, bool)> {
             let mut chars = s.chars();
             let mut balance = 1;
+            let mut has_escaping = false;
             loop {
                 match chars.next()? {
                     '{' => balance += 1,
@@ -252,13 +256,13 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                         if balance == 0 {
                             let rest = chars.as_str();
                             let len = rest.as_ptr() as usize - s.as_ptr() as usize - 1;
-                            break Some((&s[..len], rest));
+                            break Some((&s[..len], rest, has_escaping));
                         }
                     }
                     delim @ ('"' | '\'') => {
                         let rest = chars.as_str();
                         let rest = match parse_string_token(delim, rest) {
-                            Some((_, rest)) => rest,
+                            Some((_, rest, _)) => rest,
                             None => rest,
                         };
                         chars = rest.chars();
@@ -273,6 +277,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                     }
                     '\\' => {
                         chars.next();
+                        has_escaping = true;
                     }
                     _ => (),
                 }
@@ -283,6 +288,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
 
         let previous_text = self.0;
         let mut can_expand_variables = true;
+
         loop {
             let mut chars = self.0.chars();
             match chars.next()? {
@@ -293,19 +299,21 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                 delim @ ('"' | '\'') => {
                     let rest = chars.as_str();
                     match parse_string_token(delim, rest) {
-                        Some((slice, rest)) => {
+                        Some((slice, rest, has_escaping)) => {
                             self.0 = rest;
                             return Some(CommandToken {
-                                can_expand_variables,
                                 slice,
+                                can_expand_variables,
+                                has_escaping,
                             });
                         }
                         None => {
                             let slice = &self.0[..1];
                             self.0 = rest;
                             return Some(CommandToken {
-                                can_expand_variables,
                                 slice,
+                                can_expand_variables,
+                                has_escaping: false,
                             });
                         }
                     }
@@ -313,11 +321,13 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                 '\n' | '\r' => return None,
                 c => {
                     if c == '{' {
-                        if let Some((slice, rest)) = parse_block_token(chars.as_str()) {
+                        if let Some((slice, rest, has_escaping)) = parse_block_token(chars.as_str())
+                        {
                             self.0 = rest;
                             return Some(CommandToken {
-                                can_expand_variables,
                                 slice,
+                                can_expand_variables,
+                                has_escaping,
                             });
                         }
                     }
@@ -331,8 +341,9 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                     let (slice, rest) = self.0.split_at(end);
                     self.0 = rest;
                     return Some(CommandToken {
-                        can_expand_variables,
                         slice,
+                        can_expand_variables,
+                        has_escaping: false,
                     });
                 }
             }
@@ -833,9 +844,29 @@ fn expand_variables<'a>(
         Some(&text[..i])
     }
 
+    fn write_escaped(mut slice: &str, has_escaping: bool, output: &mut String) {
+        if !has_escaping {
+            output.push_str(slice);
+            return;
+        }
+
+        loop {
+            match slice.find('\\') {
+                Some(i) => {
+                    output.push_str(&slice[..i]);
+                    slice = &slice[i + 1..];
+                }
+                None => {
+                    output.push_str(slice);
+                    break;
+                }
+            }
+        }
+    }
+
     for token in CommandTokenizer(text) {
         if !token.can_expand_variables {
-            output.push_str(token.slice);
+            write_escaped(token.slice, token.has_escaping, output);
             output.push('\0');
             continue;
         }
@@ -845,11 +876,11 @@ fn expand_variables<'a>(
             match rest.find('@') {
                 Some(i) => {
                     let (before, after) = rest.split_at(i);
-                    output.push_str(before);
+                    write_escaped(before, token.has_escaping, output);
                     rest = after;
                 }
                 None => {
-                    output.push_str(rest);
+                    write_escaped(rest, token.has_escaping, output);
                     break;
                 }
             }
@@ -858,7 +889,7 @@ fn expand_variables<'a>(
                 Ok(name) => name,
                 Err(skip) => {
                     let (before, after) = rest.split_at(skip + 1);
-                    output.push_str(before);
+                    write_escaped(before, token.has_escaping, output);
                     rest = after;
                     continue;
                 }
@@ -869,7 +900,7 @@ fn expand_variables<'a>(
                 Some(args) => args,
                 None => {
                     let (before, after) = rest.split_at(args_skip);
-                    output.push_str(before);
+                    write_escaped(before, token.has_escaping, output);
                     rest = after;
                     continue;
                 }
@@ -1118,7 +1149,10 @@ mod tests {
 
         let mut tokens = CommandTokenizer("cmd {\"{(\\\")!\".\\}|'{(\\')!'.\\}}");
         assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
-        assert_eq!(Some("\"{(\\\")!\".\\}|'{(\\')!'.\\}"), tokens.next().map(|t| t.slice));
+        assert_eq!(
+            Some("\"{(\\\")!\".\\}|'{(\\')!'.\\}"),
+            tokens.next().map(|t| t.slice)
+        );
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("@'aa'");
@@ -1249,5 +1283,10 @@ mod tests {
             &ctx,
             "cmd @buffer-path(0) asd @buffer-path(1) fgh @buffer-path(2)",
         );
+
+        assert_expansion("\"\0", &ctx, "\"\\\"\"");
+        assert_expansion("'\0", &ctx, "'\\''");
+        assert_expansion("}\0", &ctx, "{\\}}");
     }
 }
+
