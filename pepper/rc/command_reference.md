@@ -175,6 +175,10 @@ By default, this is set per platform:
 Enqueue keys as if they were typed in the current client.
 - usage: `enqueue-keys <keys>`
 
+## `set-register`
+Set the content of register `<key>` to `<value>`.
+- usage: `set-register <key> <value>`
+
 ## `readline`
 Enters readline mode and once a line is read, executes the commands in `<continuation>`.
 Optionally pass a `<prompt>` which displays while waiting for user input.

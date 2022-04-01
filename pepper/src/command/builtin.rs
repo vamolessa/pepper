@@ -8,7 +8,7 @@ use crate::{
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
     editor::EditorFlow,
-    editor_utils::{parse_process_command, MessageKind},
+    editor_utils::{parse_process_command, MessageKind, RegisterKey},
     help,
     mode::{picker, read_line, ModeKind},
     platform::{PlatformRequest, ProcessTag},
@@ -402,6 +402,18 @@ pub fn register_commands(commands: &mut CommandManager) {
             .buffered_keys
             .parse(keys)
             .map_err(|e| CommandError::KeyParseError(e.error))?;
+        Ok(())
+    });
+
+    r("set-register", &[], |ctx, io| {
+        let key = io.args.next()?;
+        let value = io.args.next()?;
+        io.args.assert_empty()?;
+
+        let key = RegisterKey::from_str(key).ok_or(CommandError::InvalidRegisterKey)?;
+        let register = ctx.editor.registers.get_mut(key);
+        register.clear();
+        register.push_str(value);
         Ok(())
     });
 
