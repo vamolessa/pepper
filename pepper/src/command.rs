@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt, env};
+use std::{collections::VecDeque, env, fmt};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
@@ -390,20 +390,44 @@ pub struct MacroCollection {
 }
 impl MacroCollection {
     pub fn add(&mut self, name: &str, source: &str) {
-        let name_start = self.names.len();
-        self.names.push_str(name);
-        let name_end = self.names.len();
+        for (i, m) in self.macros.iter().enumerate() {
+            if name == m.name(&self.names) {
+                let old_source_range = m.source_start as usize..m.source_end as usize;
+                let old_source_len = old_source_range.end - old_source_range.start;
 
-        if name_end > u16::MAX as _ {
+                let new_source_len = source.len();
+                if self.sources.len() - old_source_len + new_source_len > u32::MAX as _ {
+                    return;
+                }
+
+                self.sources.replace_range(old_source_range, source);
+
+                let old_source_len = old_source_len as u32;
+                let new_source_len = new_source_len as u32;
+
+                self.macros[i].source_end = self.macros[i].source_end - old_source_len + new_source_len;
+                for m in &mut self.macros[i + 1..] {
+                    m.source_start = m.source_start - old_source_len + new_source_len;
+                    m.source_end = m.source_end - old_source_len + new_source_len;
+                }
+                return;
+            }
+        }
+
+        let name_start = self.names.len();
+        let name_end = name_start + name.len();
+        if name_end > u32::MAX as _ {
             return;
         }
 
         let source_start = self.sources.len();
-        self.sources.push_str(source);
-        let source_end = self.sources.len();
+        let source_end = source_start + source.len();
         if source_end > u32::MAX as _ {
             return;
         }
+
+        self.names.push_str(name);
+        self.sources.push_str(source);
 
         self.macros.push(Macro {
             name_start: name_start as _,
@@ -419,7 +443,6 @@ impl MacroCollection {
                 return Some(m.source(&self.sources));
             }
         }
-
         None
     }
 
@@ -1309,3 +1332,4 @@ mod tests {
         assert_expansion("\\\0", &ctx, "'\\\\'");
     }
 }
+
