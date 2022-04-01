@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt};
+use std::{collections::VecDeque, fmt, env};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
@@ -814,6 +814,10 @@ fn write_variable_expansion<'ctx>(
         "register" => {
             let key = RegisterKey::from_str(args)?;
             output.push_str(ctx.editor.registers.get(key));
+        }
+        "env" => {
+            let env_var = env::var(args).unwrap_or(String::new());
+            output.push_str(&env_var);
         }
         "pid" => {
             assert_empty_args(args)?;

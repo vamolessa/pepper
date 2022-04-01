@@ -19,11 +19,10 @@ on-platforms windows @{
             open "@picker-entry()"
         }
     }
-
     macro -find-pattern @{
         readline "find:" @{
             open "@readline-input().refs" scratch
-            enqueue-keys "aad"
+            enqueue-keys aad
             replace-with-output 'findstr /s /r /p /n "/c:@readline-input()" *'
         }
     }
@@ -69,7 +68,7 @@ on-platforms linux bsd macos @{
     macro -find-pattern @{
         readline "find:" @{
             open "@readline-input().refs" scratch
-            enqueue-keys "aad"
+            enqueue-keys aad
             replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
         }
     }
