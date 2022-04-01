@@ -857,8 +857,11 @@ fn expand_variables<'a>(
                     output.push_str(before);
                     let mut chars = after.chars();
                     chars.next();
-                    if let Some(c) = chars.next() {
-                        output.push(c);
+                    match chars.next() {
+                        Some('t') => output.push('\t'),
+                        Some('n') => output.push('\n'),
+                        Some(c) => output.push(c),
+                        _ => (),
                     }
                     slice = chars.as_str();
                 }
