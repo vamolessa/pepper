@@ -8,6 +8,7 @@
 - removed `find-file` and `find-command` commands as they're now implementable using other builtin commands (see `default_commands.pepper` for an example)
 - merged all `map-<mode>` commands into a single `map` command whose first parameter is the mode to map keys to
 - merged all `syntax-<token-kind>` commands into the `syntax` command which can take the first parameter the token kind for the defined pattern
+- insert processes now correctly adjust their insert positions on buffer insertions and deletions
 
 ## 0.24.0
 - handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)
