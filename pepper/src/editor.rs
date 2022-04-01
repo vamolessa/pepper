@@ -182,6 +182,7 @@ impl EditorContext {
                         self.editor.buffer_views.on_buffer_read(buffer);
                     }
                     EditorEvent::BufferInsertText { handle, range, .. } => {
+                        self.editor.buffers.on_buffer_insert_text(handle, range);
                         self.editor
                             .buffer_views
                             .on_buffer_insert_text(handle, range);
@@ -191,6 +192,7 @@ impl EditorContext {
                             .on_buffer_insert_text(handle, range);
                     }
                     EditorEvent::BufferDeleteText { handle, range } => {
+                        self.editor.buffers.on_buffer_delete_text(handle, range);
                         self.editor
                             .buffer_views
                             .on_buffer_delete_text(handle, range);
@@ -477,3 +479,4 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
+

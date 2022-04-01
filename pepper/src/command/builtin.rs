@@ -6,12 +6,12 @@ use crate::{
     client::ViewAnchor,
     command::{CommandError, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
-    cursor::{Cursor, CursorCollection},
+    cursor::Cursor,
     editor::EditorFlow,
     editor_utils::{parse_process_command, MessageKind},
     help,
     mode::{picker, read_line, ModeKind},
-    platform::{PlatformRequest, PooledBuf, ProcessTag},
+    platform::{PlatformRequest, ProcessTag},
     syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
 };
@@ -497,41 +497,26 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
         let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
-        let content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
-        // TODO: `stdins` may not be needed
-        const NONE_POOLED_BUF: Option<PooledBuf> = None;
-        let mut stdins = [NONE_POOLED_BUF; CursorCollection::capacity()];
-
-        for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-            let range = cursor.to_range();
-
-            let mut buf = ctx.platform.buf_pool.acquire();
-            let write = buf.write();
-            for text in content.text_range(range) {
-                write.extend_from_slice(text.as_bytes());
-            }
-
-            if write.is_empty() {
-                ctx.platform.buf_pool.release(buf);
-            } else {
-                stdins[i] = Some(buf);
-            }
-        }
-
-        buffer_view.delete_text_in_cursor_ranges(
-            &mut ctx.editor.buffers,
-            &mut ctx.editor.word_database,
-            &mut ctx.editor.events,
-        );
-
-        ctx.trigger_event_handlers();
-
-        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
-        for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
+        for cursor in buffer_view.cursors[..].iter().rev() {
             let command = match parse_process_command(command) {
                 Some(command) => command,
                 None => continue,
+            };
+
+            let range = cursor.to_range();
+            let stdin = if range.from == range.to {
+                None
+            } else {
+                let mut buf = ctx.platform.buf_pool.acquire();
+                let write = buf.write();
+
+                let content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
+                for text in content.text_range(range) {
+                    write.extend_from_slice(text.as_bytes());
+                }
+
+                Some(buf)
             };
 
             ctx.editor.buffers.spawn_insert_process(
@@ -539,9 +524,15 @@ pub fn register_commands(commands: &mut CommandManager) {
                 command,
                 buffer_view.buffer_handle,
                 cursor.position,
-                stdins[i].take(),
+                stdin,
             );
         }
+
+        buffer_view.delete_text_in_cursor_ranges(
+            &mut ctx.editor.buffers,
+            &mut ctx.editor.word_database,
+            &mut ctx.editor.events,
+        );
 
         Ok(())
     });
@@ -603,3 +594,4 @@ pub fn register_commands(commands: &mut CommandManager) {
         },
     );
 }
+

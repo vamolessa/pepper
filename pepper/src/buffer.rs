@@ -1536,6 +1536,22 @@ impl BufferCollection {
         }
     }
 
+    pub(crate) fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+        for process in self.insert_processes.iter_mut() {
+            if process.alive && process.buffer_handle == buffer_handle {
+                process.position = process.position.insert(range);
+            }
+        }
+    }
+
+    pub(crate) fn on_buffer_delete_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+        for process in self.insert_processes.iter_mut() {
+            if process.alive && process.buffer_handle == buffer_handle {
+                process.position = process.position.delete(range);
+            }
+        }
+    }
+
     pub fn spawn_insert_process(
         &mut self,
         platform: &mut Platform,
@@ -1626,9 +1642,7 @@ impl BufferCollection {
         let texts = process.output_residual_bytes.receive_bytes(&mut buf, bytes);
 
         let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
-        process.position = buffer.content().saturate_position(process.position);
         let mut position = process.position;
-
         for text in texts {
             let insert_range = buffer.insert_text(word_database, position, text, events);
             position = position.insert(insert_range);
