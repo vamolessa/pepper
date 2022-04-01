@@ -853,8 +853,14 @@ fn expand_variables<'a>(
         loop {
             match slice.find('\\') {
                 Some(i) => {
-                    output.push_str(&slice[..i]);
-                    slice = &slice[i + 1..];
+                    let (before, after) = slice.split_at(i);
+                    output.push_str(before);
+                    let mut chars = after.chars();
+                    chars.next();
+                    if let Some(c) = chars.next() {
+                        output.push(c);
+                    }
+                    slice = chars.as_str();
                 }
                 None => {
                     output.push_str(slice);
@@ -1287,6 +1293,7 @@ mod tests {
         assert_expansion("\"\0", &ctx, "\"\\\"\"");
         assert_expansion("'\0", &ctx, "'\\''");
         assert_expansion("}\0", &ctx, "{\\}}");
+        assert_expansion("\\\0", &ctx, "'\\\\'");
     }
 }
 
