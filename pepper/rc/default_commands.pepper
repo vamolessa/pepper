@@ -7,7 +7,7 @@ map normal ! :<space>-run-command<enter>
 
 macro -replace-with-output @{
     readline "replace-with-output:" @{
-        run "@readline-input()"
+        replace-with-output "@readline-input()"
     }
 }
 map normal | :<space>-replace-with-output<enter>

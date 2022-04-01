@@ -1646,11 +1646,6 @@ impl BufferCollection {
         for text in texts {
             let insert_range = buffer.insert_text(word_database, position, text, events);
             position = position.insert(insert_range);
-            for process in &mut self.insert_processes {
-                if process.buffer_handle == buffer.handle() {
-                    process.position = process.position.insert(insert_range);
-                }
-            }
         }
     }
 
