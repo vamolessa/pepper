@@ -554,18 +554,6 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("eval", &[], |ctx, io| {
-        let source = io.args.next()?;
-        io.args.assert_empty()?;
-        match CommandManager::eval(ctx, io.client_handle, source) {
-            Ok(flow) => {
-                io.flow = flow;
-                Ok(())
-            }
-            Err(error) => Err(error.error),
-        }
-    });
-
     r(
         "on-platforms",
         &[CompletionSource::Custom(&[

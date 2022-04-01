@@ -176,47 +176,40 @@ Enqueue keys as if they were typed in the current client.
 - usage: `enqueue-keys <keys>`
 
 ## `readline`
-TODO: write doc
+Enters readline mode and once a line is read, executes the commands in `<continuation>`.
+Optionally pass a `<prompt>` which displays while waiting for user input.
+It's possible to access the line input through `@readline-input()` when `<continuation>` executes.
+- usage: `readline [<prompt>] <continuation>`
 
 ## `pick`
-TODO: write doc
+Enters picker mode and once an entry is selected, executes the commands in `<continuation>`.
+Optionally pass a `<prompt>` which displays while waiting for user input.
+It's possible to access the selected entry input through `@picker-entry()` when `<continuation>` executes.
+- usage: `pick [<prompt>] <continuation>`
 
 ## `picker-entries`
-TODO: write doc
+Clears and then adds all `<entries...>` to be selected with the `pick` command.
+- usage: `picker-entries <entries...>`
 
 ## `picker-entries-from-lines`
-TODO: write doc
+Clears and then adds a picker entry for each `<command>` stdout line (with stdin closed) to be selected with the `pick` command.
+- usage: `picker-entries-from-lines <command>`
 
 ## `run`
-TODO: write doc
+Runs the external `<command>` (with stdin closed and ignoring its stdout).
+- usage: `run <command>`
 
 ## `replace-with`
-TODO: write doc
+Pass each cursor selection as stdin to the external `<command>` and substitute each for its stdout.
+- usage: `replace-with <command>`
 
 ## `macro`
-TODO: write doc
-
-## `eval`
-TODO: write doc
+Defines a new macro command that can be called by its `<name>` which executes all commands in its `<source>`.
+- usage: `macro <name> <source>`
 
 ## `on-platforms`
 Given a `<platforms...>` argument list, execute `<commands>` if we're on any of such platforms.
 Note that `<commands>` are interpreted the same way a config file is interpreted
 (that is, line by line but also supporting multiline commands).
 - usage: `on-platforms <platforms...> <commands>`
-
-TODO: remove
-## `find-file`
-Executes external command `<command>` and fills the picker menu from each line of its stdout.
-When an entry is selected, it's opened as a buffer path.
-Also, it's possible to customize the `<prompt>` that is shown on the picker ui.
-- usage: `find-file <command> [<prompt>]`
-
-TODO: remove
-## `find-pattern`
-Shows a readline ui that queries for the search pattern.
-When it's submitted, the external command `<command>` whose stdout will be inserted into a buffer named `<command>.refs`.
-Note that any `{}` in `<command>` will be substituted by the search pattern.
-Also, it's possible to customize the `<prompt>` that is shown on the readline ui.
-- usage: `find-pattern <command> [<prompt>]`
 
