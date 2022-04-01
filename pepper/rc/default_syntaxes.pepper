@@ -30,7 +30,7 @@ syntax comments "//{.}"
 
 # https://docs.microsoft.com/en-us/cpp/cpp/keywords-cpp
 syntax "**/*.{c,h,cpp,hpp}"
-syntax keywords alignas|alignof|and_eq|and|asm|auto|bitand|bitor|bool|break|case|catch|class|compl|concept|const|const_cast|consteval|constexpr|constinit|continue|co_await|co_return|co_yield|decltype|default|delete|do|dynamic_cast|else|enum|explicit|export|extern|for|friend|goto|if|inline|mutable|namespace|new|noexcept|not_eq|not|operator|or_eq|or|override|private|protected|public|register|reinterpret_cast|requires|return|sizeof|static|static_assert|static_cast|struct|switch|template|thread_local|throw|try|typedef|typeid|typename|union|using|virtual|volatile|while|xor_eq|xor
+syntax keywords alignas|alignof|and_eq|and|asm|auto|bitand|bitor|bool|break|case|catch|class|compl|concept|const_cast|consteval|constexpr|constinit|const|continue|co_await|co_return|co_yield|decltype|default|delete|do|dynamic_cast|else|enum|explicit|export|extern|for|friend|goto|if|inline|mutable|namespace|new|noexcept|not_eq|not|operator|or_eq|or|override|private|protected|public|register|reinterpret_cast|requires|return|sizeof|static|static_assert|static_cast|struct|switch|template|thread_local|throw|try|typedef|typeid|typename|union|using|virtual|volatile|while|xor_eq|xor
 syntax types "char|char8_t|char16_t|char32_t|double|float|int|long|short|signed|unsigned|void|wchar_t|%u{%w_}"
 syntax symbols "%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|~|?|&|%||@"
 syntax literals "true|false|this|nullptr|'{(\\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{ }{%a}"
