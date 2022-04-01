@@ -775,6 +775,8 @@ mod tests {
         assert_key_simple(KeyCode::Char('<'), "<less>");
         assert_key_simple(KeyCode::Char('>'), "<greater>");
         assert_key_simple(KeyCode::Char('\\'), "\\");
+        assert_key_simple(KeyCode::Char('!'), "!");
+        assert_key_simple(KeyCode::Char('|'), "|");
 
         fn assert_key_with_modifiers(expected_code: KeyCode, control: bool, alt: bool, text: &str) {
             let parsed = parse_key(&mut text.chars()).unwrap();
@@ -859,6 +861,8 @@ mod tests {
         assert_key_serialization(&mut buf, KeyCode::Char('0'));
         assert_key_serialization(&mut buf, KeyCode::Char('9'));
         assert_key_serialization(&mut buf, KeyCode::Char('$'));
+        assert_key_serialization(&mut buf, KeyCode::Char('!'));
+        assert_key_serialization(&mut buf, KeyCode::Char('|'));
         assert_key_serialization(&mut buf, KeyCode::Char('\n'));
         assert_key_serialization(&mut buf, KeyCode::Char('\t'));
         assert_key_serialization(&mut buf, KeyCode::Esc);

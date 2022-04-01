@@ -1,3 +1,17 @@
+macro -run-command @{
+    readline "run-command:" @{
+        run "@readline-input()"
+    }
+}
+map normal ! :<space>-run-command<enter>
+
+macro -replace-with-output @{
+    readline "replace-with-output:" @{
+        replace-with "@readline-input()"
+    }
+}
+map normal | :<space>-replace-with-output<enter>
+
 on-platforms windows @{
     macro -find-file @{
         picker-entries-from-lines "cmd /c dir /a-d /s /b"
@@ -61,6 +75,6 @@ on-platforms linux bsd macos @{
     }
 }
 
-map normal <space>o ": -find-file<enter>"
-map normal <space>f ": -find-pattern<enter>"
+map normal <space>o :<space>-find-file<enter>
+map normal <space>f :<space>-find-pattern<enter>
 
