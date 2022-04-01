@@ -503,7 +503,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("replace-with", &[], |ctx, io| {
+    r("replace-with-output", &[], |ctx, io| {
         let command = io.args.next()?;
         io.args.assert_empty()?;
 

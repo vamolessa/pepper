@@ -7,7 +7,7 @@ map normal ! :<space>-run-command<enter>
 
 macro -replace-with-output @{
     readline "replace-with-output:" @{
-        run replace "@readline-input()"
+        run "@readline-input()"
     }
 }
 map normal | :<space>-replace-with-output<enter>
@@ -24,7 +24,7 @@ on-platforms windows @{
         readline "find:" @{
             open "@readline-input().refs" scratch
             enqueue-keys "aad"
-            run replace 'findstr /s /r /p /n "/c:@readline-input()" *'
+            replace-with-output 'findstr /s /r /p /n "/c:@readline-input()" *'
         }
     }
 }
@@ -70,7 +70,7 @@ on-platforms linux bsd macos @{
         readline "find:" @{
             open "@readline-input().refs" scratch
             enqueue-keys "aad"
-            run replace 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
+            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
         }
     }
 }

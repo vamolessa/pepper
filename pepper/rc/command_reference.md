@@ -203,9 +203,9 @@ Clears and then adds a picker entry for each `<command>` stdout line (with stdin
 Runs the external `<command>` (with stdin closed and ignoring its stdout).
 - usage: `run <command>`
 
-## `replace-with`
+## `replace-with-output`
 Pass each cursor selection as stdin to the external `<command>` and substitute each for its stdout.
-- usage: `replace-with <command>`
+- usage: `replace-with-output <command>`
 
 ## `macro`
 Defines a new macro command that can be called by its `<name>` which executes all commands in its `<source>`.
