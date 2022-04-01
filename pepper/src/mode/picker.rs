@@ -278,4 +278,3 @@ pub mod custom {
         ctx.editor.enter_mode(ModeKind::Picker);
     }
 }
-

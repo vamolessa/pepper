@@ -11,9 +11,8 @@ use crate::{
     command::CommandManager,
     config::Config,
     editor_utils::{
-        KeyMapCollection, MatchResult, ReadLine, RegisterCollection, RegisterKey, StatusBar,
-        StatusBarDisplay, StringPool,
-        PickerEntriesProcessBuf,
+        KeyMapCollection, MatchResult, PickerEntriesProcessBuf, ReadLine, RegisterCollection,
+        RegisterKey, StatusBar, StatusBarDisplay, StringPool,
     },
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,

@@ -1303,4 +1303,3 @@ mod tests {
         assert_expansion("\\\0", &ctx, "'\\\\'");
     }
 }
-
