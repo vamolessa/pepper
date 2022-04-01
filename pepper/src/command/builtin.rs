@@ -4,10 +4,10 @@ use crate::{
     buffer::{parse_path_and_position, BufferProperties},
     buffer_position::BufferPosition,
     client::ViewAnchor,
-    command::{CommandError, CommandIO, CommandManager, CompletionSource},
+    command::{CommandError, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::{Cursor, CursorCollection},
-    editor::{EditorContext, EditorFlow},
+    editor::EditorFlow,
     editor_utils::{parse_process_command, MessageKind},
     help,
     mode::{picker, read_line, ModeKind},
@@ -306,16 +306,29 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    // TODO: maybe change this to one command `map` that receives a mode param
-    r("map-normal", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
-    r("map-insert", &[], |ctx, io| map(ctx, io, ModeKind::Insert));
-    r("map-command", &[], |ctx, io| {
-        map(ctx, io, ModeKind::Command)
+    static MAP_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&[
+        "normal", "insert", "command", "readline", "picker",
+    ])];
+    r("map", MAP_COMPLETIONS, |ctx, io| {
+        let mode = io.args.next()?;
+        let from = io.args.next()?;
+        let to = io.args.next()?;
+        io.args.assert_empty()?;
+
+        let mode = match mode {
+            "normal" => ModeKind::Normal,
+            "insert" => ModeKind::Insert,
+            "command" => ModeKind::Command,
+            "readline" => ModeKind::ReadLine,
+            "picker" => ModeKind::Picker,
+            _ => return Err(CommandError::InvalidModeKind),
+        };
+
+        match ctx.editor.keymaps.parse_and_map(mode, from, to) {
+            Ok(()) => Ok(()),
+            Err(error) => Err(CommandError::KeyMapError(error)),
+        }
     });
-    r("map-readline", &[], |ctx, io| {
-        map(ctx, io, ModeKind::ReadLine)
-    });
-    r("map-picker", &[], |ctx, io| map(ctx, io, ModeKind::Picker));
 
     static ALIAS_COMPLETIONS: &[CompletionSource] =
         &[CompletionSource::Custom(&[]), CompletionSource::Commands];
@@ -327,36 +340,42 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    // TODO: maybe change this to one command `syntax` that may receive a token kind param
-    r("syntax", &[], |ctx, io| {
-        let glob = io.args.next()?;
+    static SYNTAX_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&[
+        "keywords", "types", "symbols", "literals", "strings", "comments", "texts",
+    ])];
+    r("syntax", SYNTAX_COMPLETIONS, |ctx, io| {
+        let arg = io.args.next()?;
+        let pattern = io.args.try_next();
         io.args.assert_empty()?;
-        match ctx.editor.syntaxes.set_current_from_glob(glob) {
-            Ok(()) => Ok(()),
-            Err(error) => Err(CommandError::InvalidGlob(error)),
-        }
-    });
 
-    r("syntax-keywords", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Keyword)
-    });
-    r("syntax-types", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Type)
-    });
-    r("syntax-symbols", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Symbol)
-    });
-    r("syntax-literals", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Literal)
-    });
-    r("syntax-strings", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::String)
-    });
-    r("syntax-comments", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Comment)
-    });
-    r("syntax-texts", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Text)
+        let pattern = match pattern {
+            Some(pattern) => pattern,
+            None => match ctx.editor.syntaxes.set_current_from_glob(arg) {
+                Ok(()) => return Ok(()),
+                Err(error) => return Err(CommandError::InvalidGlob(error)),
+            },
+        };
+
+        let token_kind = match arg {
+            "keywords" => TokenKind::Keyword,
+            "types" => TokenKind::Type,
+            "symbols" => TokenKind::Symbol,
+            "literals" => TokenKind::Literal,
+            "strings" => TokenKind::String,
+            "comments" => TokenKind::Comment,
+            "texts" => TokenKind::Text,
+            _ => return Err(CommandError::InvalidTokenKind),
+        };
+
+        match ctx
+            .editor
+            .syntaxes
+            .get_current()
+            .set_rule(token_kind, pattern)
+        {
+            Ok(()) => Ok(()),
+            Err(error) => Err(CommandError::PatternError(error)),
+        }
     });
 
     r("copy-command", &[], |ctx, io| {
@@ -595,34 +614,5 @@ pub fn register_commands(commands: &mut CommandManager) {
             }
         },
     );
-}
-
-fn map(ctx: &mut EditorContext, io: &mut CommandIO, mode: ModeKind) -> Result<(), CommandError> {
-    let from = io.args.next()?;
-    let to = io.args.next()?;
-    io.args.assert_empty()?;
-
-    match ctx.editor.keymaps.parse_and_map(mode, from, to) {
-        Ok(()) => Ok(()),
-        Err(error) => Err(CommandError::KeyMapError(error)),
-    }
-}
-
-fn syntax_pattern(
-    ctx: &mut EditorContext,
-    io: &mut CommandIO,
-    token_kind: TokenKind,
-) -> Result<(), CommandError> {
-    let pattern = io.args.next()?;
-    io.args.assert_empty()?;
-    match ctx
-        .editor
-        .syntaxes
-        .get_current()
-        .set_rule(token_kind, pattern)
-    {
-        Ok(()) => Ok(()),
-        Err(error) => Err(CommandError::PatternError(error)),
-    }
 }
 

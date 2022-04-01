@@ -126,10 +126,11 @@ key |  doc
 `token_string` | All highlighted `string` tokens have this color
 `token_literal` | All highlighted `literal` tokens have this color
 
-## `map-normal`, `map-insert`, `map-command`, `map-readline`, `map-picker`
+## `map`
 Creates a keyboard mapping for an editor mode.
+`<mode>` is one of `normal`, `insert`, `command`, `readline` and `picker`.
 `<from>` and `<to>` are a string of keys.
-- usage: `map-<mode> <from> <to>`
+- usage: `map <mode> <from> <to>`
 
 ## `alias`
 Create a alias with name `<name>` for the command `<command>`.
@@ -137,39 +138,12 @@ Note that `<command>` can also contain arguments which will expand when calling 
 - usage: `alias <name> <command>`
 
 ## `syntax`
-Begins a new syntax definition for buffer paths that match a glob `<glob>`.
-In order to specify each syntax pattern, the other `syntax-<token-kind>` commands are used.
-- usage: `syntax <glob>`
+Either begins a new syntax definition for buffer paths that match a glob `<glob>`,
+or sets the pattern for tokens of kind `<token-kind>` for the previously defined syntax.
+`<token-kind>` is one of `keywords`, `types`, `symbols`, `literals`, `strings`, `comments` and `texts`.
+- usage: `syntax <glob>` or `syntax <token-kind> <pattern>`
 
 Read more about [language syntax definitions](language_syntax_definitions.md).
-
-## `syntax-keywords`
-Sets the pattern for tokens of kind 'keyword' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-keywords <pattern>`
-
-## `syntax-types`
-Sets the pattern for tokens of kind 'type' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-types <pattern>`
-
-## `syntax-symbols`
-Sets the pattern for tokens of kind 'symbol' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-symbols <pattern>`
-
-## `syntax-literals`
-Sets the pattern for tokens of kind 'literal' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-literals <pattern>`
-
-## `syntax-strings`
-Sets the pattern for tokens of kind 'string' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-strings <pattern>`
-
-## `syntax-comments`
-Sets the pattern for tokens of kind 'comment' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-comments <pattern>`
-
-## `syntax-texts`
-Sets the pattern for tokens of kind 'text' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-texts <pattern>`
 
 ## `copy-command`
 Sets the command to be used when copying text to clipboard.
