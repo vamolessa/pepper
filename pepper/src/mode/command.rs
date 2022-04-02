@@ -123,6 +123,8 @@ impl ModeState for State {
                 ctx.editor.commands.add_to_history(input);
 
                 let command = ctx.editor.string_pool.acquire_with(input);
+                ctx.editor.enter_mode(ModeKind::default());
+
                 let result = CommandManager::eval_single(ctx, Some(client_handle), &command);
                 let result = result.map_err(|e| CommandErrorWithContext {
                     error: e,
@@ -130,10 +132,6 @@ impl ModeState for State {
                 });
                 let flow = CommandManager::unwrap_eval_result(ctx, result, &command, None);
                 ctx.editor.string_pool.release(command);
-
-                if ctx.editor.mode.kind() == ModeKind::Command {
-                    ctx.editor.enter_mode(ModeKind::default());
-                }
 
                 return Some(flow);
             }
@@ -295,3 +293,4 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
+

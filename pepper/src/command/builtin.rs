@@ -1,6 +1,7 @@
 use std::{path::Path, process::Stdio};
 
 use crate::{
+    word_database::WordIndicesIter,
     buffer::{parse_path_and_position, BufferProperties},
     buffer_position::BufferPosition,
     client::ViewAnchor,
@@ -440,14 +441,11 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 
     r("picker-entries", &[], |ctx, io| {
-        // TODO: picker-entries not yet correct. it keeps getting reset
         ctx.editor.picker.clear();
-        //let filter = ctx.editor.read_line.input();
-        //let mut entry_adder = ctx.editor.picker.add_custom_filtered_entries(filter);
         while let Some(arg) = io.args.try_next() {
             ctx.editor.picker.add_custom_entry(arg);
-            //entry_adder.add(arg);
         }
+        ctx.editor.picker.filter(WordIndicesIter::empty(), ctx.editor.read_line.input());
         Ok(())
     });
 

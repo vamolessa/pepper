@@ -1,3 +1,10 @@
+macro test-pick @{
+    picker-entries aaa bbb ccc
+    pick "pick:" @{
+        print "picked @picker-entry()"
+    }
+}
+
 macro -run-command @{
     readline "run-command:" @{
         run "@readline-input()"
