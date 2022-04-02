@@ -405,7 +405,8 @@ impl MacroCollection {
                 let old_source_len = old_source_len as u32;
                 let new_source_len = new_source_len as u32;
 
-                self.macros[i].source_end = self.macros[i].source_end - old_source_len + new_source_len;
+                self.macros[i].source_end =
+                    self.macros[i].source_end - old_source_len + new_source_len;
                 for m in &mut self.macros[i + 1..] {
                     m.source_start = m.source_start - old_source_len + new_source_len;
                     m.source_end = m.source_end - old_source_len + new_source_len;
@@ -1332,4 +1333,3 @@ mod tests {
         assert_expansion("\\\0", &ctx, "'\\\\'");
     }
 }
-

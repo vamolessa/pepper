@@ -1536,7 +1536,11 @@ impl BufferCollection {
         }
     }
 
-    pub(crate) fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+    pub(crate) fn on_buffer_insert_text(
+        &mut self,
+        buffer_handle: BufferHandle,
+        range: BufferRange,
+    ) {
         for process in self.insert_processes.iter_mut() {
             if process.alive && process.buffer_handle == buffer_handle {
                 process.position = process.position.insert(range);
@@ -1544,7 +1548,11 @@ impl BufferCollection {
         }
     }
 
-    pub(crate) fn on_buffer_delete_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+    pub(crate) fn on_buffer_delete_text(
+        &mut self,
+        buffer_handle: BufferHandle,
+        range: BufferRange,
+    ) {
         for process in self.insert_processes.iter_mut() {
             if process.alive && process.buffer_handle == buffer_handle {
                 process.position = process.position.delete(range);

@@ -293,4 +293,3 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
-
