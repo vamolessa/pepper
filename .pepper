@@ -15,6 +15,12 @@ on-platforms windows @{
         enqueue.keys aad
         replace-with-output "cmd /c cargo test --workspace 2>&1"
     }
+
+    # remedybg
+    map normal <space>d<space> :<space>remedybg-debug<enter>
+    macro remedybg-debug @{
+        run "remedybg target/debug/pepper.exe -s s --server"
+    }
 }
 
 on-platforms linux @{
