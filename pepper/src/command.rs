@@ -788,6 +788,22 @@ fn write_variable_expansion<'ctx>(
             };
             output.push_str(buffer.path.to_str()?);
         }
+        "buffer-absolute-path" => {
+            let buffer = if args.is_empty() {
+                current_buffer(ctx, client_handle)?
+            } else {
+                let handle = BufferHandle(args.parse().ok()?);
+                ctx.editor.buffers.try_get(handle)?
+            };
+            if buffer.path.is_relative() {
+                let current_directory = ctx.editor.current_directory.to_str()?;
+                output.push_str(current_directory);
+                if let Some(false) = current_directory.chars().next_back().map(std::path::is_separator) {
+                    output.push(std::path::MAIN_SEPARATOR);
+                }
+            }
+            output.push_str(buffer.path.to_str()?);
+        }
         "buffer-content" => {
             let buffer = if args.is_empty() {
                 current_buffer(ctx, client_handle)?
