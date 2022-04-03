@@ -549,7 +549,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("macro", &[], |ctx, io| {
+    r("command", &[], |ctx, io| {
         let name = io.args.next()?;
         let source = io.args.next()?;
         io.args.assert_empty()?;
@@ -557,12 +557,15 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r(
-        "on-platforms",
-        &[CompletionSource::Custom(&[
-            "windows", "linux", "bsd", "macos",
-        ])],
-        |ctx, io| {
+    static EVAL_COMPLETIONS: &[CompletionSource] = &[
+        CompletionSource::Custom(&["on"]),
+        CompletionSource::Custom(&["windows", "linux", "bsd", "macos"]),
+    ];
+    r("eval", EVAL_COMPLETIONS, |ctx, io| {
+        let mut continuation = io.args.next()?;
+
+        let mut should_execute = true;
+        if continuation == "on" {
             let current_platform = if cfg!(target_os = "windows") {
                 "windows"
             } else if cfg!(target_os = "linux") {
@@ -580,29 +583,27 @@ pub fn register_commands(commands: &mut CommandManager) {
                 ""
             };
 
-            let mut continuation = "";
-            let mut should_execute = false;
+            should_execute = false;
             while let Some(arg) = io.args.try_next() {
-                if should_execute {
-                    continuation = arg;
-                }
-
-                if arg == current_platform {
-                    should_execute = true;
-                }
+                continuation = arg;
+                should_execute = should_execute || arg == current_platform;
             }
+        }
 
-            if !should_execute {
-                return Ok(());
-            }
+        io.args.assert_empty()?;
 
-            match CommandManager::eval(ctx, io.client_handle, continuation) {
-                Ok(flow) => {
-                    io.flow = flow;
-                    Ok(())
-                }
-                Err(error) => Err(error.error),
+        if !should_execute {
+            return Ok(());
+        }
+
+        io.args.assert_empty()?;
+        match CommandManager::eval(ctx, io.client_handle, continuation) {
+            Ok(flow) => {
+                io.flow = flow;
+                Ok(())
             }
-        },
-    );
+            Err(error) => Err(error.error),
+        }
+    });
 }
+

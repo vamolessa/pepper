@@ -32,10 +32,6 @@ pub const DEFAULT_COMMANDS_CONFIG: ResourceFile = ResourceFile {
     name: "default_commands.pepper",
     content: include_str!("../rc/default_commands.pepper"),
 };
-pub const DEFAULT_ALIASES_CONFIG: ResourceFile = ResourceFile {
-    name: "default_aliases.pepper",
-    content: include_str!("../rc/default_aliases.pepper"),
-};
 pub const DEFAULT_SYNTAXES_CONFIG: ResourceFile = ResourceFile {
     name: "default_syntaxes.pepper",
     content: include_str!("../rc/default_syntaxes.pepper"),

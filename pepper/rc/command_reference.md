@@ -206,13 +206,14 @@ Runs the external `<command>` (with stdin closed and ignoring its stdout).
 Pass each cursor selection as stdin to the external `<command>` and substitute each for its stdout.
 - usage: `replace-with-output <command>`
 
-## `macro`
-Defines a new macro command that can be called by its `<name>` which executes all commands in its `<source>`.
-- usage: `macro <name> <source>`
+## `command`
+Defines a new command that can be called by its `<name>` which executes all commands in its `<source>`.
+Commands which name starts with `-` won't show up in the command completion menu.
+- usage: `command <name> <source>`
 
-## `on-platforms`
-Given a `<platforms...>` argument list, execute `<commands>` if we're on any of such platforms.
-Note that `<commands>` are interpreted the same way a config file is interpreted
-(that is, line by line but also supporting multiline commands).
-- usage: `on-platforms <platforms...> <commands>`
+## `eval`
+Evaluate `<commands>` as if they were typed in directly.
+However it enables expansions to happen before evaluation.
+Optionally, filter evaluation based if we're on a platform listed in `<platforms...>`.
+- usage: `eval [on <platforms...>] <commands>`
 

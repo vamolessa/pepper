@@ -4,25 +4,36 @@ map normal | :<space>-replace-with-output<enter>
 map normal <space>o :<space>-find-file<enter>
 map normal <space>f :<space>-find-pattern<enter>
 
-macro -run-command @{
+alias h help
+alias q quit
+alias qa quit-all
+alias o open
+alias s save
+alias sa save-all
+alias r reopen
+alias ra reopen-all
+alias c close
+alias ca close-all
+
+command -run-command @{
     readline "run-command:" @{
         run "@readline-input()"
     }
 }
-macro -replace-with-output @{
+command -replace-with-output @{
     readline "replace-with-output:" @{
         replace-with-output "@readline-input()"
     }
 }
 
-on-platforms windows @{
-    macro -find-file @{
+eval on windows @{
+    command -find-file @{
         picker-entries-from-lines "cmd /c dir /a-d /s /b"
         pick "open:" @{
             open "@picker-entry()"
         }
     }
-    macro -find-pattern @{
+    command -find-pattern @{
         readline "find:" @{
             open "@readline-input().refs" scratch
             enqueue-keys aad
@@ -31,11 +42,11 @@ on-platforms windows @{
     }
 }
 
-on-platforms linux @{
+eval on linux @{
     copy-command "xclip -selection clipboard -in"
     paste-command "xclip -selection clipboard -out"
 
-    macro -find-file @{
+    command -find-file @{
         picker-entries-from-lines "find . -type f -printf '%P\\n'"
         pick "open:" @{
             open "@picker-entry()"
@@ -43,11 +54,11 @@ on-platforms linux @{
     }
 }
 
-on-platforms bsd @{
+eval on bsd @{
     copy-command "xclip -in"
     paste-command "xclip -out"
 
-    macro -find-file @{
+    command -find-file @{
         picker-entries-from-lines "find . -type f -printf '%P\\n'"
         pick "open:" @{
             open "@picker-entry()"
@@ -55,11 +66,11 @@ on-platforms bsd @{
     }
 }
 
-on-platforms macos @{
+eval on macos @{
     copy-command "pbcopy"
     paste-command "pbpaste"
 
-    macro -find-file @{
+    command -find-file @{
         picker-entries-from-lines "find . -type f -print"
         pick "open:" @{
             open "@picker-entry()"
@@ -67,8 +78,8 @@ on-platforms macos @{
     }
 }
 
-on-platforms linux bsd macos @{
-    macro -find-pattern @{
+eval on linux bsd macos @{
+    command -find-pattern @{
         readline "find:" @{
             open "@readline-input().refs" scratch
             enqueue-keys aad
