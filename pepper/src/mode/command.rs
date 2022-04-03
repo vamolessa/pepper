@@ -125,7 +125,8 @@ impl ModeState for State {
                 let command = ctx.editor.string_pool.acquire_with(input);
                 ctx.editor.enter_mode(ModeKind::default());
 
-                let result = CommandManager::eval_single(ctx, Some(client_handle), &command, "", false);
+                let result =
+                    CommandManager::eval_single(ctx, Some(client_handle), &command, "", false);
                 let result = result.map_err(|e| CommandErrorWithContext {
                     error: e,
                     command_index: 0,
@@ -293,4 +294,3 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
-
