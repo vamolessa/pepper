@@ -170,7 +170,7 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
             return;
         }
     };
-    let mut command_name = last_token.trim_end_matches('!');
+    let command_name = last_token.trim_end_matches('!');
 
     if let ReadCommandState::NavigatingHistory(_) = state.read_state {
         state.read_state = ReadCommandState::TypingCommand;
@@ -183,21 +183,6 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
     for token in tokens {
         arg_count += 1;
         last_token = token.slice;
-    }
-
-    if ends_with_whitespace || arg_count > 0 {
-        if let Some(aliased) = ctx.editor.commands.aliases.find(command_name) {
-            let mut aliased_tokens = CommandTokenizer(aliased);
-            command_name = aliased_tokens.next().map(|t| t.slice).unwrap_or("");
-
-            for _ in aliased_tokens {
-                arg_count += 1;
-            }
-
-            if ends_with_whitespace {
-                last_token = &input[input.len()..];
-            }
-        }
     }
 
     let mut pattern = last_token;
@@ -231,11 +216,6 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
                     ctx.editor.picker.add_custom_entry(command.name);
                 }
                 for name in ctx.editor.commands.macros.names() {
-                    if !name.starts_with('-') {
-                        ctx.editor.picker.add_custom_entry(name);
-                    }
-                }
-                for name in ctx.editor.commands.aliases.names() {
                     if !name.starts_with('-') {
                         ctx.editor.picker.add_custom_entry(name);
                     }

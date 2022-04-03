@@ -429,80 +429,10 @@ impl MacroCollection {
     }
 }
 
-struct Alias {
-    start: u32,
-    from_len: u16,
-    to_len: u16,
-}
-impl Alias {
-    pub fn from<'a>(&self, texts: &'a str) -> &'a str {
-        let end = self.start as usize + self.from_len as usize;
-        &texts[self.start as usize..end]
-    }
-
-    pub fn to<'a>(&self, texts: &'a str) -> &'a str {
-        let start = self.start as usize + self.from_len as usize;
-        let end = start + self.to_len as usize;
-        &texts[start..end]
-    }
-}
-
-#[derive(Default)]
-pub struct AliasCollection {
-    texts: String,
-    aliases: Vec<Alias>,
-}
-impl AliasCollection {
-    pub fn add(&mut self, from: &str, to: &str) {
-        if from.len() > u16::MAX as _ || to.len() > u16::MAX as _ {
-            return;
-        }
-
-        for (i, alias) in self.aliases.iter().enumerate() {
-            if from == alias.from(&self.texts) {
-                let alias_start = alias.start as usize;
-                let alias_len = alias.from_len as u32 + alias.to_len as u32;
-                self.aliases.remove(i);
-                for alias in &mut self.aliases[i..] {
-                    alias.start -= alias_len;
-                }
-                self.texts
-                    .drain(alias_start..alias_start + alias_len as usize);
-                break;
-            }
-        }
-
-        let start = self.texts.len() as _;
-        self.texts.push_str(from);
-        self.texts.push_str(to);
-
-        self.aliases.push(Alias {
-            start,
-            from_len: from.len() as _,
-            to_len: to.len() as _,
-        });
-    }
-
-    pub fn find(&self, from: &str) -> Option<&str> {
-        for alias in &self.aliases {
-            if from == alias.from(&self.texts) {
-                return Some(alias.to(&self.texts));
-            }
-        }
-
-        None
-    }
-
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.aliases.iter().map(move |a| a.from(&self.texts))
-    }
-}
-
 pub struct CommandManager {
     commands: Vec<Command>,
     pub macros: MacroCollection,
     history: VecDeque<String>,
-    pub aliases: AliasCollection,
 }
 
 impl CommandManager {
@@ -511,7 +441,6 @@ impl CommandManager {
             commands: Vec::new(),
             macros: MacroCollection::default(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
-            aliases: AliasCollection::default(),
         };
         builtin::register_commands(&mut this);
         this
@@ -629,31 +558,13 @@ impl CommandManager {
     pub(crate) fn eval_single(
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
-        mut command: &str,
+        command: &str,
         args: &str,
         bang: bool,
     ) -> Result<EditorFlow, CommandError> {
         let mut expanded = ctx.editor.string_pool.acquire();
-
-        let mut force_bang = false;
-        let mut tokens = CommandTokenizer(command);
-        if let Some(token) = tokens.next() {
-            let alias = match token.slice.strip_suffix('!') {
-                Some(token) => {
-                    force_bang = true;
-                    token
-                }
-                None => token.slice,
-            };
-            if let Some(aliased) = ctx.editor.commands.aliases.find(alias) {
-                expand_variables(ctx, client_handle, args, bang, aliased, &mut expanded);
-                command = tokens.0;
-            }
-        }
-
         expand_variables(ctx, client_handle, args, bang, command, &mut expanded);
-
-        let result = Self::eval_single_impl(ctx, client_handle, &expanded, force_bang);
+        let result = Self::eval_single_impl(ctx, client_handle, &expanded);
         ctx.editor.string_pool.release(expanded);
         result
     }
@@ -662,7 +573,6 @@ impl CommandManager {
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &str,
-        force_bang: bool,
     ) -> Result<EditorFlow, CommandError> {
         let mut args = CommandArgs(command);
         let command_name = match args.try_next() {
@@ -671,7 +581,7 @@ impl CommandManager {
         };
         let (command_name, bang) = match command_name.strip_suffix('!') {
             Some(command) => (command, true),
-            None => (command_name, force_bang),
+            None => (command_name, false),
         };
 
         if let Some(macro_source) = ctx.editor.commands.macros.find(command_name) {
@@ -1433,3 +1343,4 @@ mod tests {
         assert_eq!("\0", &expanded);
     }
 }
+
