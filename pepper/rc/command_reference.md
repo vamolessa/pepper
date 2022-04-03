@@ -43,9 +43,9 @@ It's also possible to change these properties in batch by passing:
 - `scratch`: will disable all properties
 
 Note that the property evaluation order is the same as the order of the arguments.
-That is, calling `open my-buffer history-enabled scratch` will actually open `my-buffer` with undo history disabled!
+That is, calling `open history-enabled scratch my-buffer.txt` will actually open `my-buffer.txt` with undo history disabled!
 
-- usage: `open <path> [<properties...>]`
+- usage: `open [<properties...>] <path>[:<line>[,<column>]]`
 - default alias: `o`
 
 ## `save`

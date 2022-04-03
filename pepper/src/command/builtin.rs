@@ -94,11 +94,11 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 
     r("open", &[CompletionSource::Files], |ctx, io| {
-        let path = io.args.next()?;
+        let mut path = io.args.next()?;
 
         let mut properties = BufferProperties::text();
-        while let Some(property) = io.args.try_next() {
-            match property {
+        while let Some(arg) = io.args.try_next() {
+            match path {
                 "text" => properties = BufferProperties::text(),
                 "scratch" => properties = BufferProperties::scratch(),
                 "history-enabled" => properties.history_enabled = true,
@@ -109,6 +109,7 @@ pub fn register_commands(commands: &mut CommandManager) {
                 "word-database-disabled" => properties.word_database_enabled = false,
                 _ => return Err(CommandError::NoSuchBufferProperty),
             }
+            path = arg;
         }
 
         let client_handle = io.client_handle()?;

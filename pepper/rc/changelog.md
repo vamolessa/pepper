@@ -10,6 +10,7 @@
 - merged all `syntax-<token-kind>` commands into the `syntax` command which can take the first parameter the token kind for the defined pattern
 - insert processes now correctly adjust their insert positions on buffer insertions and deletions
 - added `set-register` command
+- changed `open` command parameters order, now buffer properties come before the `path` parameter
 
 ## 0.24.0
 - handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)

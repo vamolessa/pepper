@@ -35,7 +35,7 @@ eval on windows @{
     }
     command -find-pattern @{
         readline "find:" @{
-            open "@readline-input().refs" scratch
+            open scratch "@readline-input().refs"
             enqueue-keys aad
             replace-with-output 'findstr /s /r /p /n "/c:@readline-input()" *'
         }
@@ -81,7 +81,7 @@ eval on macos @{
 eval on linux bsd macos @{
     command -find-pattern @{
         readline "find:" @{
-            open "@readline-input().refs" scratch
+            open scratch "@readline-input().refs"
             enqueue-keys aad
             replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
         }
