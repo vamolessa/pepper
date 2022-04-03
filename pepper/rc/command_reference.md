@@ -2,8 +2,7 @@ These are the builtin commands that can be used to interact with the editor.
 Their main purpose is to provide features that complement text editing.
 Commands is also how you can configure your editor on config files.
 
-Also, when passing arguments that contain spaces, you can wrap them between `"`, `'` or `{{` and `}}`
-(similar to lua strings, you can put any number of `=` between the `{` or `}` as long as they match).
+When passing arguments that contain spaces, you can wrap them between `"`, `'` or a balanced `{}` pair.
 
 # builtin commands
 
