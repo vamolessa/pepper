@@ -745,7 +745,8 @@ mod tests {
     };
 
     use crate::{
-        client::ClientManager, editor::Editor, platform::Platform, plugin::PluginCollection,
+        client::ClientManager, editor::Editor, editor_utils::RegisterKey, platform::Platform,
+        plugin::PluginCollection,
     };
 
     #[test]
@@ -1103,7 +1104,7 @@ mod tests {
         );
 
         assert_expansion(
-            "cmd\0buffer/path0\0asd\0buffer/veryverylong/path1\0fgh\0@buffer-path(2)\0",
+            "cmd\0buffer/path0\0asd\0buffer/veryverylong/path1\0fgh\0\0",
             &ctx,
             "cmd @buffer-path(0) asd @buffer-path(1) fgh @buffer-path(2)",
         );
@@ -1120,10 +1121,10 @@ mod tests {
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
             false,
-            "@arg()",
+            "@arg(*)",
             &mut expanded,
         );
-        assert_eq!("arg0 arg1 arg2\0", &expanded);
+        assert_eq!("arg0\0arg1\0arg2\0", &expanded);
         expanded.clear();
         expand_variables(
             &ctx,
