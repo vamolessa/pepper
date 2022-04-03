@@ -23,12 +23,14 @@ That is, something akin to `command my-alias @{ my-alised-command@arg(!) @arg(*)
 The zero-based id of the current editor client.
 Note that a client id of 3, does not imply that there are other 3 clients present (0, 1 and 2)
 as they may be no longer active ids.
+If there is no such client, it results in an empty expansion.
 - usage: `@client-id()`
 
 ## `buffer-id`
 The zero-based id of the current buffer.
 Note that a buffer id of 3, does not imply that there are other 3 buffers present (0, 1 and 2)
 as they may be no longer active ids.
+If there is no such buffer, it results in an empty expansion.
 - usage `@buffer-id()`
 
 ## `buffer-path`
@@ -46,3 +48,50 @@ All the text content inside the current buffer or of the buffer with id `<id>`.
 If there is no such buffer, it results in an empty expansion.
 Lines are always separated by `\n`.
 - usage: `@buffer-content()` `@buffer-content(<id>)`
+
+## `cursor-anchor-column`
+The column byte index (zero-based) of the anchor of the current cursor or of the cursor of index `<index>`.
+If there is no such cursor, it results in an empty expansion.
+- usage: `@cursor-anchor-column()` `@cursor-anchor-column(<index>)`
+
+## `cursor-anchor-line`
+The line index (zero-based) of the anchor of the current cursor or of the cursor of index `<index>`.
+If there is no such cursor, it results in an empty expansion.
+- usage: `@cursor-anchor-line()` `@cursor-anchor-line(<index>)`
+
+## `cursor-position-column`
+The column byte index (zero-based) of the position of the of the current cursor or of the cursor of index `<index>`.
+If there is no such cursor, it results in an empty expansion.
+- usage: `@cursor-position-column()` `@cursor-position-column(<index>)`
+
+## `cursor-position-line`
+The line index (zero-based) of the position of the current cursor or of the cursor of index `<index>`.
+If there is no such cursor, it results in an empty expansion.
+- usage: `@cursor-position-line()` `@cursor-position-line(<index>)`
+
+## `cursor-selection`
+The text selected by the current cursor or of the cursor of index `<index>`.
+If there is no such cursor, it results in an empty expansion.
+- usage: `@cursor-selection()` `@cursor-selection(<index>)`
+
+## `readline-input`
+The text input by the user when prompted by the `readline` command.
+- usage: `@readline-input()`
+
+## `picker-entry`
+The selected entry by the user when prompted by the `pick` command.
+- usage: `@picker-entry()`
+
+## `register`
+The text inside the register under the key `<key>`.
+- usage: `@register(<key>)`
+
+## `env`
+The environment variable of name `<name>`.
+If there is no such environment variable, it results in an empty expansion.
+- usage: `@env(<name>)`
+
+## `pid`
+The process id of the server.
+- usage: `@pid()`
+

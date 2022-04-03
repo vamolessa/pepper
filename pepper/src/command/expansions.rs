@@ -1,4 +1,4 @@
-use std::{env, fmt};
+use std::{env, fmt, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferHandle},
@@ -15,6 +15,7 @@ pub enum ExpansionError {
     InvalidArgIndex,
     InvalidBufferId,
     InvalidCursorIndex,
+    InvalidRegisterKey,
 }
 
 pub fn write_variable_expansion<'ctx>(
@@ -72,8 +73,8 @@ pub fn write_variable_expansion<'ctx>(
                 let id = args.parse().map_err(|_| ExpansionError::InvalidBufferId)?;
                 ctx.editor.buffers.try_get(BufferHandle(id))
             };
-            if let Some(buffer) = buffer {
-                output.push_str(buffer.path.to_str()?);
+            if let Some(path) = buffer.and_then(|b| b.path.to_str()) {
+                output.push_str(path);
             }
         }
         "buffer-absolute-path" => {
@@ -83,9 +84,10 @@ pub fn write_variable_expansion<'ctx>(
                 let id = args.parse().map_err(|_| ExpansionError::InvalidBufferId)?;
                 ctx.editor.buffers.try_get(BufferHandle(id))
             };
-            if let Some(buffer) = buffer {
-                if buffer.path.is_relative() {
-                    let current_directory = ctx.editor.current_directory.to_str()?;
+            let current_directory = ctx.editor.current_directory.to_str();
+            let path = buffer.and_then(|b| b.path.to_str());
+            if let (Some(current_directory), Some(path)) = (current_directory, path) {
+                if Path::new(path).is_relative() {
                     output.push_str(current_directory);
                     if let Some(false) = current_directory
                         .chars()
@@ -95,7 +97,7 @@ pub fn write_variable_expansion<'ctx>(
                         output.push(std::path::MAIN_SEPARATOR);
                     }
                 }
-                output.push_str(buffer.path.to_str()?);
+                output.push_str(path);
             }
         }
         "buffer-content" => {
@@ -136,7 +138,7 @@ pub fn write_variable_expansion<'ctx>(
         "cursor-selection" => {
             let buffer = current_buffer(ctx, client_handle);
             let cursor = cursor(ctx, client_handle, args)?;
-            if let Some(cursor) =  {
+            if let (Some(buffer), Some(cursor)) = (buffer, cursor) {
                 let range = cursor.to_range();
                 for text in buffer.content().text_range(range) {
                     output.push_str(text);
@@ -156,12 +158,13 @@ pub fn write_variable_expansion<'ctx>(
             output.push_str(entry);
         }
         "register" => {
-            let key = RegisterKey::from_str(args)?;
+            let key = RegisterKey::from_str(args).ok_or(ExpansionError::InvalidRegisterKey)?;
             output.push_str(ctx.editor.registers.get(key));
         }
         "env" => {
-            let env_var = env::var(args).unwrap_or(String::new());
-            output.push_str(&env_var);
+            if let Ok(env_var) = env::var(args) {
+                output.push_str(&env_var);
+            }
         }
         "pid" => {
             assert_empty_args(args)?;
@@ -208,8 +211,8 @@ fn cursor(
     let index = if args.is_empty() {
         cursors.main_cursor_index()
     } else {
-        args.parse().map_err(|_| ExpansionError::InvalidCursorIndex)?
+        args.parse()
+            .map_err(|_| ExpansionError::InvalidCursorIndex)?
     };
     Ok(cursors[..].get(index).cloned())
 }
-
