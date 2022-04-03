@@ -6,12 +6,12 @@ map normal <space>t :<space>test<enter>
 
 eval on windows @{
     command build @{
-        open "build.log" scratch
+        open scratch "build.log"
         enqueue-keys aad
         replace-with-output "cmd /c cargo build 2>&1"
     }
     command test @{
-        open "text.log" scratch
+        open scratch "text.log"
         enqueue.keys aad
         replace-with-output "cmd /c cargo test --workspace 2>&1"
     }
@@ -25,12 +25,12 @@ eval on windows @{
 
 eval on linux @{
     command build @{
-        open "build.log" scratch
+        open scratch "build.log"
         enqueue-keys aad
         replace-with-output "sh -c 'cargo build 2<greater>&1'"
     }
     command test @{
-        open "text.log" scratch
+        open scratch "text.log"
         enqueue.keys aad
         replace-with-output "sh -c 'cargo test --workspace 2<greater>&1'"
     }

@@ -1,20 +1,20 @@
-use std::{collections::VecDeque, env, fmt};
+use std::{collections::VecDeque, fmt};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
-    buffer_view::{BufferView, BufferViewHandle},
+    buffer_view::BufferViewHandle,
     client::ClientHandle,
     config::ParseConfigError,
-    cursor::Cursor,
     editor::{EditorContext, EditorFlow},
-    editor_utils::{MessageKind, ParseKeyMapError, RegisterKey},
+    editor_utils::{MessageKind, ParseKeyMapError},
     events::KeyParseAllError,
     glob::InvalidGlobError,
     pattern::PatternError,
     plugin::PluginHandle,
 };
 
-mod builtin;
+mod builtins;
+mod expansions;
 
 const HISTORY_CAPACITY: usize = 10;
 
@@ -82,7 +82,7 @@ pub enum CompletionSource {
     Custom(&'static [&'static str]),
 }
 
-pub struct CommandArgs<'command>(&'command str);
+pub struct CommandArgs<'command>(pub(crate) &'command str);
 impl<'command> CommandArgs<'command> {
     pub fn try_next(&mut self) -> Option<&'command str> {
         let i = self.0.find('\0')?;
@@ -442,7 +442,7 @@ impl CommandManager {
             macros: MacroCollection::default(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         };
-        builtin::register_commands(&mut this);
+        builtins::register_commands(&mut this);
         this
     }
 
@@ -612,183 +612,6 @@ impl CommandManager {
     }
 }
 
-fn write_variable_expansion<'ctx>(
-    ctx: &'ctx EditorContext,
-    client_handle: Option<ClientHandle>,
-    command_args: &str,
-    command_bang: bool,
-    name: &str,
-    args: &str,
-    output: &mut String,
-) -> Option<()> {
-    fn assert_empty_args(args: &str) -> Option<()> {
-        if args.is_empty() {
-            Some(())
-        } else {
-            None
-        }
-    }
-
-    fn current_buffer_view(
-        ctx: &EditorContext,
-        client_handle: Option<ClientHandle>,
-    ) -> Option<&BufferView> {
-        let buffer_view_handle = ctx.clients.get(client_handle?).buffer_view_handle()?;
-        let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
-        Some(buffer_view)
-    }
-
-    fn current_buffer(ctx: &EditorContext, client_handle: Option<ClientHandle>) -> Option<&Buffer> {
-        let buffer_view = current_buffer_view(ctx, client_handle)?;
-        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
-        Some(buffer)
-    }
-
-    fn cursor(
-        ctx: &EditorContext,
-        client_handle: Option<ClientHandle>,
-        args: &str,
-    ) -> Option<Cursor> {
-        let cursors = &current_buffer_view(ctx, client_handle)?.cursors;
-        let index = if args.is_empty() {
-            cursors.main_cursor_index()
-        } else {
-            args.parse().ok()?
-        };
-        cursors[..].get(index).cloned()
-    }
-
-    use fmt::Write;
-
-    match name {
-        "arg" => match args {
-            "!" => {
-                if command_bang {
-                    output.push('!');
-                }
-            }
-            "*" => {
-                let args = match command_args.strip_suffix('\0') {
-                    Some(args) => args,
-                    None => command_args,
-                };
-                output.push_str(args);
-            }
-            _ => {
-                let mut command_args = CommandArgs(command_args);
-                let mut index: usize = args.parse().ok()?;
-                while let Some(arg) = command_args.try_next() {
-                    if index == 0 {
-                        output.push_str(arg);
-                        break;
-                    }
-                    index -= 1;
-                }
-            }
-        },
-        "client-id" => {
-            assert_empty_args(args)?;
-            let _ = write!(output, "{}", client_handle?.0);
-        }
-        "buffer-id" => {
-            assert_empty_args(args)?;
-            let buffer = current_buffer(ctx, client_handle)?;
-            let _ = write!(output, "{}", buffer.handle().0);
-        }
-        "buffer-path" => {
-            let buffer = if args.is_empty() {
-                current_buffer(ctx, client_handle)?
-            } else {
-                let handle = BufferHandle(args.parse().ok()?);
-                ctx.editor.buffers.try_get(handle)?
-            };
-            output.push_str(buffer.path.to_str()?);
-        }
-        "buffer-absolute-path" => {
-            let buffer = if args.is_empty() {
-                current_buffer(ctx, client_handle)?
-            } else {
-                let handle = BufferHandle(args.parse().ok()?);
-                ctx.editor.buffers.try_get(handle)?
-            };
-            if buffer.path.is_relative() {
-                let current_directory = ctx.editor.current_directory.to_str()?;
-                output.push_str(current_directory);
-                if let Some(false) = current_directory
-                    .chars()
-                    .next_back()
-                    .map(std::path::is_separator)
-                {
-                    output.push(std::path::MAIN_SEPARATOR);
-                }
-            }
-            output.push_str(buffer.path.to_str()?);
-        }
-        "buffer-content" => {
-            let buffer = if args.is_empty() {
-                current_buffer(ctx, client_handle)?
-            } else {
-                let handle = BufferHandle(args.parse().ok()?);
-                ctx.editor.buffers.try_get(handle)?
-            };
-            for line in buffer.content().lines() {
-                output.push_str(line.as_str());
-                output.push('\n');
-            }
-        }
-        "cursor-anchor-column" => {
-            let cursor = cursor(ctx, client_handle, args)?;
-            let _ = write!(output, "{}", cursor.anchor.column_byte_index);
-        }
-        "cursor-anchor-line" => {
-            let cursor = cursor(ctx, client_handle, args)?;
-            let _ = write!(output, "{}", cursor.anchor.line_index);
-        }
-        "cursor-position-column" => {
-            let cursor = cursor(ctx, client_handle, args)?;
-            let _ = write!(output, "{}", cursor.position.column_byte_index);
-        }
-        "cursor-position-line" => {
-            let cursor = cursor(ctx, client_handle, args)?;
-            let _ = write!(output, "{}", cursor.position.line_index);
-        }
-        "cursor-selection" => {
-            let buffer = current_buffer(ctx, client_handle)?;
-            let range = cursor(ctx, client_handle, args)?.to_range();
-            for text in buffer.content().text_range(range) {
-                output.push_str(text);
-            }
-        }
-        "readline-input" => {
-            assert_empty_args(args)?;
-            output.push_str(ctx.editor.read_line.input());
-        }
-        "picker-entry" => {
-            assert_empty_args(args)?;
-            let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
-                Some(entry) => entry.1,
-                None => "",
-            };
-            output.push_str(entry);
-        }
-        "register" => {
-            let key = RegisterKey::from_str(args)?;
-            output.push_str(ctx.editor.registers.get(key));
-        }
-        "env" => {
-            let env_var = env::var(args).unwrap_or(String::new());
-            output.push_str(&env_var);
-        }
-        "pid" => {
-            assert_empty_args(args)?;
-            let _ = write!(output, "{}", std::process::id());
-        }
-        _ => (),
-    }
-
-    Some(())
-}
-
 fn expand_variables<'a>(
     ctx: &EditorContext,
     client_handle: Option<ClientHandle>,
@@ -889,16 +712,16 @@ fn expand_variables<'a>(
 
             rest = &rest[args_skip + variable_args.len() + 1..];
 
-            if write_variable_expansion(
+            if expansions::write_variable_expansion(
                 ctx,
                 client_handle,
-                args,
+                CommandArgs(args),
                 bang,
                 variable_name,
                 variable_args,
                 output,
             )
-            .is_none()
+            .is_err()
             {
                 output.push('@');
                 output.push_str(variable_name);

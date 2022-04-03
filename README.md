@@ -13,6 +13,7 @@ It's mission is to be a minimal and fast code editor with an orthogonal set of b
 ## [help page](https://vamolessa.github.io/pepper/pepper/rc/help)
 ## [default keybindings](https://vamolessa.github.io/pepper/pepper/rc/bindings)
 ## [command reference](https://vamolessa.github.io/pepper/pepper/rc/command_reference)
+## [expansion reference](https://vamolessa.github.io/pepper/pepper/rc/expansion_reference)
 ## [defining language syntaxes](https://vamolessa.github.io/pepper/pepper/rc/language_syntax_definitions)
 ## [config recipes](https://vamolessa.github.io/pepper/pepper/rc/config_recipes)
 ## [changelog](https://vamolessa.github.io/pepper/pepper/rc/changelog)
