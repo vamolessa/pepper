@@ -17,6 +17,17 @@ pub enum ExpansionError {
     InvalidCursorIndex,
     InvalidRegisterKey,
 }
+impl fmt::Display for ExpansionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::ArgumentNotEmpty => f.write_str("argument not empty"),
+            Self::InvalidArgIndex => f.write_str("invalid arg index"),
+            Self::InvalidBufferId => f.write_str("invalid buffer id"),
+            Self::InvalidCursorIndex => f.write_str("invalid cursor index"),
+            Self::InvalidRegisterKey => f.write_str("invalid register key"),
+        }
+    }
+}
 
 pub fn write_variable_expansion<'ctx>(
     ctx: &'ctx EditorContext,

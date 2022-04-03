@@ -19,6 +19,7 @@ mod expansions;
 const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandError {
+    ExpansionError(expansions::ExpansionError),
     NoSuchCommand,
     TooManyArguments,
     TooFewArguments,
@@ -44,25 +45,26 @@ pub enum CommandError {
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::ExpansionError(error) => write!(f, "expansion error: {}", error),
             Self::NoSuchCommand => f.write_str("no such command"),
             Self::TooManyArguments => f.write_str("too many arguments"),
             Self::TooFewArguments => f.write_str("too few arguments"),
             Self::NoTargetClient => f.write_str("no target client"),
             Self::NoBufferOpened => f.write_str("no buffer opened"),
             Self::UnsavedChanges => f.write_str("unsaved changes"),
-            Self::BufferReadError(error) => error.fmt(f),
-            Self::BufferWriteError(error) => error.fmt(f),
+            Self::BufferReadError(error) => write!(f, "buffer read error: {}", error),
+            Self::BufferWriteError(error) => write!(f, "buffer write error: {}", error),
             Self::NoSuchBufferProperty => f.write_str("no such buffer property"),
-            Self::ConfigError(error) => error.fmt(f),
+            Self::ConfigError(error) => write!(f, "config error: {}", error),
             Self::NoSuchColor => f.write_str("no such color"),
             Self::InvalidColorValue => f.write_str("invalid color value"),
             Self::InvalidModeKind => f.write_str("invalid mode"),
-            Self::KeyMapError(error) => error.fmt(f),
-            Self::KeyParseError(error) => error.fmt(f),
+            Self::KeyMapError(error) => write!(f, "key map error: {}", error),
+            Self::KeyParseError(error) => write!(f, "key parse error: {}", error),
             Self::InvalidRegisterKey => f.write_str("invalid register key"),
             Self::InvalidTokenKind => f.write_str("invalid token kind"),
-            Self::PatternError(error) => error.fmt(f),
-            Self::InvalidGlob(error) => error.fmt(f),
+            Self::PatternError(error) => write!(f, "pattern error: {}", error),
+            Self::InvalidGlob(error) => write!(f, "glob error: {}", error),
             Self::OtherStatic(error) => f.write_str(error),
             Self::OtherOwned(error) => f.write_str(&error),
         }
@@ -563,8 +565,11 @@ impl CommandManager {
         bang: bool,
     ) -> Result<EditorFlow, CommandError> {
         let mut expanded = ctx.editor.string_pool.acquire();
-        expand_variables(ctx, client_handle, args, bang, command, &mut expanded);
-        let result = Self::eval_single_impl(ctx, client_handle, &expanded);
+        let result = match expand_variables(ctx, client_handle, args, bang, command, &mut expanded)
+        {
+            Ok(()) => Self::eval_single_impl(ctx, client_handle, &expanded),
+            Err(error) => Err(CommandError::ExpansionError(error)),
+        };
         ctx.editor.string_pool.release(expanded);
         result
     }
@@ -619,7 +624,7 @@ fn expand_variables<'a>(
     bang: bool,
     text: &str,
     output: &mut String,
-) {
+) -> Result<(), expansions::ExpansionError> {
     fn parse_variable_name(text: &str) -> Result<&str, usize> {
         let mut chars = text.chars();
         loop {
@@ -712,7 +717,7 @@ fn expand_variables<'a>(
 
             rest = &rest[args_skip + variable_args.len() + 1..];
 
-            if expansions::write_variable_expansion(
+            expansions::write_variable_expansion(
                 ctx,
                 client_handle,
                 CommandArgs(args),
@@ -720,19 +725,13 @@ fn expand_variables<'a>(
                 variable_name,
                 variable_args,
                 output,
-            )
-            .is_err()
-            {
-                output.push('@');
-                output.push_str(variable_name);
-                output.push('(');
-                output.push_str(variable_args);
-                output.push(')');
-            }
+            )?;
         }
 
         output.push('\0');
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1061,16 +1060,21 @@ mod tests {
 
         fn assert_expansion(expected_expanded: &str, ctx: &EditorContext, text: &str) {
             let mut expanded = String::new();
-            expand_variables(ctx, Some(ClientHandle(0)), "", false, text, &mut expanded);
+            let result =
+                expand_variables(ctx, Some(ClientHandle(0)), "", false, text, &mut expanded);
+            if let Err(error) = result {
+                panic!("expansion error: {}", error);
+            }
             assert_eq!(expected_expanded, &expanded);
         }
 
         let mut expanded = String::new();
-        expand_variables(&ctx, Some(ClientHandle(0)), "", false, "  ", &mut expanded);
+        let r = expand_variables(&ctx, Some(ClientHandle(0)), "", false, "  ", &mut expanded);
+        assert!(r.is_ok());
         assert_eq!("", &expanded);
 
         let mut expanded = String::new();
-        expand_variables(
+        let r = expand_variables(
             &ctx,
             Some(ClientHandle(0)),
             "",
@@ -1078,13 +1082,12 @@ mod tests {
             "two args",
             &mut expanded,
         );
+        assert!(r.is_ok());
         assert_eq!("two\0args\0", &expanded);
 
         assert_expansion("cmd\0", &ctx, "cmd");
 
         assert_expansion("my register contents\0", &ctx, "@register(x)");
-        assert_expansion("@register()\0", &ctx, "@register()");
-        assert_expansion("@register(xx)\0", &ctx, "@register(xx)");
         assert_expansion(
             "very long register contents short\0",
             &ctx,
@@ -1095,6 +1098,34 @@ mod tests {
             &ctx,
             "{@register(s) @register(l)}",
         );
+
+        let mut expanded = String::new();
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "",
+            false,
+            "@register()",
+            &mut expanded,
+        );
+        assert!(matches!(
+            r,
+            Err(expansions::ExpansionError::InvalidRegisterKey)
+        ));
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "",
+            false,
+            "@register(xx)",
+            &mut expanded,
+        );
+        assert!(matches!(
+            r,
+            Err(expansions::ExpansionError::InvalidRegisterKey)
+        ));
 
         assert_expansion("buffer/path0\0", &ctx, "@buffer-path()");
         assert_expansion(
@@ -1116,7 +1147,7 @@ mod tests {
 
         let mut expanded = String::new();
         expanded.clear();
-        expand_variables(
+        let r = expand_variables(
             &ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
@@ -1124,9 +1155,10 @@ mod tests {
             "@arg(*)",
             &mut expanded,
         );
+        assert!(r.is_ok());
         assert_eq!("arg0\0arg1\0arg2\0", &expanded);
         expanded.clear();
-        expand_variables(
+        let r = expand_variables(
             &ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
@@ -1134,9 +1166,10 @@ mod tests {
             "@arg(0)",
             &mut expanded,
         );
+        assert!(r.is_ok());
         assert_eq!("arg0\0", &expanded);
         expanded.clear();
-        expand_variables(
+        let r = expand_variables(
             &ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
@@ -1144,9 +1177,10 @@ mod tests {
             "@arg(1)",
             &mut expanded,
         );
+        assert!(r.is_ok());
         assert_eq!("arg1\0", &expanded);
         expanded.clear();
-        expand_variables(
+        let r = expand_variables(
             &ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
@@ -1154,9 +1188,10 @@ mod tests {
             "@arg(2)",
             &mut expanded,
         );
+        assert!(r.is_ok());
         assert_eq!("arg2\0", &expanded);
         expanded.clear();
-        expand_variables(
+        let r = expand_variables(
             &ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
@@ -1164,6 +1199,7 @@ mod tests {
             "@arg(3)",
             &mut expanded,
         );
+        assert!(r.is_ok());
         assert_eq!("\0", &expanded);
     }
 }
