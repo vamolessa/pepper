@@ -131,11 +131,6 @@ Creates a keyboard mapping for an editor mode.
 `<from>` and `<to>` are a string of keys.
 - usage: `map <mode> <from> <to>`
 
-## `alias`
-Create a alias with name `<name>` for the command `<command>`.
-Note that `<command>` can also contain arguments which will expand when calling the alias.
-- usage: `alias <name> <command>`
-
 ## `syntax`
 Either begins a new syntax definition for buffer paths that match a glob `<glob>`,
 or sets the pattern for tokens of kind `<token-kind>` for the previously defined syntax.

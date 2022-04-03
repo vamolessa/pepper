@@ -4,16 +4,16 @@ map normal | :<space>-replace-with-output<enter>
 map normal <space>o :<space>-find-file<enter>
 map normal <space>f :<space>-find-pattern<enter>
 
-alias h help
-alias q quit
-alias qa quit-all
-alias o open
-alias s save
-alias sa save-all
-alias r reopen
-alias ra reopen-all
-alias c close
-alias ca close-all
+command h @{ help @arg(*) }
+command q @{ quit@arg(!) }
+command qa @{ quit-all@arg(!) }
+command o @{ open @arg(*) }
+command s @{ save@arg(!) }
+command sa @{ save-all@arg(!) }
+command r @{ reopen@arg(!) }
+command ra @{ reopen-all@arg(!) }
+command c @{ close@arg(!) }
+command ca @{ close-all@arg(!) }
 
 command -run-command @{
     readline "run-command:" @{

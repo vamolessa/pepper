@@ -332,16 +332,6 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 
-    static ALIAS_COMPLETIONS: &[CompletionSource] =
-        &[CompletionSource::Custom(&[]), CompletionSource::Commands];
-    r("alias", ALIAS_COMPLETIONS, |ctx, io| {
-        let from = io.args.next()?;
-        let to = io.args.next()?;
-        io.args.assert_empty()?;
-        ctx.editor.commands.aliases.add(from, to);
-        Ok(())
-    });
-
     static SYNTAX_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&[
         "keywords", "types", "symbols", "literals", "strings", "comments", "texts",
     ])];

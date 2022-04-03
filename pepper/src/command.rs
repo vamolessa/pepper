@@ -611,7 +611,7 @@ impl CommandManager {
         source: &str,
     ) -> Result<EditorFlow, CommandErrorWithContext> {
         for (i, command) in CommandIter(source).enumerate() {
-            match Self::eval_single(ctx, client_handle, command) {
+            match Self::eval_single(ctx, client_handle, command, "", false) {
                 Ok(EditorFlow::Continue) => (),
                 Ok(flow) => return Ok(flow),
                 Err(error) => {
@@ -626,10 +626,12 @@ impl CommandManager {
         Ok(EditorFlow::Continue)
     }
 
-    pub fn eval_single(
+    pub(crate) fn eval_single(
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         mut command: &str,
+        args: &str,
+        bang: bool,
     ) -> Result<EditorFlow, CommandError> {
         let mut expanded = ctx.editor.string_pool.acquire();
 
@@ -644,12 +646,12 @@ impl CommandManager {
                 None => token.slice,
             };
             if let Some(aliased) = ctx.editor.commands.aliases.find(alias) {
-                expand_variables(ctx, client_handle, aliased, &mut expanded);
+                expand_variables(ctx, client_handle, args, bang, aliased, &mut expanded);
                 command = tokens.0;
             }
         }
 
-        expand_variables(ctx, client_handle, command, &mut expanded);
+        expand_variables(ctx, client_handle, args, bang, command, &mut expanded);
 
         let result = Self::eval_single_impl(ctx, client_handle, &expanded, force_bang);
         ctx.editor.string_pool.release(expanded);
@@ -676,7 +678,7 @@ impl CommandManager {
             let macro_source = ctx.editor.string_pool.acquire_with(macro_source);
             let mut result = Ok(EditorFlow::Continue);
             for command in CommandIter(&macro_source) {
-                result = Self::eval_single(ctx, client_handle, command);
+                result = Self::eval_single(ctx, client_handle, command, args.0, bang);
             }
             ctx.editor.string_pool.release(macro_source);
             return result;
@@ -703,6 +705,8 @@ impl CommandManager {
 fn write_variable_expansion<'ctx>(
     ctx: &'ctx EditorContext,
     client_handle: Option<ClientHandle>,
+    command_args: &str,
+    command_bang: bool,
     name: &str,
     args: &str,
     output: &mut String,
@@ -747,6 +751,31 @@ fn write_variable_expansion<'ctx>(
     use fmt::Write;
 
     match name {
+        "arg" => match args {
+            "!" => {
+                if command_bang {
+                    output.push('!');
+                }
+            }
+            "*" => {
+                let args = match command_args.strip_suffix('\0') {
+                    Some(args) => args,
+                    None => command_args,
+                };
+                output.push_str(args);
+            }
+            _ => {
+                let mut command_args = CommandArgs(command_args);
+                let mut index: usize = args.parse().ok()?;
+                while let Some(arg) = command_args.try_next() {
+                    if index == 0 {
+                        output.push_str(arg);
+                        break;
+                    }
+                    index -= 1;
+                }
+            }
+        },
         "client-id" => {
             assert_empty_args(args)?;
             let _ = write!(output, "{}", client_handle?.0);
@@ -775,7 +804,11 @@ fn write_variable_expansion<'ctx>(
             if buffer.path.is_relative() {
                 let current_directory = ctx.editor.current_directory.to_str()?;
                 output.push_str(current_directory);
-                if let Some(false) = current_directory.chars().next_back().map(std::path::is_separator) {
+                if let Some(false) = current_directory
+                    .chars()
+                    .next_back()
+                    .map(std::path::is_separator)
+                {
                     output.push(std::path::MAIN_SEPARATOR);
                 }
             }
@@ -849,6 +882,8 @@ fn write_variable_expansion<'ctx>(
 fn expand_variables<'a>(
     ctx: &EditorContext,
     client_handle: Option<ClientHandle>,
+    args: &str,
+    bang: bool,
     text: &str,
     output: &mut String,
 ) {
@@ -944,8 +979,16 @@ fn expand_variables<'a>(
 
             rest = &rest[args_skip + variable_args.len() + 1..];
 
-            if write_variable_expansion(ctx, client_handle, variable_name, variable_args, output)
-                .is_none()
+            if write_variable_expansion(
+                ctx,
+                client_handle,
+                args,
+                bang,
+                variable_name,
+                variable_args,
+                output,
+            )
+            .is_none()
             {
                 output.push('@');
                 output.push_str(variable_name);
@@ -1284,16 +1327,23 @@ mod tests {
 
         fn assert_expansion(expected_expanded: &str, ctx: &EditorContext, text: &str) {
             let mut expanded = String::new();
-            expand_variables(ctx, Some(ClientHandle(0)), text, &mut expanded);
+            expand_variables(ctx, Some(ClientHandle(0)), "", false, text, &mut expanded);
             assert_eq!(expected_expanded, &expanded);
         }
 
         let mut expanded = String::new();
-        expand_variables(&ctx, Some(ClientHandle(0)), "  ", &mut expanded);
+        expand_variables(&ctx, Some(ClientHandle(0)), "", false, "  ", &mut expanded);
         assert_eq!("", &expanded);
 
         let mut expanded = String::new();
-        expand_variables(&ctx, Some(ClientHandle(0)), "two args", &mut expanded);
+        expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "",
+            false,
+            "two args",
+            &mut expanded,
+        );
         assert_eq!("two\0args\0", &expanded);
 
         assert_expansion("cmd\0", &ctx, "cmd");
@@ -1329,5 +1379,58 @@ mod tests {
         assert_expansion("'\0", &ctx, "'\\''");
         assert_expansion("}\0", &ctx, "{\\}}");
         assert_expansion("\\\0", &ctx, "'\\\\'");
+
+        let mut expanded = String::new();
+        expanded.clear();
+        expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg()",
+            &mut expanded,
+        );
+        assert_eq!("arg0 arg1 arg2\0", &expanded);
+        expanded.clear();
+        expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg(0)",
+            &mut expanded,
+        );
+        assert_eq!("arg0\0", &expanded);
+        expanded.clear();
+        expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg(1)",
+            &mut expanded,
+        );
+        assert_eq!("arg1\0", &expanded);
+        expanded.clear();
+        expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg(2)",
+            &mut expanded,
+        );
+        assert_eq!("arg2\0", &expanded);
+        expanded.clear();
+        expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg(3)",
+            &mut expanded,
+        );
+        assert_eq!("\0", &expanded);
     }
 }
+
