@@ -614,7 +614,7 @@ impl<'de> Serialize<'de> for TargetClient {
 pub enum ClientEvent<'a> {
     Key(TargetClient, Key),
     Resize(u16, u16),
-    Command(TargetClient, &'a str),
+    Commands(TargetClient, &'a str),
     StdinInput(TargetClient, &'a [u8]),
 }
 impl<'de> Serialize<'de> for ClientEvent<'de> {
@@ -633,7 +633,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 width.serialize(serializer);
                 height.serialize(serializer);
             }
-            Self::Command(target, command) => {
+            Self::Commands(target, command) => {
                 2u8.serialize(serializer);
                 target.serialize(serializer);
                 command.serialize(serializer);
@@ -665,7 +665,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
             2 => {
                 let target = Serialize::deserialize(deserializer)?;
                 let command = Serialize::deserialize(deserializer)?;
-                Ok(Self::Command(target, command))
+                Ok(Self::Commands(target, command))
             }
             3 => {
                 let target = Serialize::deserialize(deserializer)?;
@@ -775,6 +775,8 @@ mod tests {
         assert_key_simple(KeyCode::Char('<'), "<less>");
         assert_key_simple(KeyCode::Char('>'), "<greater>");
         assert_key_simple(KeyCode::Char('\\'), "\\");
+        assert_key_simple(KeyCode::Char('!'), "!");
+        assert_key_simple(KeyCode::Char('|'), "|");
 
         fn assert_key_with_modifiers(expected_code: KeyCode, control: bool, alt: bool, text: &str) {
             let parsed = parse_key(&mut text.chars()).unwrap();
@@ -859,6 +861,8 @@ mod tests {
         assert_key_serialization(&mut buf, KeyCode::Char('0'));
         assert_key_serialization(&mut buf, KeyCode::Char('9'));
         assert_key_serialization(&mut buf, KeyCode::Char('$'));
+        assert_key_serialization(&mut buf, KeyCode::Char('!'));
+        assert_key_serialization(&mut buf, KeyCode::Char('|'));
         assert_key_serialization(&mut buf, KeyCode::Char('\n'));
         assert_key_serialization(&mut buf, KeyCode::Char('\t'));
         assert_key_serialization(&mut buf, KeyCode::Esc);
@@ -970,4 +974,3 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
-

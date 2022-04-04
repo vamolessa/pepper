@@ -4,9 +4,11 @@ use pepper::{buffer::BufferProperties, plugin::PluginDefinition, ResourceFile};
 
 static ALTERNATE_FILE_PLUGIN: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
-        ctx.editor
-            .commands
-            .register(Some(handle), "goto-alternate-buffer", &[], |ctx, io| {
+        ctx.editor.commands.register_command(
+            Some(handle),
+            "goto-alternate-buffer",
+            &[],
+            |ctx, io| {
                 let client = ctx.clients.get_mut(io.client_handle()?);
 
                 let buffer_view_handle = match client.buffer_view_handle() {
@@ -61,7 +63,8 @@ static ALTERNATE_FILE_PLUGIN: PluginDefinition = PluginDefinition {
                 ctx.editor.string_pool.release(path);
 
                 Ok(())
-            });
+            },
+        );
 
         None
     },
@@ -83,7 +86,7 @@ fn main() {
         .push(pepper_plugin_lsp::DEFAULT_BINDINGS_CONFIG);
     config.static_configs.push(ResourceFile {
         name: "my.pepper",
-        content: "map-normal ga [[: goto-alternate-buffer<enter>]]",
+        content: "map normal ga :<space>goto-alternate-buffer<enter>",
     });
 
     pepper::run(config);

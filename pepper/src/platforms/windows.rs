@@ -1648,7 +1648,10 @@ fn parse_console_events(
                         KeyCode::Char(c)
                     }
                     _ => match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                        Some(Ok(c)) if c.is_ascii_graphic() => KeyCode::Char(c),
+                        Some(Ok(c)) if c.is_ascii_graphic() => {
+                            shift = false;
+                            KeyCode::Char(c)
+                        }
                         _ => continue,
                     },
                 };

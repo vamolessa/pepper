@@ -1616,12 +1616,6 @@ impl State {
                 _ => (),
             },
             Key {
-                code: KeyCode::Char('|'),
-                control: false,
-                alt: false,
-                ..
-            } => read_line::process::enter_replace_mode(ctx),
-            Key {
                 code: KeyCode::Char('u'),
                 control: false,
                 alt: false,
@@ -1875,15 +1869,6 @@ impl ModeState for State {
                 }
                 _ => (),
             },
-            Key {
-                code: KeyCode::Char('!'),
-                control: false,
-                alt: false,
-                ..
-            } => {
-                handled_keys = true;
-                read_line::process::enter_run_mode(ctx);
-            }
             Key {
                 code: KeyCode::Char(':'),
                 control: false,

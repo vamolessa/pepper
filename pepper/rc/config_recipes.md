@@ -11,10 +11,11 @@ the best way to emulate this is by creating an alias in your shell profile.
 alias pp='pepper --config ~/.config/.pepper'
 
 # windows cmd
-doskey /exename=cmd.exe pp=pepper --config "%HOME%/pepper-config/.pepper" $*
+doskey /exename=cmd.exe pp=pepper --config "%HOMEDRIVE%%HOMEPATH%/.pepper" $*
 ```
 
-With this, whenever you type `pp`, pepper will start by sourcing the commands you put inside the file `~/.config/.pepper`.
+With this, whenever you type `pp`, pepper will start and immediately source all the commands
+put inside the `.pepper` file in your home directory.
 This way you're in control over from where pepper fetches its config files.
 
 ### per project config
@@ -22,7 +23,11 @@ It's also posssible to setup configs that are per project.
 Place a config file (`.pepper` in this example) in the root directory of your project then change your alias like this:
 
 ```
+# unix shell
 alias pp='pepper --config ~/.config/.pepper --config! .pepper'
+
+# windows cmd
+doskey /exename=cmd.exe pp=pepper --config "%HOMEDRIVE%%HOMEPATH%/.pepper" --config! .pepper $*
 ```
 
 When invoking `--config` with a `!`, it will not generate an error when the file is not found.
@@ -31,12 +36,12 @@ When invoking `--config` with a `!`, it will not generate an error when the file
 Also, the files are sourced in the order they appear in the command line.
 
 ## keybindings
-You can remap keys with the [`map-*` commands](command_reference.md#map-normal) command.
+You can remap keys with the [`map` command](command_reference.md#map) command.
 
-With this, you can hit `<c-s>` to save a buffer to a file when in `normal` mode:
+With this, you can hit `<c-s>` to save a buffer to a file while in `normal` mode:
 ```
 # The `<space>` after `:` makes it so the `save` command is not added to the command history
-map-normal <c-s> :<space>save<enter>
+map normal <c-s> :<space>save<enter>
 ```
 
 If you wish to see all the keybindings that are created by default, you can see the builtin
@@ -49,9 +54,19 @@ Pepper ships with a simple fuzzy file finder (bound to `<space>o`) that uses a f
 However, it's possible to customize it by rebinding `<space>o` to another command.
 For example, if you wish to use [`fd`](https://github.com/sharkdp/fd) instead, you can:
 
-`map-normal <space>o ": find-file 'fd -tf --path-separator / .'<enter>"`
+```
+command -find-file @{
+	picker-entries-from-lines "fd -tf ."
+	pick "open:" @{
+		open "@picker-entry()"
+	}
+}
+map normal <space>o :<space>-find-file<enter>
+```
 
-Note that it uses the [`find-file`](command_reference.md#find-file) command.
+Here we create a new command `-find-file` which will be called on `<space>o`.
+When invoked, it will fill picker entries from the output lines of the command line `fd -tf .`
+and then will prompt the user to pick and entry. Once selected, we try to open that file.
 
 ## simple pattern finder (like grep)
 Pepper ships with a simple pattern finder (bound to `<space>f`) that uses a pattern finder binary available on each platform
@@ -60,9 +75,19 @@ Pepper ships with a simple pattern finder (bound to `<space>f`) that uses a patt
 However, it's possible to customize it by rebinding `<space>f` to another command.
 For example, if you wish to use [`ripgrep`](https://github.com/BurntSushi/ripgrep) instead, you can:
 
-`map-normal <space>f [[: find-pattern 'rg --no-ignore-global --path-separator / --line-number "{}"'<enter>]]`
+```
+command -find-pattern @{
+	readline "find:" @{
+		open scratch "@readline-input().refs"
+		enqueue-keys aad
+		replace-with-output 'rg --no-ignore-global --line-number "@readline-input()"'
+	}
+}
+```
 
-Note that it uses the [`find-pattern`](command_reference.md#find-pattern) command.
+Here we create a new command `-find-pattern` which will be called on `<space>f`.
+When invoked, it will prompt the user for a search pattern. Once submitted, such pattern is fed to `rg` whose
+output is then pasted into the newly opened buffer which has the same name as the search pattern.
 
 ## vim bindings
 These mappings somewhat emulate basic vanilla vim keybindings.
@@ -75,95 +100,95 @@ Please remember that if you need 100% vim compatibility, it's just better to sim
 For more keybinding details, check the [builtin keybindigs](bindings.md).
 
 ```
-map-normal gg gk
-map-normal G gj
+map normal gg gk
+map normal G gj
 
-map-normal $ gl
-map-normal ^ gi
-map-normal 0 gh
+map normal $ gl
+map normal ^ gi
+map normal 0 gh
 
-map-normal <c-o> <c-p>
-map-normal <c-i> <c-n>
+map normal <c-o> <c-p>
+map normal <c-i> <c-n>
 
-map-normal f ]]
-map-normal F [[
-map-normal t ][
-map-normal T []
-map-normal ; }
-map-normal , {
+map normal f ]]
+map normal F [[
+map normal t ][
+map normal T []
+map normal ; }
+map normal , {
 
-map-normal { <c-k>
-map-normal } <c-j>
+map normal { <c-k>
+map normal } <c-j>
 
-map-normal / s
-map-normal ? s
-map-normal N p
-map-normal * Nn
-map-normal # Pp
+map normal / s
+map normal ? s
+map normal N p
+map normal * Nn
+map normal # Pp
 
-map-normal a li
-map-normal A gli
-map-normal <c-r> U
+map normal a li
+map normal A gli
+map normal <c-r> U
 
-map-normal p Y
+map normal p Y
 
-map-normal zt zk
-map-normal zb zj
+map normal zt zk
+map normal zb zj
 
-map-normal ys y
-map-normal yy Vy
-map-normal yiw Awy<esc>
-map-normal yaw awy<esc>
-map-normal yi( a(y<esc>
-map-normal ya( A(y<esc>
-map-normal yi[ a[y<esc>
-map-normal ya[ A[y<esc>
-map-normal yi{ a{y<esc>
-map-normal ya{ A{y<esc>
-map-normal yi< a<y<esc>
-map-normal ya< A<y<esc>
-map-normal yi" a"y<esc>
-map-normal ya" A"y<esc>
-map-normal yi' a'y<esc>
-map-normal ya' A'y<esc>
-map-normal yi` a`y<esc>
-map-normal ya` A`y<esc>
+map normal ys y
+map normal yy Vy
+map normal yiw Awy<esc>
+map normal yaw awy<esc>
+map normal yi( a(y<esc>
+map normal ya( A(y<esc>
+map normal yi[ a[y<esc>
+map normal ya[ A[y<esc>
+map normal yi{ a{y<esc>
+map normal ya{ A{y<esc>
+map normal yi< a<y<esc>
+map normal ya< A<y<esc>
+map normal yi" a"y<esc>
+map normal ya" A"y<esc>
+map normal yi' a'y<esc>
+map normal ya' A'y<esc>
+map normal yi` a`y<esc>
+map normal ya` A`y<esc>
 
-map-normal ds d
-map-normal dd Vd
-map-normal diw Awd
-map-normal daw awd
-map-normal di( a(d
-map-normal da( A(d
-map-normal di[ a[d
-map-normal da[ A[d
-map-normal di{ a{d
-map-normal da{ A{d
-map-normal di< a<d
-map-normal da< A<d
-map-normal di" a"d
-map-normal da" A"d
-map-normal di' a'd
-map-normal da' A'd
-map-normal di` a`d
-map-normal da` A`d
+map normal ds d
+map normal dd Vd
+map normal diw Awd
+map normal daw awd
+map normal di( a(d
+map normal da( A(d
+map normal di[ a[d
+map normal da[ A[d
+map normal di{ a{d
+map normal da{ A{d
+map normal di< a<d
+map normal da< A<d
+map normal di" a"d
+map normal da" A"d
+map normal di' a'd
+map normal da' A'd
+map normal di` a`d
+map normal da` A`d
 
-map-normal cs i
-map-normal cc ci
-map-normal ciw Awi
-map-normal caw awi
-map-normal ci( a(i
-map-normal ca( A(i
-map-normal ci[ a[i
-map-normal ca[ A[i
-map-normal ci{ a{i
-map-normal ca{ A{i
-map-normal ci< a<i
-map-normal ca< A<i
-map-normal ci" a"i
-map-normal ca" A"i
-map-normal ci' a'i
-map-normal ca' A'i
-map-normal ci` a`i
-map-normal ca` A`i
+map normal cs i
+map normal cc ci
+map normal ciw Awi
+map normal caw awi
+map normal ci( a(i
+map normal ca( A(i
+map normal ci[ a[i
+map normal ca[ A[i
+map normal ci{ a{i
+map normal ca{ A{i
+map normal ci< a<i
+map normal ca< A<i
+map normal ci" a"i
+map normal ca" A"i
+map normal ci' a'i
+map normal ca' A'i
+map normal ci` a`i
+map normal ca` A`i
 ```

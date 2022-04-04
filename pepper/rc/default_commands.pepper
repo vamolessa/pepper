@@ -1,0 +1,90 @@
+map normal ! :<space>-run-command<enter>
+map normal | :<space>-replace-with-output<enter>
+
+map normal <space>o :<space>-find-file<enter>
+map normal <space>f :<space>-find-pattern<enter>
+
+command h @{ help @arg(*) }
+command q @{ quit@arg(!) }
+command qa @{ quit-all@arg(!) }
+command o @{ open @arg(*) }
+command s @{ save@arg(!) }
+command sa @{ save-all@arg(!) }
+command r @{ reopen@arg(!) }
+command ra @{ reopen-all@arg(!) }
+command c @{ close@arg(!) }
+command ca @{ close-all@arg(!) }
+
+command -run-command @{
+    readline "run-command:" @{
+        run "@readline-input()"
+    }
+}
+command -replace-with-output @{
+    readline "replace-with-output:" @{
+        replace-with-output "@readline-input()"
+    }
+}
+
+eval on windows @{
+    command -find-file @{
+        picker-entries-from-lines "cmd /c dir /a-d /s /b"
+        pick "open:" @{
+            open "@picker-entry()"
+        }
+    }
+    command -find-pattern @{
+        readline "find:" @{
+            open scratch "@readline-input().refs"
+            enqueue-keys aad
+            replace-with-output 'findstr /s /r /p /n "/c:@readline-input()" *'
+        }
+    }
+}
+
+eval on linux @{
+    copy-command "xclip -selection clipboard -in"
+    paste-command "xclip -selection clipboard -out"
+
+    command -find-file @{
+        picker-entries-from-lines "find . -type f -printf '%P\\n'"
+        pick "open:" @{
+            open "@picker-entry()"
+        }
+    }
+}
+
+eval on bsd @{
+    copy-command "xclip -in"
+    paste-command "xclip -out"
+
+    command -find-file @{
+        picker-entries-from-lines "find . -type f -printf '%P\\n'"
+        pick "open:" @{
+            open "@picker-entry()"
+        }
+    }
+}
+
+eval on macos @{
+    copy-command "pbcopy"
+    paste-command "pbpaste"
+
+    command -find-file @{
+        picker-entries-from-lines "find . -type f -print"
+        pick "open:" @{
+            open "@picker-entry()"
+        }
+    }
+}
+
+eval on linux bsd macos @{
+    command -find-pattern @{
+        readline "find:" @{
+            open scratch "@readline-input().refs"
+            enqueue-keys aad
+            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
+        }
+    }
+}
+

@@ -11,8 +11,8 @@ use crate::{
     command::CommandManager,
     config::Config,
     editor_utils::{
-        KeyMapCollection, MatchResult, ReadLine, RegisterCollection, RegisterKey, StatusBar,
-        StatusBarDisplay, StringPool,
+        KeyMapCollection, MatchResult, PickerEntriesProcessBuf, ReadLine, RegisterCollection,
+        RegisterKey, StatusBar, StatusBarDisplay, StringPool,
     },
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
@@ -182,6 +182,7 @@ impl EditorContext {
                         self.editor.buffer_views.on_buffer_read(buffer);
                     }
                     EditorEvent::BufferInsertText { handle, range, .. } => {
+                        self.editor.buffers.on_buffer_insert_text(handle, range);
                         self.editor
                             .buffer_views
                             .on_buffer_insert_text(handle, range);
@@ -191,6 +192,7 @@ impl EditorContext {
                             .on_buffer_insert_text(handle, range);
                     }
                     EditorEvent::BufferDeleteText { handle, range } => {
+                        self.editor.buffers.on_buffer_delete_text(handle, range);
                         self.editor
                             .buffer_views
                             .on_buffer_delete_text(handle, range);
@@ -237,7 +239,6 @@ impl EditorContext {
                             client.on_buffer_close(&mut self.editor, handle);
                         }
                         self.editor.buffer_views.remove_buffer_views(handle);
-                        self.editor.mode.read_line_state.on_buffer_close(handle);
                     }
                     EditorEvent::FixCursors { handle, cursors } => {
                         let buffer_view = self.editor.buffer_views.get_mut(handle);
@@ -281,6 +282,8 @@ pub struct Editor {
 
     pub commands: CommandManager,
     pub events: EditorEventQueue,
+
+    pub(crate) picker_entries_process_buf: PickerEntriesProcessBuf,
 }
 impl Editor {
     pub fn new(current_directory: PathBuf) -> Self {
@@ -309,6 +312,8 @@ impl Editor {
 
             commands: CommandManager::new(),
             events: EditorEventQueue::default(),
+
+            picker_entries_process_buf: PickerEntriesProcessBuf::default(),
         }
     }
 
@@ -440,7 +445,7 @@ impl Editor {
                 client.viewport_size = (width, height);
                 EditorFlow::Continue
             }
-            ClientEvent::Command(target, command) => {
+            ClientEvent::Commands(target, commands) => {
                 let client_handle = match target {
                     TargetClient::Sender => client_handle,
                     TargetClient::Focused => match ctx.clients.focused_client() {
@@ -449,11 +454,8 @@ impl Editor {
                     },
                 };
 
-                let mut command = ctx.editor.string_pool.acquire_with(command);
-                let flow =
-                    CommandManager::eval_and_write_error(ctx, Some(client_handle), &mut command);
-                ctx.editor.string_pool.release(command);
-                flow
+                let result = CommandManager::eval(ctx, Some(client_handle), commands);
+                CommandManager::unwrap_eval_result(ctx, result, commands, Some("client-commands"))
             }
             ClientEvent::StdinInput(target, bytes) => {
                 let client_handle = match target {

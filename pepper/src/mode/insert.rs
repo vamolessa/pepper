@@ -124,7 +124,7 @@ impl ModeState for State {
                 cancel_completion(&mut ctx.editor);
                 return Some(EditorFlow::Continue);
             }
-            Key { code: KeyCode::Char('\t'), shift: false, control: false, alt: false } => {
+            Key { code: KeyCode::Char('\t'), control: false, alt: false, .. } => {
                 static SPACES_BUF: &[u8; u8::MAX as usize] = &[b' '; u8::MAX as usize];
                 let text = if ctx.editor.config.indent_with_tabs {
                     "\t"
@@ -143,7 +143,7 @@ impl ModeState for State {
                         &mut ctx.editor.events,
                     );
             }
-            Key { code: KeyCode::Char('\n'), shift: false, control: false, alt: false }
+            Key { code: KeyCode::Char('\n'), control: false, alt: false, .. }
             | Key { code: KeyCode::Char('m'), shift: false, control: true, alt: false } => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 let cursor_count = buffer_view.cursors[..].len();

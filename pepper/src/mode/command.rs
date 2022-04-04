@@ -2,7 +2,7 @@ use std::fs;
 
 use crate::{
     client::ClientHandle,
-    command::{CommandManager, CommandTokenizer, CompletionSource},
+    command::{CommandErrorWithContext, CommandManager, CommandTokenizer, CompletionSource},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{hash_bytes, ReadLinePoll},
     mode::{ModeKind, ModeState},
@@ -122,14 +122,17 @@ impl ModeState for State {
                 let input = ctx.editor.read_line.input();
                 ctx.editor.commands.add_to_history(input);
 
-                let mut command = ctx.editor.string_pool.acquire_with(input);
-                let flow =
-                    CommandManager::eval_and_write_error(ctx, Some(client_handle), &mut command);
-                ctx.editor.string_pool.release(command);
+                let command = ctx.editor.string_pool.acquire_with(input);
+                ctx.editor.enter_mode(ModeKind::default());
 
-                if ctx.editor.mode.kind() == ModeKind::Command {
-                    ctx.editor.enter_mode(ModeKind::default());
-                }
+                let result =
+                    CommandManager::eval_single(ctx, Some(client_handle), &command, "", false);
+                let result = result.map_err(|e| CommandErrorWithContext {
+                    error: e,
+                    command_index: 0,
+                });
+                let flow = CommandManager::unwrap_eval_result(ctx, result, &command, None);
+                ctx.editor.string_pool.release(command);
 
                 return Some(flow);
             }
@@ -155,7 +158,7 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
     let mut tokens = CommandTokenizer(input);
 
     let mut last_token = match tokens.next() {
-        Some(token) => token,
+        Some(token) => token.slice,
         None => {
             ctx.editor.picker.clear();
             state.completion_index = input.len();
@@ -167,7 +170,7 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
             return;
         }
     };
-    let mut command_name = last_token.trim_end_matches('!');
+    let command_name = last_token.trim_end_matches('!');
 
     if let ReadCommandState::NavigatingHistory(_) = state.read_state {
         state.read_state = ReadCommandState::TypingCommand;
@@ -179,22 +182,7 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
 
     for token in tokens {
         arg_count += 1;
-        last_token = token;
-    }
-
-    if ends_with_whitespace || arg_count > 0 {
-        if let Some(aliased) = ctx.editor.commands.aliases.find(command_name) {
-            let mut aliased_tokens = CommandTokenizer(aliased);
-            command_name = aliased_tokens.next().unwrap_or("");
-
-            for _ in aliased_tokens {
-                arg_count += 1;
-            }
-
-            if ends_with_whitespace {
-                last_token = &input[input.len()..];
-            }
-        }
+        last_token = token.slice;
     }
 
     let mut pattern = last_token;
@@ -227,8 +215,10 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
                 for command in ctx.editor.commands.commands() {
                     ctx.editor.picker.add_custom_entry(command.name);
                 }
-                for (from, _) in ctx.editor.commands.aliases.iter() {
-                    ctx.editor.picker.add_custom_entry(from);
+                for name in ctx.editor.commands.macros.names() {
+                    if !name.starts_with('-') {
+                        ctx.editor.picker.add_custom_entry(name);
+                    }
                 }
             }
             CompletionSource::Buffers => {

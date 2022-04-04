@@ -1,5 +1,18 @@
 # changelog
 
+## 0.25.0
+- new variable expansion mechanism when evaluating commands
+- changed string syntax for commands
+- command strings now support some escapings
+- command aliases that start with `-` won't show up in auto completions
+- merged all `map-<mode>` commands into a single `map` command whose first parameter is the mode to map keys to
+- merged all `syntax-<token-kind>` commands into the `syntax` command which can take the first parameter the token kind for the defined pattern
+- insert processes now correctly adjust their insert positions on buffer insertions and deletions
+- added `set-register` command
+- changed `open` command parameters order, now buffer properties come before the `path` parameter
+- removed `alias` command since it's now possible to replicate its behavior by creating a new command that calls the aliased command and use the `@arg()` expansion
+- removed `find-file` and `find-command` commands as they're now implementable using other builtin commands (see `default_commands.pepper` for an example)
+
 ## 0.24.0
 - handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)
 - command `$` is now `!` and what was `!` is now removed; that is, there's no longer a 'only insert from command output', just 'replace with command output' (`|` command) and if the selection is empty, it behaves as if it was the old `!`
