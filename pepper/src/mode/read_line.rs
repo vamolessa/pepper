@@ -436,9 +436,9 @@ pub mod split_cursors {
         let main_cursor_position = cursors.main_cursor().position;
         let cursors = cursors.as_vec();
 
-        let cursors_len = cursors.len();
-        for i in 0..cursors_len {
-            let cursor = cursors[i];
+        let mut i = cursors.len() - 1;
+        loop {
+            let cursor = cursors.swap_remove(i);
             let range = cursor.to_range();
             let new_cursors_start_index = cursors.len();
 
@@ -486,9 +486,13 @@ pub mod split_cursors {
                     std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                 }
             }
+
+            if i == 0 {
+                break;
+            }
+            i -= 1;
         }
 
-        cursors.drain(..cursors_len);
         if cursors.is_empty() {
             cursors.push(Cursor {
                 anchor: main_cursor_position,
