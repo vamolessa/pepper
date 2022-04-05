@@ -217,6 +217,10 @@ impl<'a> Drop for CursorCollectionMutGuard<'a> {
             self.inner.cursors.push(Cursor::zero());
             self.inner.main_cursor_index = 0;
         }
+        self.inner.main_cursor_index = self
+            .inner
+            .main_cursor_index
+            .min(self.inner.cursors.len() as u32 - 1);
 
         self.inner.sort_and_merge();
 

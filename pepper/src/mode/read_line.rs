@@ -3,7 +3,7 @@ use crate::{
     buffer_view::CursorMovementKind,
     client::ClientHandle,
     command::CommandManager,
-    cursor::{Cursor, CursorCollection},
+    cursor::Cursor,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{ModeKind, ModeState},
@@ -293,32 +293,31 @@ pub mod filter_cursors {
             .get_mut(buffer_view.buffer_handle)
             .content();
 
-        let mut cursors = buffer_view.cursors.mut_guard();
-        let main_cursor_position = cursors.main_cursor().position;
+        let mut main_cursor_index = buffer_view.cursors.main_cursor_index();
+        let main_cursor_position = buffer_view.cursors.main_cursor().position;
+        let mut cursors_guard = buffer_view.cursors.mut_guard();
+        let cursors = cursors_guard.as_vec();
 
-        let mut filtered_cursors = [Cursor::zero(); CursorCollection::capacity()];
-        let mut filtered_cursors_len = 0;
-
-        for &cursor in &cursors[..] {
-            if range_contains_pattern(buffer, cursor.to_range(), &ctx.editor.aux_pattern)
-                == keep_if_contains_pattern
+        for i in (0..cursors.len()).rev() {
+            let range = cursors[i].to_range();
+            if range_contains_pattern(buffer, range, &ctx.editor.aux_pattern)
+                != keep_if_contains_pattern
             {
-                filtered_cursors[filtered_cursors_len] = cursor;
-                filtered_cursors_len += 1;
+                cursors.swap_remove(i);
+                if i <= main_cursor_index {
+                    main_cursor_index = main_cursor_index.saturating_sub(1);
+                }
             }
         }
 
-        cursors.clear();
-        for &cursor in &filtered_cursors[..filtered_cursors_len] {
-            cursors.add(cursor);
-        }
-
-        if cursors[..].is_empty() {
-            cursors.add(Cursor {
+        if cursors.is_empty() {
+            cursors.push(Cursor {
                 anchor: main_cursor_position,
                 position: main_cursor_position,
             });
         }
+
+        cursors_guard.set_main_cursor_index(main_cursor_index);
     }
 }
 
@@ -432,9 +431,10 @@ pub mod split_cursors {
             .get_mut(buffer_view.buffer_handle)
             .content();
 
-        let mut cursors = buffer_view.cursors.mut_guard();
-        let main_cursor_position = cursors.main_cursor().position;
-        let cursors = cursors.as_vec();
+        let mut main_cursor_index = buffer_view.cursors.main_cursor_index();
+        let main_cursor_position = buffer_view.cursors.main_cursor().position;
+        let mut cursors_guard = buffer_view.cursors.mut_guard();
+        let cursors = cursors_guard.as_vec();
 
         let mut i = cursors.len() - 1;
         loop {
@@ -445,21 +445,11 @@ pub mod split_cursors {
             if range.from.line_index == range.to.line_index {
                 let line = &buffer.lines()[range.from.line_index as usize].as_str()
                     [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
-                add_matches(
-                    cursors,
-                    line,
-                    &ctx.editor.aux_pattern,
-                    range.from,
-                );
+                add_matches(cursors, line, &ctx.editor.aux_pattern, range.from);
             } else {
                 let line = &buffer.lines()[range.from.line_index as usize].as_str()
                     [range.from.column_byte_index as usize..];
-                add_matches(
-                    cursors,
-                    line,
-                    &ctx.editor.aux_pattern,
-                    range.from,
-                );
+                add_matches(cursors, line, &ctx.editor.aux_pattern, range.from);
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
                     let line = buffer.lines()[line_index as usize].as_str();
@@ -487,6 +477,11 @@ pub mod split_cursors {
                 }
             }
 
+            if i < main_cursor_index {
+                let new_cursor_count = cursors.len() - new_cursors_start_index;
+                main_cursor_index += new_cursor_count;
+            }
+
             if i == 0 {
                 break;
             }
@@ -499,6 +494,8 @@ pub mod split_cursors {
                 position: main_cursor_position,
             });
         }
+
+        cursors_guard.set_main_cursor_index(main_cursor_index);
     }
 }
 
@@ -620,3 +617,4 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
         position,
     });
 }
+
