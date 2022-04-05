@@ -920,7 +920,7 @@ pub(crate) fn on_response(
                     .editor
                     .events
                     .fix_cursors_mut_guard(buffer_view.handle());
-                fix_cursor.cursors().push(Cursor {
+                fix_cursor.add(Cursor {
                     anchor: position,
                     position,
                 });

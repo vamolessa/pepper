@@ -66,16 +66,19 @@ impl CursorCollection {
         CursorCollectionMutGuard {
             inner: self,
             clear_display_distances: true,
+            set_main_cursor_near_position: None,
         }
     }
 
-    fn sort_and_merge(&mut self) {
-        let main_cursor = self.cursors[self.main_cursor_index as usize];
+    fn sort_and_merge(&mut self, main_cursor_position: BufferPosition) {
         self.cursors.sort_unstable_by_key(|c| c.to_range().from);
-        self.main_cursor_index = self
+        self.main_cursor_index = match self
             .cursors
-            .binary_search_by_key(&main_cursor.position, |c| c.position)
-            .unwrap_or(0) as _;
+            .binary_search_by_key(&main_cursor_position, |c| c.position)
+        {
+            Ok(i) => i as _,
+            Err(i) => i.min(self.cursors.len() - 1) as _,
+        };
 
         let mut i = 0;
         while i < self.cursors.len() {
@@ -131,6 +134,7 @@ impl Index<RangeFrom<usize>> for CursorCollection {
 pub struct CursorCollectionMutGuard<'a> {
     inner: &'a mut CursorCollection,
     clear_display_distances: bool,
+    set_main_cursor_near_position: Option<BufferPosition>,
 }
 
 impl<'a> CursorCollectionMutGuard<'a> {
@@ -143,8 +147,9 @@ impl<'a> CursorCollectionMutGuard<'a> {
         self.inner.cursors.push(cursor);
     }
 
-    pub fn as_vec(&mut self) -> &mut Vec<Cursor> {
-        &mut self.inner.cursors
+    pub fn swap_remove(&mut self, index: usize) -> Cursor {
+        self.inner.main_cursor_index = 0;
+        self.inner.cursors.swap_remove(index)
     }
 
     pub fn save_display_distances(&mut self, buffer: &BufferContent, tab_size: u8) {
@@ -167,12 +172,20 @@ impl<'a> CursorCollectionMutGuard<'a> {
         self.inner.saved_display_distances.get(index).cloned()
     }
 
+    pub fn main_cursor_index(&mut self) -> usize {
+        self.inner.main_cursor_index as usize
+    }
+
     pub fn set_main_cursor_index(&mut self, index: usize) {
-        self.inner.main_cursor_index = index.min(self.inner.cursors.len()) as _;
+        self.inner.main_cursor_index = self.inner.cursors.len().saturating_sub(1).min(index) as _;
     }
 
     pub fn main_cursor(&mut self) -> &mut Cursor {
         &mut self.inner.cursors[self.inner.main_cursor_index as usize]
+    }
+
+    pub fn set_main_cursor_near_position(&mut self, position: BufferPosition) {
+        self.set_main_cursor_near_position = Some(position);
     }
 }
 
@@ -217,12 +230,12 @@ impl<'a> Drop for CursorCollectionMutGuard<'a> {
             self.inner.cursors.push(Cursor::zero());
             self.inner.main_cursor_index = 0;
         }
-        self.inner.main_cursor_index = self
-            .inner
-            .main_cursor_index
-            .min(self.inner.cursors.len() as u32 - 1);
 
-        self.inner.sort_and_merge();
+        let main_cursor_position = match self.set_main_cursor_near_position {
+            Some(position) => position,
+            None => self.inner.cursors[self.inner.main_cursor_index as usize].position,
+        };
+        self.inner.sort_and_merge(main_cursor_position);
 
         if self.clear_display_distances {
             self.inner.saved_display_distances.clear();

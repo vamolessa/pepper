@@ -473,19 +473,17 @@ impl BufferView {
             .undo(word_database, events);
 
         let mut fix_cursors = events.fix_cursors_mut_guard(self.handle);
-        let cursors = fix_cursors.cursors();
-        let previous_cursors_len = cursors.len();
 
         let mut last_edit_kind = None;
         for edit in edits {
             if last_edit_kind != Some(edit.kind) {
-                cursors.truncate(previous_cursors_len);
+                fix_cursors.clear();
             }
             let position = match edit.kind {
                 EditKind::Insert => edit.range.to,
                 EditKind::Delete => edit.range.from,
             };
-            cursors.push(Cursor {
+            fix_cursors.add(Cursor {
                 anchor: edit.range.from,
                 position,
             });
@@ -505,30 +503,28 @@ impl BufferView {
             .redo(word_database, events);
 
         let mut fix_cursors = events.fix_cursors_mut_guard(self.handle);
-        let cursors = fix_cursors.cursors();
-        let previous_cursors_len = cursors.len();
 
         let mut last_edit_kind = None;
         for edit in edits {
             if last_edit_kind != Some(edit.kind) {
-                cursors.truncate(previous_cursors_len);
+                fix_cursors.clear();
             }
             let position = match edit.kind {
                 EditKind::Insert => {
-                    for cursor in cursors.iter_mut() {
+                    for cursor in fix_cursors.cursors() {
                         cursor.insert(edit.range);
                     }
                     edit.range.to
                 }
                 EditKind::Delete => {
-                    for cursor in cursors.iter_mut() {
+                    for cursor in fix_cursors.cursors() {
                         cursor.delete(edit.range);
                     }
                     edit.range.from
                 }
             };
 
-            cursors.push(Cursor {
+            fix_cursors.add(Cursor {
                 anchor: edit.range.from,
                 position,
             });

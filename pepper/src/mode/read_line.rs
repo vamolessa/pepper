@@ -3,7 +3,7 @@ use crate::{
     buffer_view::CursorMovementKind,
     client::ClientHandle,
     command::CommandManager,
-    cursor::Cursor,
+    cursor::{Cursor, CursorCollectionMutGuard},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{ModeKind, ModeState},
@@ -293,31 +293,26 @@ pub mod filter_cursors {
             .get_mut(buffer_view.buffer_handle)
             .content();
 
-        let mut main_cursor_index = buffer_view.cursors.main_cursor_index();
-        let main_cursor_position = buffer_view.cursors.main_cursor().position;
-        let mut cursors_guard = buffer_view.cursors.mut_guard();
-        let cursors = cursors_guard.as_vec();
+        let mut cursors = buffer_view.cursors.mut_guard();
+        let main_cursor_position = cursors.main_cursor().position;
 
-        for i in (0..cursors.len()).rev() {
+        for i in (0..cursors[..].len()).rev() {
             let range = cursors[i].to_range();
             if range_contains_pattern(buffer, range, &ctx.editor.aux_pattern)
                 != keep_if_contains_pattern
             {
                 cursors.swap_remove(i);
-                if i <= main_cursor_index {
-                    main_cursor_index = main_cursor_index.saturating_sub(1);
-                }
             }
         }
 
-        if cursors.is_empty() {
-            cursors.push(Cursor {
+        if cursors[..].is_empty() {
+            cursors.add(Cursor {
                 anchor: main_cursor_position,
                 position: main_cursor_position,
             });
         }
 
-        cursors_guard.set_main_cursor_index(main_cursor_index);
+        cursors.set_main_cursor_near_position(main_cursor_position);
     }
 }
 
@@ -328,7 +323,7 @@ pub mod split_cursors {
 
     pub fn enter_by_pattern_mode(ctx: &mut EditorContext) {
         fn add_matches(
-            cursors: &mut Vec<Cursor>,
+            cursors: &mut CursorCollectionMutGuard,
             line: &str,
             pattern: &Pattern,
             start_position: BufferPosition,
@@ -340,7 +335,7 @@ pub mod split_cursors {
                 let mut position = start_position;
                 position.column_byte_index += range.end as BufferPositionIndex;
 
-                cursors.push(Cursor { anchor, position });
+                cursors.add(Cursor { anchor, position });
             }
         }
 
@@ -356,7 +351,7 @@ pub mod split_cursors {
 
     pub fn enter_by_separators_mode(ctx: &mut EditorContext) {
         fn add_matches(
-            cursors: &mut Vec<Cursor>,
+            cursors: &mut CursorCollectionMutGuard,
             line: &str,
             pattern: &Pattern,
             start_position: BufferPosition,
@@ -370,14 +365,14 @@ pub mod split_cursors {
                     let mut position = start_position;
                     position.column_byte_index += range.start as BufferPositionIndex;
 
-                    cursors.push(Cursor { anchor, position });
+                    cursors.add(Cursor { anchor, position });
                 }
 
                 index = range.end;
             }
 
             if index < line.len() {
-                cursors.push(Cursor {
+                cursors.add(Cursor {
                     anchor: BufferPosition::line_col(
                         start_position.line_index,
                         start_position.column_byte_index + index as BufferPositionIndex,
@@ -403,7 +398,7 @@ pub mod split_cursors {
     fn on_event_impl(
         ctx: &mut EditorContext,
         client_handle: ClientHandle,
-        add_matches: fn(&mut Vec<Cursor>, &str, &Pattern, BufferPosition),
+        add_matches: fn(&mut CursorCollectionMutGuard, &str, &Pattern, BufferPosition),
     ) {
         let pattern = ctx.editor.read_line.input();
         let pattern = if pattern.is_empty() {
@@ -431,30 +426,30 @@ pub mod split_cursors {
             .get_mut(buffer_view.buffer_handle)
             .content();
 
-        let mut main_cursor_index = buffer_view.cursors.main_cursor_index();
-        let main_cursor_position = buffer_view.cursors.main_cursor().position;
-        let mut cursors_guard = buffer_view.cursors.mut_guard();
-        let cursors = cursors_guard.as_vec();
+        let mut cursors = buffer_view.cursors.mut_guard();
+        let main_cursor_position = cursors.main_cursor().position;
 
-        let mut i = cursors.len() - 1;
+        let mut i = cursors[..].len() - 1;
         loop {
             let cursor = cursors.swap_remove(i);
             let range = cursor.to_range();
-            let new_cursors_start_index = cursors.len();
+            let new_cursors_start_index = cursors[..].len();
+
+            let main_cursor_index = cursors.main_cursor_index();
 
             if range.from.line_index == range.to.line_index {
                 let line = &buffer.lines()[range.from.line_index as usize].as_str()
                     [range.from.column_byte_index as usize..range.to.column_byte_index as usize];
-                add_matches(cursors, line, &ctx.editor.aux_pattern, range.from);
+                add_matches(&mut cursors, line, &ctx.editor.aux_pattern, range.from);
             } else {
                 let line = &buffer.lines()[range.from.line_index as usize].as_str()
                     [range.from.column_byte_index as usize..];
-                add_matches(cursors, line, &ctx.editor.aux_pattern, range.from);
+                add_matches(&mut cursors, line, &ctx.editor.aux_pattern, range.from);
 
                 for line_index in (range.from.line_index + 1)..range.to.line_index {
                     let line = buffer.lines()[line_index as usize].as_str();
                     add_matches(
-                        cursors,
+                        &mut cursors,
                         line,
                         &ctx.editor.aux_pattern,
                         BufferPosition::line_col(line_index, 0),
@@ -464,7 +459,7 @@ pub mod split_cursors {
                 let line = &buffer.lines()[range.to.line_index as usize].as_str()
                     [..range.to.column_byte_index as usize];
                 add_matches(
-                    cursors,
+                    &mut cursors,
                     line,
                     &ctx.editor.aux_pattern,
                     BufferPosition::line_col(range.to.line_index, 0),
@@ -478,8 +473,8 @@ pub mod split_cursors {
             }
 
             if i < main_cursor_index {
-                let new_cursor_count = cursors.len() - new_cursors_start_index;
-                main_cursor_index += new_cursor_count;
+                let new_cursor_count = cursors[..].len() - new_cursors_start_index;
+                cursors.set_main_cursor_index(main_cursor_index + new_cursor_count);
             }
 
             if i == 0 {
@@ -488,14 +483,14 @@ pub mod split_cursors {
             i -= 1;
         }
 
-        if cursors.is_empty() {
-            cursors.push(Cursor {
+        if cursors[..].is_empty() {
+            cursors.add(Cursor {
                 anchor: main_cursor_position,
                 position: main_cursor_position,
             });
         }
 
-        cursors_guard.set_main_cursor_index(main_cursor_index);
+        cursors.set_main_cursor_near_position(main_cursor_position);
     }
 }
 

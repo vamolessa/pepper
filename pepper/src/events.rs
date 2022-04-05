@@ -117,8 +117,16 @@ pub struct FixCursorMutGuard<'a> {
     previous_cursors_len: u32,
 }
 impl<'a> FixCursorMutGuard<'a> {
-    pub fn cursors(&mut self) -> &mut Vec<Cursor> {
-        &mut self.inner.cursors
+    pub fn clear(&mut self) {
+        self.inner.cursors.truncate(self.previous_cursors_len as _);
+    }
+
+    pub fn add(&mut self, cursor: Cursor) {
+        self.inner.cursors.push(cursor);
+    }
+
+    pub fn cursors(&mut self) -> &mut [Cursor] {
+        &mut self.inner.cursors[self.previous_cursors_len as usize..]
     }
 }
 impl<'a> Drop for FixCursorMutGuard<'a> {
@@ -998,4 +1006,3 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
-
