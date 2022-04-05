@@ -123,6 +123,10 @@ impl<'a> FixCursorMutGuard<'a> {
 }
 impl<'a> Drop for FixCursorMutGuard<'a> {
     fn drop(&mut self) {
+        if self.inner.cursors.len() < self.previous_cursors_len as _ {
+            panic!("deleted too many cursors on `EditorEventQueue::fix_cursors_mut_guard`");
+        }
+
         let cursors = EditorEventCursors {
             from: self.previous_cursors_len,
             to: self.inner.cursors.len() as _,
@@ -994,3 +998,4 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
+
