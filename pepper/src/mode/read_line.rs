@@ -617,4 +617,3 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
         position,
     });
 }
-

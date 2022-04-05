@@ -2328,4 +2328,3 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
-

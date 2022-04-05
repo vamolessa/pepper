@@ -384,4 +384,3 @@ mod tests {
         assert!(cursors.next().is_none());
     }
 }
-

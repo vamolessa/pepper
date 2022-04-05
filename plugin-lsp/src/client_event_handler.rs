@@ -1089,4 +1089,3 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(()),
     }
 }
-
