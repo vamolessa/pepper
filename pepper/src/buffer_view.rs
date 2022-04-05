@@ -371,14 +371,12 @@ impl BufferView {
         }
     }
 
-    pub fn append_selection_text(
+    pub fn append_selection_text_and_ranges(
         &self,
         buffers: &BufferCollection,
         text: &mut String,
-        ranges: &mut [(BufferPositionIndex, BufferPositionIndex)],
-    ) -> usize {
-        let mut ranges_index = 0;
-
+        ranges: &mut Vec<(BufferPositionIndex, BufferPositionIndex)>,
+    ) {
         let buffer = buffers.get(self.buffer_handle).content();
         let mut iter = self.cursors[..].iter();
         if let Some(cursor) = iter.next() {
@@ -387,8 +385,7 @@ impl BufferView {
             for t in buffer.text_range(last_range) {
                 text.push_str(t);
             }
-            ranges[ranges_index] = (from, text.len() as _);
-            ranges_index += 1;
+            ranges.push((from, text.len() as _));
 
             for cursor in iter {
                 let range = cursor.to_range();
@@ -399,14 +396,11 @@ impl BufferView {
                 for t in buffer.text_range(range) {
                     text.push_str(t);
                 }
-                ranges[ranges_index] = (from, text.len() as _);
-                ranges_index += 1;
+                ranges.push((from, text.len() as _));
 
                 last_range = range;
             }
         }
-
-        ranges_index
     }
 
     pub fn insert_text_at_cursor_positions(

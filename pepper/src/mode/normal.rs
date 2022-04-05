@@ -8,7 +8,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{ClientHandle, ViewAnchor},
-    cursor::{Cursor, CursorCollection},
+    cursor::Cursor,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{hash_bytes, MessageKind, RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     help::HELP_PREFIX,
@@ -655,27 +655,22 @@ impl State {
                         ..
                     } => {
                         let should_close_current_buffer = c == 'F';
-                        let buffer_handle = buffer_view.buffer_handle;
-
-                        let mut len = 0;
-                        let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
-                        for cursor in &buffer_view.cursors[..] {
-                            ranges[len] = cursor.to_range();
-                            len += 1;
-                        }
 
                         let mut jumped = false;
                         let mut path_buf = ctx.editor.string_pool.acquire();
                         let mut error_buf = ctx.editor.string_pool.acquire();
                         let fallback_line_index = state.count.saturating_sub(1) as _;
 
-                        for range in &ranges[..len] {
+                        for i in 0..buffer_view.cursors[..].len() {
+                            let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                            let range = buffer_view.cursors[i].to_range();
+
                             let line_index = range.from.line_index;
                             if range.to.line_index != line_index {
                                 continue;
                             }
 
-                            let buffer = ctx.editor.buffers.get(buffer_handle);
+                            let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                             let line = buffer.content().lines()[line_index as usize].as_str();
 
                             let from = range.from.column_byte_index;
@@ -2028,15 +2023,15 @@ impl ModeState for State {
 fn copy_text(ctx: &mut EditorContext, buffer_view_handle: BufferViewHandle, text: &mut String) {
     let state = &mut ctx.editor.mode.normal_state;
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
-    let mut text_ranges = [(0, 0); CursorCollection::capacity()];
-    let text_ranges_len =
-        buffer_view.append_selection_text(&ctx.editor.buffers, text, &mut text_ranges);
+    let ranges_start = state.last_copy_ranges.len();
+    buffer_view.append_selection_text_and_ranges(
+        &ctx.editor.buffers,
+        text,
+        &mut state.last_copy_ranges,
+    );
     if !text.is_empty() {
         state.last_copy_hash = hash_bytes(text.as_bytes());
-        state.last_copy_ranges.clear();
-        state
-            .last_copy_ranges
-            .extend_from_slice(&text_ranges[..text_ranges_len]);
+        state.last_copy_ranges.drain(..ranges_start);
     }
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
@@ -2333,3 +2328,4 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
+
