@@ -916,13 +916,14 @@ pub(crate) fn on_response(
 
             for buffer_view in ctx.editor.buffer_views.iter() {
                 let position = buffer_view.cursors.main_cursor().position;
-                ctx.editor.events.enqueue_fix_cursors(
-                    buffer_view.handle(),
-                    &[Cursor {
-                        anchor: position,
-                        position,
-                    }],
-                );
+                let mut fix_cursor = ctx
+                    .editor
+                    .events
+                    .fix_cursors_mut_guard(buffer_view.handle());
+                fix_cursor.cursors().push(Cursor {
+                    anchor: position,
+                    position,
+                });
             }
 
             Ok(())
@@ -1088,3 +1089,4 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(()),
     }
 }
+

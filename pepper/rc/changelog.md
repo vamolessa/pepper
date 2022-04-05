@@ -12,6 +12,7 @@
 - changed `open` command parameters order, now buffer properties come before the `path` parameter
 - removed `alias` command since it's now possible to replicate its behavior by creating a new command that calls the aliased command and use the `@arg()` expansion
 - removed `find-file` and `find-command` commands as they're now implementable using other builtin commands (see `default_commands.pepper` for an example)
+- removed the old 255 cursor count limit
 
 ## 0.24.0
 - handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)

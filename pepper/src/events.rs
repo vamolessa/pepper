@@ -101,16 +101,36 @@ impl EditorEventQueue {
         });
     }
 
-    pub fn enqueue_fix_cursors(&mut self, handle: BufferViewHandle, cursors: &[Cursor]) {
-        let from = self.write.cursors.len();
-        self.write.cursors.extend_from_slice(cursors);
+    pub fn fix_cursors_mut_guard(&mut self, handle: BufferViewHandle) -> FixCursorMutGuard {
+        let previous_cursors_len = self.write.cursors.len() as _;
+        FixCursorMutGuard {
+            inner: &mut self.write,
+            handle,
+            previous_cursors_len,
+        }
+    }
+}
+
+pub struct FixCursorMutGuard<'a> {
+    inner: &'a mut EventQueue,
+    handle: BufferViewHandle,
+    previous_cursors_len: u32,
+}
+impl<'a> FixCursorMutGuard<'a> {
+    pub fn cursors(&mut self) -> &mut Vec<Cursor> {
+        &mut self.inner.cursors
+    }
+}
+impl<'a> Drop for FixCursorMutGuard<'a> {
+    fn drop(&mut self) {
         let cursors = EditorEventCursors {
-            from: from as _,
-            to: self.write.cursors.len() as _,
+            from: self.previous_cursors_len,
+            to: self.inner.cursors.len() as _,
         };
-        self.write
-            .events
-            .push(EditorEvent::FixCursors { handle, cursors });
+        self.inner.events.push(EditorEvent::FixCursors {
+            handle: self.handle,
+            cursors,
+        });
     }
 }
 
@@ -974,3 +994,4 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
+
