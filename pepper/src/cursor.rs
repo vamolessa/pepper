@@ -42,10 +42,6 @@ pub struct CursorCollection {
 }
 
 impl CursorCollection {
-    pub const fn capacity() -> usize {
-        u8::MAX as _
-    }
-
     pub fn new() -> Self {
         Self {
             cursors: vec![Cursor::zero()],
