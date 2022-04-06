@@ -31,6 +31,10 @@ static MAIN_HELP_PAGES: HelpPages = HelpPages::new(&[
         content: include_str!("../rc/command_reference.md"),
     },
     ResourceFile {
+        name: "expansion_reference.md",
+        content: include_str!("../rc/expansion_reference.md"),
+    },
+    ResourceFile {
         name: "bindings.md",
         content: include_str!("../rc/bindings.md"),
     },
