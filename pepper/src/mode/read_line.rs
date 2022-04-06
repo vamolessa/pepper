@@ -633,4 +633,3 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
     }
     cursors.set_main_cursor_index(state.previous_main_cursor_index);
 }
-
