@@ -32,10 +32,7 @@ impl Default for ApplicationConfig {
     fn default() -> Self {
         Self {
             args: Args::parse(),
-            static_configs: vec![
-                crate::DEFAULT_CONFIGS,
-                crate::DEFAULT_SYNTAXES,
-            ],
+            static_configs: vec![crate::DEFAULT_CONFIGS, crate::DEFAULT_SYNTAXES],
             plugin_definitions: Vec::new(),
             on_panic_config: OnPanicConfig::default(),
         }
