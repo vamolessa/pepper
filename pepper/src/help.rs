@@ -42,14 +42,8 @@ static MAIN_HELP_PAGES: HelpPages = HelpPages::new(&[
         name: "config_recipes.md",
         content: include_str!("../rc/config_recipes.md"),
     },
-    ResourceFile {
-        name: "default_configs.pepper",
-        content: include_str!("../rc/default_configs.pepper"),
-    },
-    ResourceFile {
-        name: "default_syntaxes.pepper",
-        content: include_str!("../rc/default_syntaxes.pepper"),
-    },
+    crate::DEFAULT_CONFIGS,
+    crate::DEFAULT_SYNTAXES,
     ResourceFile {
         name: "help.md",
         content: include_str!("../rc/help.md"),

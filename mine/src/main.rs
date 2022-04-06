@@ -83,7 +83,7 @@ fn main() {
 
     config
         .static_configs
-        .push(pepper_plugin_lsp::DEFAULT_BINDINGS_CONFIG);
+        .push(pepper_plugin_lsp::DEFAULT_CONFIGS);
     config.static_configs.push(ResourceFile {
         name: "my.pepper",
         content: "map normal ga :<space>goto-alternate-buffer<enter>",
