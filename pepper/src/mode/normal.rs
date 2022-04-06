@@ -1543,7 +1543,10 @@ impl State {
                 control: false,
                 alt: false,
                 ..
-            } => read_line::search::enter_mode(ctx, client_handle),
+            } => {
+                let movement_kind = state.movement_kind;
+                read_line::search::enter_mode(ctx, client_handle, movement_kind);
+            }
             Key {
                 code: KeyCode::Char('y'),
                 control: false,
@@ -1666,7 +1669,6 @@ impl Default for State {
 impl ModeState for State {
     fn on_enter(editor: &mut Editor) {
         let state = &mut editor.mode.normal_state;
-        state.movement_kind = CursorMovementKind::PositionAndAnchor;
         state.is_recording_auto_macro = false;
         state.count = 0;
     }
@@ -2140,7 +2142,7 @@ fn find_char(ctx: &mut EditorContext, client_handle: ClientHandle, forward: bool
 
 fn move_to_search_match<F>(ctx: &mut EditorContext, client_handle: ClientHandle, index_selector: F)
 where
-    F: FnOnce(usize, Result<usize, usize>) -> usize,
+    F: Fn(usize, Result<usize, usize>) -> usize,
 {
     NavigationHistory::save_snapshot(ctx.clients.get_mut(client_handle), &ctx.editor.buffer_views);
 
@@ -2180,13 +2182,12 @@ where
     }
 
     let state = &mut ctx.editor.mode.normal_state;
-    let cursors = &mut buffer_view.cursors;
+    let mut cursors = buffer_view.cursors.mut_guard();
 
     let main_position = cursors.main_cursor().position;
     let search_result = search_ranges.binary_search_by_key(&main_position, |r| r.from);
     state.search_index = index_selector(search_ranges.len(), search_result);
 
-    let mut cursors = cursors.mut_guard();
     let main_cursor = cursors.main_cursor();
     main_cursor.position = search_ranges[state.search_index].from;
 
@@ -2328,3 +2329,4 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
+

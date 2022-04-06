@@ -1,5 +1,5 @@
 use crate::{
-    buffer_position::{BufferPosition, BufferPositionIndex},
+    buffer_position::BufferPositionIndex,
     buffer_view::CursorMovementKind,
     client::ClientHandle,
     command::CommandManager,
@@ -14,7 +14,9 @@ use crate::{
 pub struct State {
     pub on_client_keys:
         fn(&mut EditorContext, ClientHandle, &mut KeysIterator, ReadLinePoll) -> Option<EditorFlow>,
-    previous_position: BufferPosition,
+    previous_cursors: Vec<Cursor>,
+    previous_main_cursor_index: usize,
+    movement_kind: CursorMovementKind,
     continuation: String,
 }
 
@@ -22,7 +24,9 @@ impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _, _| Some(EditorFlow::Continue),
-            previous_position: BufferPosition::zero(),
+            previous_cursors: Vec::new(),
+            previous_main_cursor_index: 0,
+            movement_kind: CursorMovementKind::PositionAndAnchor,
             continuation: String::new(),
         }
     }
@@ -59,7 +63,11 @@ pub mod search {
 
     use crate::editor_utils::SEARCH_REGISTER;
 
-    pub fn enter_mode(ctx: &mut EditorContext, client_handle: ClientHandle) {
+    pub fn enter_mode(
+        ctx: &mut EditorContext,
+        client_handle: ClientHandle,
+        movement_kind: CursorMovementKind,
+    ) {
         fn on_client_keys(
             ctx: &mut EditorContext,
             client_handle: ClientHandle,
@@ -80,18 +88,24 @@ pub mod search {
                         if search_ranges.is_empty() {
                             restore_saved_position(ctx, client_handle);
                         } else {
-                            let previous_position =
-                                ctx.editor.mode.read_line_state.previous_position;
-                            let current_position = buffer_view.cursors.main_cursor().position;
+                            let state = &ctx.editor.mode.read_line_state;
+                            let cursor_position = buffer_view.cursors.main_cursor().position;
 
                             {
                                 let mut cursors = buffer_view.cursors.mut_guard();
                                 cursors.clear();
-                                cursors.add(Cursor {
-                                    anchor: previous_position,
-                                    position: previous_position,
-                                });
+                                for &cursor in &state.previous_cursors {
+                                    cursors.add(cursor);
+                                }
+                                cursors.set_main_cursor_index(state.previous_main_cursor_index);
                             }
+
+                            let cursor_anchor = match state.movement_kind {
+                                CursorMovementKind::PositionAndAnchor => cursor_position,
+                                CursorMovementKind::PositionOnly => {
+                                    state.previous_cursors[state.previous_main_cursor_index].anchor
+                                }
+                            };
 
                             NavigationHistory::save_snapshot(client, &ctx.editor.buffer_views);
                             let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
@@ -99,13 +113,13 @@ pub mod search {
                                 let mut cursors = buffer_view.cursors.mut_guard();
                                 cursors.clear();
                                 cursors.add(Cursor {
-                                    anchor: current_position,
-                                    position: current_position,
+                                    anchor: cursor_anchor,
+                                    position: cursor_position,
                                 });
                             }
 
                             ctx.editor.mode.normal_state.search_index = match search_ranges
-                                .binary_search_by_key(&current_position, |r| r.from)
+                                .binary_search_by_key(&cursor_position, |r| r.from)
                             {
                                 Ok(i) => i,
                                 Err(i) => i,
@@ -131,6 +145,7 @@ pub mod search {
         ctx.editor.read_line.set_prompt("search:");
         update_search(ctx, client_handle);
 
+        ctx.editor.mode.read_line_state.movement_kind = movement_kind;
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
@@ -595,7 +610,12 @@ fn save_current_position(ctx: &mut EditorContext, client_handle: ClientHandle) {
         None => return,
     };
     let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
-    ctx.editor.mode.read_line_state.previous_position = buffer_view.cursors.main_cursor().position;
+    let state = &mut ctx.editor.mode.read_line_state;
+    state.previous_cursors.clear();
+    for &cursor in &buffer_view.cursors[..] {
+        state.previous_cursors.push(cursor);
+    }
+    state.previous_main_cursor_index = buffer_view.cursors.main_cursor_index();
 }
 
 fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) {
@@ -603,12 +623,14 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
         Some(handle) => handle,
         None => return,
     };
-    let position = ctx.editor.mode.read_line_state.previous_position;
     let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
     let mut cursors = buffer_view.cursors.mut_guard();
     cursors.clear();
-    cursors.add(Cursor {
-        anchor: position,
-        position,
-    });
+
+    let state = &ctx.editor.mode.read_line_state;
+    for &cursor in &state.previous_cursors {
+        cursors.add(cursor);
+    }
+    cursors.set_main_cursor_index(state.previous_main_cursor_index);
 }
+
