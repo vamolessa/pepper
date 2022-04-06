@@ -1136,6 +1136,8 @@ impl State {
                 alt: false,
                 ..
             } => {
+                state.movement_kind = CursorMovementKind::PositionAndAnchor;
+
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
