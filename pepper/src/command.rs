@@ -475,7 +475,10 @@ impl CommandManager {
             Some(c) if c.is_ascii_alphabetic() || matches!(c, '-' | '_') => (),
             _ => return Err(CommandError::InvalidMacroName),
         }
-        if name.chars().any(|c| !c.is_ascii_alphanumeric() && !matches!(c, '-' | '_')) {
+        if name
+            .chars()
+            .any(|c| !c.is_ascii_alphanumeric() && !matches!(c, '-' | '_'))
+        {
             return Err(CommandError::InvalidMacroName);
         }
 
