@@ -193,9 +193,9 @@ Clears and then adds all `<entries...>` to be selected with the `pick` command.
 Clears and then adds a picker entry for each `<command>` stdout line (with stdin closed) to be selected with the `pick` command.
 - usage: `picker-entries-from-lines <command>`
 
-## `run`
-Runs the external `<command>` (with stdin closed and ignoring its stdout).
-- usage: `run <command>`
+## `spawn`
+Spawns the external `<command>` (with stdin closed and ignoring its stdout).
+- usage: `spawn <command>`
 
 ## `replace-with-output`
 Pass each cursor selection as stdin to the external `<command>` and substitute each for its stdout.

@@ -473,7 +473,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("run", &[], |ctx, io| {
+    r("spawn", &[], |ctx, io| {
         let command = io.args.next()?;
         io.args.assert_empty()?;
 
@@ -544,8 +544,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         let name = io.args.next()?;
         let source = io.args.next()?;
         io.args.assert_empty()?;
-        ctx.editor.commands.macros.add(name, source);
-        Ok(())
+        ctx.editor.commands.register_macro(name, source)
     });
 
     static EVAL_COMPLETIONS: &[CompletionSource] = &[

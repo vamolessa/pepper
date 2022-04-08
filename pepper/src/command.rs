@@ -19,6 +19,7 @@ mod expansions;
 const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandError {
+    InvalidMacroName,
     ExpansionError(expansions::ExpansionError),
     NoSuchCommand,
     TooManyArguments,
@@ -45,6 +46,7 @@ pub enum CommandError {
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::InvalidMacroName => f.write_str("invalid command name"),
             Self::ExpansionError(error) => write!(f, "expansion error: {}", error),
             Self::NoSuchCommand => f.write_str("no such command"),
             Self::TooManyArguments => f.write_str("too many arguments"),
@@ -368,7 +370,7 @@ pub struct MacroCollection {
     sources: String,
 }
 impl MacroCollection {
-    pub fn add(&mut self, name: &str, source: &str) {
+    fn add(&mut self, name: &str, source: &str) {
         for (i, m) in self.macros.iter().enumerate() {
             if name == m.name(&self.names) {
                 let old_source_range = m.source_start as usize..m.source_end as usize;
@@ -461,6 +463,24 @@ impl CommandManager {
             completions,
             command_fn,
         });
+    }
+
+    pub fn register_macro(&mut self, name: &str, source: &str) -> Result<(), CommandError> {
+        if self.find_command(name).is_some() {
+            return Err(CommandError::InvalidMacroName);
+        }
+
+        let mut chars = name.chars();
+        match chars.next() {
+            Some(c) if c.is_ascii_alphabetic() || matches!(c, '-' | '_') => (),
+            _ => return Err(CommandError::InvalidMacroName),
+        }
+        if name.chars().any(|c| !c.is_ascii_alphanumeric() && !matches!(c, '-' | '_')) {
+            return Err(CommandError::InvalidMacroName);
+        }
+
+        self.macros.add(name, source);
+        Ok(())
     }
 
     pub fn find_command(&self, name: &str) -> Option<&Command> {
@@ -589,16 +609,6 @@ impl CommandManager {
             None => (command_name, false),
         };
 
-        if let Some(macro_source) = ctx.editor.commands.macros.find(command_name) {
-            let macro_source = ctx.editor.string_pool.acquire_with(macro_source);
-            let mut result = Ok(EditorFlow::Continue);
-            for command in CommandIter(&macro_source) {
-                result = Self::eval_single(ctx, client_handle, command, args.0, bang);
-            }
-            ctx.editor.string_pool.release(macro_source);
-            return result;
-        }
-
         if let Some(command) = ctx.editor.commands.find_command(command_name) {
             let plugin_handle = command.plugin_handle;
             let command_fn = command.command_fn;
@@ -611,6 +621,16 @@ impl CommandManager {
             };
             command_fn(ctx, &mut io)?;
             return Ok(io.flow);
+        }
+
+        if let Some(macro_source) = ctx.editor.commands.macros.find(command_name) {
+            let macro_source = ctx.editor.string_pool.acquire_with(macro_source);
+            let mut result = Ok(EditorFlow::Continue);
+            for command in CommandIter(&macro_source) {
+                result = Self::eval_single(ctx, client_handle, command, args.0, bang);
+            }
+            ctx.editor.string_pool.release(macro_source);
+            return result;
         }
 
         Err(CommandError::NoSuchCommand)

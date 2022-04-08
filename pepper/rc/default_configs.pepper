@@ -30,7 +30,7 @@ command ca @{ close-all@arg(!) }
 
 command -run-command @{
     readline "run-command:" @{
-        run "@readline-input()"
+        spawn "@readline-input()"
     }
 }
 command -replace-with-output @{
