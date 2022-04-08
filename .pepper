@@ -17,9 +17,9 @@ eval on windows @{
     }
 
     # remedybg
-    map normal <space>d<space> :<space>remedybg-debug<enter>
+    map normal <space>dd :<space>remedybg-debug<enter>
     command remedybg-debug @{
-        run "remedybg target/debug/pepper.exe -s s --server"
+        spawn "remedybg target/debug/pepper.exe -s s --server"
     }
 }
 

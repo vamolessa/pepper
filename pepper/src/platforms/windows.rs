@@ -1057,7 +1057,6 @@ struct EventListener {
 impl EventListener {
     pub fn new() -> Self {
         const DEFAULT_EVENT_SOURCE: EventSource = EventSource::ConnectionListener;
-
         Self {
             wait_handles: [NULL; MAX_EVENT_COUNT],
             sources: [DEFAULT_EVENT_SOURCE; MAX_EVENT_COUNT],
@@ -1067,12 +1066,15 @@ impl EventListener {
 
     pub fn track(&mut self, event: &Event, source: EventSource) {
         let index = self.len as usize;
-        debug_assert!(index < self.wait_handles.len());
+        if index >= self.wait_handles.len() {
+            panic!("tried to track too many events");
+        }
         self.wait_handles[index] = event.handle();
         self.sources[index] = source;
         self.len += 1;
     }
 
+    #[inline(never)]
     pub fn wait_next(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
         let len = self.len;
         self.len = 0;
