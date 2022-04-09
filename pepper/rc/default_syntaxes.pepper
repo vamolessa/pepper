@@ -1,5 +1,5 @@
 syntax "**/*.refs"
-syntax keywords "^{%w[/\\]%._-!:}"
+syntax keywords "^{%a}:[/\\]{%w[/\\]%._-!:}|^{%w[/\\]%._-!:}"
 syntax symbols ","
 syntax literals "%d{%d}"
 syntax texts "{%w_-}"
@@ -24,7 +24,7 @@ syntax "**/*.zig"
 syntax keywords align|allowzero|and|asm|async|await|break|catch|comptime|const|continue|defer|else|enum|errdefer|error|export|extern|fn|for|if|inline|noalias|nosuspend|orelse|or|packed|pub|resume|return|linksection|struct|suspend|switch|test|threadlocal|try|union|unreachable|usingnamespace|var|volatile|while
 syntax types "u%d{%d}|usize|i%d{%d}|isize|c_{%w}|f16|f32|f64|f128|bool|void|noreturn|type|anyframe|anytype|anyerror|comptime_int|comptime_float|@%u{%w}|%u{%w_}"
 syntax symbols "%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%!|~|?|&|%||@%l{%w}"
-syntax literals "false|null|true|undefined|'\\''|'\\{!'.}|'.'|%d{%d_}%.%w{%w_}|%d{%w_}"
+syntax literals "false|null|true|undefined|'\\''|'\\{!'.}|'.'|%d{%d_}%.%w{%w_}|%d{%w_}|:%a{%w_}|%a{%w_}:"
 syntax strings '"{(\\\\)(\\")!".}|\\\\{.}'
 syntax comments "//{.}"
 
