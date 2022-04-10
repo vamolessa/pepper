@@ -284,7 +284,13 @@ where
         for path in &args.files {
             commands.clear();
             commands.push_str("open \"");
-            commands.push_str(path);
+            for c in path.chars() {
+                match c {
+                    '\\' => commands.push_str("\\\\"),
+                    '"' => commands.push_str("\\\""),
+                    c => commands.push(c),
+                }
+            }
             commands.push('"');
             ClientEvent::Commands(self.target_client, &commands)
                 .serialize(&mut self.server_write_buf);
@@ -387,3 +393,4 @@ where
         self.restore_screen();
     }
 }
+
