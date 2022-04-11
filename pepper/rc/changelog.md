@@ -17,6 +17,7 @@
 - exiting search mode will fully restore the previous cursor state
 - it's now possible to use use the search mode to expand selections
 - included default config files to help pages
+- fix wrong error message when parsing color values
 
 ## 0.24.0
 - handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)

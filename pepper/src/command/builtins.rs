@@ -295,7 +295,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         match value {
             Some(value) => {
                 let encoded =
-                    u32::from_str_radix(value, 16).map_err(|_| CommandError::NoSuchColor)?;
+                    u32::from_str_radix(value, 16).map_err(|_| CommandError::InvalidColorValue)?;
                 *color = Color::from_u32(encoded);
             }
             None => ctx
