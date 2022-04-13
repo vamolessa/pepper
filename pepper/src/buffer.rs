@@ -926,15 +926,21 @@ impl From<io::Error> for BufferReadError {
     }
 }
 
-pub struct BufferWriteError;
+pub enum BufferWriteError {
+    SavingDisabled,
+    CouldNotWriteToFile,
+}
 impl fmt::Display for BufferWriteError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("could not write to file")
+        match self {
+            Self::SavingDisabled => f.write_str("buffer has saving disabled"),
+            Self::CouldNotWriteToFile => f.write_str("could not write to file"),
+        }
     }
 }
 impl From<io::Error> for BufferWriteError {
     fn from(_: io::Error) -> Self {
-        Self
+        Self::CouldNotWriteToFile
     }
 }
 
@@ -1394,7 +1400,7 @@ impl Buffer {
         };
 
         if !self.properties.saving_enabled {
-            return Ok(());
+            return Err(BufferWriteError::SavingDisabled);
         }
 
         if self.properties.is_file {
@@ -2298,4 +2304,3 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
-

@@ -1,7 +1,7 @@
 use std::{path::Path, process::Stdio};
 
 use crate::{
-    buffer::{parse_path_and_position, BufferProperties},
+    buffer::{parse_path_and_position, BufferProperties, BufferWriteError},
     buffer_position::BufferPosition,
     client::ViewAnchor,
     command::{CommandError, CommandManager, CompletionSource},
@@ -168,11 +168,10 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let mut count = 0;
         for buffer in ctx.editor.buffers.iter_mut() {
-            if buffer.properties.saving_enabled {
-                buffer
-                    .write_to_file(None, &mut ctx.editor.events)
-                    .map_err(CommandError::BufferWriteError)?;
-                count += 1;
+            match buffer.write_to_file(None, &mut ctx.editor.events) {
+                Ok(()) => count += 1,
+                Err(BufferWriteError::SavingDisabled) => (),
+                Err(error) => return Err(CommandError::BufferWriteError(error)),
             }
         }
 
