@@ -18,6 +18,7 @@
 - it's now possible to use use the search mode to expand selections
 - included default config files to help pages
 - fix wrong error message when parsing color values
+- fix buffer would not read from file when opened with `saving-disabled`
 - lsp plugin correctly handle completion responses which only fill the `changes` field
 
 ## 0.24.0

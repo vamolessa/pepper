@@ -1344,9 +1344,7 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if !self.path.starts_with(help::HELP_PREFIX)
-            && (!self.properties.saving_enabled || !self.properties.is_file)
-        {
+        if !self.path.starts_with(help::HELP_PREFIX) && !self.properties.is_file {
             return Ok(());
         }
 
@@ -2300,3 +2298,4 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
+
