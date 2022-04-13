@@ -596,6 +596,7 @@ impl<'json> FromJson<'json> for WorkspaceEditChange {
 
 #[derive(Default)]
 pub struct WorkspaceEdit {
+    changes: JsonObject,
     document_changes: JsonArray,
 }
 impl WorkspaceEdit {
@@ -606,6 +607,45 @@ impl WorkspaceEdit {
         root: &Path,
         json: &Json,
     ) {
+        for (uri, text_edits) in self.changes.clone().members(json) {
+            let path = match Uri::parse(&root, uri) {
+                Ok(Uri::Path(path)) => path,
+                Err(_) => return,
+            };
+            let buffer_handle = editor
+                .buffers
+                .find_with_path(&editor.current_directory, path);
+
+            let (is_temp, buffer_handle) = match buffer_handle {
+                Some(handle) => (false, handle),
+                None => {
+                    let buffer = editor.buffers.add_new();
+                    buffer.properties = BufferProperties::scratch();
+                    buffer.properties.saving_enabled = true;
+                    buffer.set_path(path);
+                    let _ = buffer.read_from_file(&mut editor.word_database, &mut editor.events);
+                    (true, buffer.handle())
+                }
+            };
+
+            let text_edits = match text_edits {
+                JsonValue::Array(array) => array,
+                _ => return,
+            };
+            TextEdit::apply_edits(editor, buffer_handle, temp_edits, text_edits, json);
+
+            if is_temp {
+                let _ = editor
+                    .buffers
+                    .get_mut(buffer_handle)
+                    .write_to_file(None, &mut editor.events);
+
+                editor
+                    .buffers
+                    .defer_remove(buffer_handle, &mut editor.events);
+            }
+        }
+
         for change in self.document_changes.clone().elements(json) {
             let change = match WorkspaceEditChange::from_json(change, json) {
                 Ok(change) => change,
@@ -722,8 +762,13 @@ impl<'json> FromJson<'json> for WorkspaceEdit {
             _ => return Err(JsonConvertError),
         };
         let mut this = Self::default();
-        let changes = value.get("documentChanges", json);
-        this.document_changes = FromJson::from_json(changes, json)?;
+        for (key, value) in value.members(json) {
+            match key {
+                "changes" => this.changes = FromJson::from_json(value, json)?,
+                "documentChanges" => this.document_changes = FromJson::from_json(value, json)?,
+                _ => (),
+            }
+        }
         Ok(this)
     }
 }
@@ -1146,3 +1191,4 @@ mod tests {
         }
     }
 }
+
