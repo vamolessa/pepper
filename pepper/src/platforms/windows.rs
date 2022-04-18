@@ -181,11 +181,13 @@ pub fn main(config: ApplicationConfig) {
 
     pipe_path.clear();
     pipe_path.extend(PIPE_PREFIX.encode_utf16());
+    pipe_path.extend(env!("CARGO_PKG_NAME").encode_utf16());
+    pipe_path.push(b'-' as _);
     pipe_path.extend(session_name.encode_utf16());
-    pipe_path.push(0);
+    pipe_path.push(b'\0' as _);
 
     if config.args.print_session {
-        print!("{}{}", PIPE_PREFIX, session_name);
+        print!("{}{}-{}", PIPE_PREFIX, env!("CARGO_PKG_NAME"), session_name);
         return;
     }
 

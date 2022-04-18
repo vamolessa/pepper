@@ -20,6 +20,7 @@
 - fix wrong error message when parsing color values
 - fix buffer would not read from file when opened with `saving-disabled`
 - lsp plugin correctly handle completion responses which only fill the `changes` field
+- added `pepper-` prefix to windows session named pipe paths
 
 ## 0.24.0
 - handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)
