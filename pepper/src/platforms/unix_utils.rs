@@ -75,7 +75,7 @@ pub(crate) fn run(
                 0 => {
                     // TODO: maybe expand this code on mac?
                     // https://opensource.apple.com/source/Libc/Libc-1439.40.11/gen/FreeBSD/daemon.c.auto.html
-                    unsafe { libc::daemon(true as _, false as _) };
+                    //unsafe { libc::daemon(true as _, false as _) };
                     server_fn(config, start_server(session_path));
                     let _ = fs::remove_file(session_path);
                 }
