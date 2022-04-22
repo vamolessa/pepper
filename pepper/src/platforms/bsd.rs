@@ -37,14 +37,15 @@ pub fn main(config: ApplicationConfig) {
         command.stdin(std::process::Stdio::null());
         command.stdout(std::process::Stdio::piped());
         command.stderr(std::process::Stdio::null());
-        if let Ok(output) = command.output() {
-            let stdout = String::from_utf8_lossy(output.stdout);
-            eprintln!("stdout {}", &stdout);
+        match command.output() {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(output.stdout);
+                eprintln!("stdout {}", &stdout);
 
-            let stderr = String::from_utf8_lossy(output.stderr);
-            eprintln!("stderr {}", &stderr);
-        } else {
-            eprintln!("deu ruim 2");
+                let stderr = String::from_utf8_lossy(output.stderr);
+                eprintln!("stderr {}", &stderr);
+            }
+            Err(error) => eprintln!("deu ruim 2: {}", error),
         }
     } else {
         eprintln!("deu ruim 3");
@@ -626,3 +627,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
+
