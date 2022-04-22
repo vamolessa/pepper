@@ -84,7 +84,7 @@ fn spawn_server() {
             envp.as_ptr() as _,
         );
         if result != 0 {
-            panic!("could not spawn server");
+            panic!("could not spawn server {:?}", &argv_owned[0]);
         }
 
         if libc::posix_spawn_file_actions_destroy(&mut file_actions) != 0 {
