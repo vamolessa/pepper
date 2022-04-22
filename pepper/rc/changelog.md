@@ -1,5 +1,8 @@
 # changelog
 
+## 0.26.0
+- removed escaping expansion from `{...}` string blocks
+
 ## 0.25.0
 - new variable expansion mechanism when evaluating commands
 - changed string syntax for commands

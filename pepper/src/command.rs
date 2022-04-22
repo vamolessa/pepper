@@ -242,10 +242,9 @@ impl<'a> Iterator for CommandTokenizer<'a> {
             }
         }
 
-        fn parse_block_token(s: &str) -> Option<(&str, &str, bool)> {
+        fn parse_block_token(s: &str) -> Option<(&str, &str)> {
             let mut chars = s.chars();
             let mut balance = 1;
-            let mut has_escaping = false;
             loop {
                 match chars.next()? {
                     '{' => balance += 1,
@@ -254,7 +253,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                         if balance == 0 {
                             let rest = chars.as_str();
                             let len = rest.as_ptr() as usize - s.as_ptr() as usize - 1;
-                            break Some((&s[..len], rest, has_escaping));
+                            break Some((&s[..len], rest));
                         }
                     }
                     '#' => {
@@ -264,7 +263,6 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                     }
                     '\\' => {
                         chars.next();
-                        has_escaping = true;
                     }
                     _ => (),
                 }
@@ -308,13 +306,12 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                 '\n' | '\r' | '#' => return None,
                 c => {
                     if c == '{' {
-                        if let Some((slice, rest, has_escaping)) = parse_block_token(chars.as_str())
-                        {
+                        if let Some((slice, rest)) = parse_block_token(chars.as_str()) {
                             self.0 = rest;
                             return Some(CommandToken {
                                 slice,
                                 can_expand_variables,
-                                has_escaping,
+                                has_escaping: false,
                             });
                         }
                     }
@@ -1165,7 +1162,7 @@ mod tests {
 
         assert_expansion("\"\0", &ctx, "\"\\\"\"");
         assert_expansion("'\0", &ctx, "'\\''");
-        assert_expansion("}\0", &ctx, "{\\}}");
+        assert_expansion("\\}\0", &ctx, "{\\}}");
         assert_expansion("\\\0", &ctx, "'\\\\'");
 
         let mut expanded = String::new();
