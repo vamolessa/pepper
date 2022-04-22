@@ -19,54 +19,6 @@ use crate::{
 };
 
 fn spawn_server() {
-    /*
-    let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
-    startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
-    startup_info.dwFlags = STARTF_USESTDHANDLES;
-    startup_info.hStdInput = INVALID_HANDLE_VALUE;
-    startup_info.hStdOutput = INVALID_HANDLE_VALUE;
-    startup_info.hStdError = unsafe { GetStdHandle(STD_ERROR_HANDLE) };
-
-    let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
-
-    let mut client_command_line = unsafe { GetCommandLineW() };
-    let mut command_line = Vec::with_capacity(1024);
-    command_line.extend_from_slice(&b" --server".map(|b| b as _));
-    loop {
-        unsafe {
-            let short = std::ptr::read(client_command_line);
-            if short == 0 {
-                break;
-            }
-            client_command_line = client_command_line.offset(1);
-            command_line.push(short);
-        }
-    }
-    command_line.push(0);
-
-    let result = unsafe {
-        CreateProcessW(
-            std::ptr::null(),
-            command_line.as_mut_ptr(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            TRUE,
-            NORMAL_PRIORITY_CLASS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
-            NULL,
-            std::ptr::null_mut(),
-            &mut startup_info,
-            &mut process_info,
-        )
-    };
-
-    std::mem::drop(Handle(process_info.hProcess));
-    std::mem::drop(Handle(process_info.hThread));
-
-    if result == FALSE {
-        panic!("could not spawn server");
-    }
-    */
-
     let mut file_actions = unsafe {
         let mut file_actions = std::mem::zeroed::<libc::posix_spawn_file_actions_t>();
         if libc::posix_spawn_file_actions_init(&mut file_actions) != 0 {
@@ -92,11 +44,6 @@ fn spawn_server() {
         if libc::posix_spawnattr_setpgroup(&mut attributes, 0) != 0 {
             panic!("could not set pgroup to posix spawn attributes");
         }
-        /*
-        if libc::posix_spawnattr_setflags(&mut attributes, libc::POSIX_SPAWN_SETSIGMASK as _) != 0 {
-            panic!("could not set flags to posix spawn attributes");
-        }
-        */
         attributes
     };
 
@@ -200,57 +147,6 @@ pub(crate) fn run(
                 }
             }
         }
-        /*
-        Err(_) => match unsafe { libc::fork() } {
-            -1 => panic!("could not start server"),
-            0 => {
-                // TODO: maybe expand this code on mac?
-                // https://opensource.apple.com/source/Libc/Libc-1439.40.11/gen/FreeBSD/daemon.c.auto.html
-                //unsafe { libc::daemon(true as _, false as _) };
-                unsafe { libc::setsid() };
-
-                / *
-                match unsafe { libc::fork() } {
-                    -1 => panic!("could not daemonize"),
-                    0 => unsafe {
-                        if libc::setsid() < 0 {
-                            panic!("deu ruim no setsid");
-                        }
-                        let fd =
-                            libc::open("/dev/null\0".as_ptr() as *const _, libc::O_RDWR, 0);
-                        if fd >= 0 {
-                            if libc::dup2(fd, 0) < 0 {
-                                panic!("deu ruim aqui 0");
-                            }
-                            if libc::dup2(fd, 1) < 0 {
-                                panic!("deu ruim aqui 1");
-                            }
-                            if libc::dup2(fd, 2) < 0 {
-                                panic!("deu ruim aqui 2");
-                            }
-                            if fd > 2 {
-                                libc::close(fd);
-                            }
-                        }
-                    },
-                    _ => std::process::exit(0),
-                }
-                * /
-
-                server_fn(config, start_server(session_path));
-                let _ = fs::remove_file(session_path);
-            }
-            _ => loop {
-                match UnixStream::connect(session_path) {
-                    Ok(stream) => {
-                        client_fn(config.args, stream);
-                        break;
-                    }
-                    Err(_) => std::thread::sleep(Duration::from_millis(100)),
-                }
-            },
-        },
-        */
     }
 }
 
@@ -308,6 +204,8 @@ impl Terminal {
     }
 
     pub fn leave_raw_mode(&self) {
+        // TODO: enable kitty keyboard protocol
+        // https://sw.kovidgoyal.net/kitty/keyboard-protocol/
         //write_all_bytes(self.fd, b"\x1b[<u");
         unsafe { libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.original_state) };
     }
