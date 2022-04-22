@@ -197,7 +197,7 @@ pub fn main(config: ApplicationConfig) {
         }
     } else {
         if !pipe_exists(&pipe_path) {
-            fork();
+            spawn_server();
             while !pipe_exists(&pipe_path) {
                 std::thread::sleep(Duration::from_millis(100));
             }
@@ -456,7 +456,7 @@ fn global_unlock(handle: HANDLE) {
     unsafe { GlobalUnlock(handle) };
 }
 
-fn fork() {
+fn spawn_server() {
     let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
     startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
     startup_info.dwFlags = STARTF_USESTDHANDLES;
@@ -468,6 +468,7 @@ fn fork() {
 
     let mut client_command_line = unsafe { GetCommandLineW() };
     let mut command_line = Vec::with_capacity(1024);
+    command_line.extend_from_slice(&b" --server".map(|b| b as _));
     loop {
         unsafe {
             let short = std::ptr::read(client_command_line);
@@ -478,7 +479,6 @@ fn fork() {
             command_line.push(short);
         }
     }
-    command_line.extend_from_slice(&b" --server".map(|b| b as _));
     command_line.push(0);
 
     let result = unsafe {

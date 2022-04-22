@@ -153,7 +153,6 @@ impl Platform {
             command.stderr(Stdio::null());
             if let Ok(output) = command.output() {
                 if let Ok(output) = String::from_utf8(output.stdout) {
-                    text.clear();
                     text.push_str(&output);
                 }
             }
