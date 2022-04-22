@@ -33,7 +33,24 @@ const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 pub fn try_launching_debugger() {}
 
 pub fn main(config: ApplicationConfig) {
-    run(config, run_server, run_client);
+    if let Some(mut command) = crate::editor_utils::parse_process_command("pbpaste") {
+        command.stdin(std::process::Stdio::null());
+        command.stdout(std::process::Stdio::piped());
+        command.stderr(std::process::Stdio::null());
+        if let Ok(output) = command.output() {
+            let stdout = String::from_utf8_lossy(output.stdout);
+            eprintln!("stdout {}", &stdout);
+
+            let stderr = String::from_utf8_lossy(output.stderr);
+            eprintln!("stderr {}", &stderr);
+        } else {
+            eprintln!("deu ruim 2");
+        }
+    } else {
+        eprintln!("deu ruim 3");
+    }
+
+    //run(config, run_server, run_client);
 }
 
 fn errno() -> libc::c_int {
