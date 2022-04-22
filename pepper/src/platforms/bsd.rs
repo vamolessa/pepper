@@ -39,10 +39,10 @@ pub fn main(config: ApplicationConfig) {
         command.stderr(std::process::Stdio::null());
         match command.output() {
             Ok(output) => {
-                let stdout = String::from_utf8_lossy(output.stdout);
+                let stdout = String::from_utf8_lossy(&output.stdout);
                 eprintln!("stdout {}", &stdout);
 
-                let stderr = String::from_utf8_lossy(output.stderr);
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 eprintln!("stderr {}", &stderr);
             }
             Err(error) => eprintln!("deu ruim 2: {}", error),
