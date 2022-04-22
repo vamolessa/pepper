@@ -1,5 +1,8 @@
 # changelog
 
+## 0.26.1
+- improved `find_path_and_position_at` to account for paths followed by `:`
+
 ## 0.26.0
 - removed escaping expansion from `{...}` string blocks
 - unix now uses `posix_spawn` instead of `fork` to spawn a server for better reliability and to remove the need to use `libc::daemon` which is deprecated on macos

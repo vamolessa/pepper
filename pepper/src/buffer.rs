@@ -58,12 +58,34 @@ pub fn parse_path_and_position(text: &str) -> (&str, Option<BufferPosition>) {
 }
 
 pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<BufferPosition>) {
+    fn split_prefix(path: &str) -> (&str, &str) {
+        let mut chars = path.chars();
+        loop {
+            match chars.next() {
+                Some(':') => break,
+                None => return ("", path),
+                Some(c) => {
+                    if !c.is_ascii_alphabetic() {
+                        return ("", path);
+                    }
+                }
+            }
+        }
+        match chars.next() {
+            Some('/' | '\\') => {
+                let rest = chars.as_str();
+                (&path[..path.len() - rest.len()], rest)
+            }
+            _ => ("", path),
+        }
+    }
+
     let (left, right) = text.split_at(index);
     let from = match left.rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')')) {
         Some(i) => i + 1,
         None => 0,
     };
-    let to = match right.find(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')' | ':')) {
+    let to = match right.find(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '(' | ')')) {
         Some(i) => {
             if index + i - from == 1 {
                 text.len()
@@ -74,14 +96,16 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
         None => text.len(),
     };
     let path = &text[from..to];
-    match path.rfind(':') {
-        None | Some(1) => {
-            let position = text[to..].strip_prefix(':').and_then(|t| t.parse().ok());
-            (path, position)
-        }
+    let (prefix, rest) = split_prefix(path);
+    match rest.find(':') {
         Some(i) => {
+            let i = prefix.len() + i;
             let position = path[i + 1..].parse().ok();
             (&path[..i], position)
+        }
+        None => {
+            let position = text[to..].strip_prefix(':').and_then(|t| t.parse().ok());
+            (path, position)
         }
     }
 }
@@ -1841,6 +1865,25 @@ mod tests {
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 4))),
             find_path_and_position_at(text, 27),
+        );
+
+        let text = "c:/absolute/path/file:4:xxx";
+        let path = "c:/absolute/path/file";
+        assert_eq!(
+            (path, Some(BufferPosition::line_col(3, 0))),
+            find_path_and_position_at(text, 0),
+        );
+        assert_eq!(
+            (path, Some(BufferPosition::line_col(3, 0))),
+            find_path_and_position_at(text, 1),
+        );
+        assert_eq!(
+            (path, Some(BufferPosition::line_col(3, 0))),
+            find_path_and_position_at(text, 2),
+        );
+        assert_eq!(
+            (path, Some(BufferPosition::line_col(3, 0))),
+            find_path_and_position_at(text, 3),
         );
     }
 
