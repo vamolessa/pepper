@@ -156,10 +156,18 @@ impl Platform {
                     text.clear();
                     text.push_str(&output);
                 }
+                
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if !stderr.is_empty() {
+                    eprintln!("stderr: {}", &stderr);
+                }
+            } else {
+                eprintln!("command output error");
             }
         } else if let Some(read_from_clipboard) = self.read_from_clipboard_fn {
             read_from_clipboard(text);
         } else {
+            eprintln!("using internal clipboard");
             text.push_str(&self.internal_clipboard);
         }
     }
