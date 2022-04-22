@@ -60,6 +60,20 @@ fn spawn_server() {
     }
     argv.push(std::ptr::null());
 
+    let mut envp_owned = Vec::new();
+    for (key, value) in std::env::vars_os() {
+        let mut env = key;
+        env.push("=");
+        env.push(&value);
+        env.push("\0");
+        envp_owned.push(env);
+    }
+    let mut envp = Vec::new();
+    for var in &envp_owned {
+        envp.push(var.as_bytes().as_ptr());
+    }
+    envp.push(std::ptr::null());
+
     unsafe {
         let result = libc::posix_spawn(
             std::ptr::null_mut(),
@@ -67,7 +81,7 @@ fn spawn_server() {
             &file_actions,
             &attributes,
             argv.as_ptr() as _,
-            std::ptr::null(),
+            envp.as_ptr() as _,
         );
         if result != 0 {
             panic!("could not spawn server");

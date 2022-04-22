@@ -466,19 +466,44 @@ fn spawn_server() {
 
     let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
 
-    let mut client_command_line = unsafe { GetCommandLineW() };
-    let mut command_line = Vec::with_capacity(1024);
-    command_line.extend_from_slice(&b" --server".map(|b| b as _));
-    loop {
-        unsafe {
-            let short = std::ptr::read(client_command_line);
-            if short == 0 {
+    let client_command_line = unsafe {
+        let command_line_start = GetCommandLineW();
+        let mut command_line_end = command_line_start;
+        loop {
+            if std::ptr::read(command_line_end) == 0 {
                 break;
             }
-            client_command_line = client_command_line.offset(1);
-            command_line.push(short);
+            command_line_end = command_line_end.offset(1);
         }
+        let len = command_line_end.offset_from(command_line_start);
+        std::slice::from_raw_parts(command_line_start, len as _)
+    };
+
+    if client_command_line.is_empty() {
+        panic!("executable command line was empty");
     }
+    let application_name_len = if client_command_line[0] == b'"' as _ {
+        match client_command_line[1..]
+            .iter()
+            .position(|&s| s == b'"' as _)
+        {
+            Some(i) => i + 2,
+            None => client_command_line.len(),
+        }
+    } else {
+        match client_command_line.iter().position(|&s| s == b' ' as _) {
+            Some(i) => i,
+            None => client_command_line.len(),
+        }
+    };
+    let (client_application_name, client_command_line) =
+        client_command_line.split_at(application_name_len);
+
+    let server_flag = b" --server";
+    let mut command_line = Vec::with_capacity(client_command_line.len() + server_flag.len());
+    command_line.extend_from_slice(client_application_name);
+    command_line.extend_from_slice(&server_flag.map(|b| b as _));
+    command_line.extend_from_slice(client_command_line);
     command_line.push(0);
 
     let result = unsafe {

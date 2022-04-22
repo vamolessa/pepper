@@ -3,7 +3,7 @@
 ## 0.26.0
 - removed escaping expansion from `{...}` string blocks
 - unix now uses `posix_spawn` instead of `fork` to spawn a server for better reliability and to remove the need to use `libc::daemon` which is deprecated on macos
-- fixed bug on windows which could prevent the server from running when opening files using `--` cli positional args
+- fixed bug on windows that prevented the server from spawning when opening files using `--` cli positional args
 
 ## 0.25.0
 - new variable expansion mechanism when evaluating commands
