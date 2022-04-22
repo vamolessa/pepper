@@ -21,4 +21,4 @@ name = "pepper"
 path = "src/main.rs"
 
 [dependencies]
-pepper = { path = "../pepper", version = "0.24" }
+pepper = { path = "../pepper", version = "0.26" }
