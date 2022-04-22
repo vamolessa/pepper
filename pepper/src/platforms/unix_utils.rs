@@ -75,7 +75,42 @@ pub(crate) fn run(
                 0 => {
                     // TODO: maybe expand this code on mac?
                     // https://opensource.apple.com/source/Libc/Libc-1439.40.11/gen/FreeBSD/daemon.c.auto.html
-                    unsafe { libc::daemon(true as _, false as _) };
+                    //unsafe { libc::daemon(true as _, false as _) };
+
+                    unsafe {
+                    if libc::setsid() < 0 {
+                        panic!("deu ruim no setsid");
+                    }
+                    }
+
+                    /*
+                    match unsafe { libc::fork() } {
+                        -1 => panic!("could not daemonize"),
+                        0 => unsafe {
+                            if libc::setsid() < 0 {
+                                panic!("deu ruim no setsid");
+                            }
+                            let fd =
+                                libc::open("/dev/null\0".as_ptr() as *const _, libc::O_RDWR, 0);
+                            if fd >= 0 {
+                                if libc::dup2(fd, 0) < 0 {
+                                    panic!("deu ruim aqui 0");
+                                }
+                                if libc::dup2(fd, 1) < 0 {
+                                    panic!("deu ruim aqui 1");
+                                }
+                                if libc::dup2(fd, 2) < 0 {
+                                    panic!("deu ruim aqui 2");
+                                }
+                                if fd > 2 {
+                                    libc::close(fd);
+                                }
+                            }
+                        },
+                        _ => std::process::exit(0),
+                    }
+                    */
+
                     server_fn(config, start_server(session_path));
                     let _ = fs::remove_file(session_path);
                 }
@@ -458,3 +493,4 @@ impl io::Write for ClientOutput {
         Ok(())
     }
 }
+
