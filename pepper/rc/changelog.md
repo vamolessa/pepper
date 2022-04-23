@@ -2,6 +2,7 @@
 
 ## 0.26.1
 - improved `find_path_and_position_at` to account for paths followed by `:`
+- unix: fix not being able to spawn server if the application was installed to a folder in path
 
 ## 0.26.0
 - removed escaping expansion from `{...}` string blocks

@@ -75,7 +75,7 @@ fn spawn_server() {
     envp.push(std::ptr::null());
 
     unsafe {
-        let result = libc::posix_spawn(
+        let result = libc::posix_spawnp(
             std::ptr::null_mut(),
             argv[0] as _,
             &file_actions,
