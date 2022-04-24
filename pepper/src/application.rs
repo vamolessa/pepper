@@ -208,28 +208,11 @@ impl ServerApplication {
                 PlatformEvent::ProcessExit { tag } => {
                     match tag {
                         ProcessTag::Ignored => (),
-                        ProcessTag::Buffer(index) => {
-                            let continuation = self.ctx.editor.buffers.on_process_exit(
-                                &mut self.ctx.editor.word_database,
-                                index,
-                                &mut self.ctx.editor.events,
-                            );
-
-                            let continuation =
-                                self.ctx.editor.string_pool.acquire_with(continuation);
-                            let result = CommandManager::eval(&mut self.ctx, None, &continuation);
-                            let flow = CommandManager::unwrap_eval_result(
-                                &mut self.ctx,
-                                result,
-                                &continuation,
-                                None,
-                            );
-                            self.ctx.editor.string_pool.release(continuation);
-
-                            if let EditorFlow::QuitAll = flow {
-                                self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
-                            }
-                        }
+                        ProcessTag::Buffer(index) => self.ctx.editor.buffers.on_process_exit(
+                            &mut self.ctx.editor.word_database,
+                            index,
+                            &mut self.ctx.editor.events,
+                        ),
                         ProcessTag::PickerEntries => {
                             self.ctx.editor.picker_entries_process_buf.on_process_exit(
                                 &mut self.ctx.editor.picker,
