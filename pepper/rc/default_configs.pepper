@@ -11,7 +11,7 @@ map normal o dgli<enter>
 map normal O dgii<enter><up>
 map normal J djgivkgli<space><esc>
 
-map normal ! :<space>-run-command<enter>
+map normal ! :<space>-spawn<enter>
 map normal | :<space>-replace-with-output<enter>
 
 map normal <space>o :<space>-find-file<enter>
@@ -28,8 +28,8 @@ command ra @{ reopen-all@arg(!) }
 command c @{ close@arg(!) }
 command ca @{ close-all@arg(!) }
 
-command -run-command @{
-    readline "run-command:" @{
+command -spawn @{
+    readline "spawn:" @{
         spawn "@readline-input()"
     }
 }
