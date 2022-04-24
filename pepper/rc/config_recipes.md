@@ -47,6 +47,29 @@ map normal <c-s> :<space>save<enter>
 If you wish to see all the keybindings that are created by default, you can see the builtin
 [default bindings](default_bindings.pepper).
 
+## `save-quit` and `save-quit-all` commands
+You can have a 'save and quit' command and a 'save all and quit' command by adding these lines to your pepper config:
+
+``` 
+# a command that calls `save` passing it all of its arguments and then calls quit
+#
+# if there's still unsaved work, the `quit` call will fail (unless you call it with `!`)
+command save-quit @{
+    save @arg(*)
+    quit@arg(!)
+}
+# `sq` alias
+command sq @{ save-quit@arg(!) @arg(*) }
+
+# a command that calls `save-all` and then calls `quit`
+command save-quit-all @{
+    save-all
+    quit@arg(!)
+}
+# `sqa` alias
+command sqa @{ save-quit-all@arg(!) @arg(*) }
+```
+
 ## fuzzy file find
 Pepper ships with a simple fuzzy file finder (bound to `<space>o`) that uses a file finder binary available on each platform
 (`find` on unix and `dir` on windows).
@@ -56,10 +79,10 @@ For example, if you wish to use [`fd`](https://github.com/sharkdp/fd) instead, y
 
 ```
 command -find-file @{
-	picker-entries-from-lines "fd -tf ."
-	pick "open:" @{
-		open "@picker-entry()"
-	}
+    picker-entries-from-lines "fd -tf ."
+    pick "open:" @{
+        open "@picker-entry()"
+    }
 }
 map normal <space>o :<space>-find-file<enter>
 ```
@@ -77,11 +100,11 @@ For example, if you wish to use [`ripgrep`](https://github.com/BurntSushi/ripgre
 
 ```
 command -find-pattern @{
-	readline "find:" @{
-		open scratch "@readline-input().refs"
-		enqueue-keys aad
-		replace-with-output 'rg --no-ignore-global --line-number "@readline-input()"'
-	}
+    readline "find:" @{
+        open scratch "@readline-input().refs"
+        enqueue-keys aad
+        replace-with-output 'rg --no-ignore-global --line-number "@readline-input()"'
+    }
 }
 ```
 
