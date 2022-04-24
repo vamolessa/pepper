@@ -70,6 +70,18 @@ command save-quit-all @{
 command sqa @{ save-quit-all@arg(!) @arg(*) }
 ```
 
+## auto close brackets
+Add this snippet your pepper config to auto close these brackets when insert mode:
+
+```
+map insert "(" "()<left>"
+map insert "[" "[]<left>"
+map insert "{" "{}<left>"
+map insert "'" "''<left>"
+map insert '"' '""<left>'
+map insert "`" "``<left>"
+```
+
 ## fuzzy file find
 Pepper ships with a simple fuzzy file finder (bound to `<space>o`) that uses a file finder binary available on each platform
 (`find` on unix and `dir` on windows).

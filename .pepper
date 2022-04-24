@@ -35,3 +35,4 @@ eval on linux @{
         replace-with-output "sh -c 'cargo test --workspace 2<greater>&1'"
     }
 }
+
