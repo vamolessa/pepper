@@ -10,7 +10,7 @@ use crate::{
     editor::{Editor, EditorContext, EditorFlow},
     editor_utils::MessageKind,
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
-    platform::{drop_event, Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
+    platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
     serialization::{DeserializeError, Serialize},
     ui, Args, ResourceFile,
@@ -119,11 +119,6 @@ impl ServerApplication {
                     self.ctx.clients.on_client_left(handle);
                     if self.ctx.clients.iter().next().is_none() {
                         self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
-
-                        for event in events {
-                            drop_event(&mut self.ctx.platform.buf_pool, event);
-                        }
-                        break;
                     }
                 }
                 PlatformEvent::ConnectionOutput { handle, buf } => {
@@ -143,16 +138,13 @@ impl ServerApplication {
                                     .requests
                                     .enqueue(PlatformRequest::WriteToClient { handle, buf });
                             }
-                            EditorFlow::Quit => {
-                                self.ctx
-                                    .platform
-                                    .requests
-                                    .enqueue(PlatformRequest::CloseClient { handle });
-                                break;
-                            }
+                            EditorFlow::Quit => self
+                                .ctx
+                                .platform
+                                .requests
+                                .enqueue(PlatformRequest::CloseClient { handle }),
                             EditorFlow::QuitAll => {
-                                self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
-                                break;
+                                self.ctx.platform.requests.enqueue(PlatformRequest::Quit)
                             }
                         }
                     }
@@ -216,11 +208,28 @@ impl ServerApplication {
                 PlatformEvent::ProcessExit { tag } => {
                     match tag {
                         ProcessTag::Ignored => (),
-                        ProcessTag::Buffer(index) => self.ctx.editor.buffers.on_process_exit(
-                            &mut self.ctx.editor.word_database,
-                            index,
-                            &mut self.ctx.editor.events,
-                        ),
+                        ProcessTag::Buffer(index) => {
+                            let continuation = self.ctx.editor.buffers.on_process_exit(
+                                &mut self.ctx.editor.word_database,
+                                index,
+                                &mut self.ctx.editor.events,
+                            );
+
+                            let continuation =
+                                self.ctx.editor.string_pool.acquire_with(continuation);
+                            let result = CommandManager::eval(&mut self.ctx, None, &continuation);
+                            let flow = CommandManager::unwrap_eval_result(
+                                &mut self.ctx,
+                                result,
+                                &continuation,
+                                None,
+                            );
+                            self.ctx.editor.string_pool.release(continuation);
+
+                            if let EditorFlow::QuitAll = flow {
+                                self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
+                            }
+                        }
                         ProcessTag::PickerEntries => {
                             self.ctx.editor.picker_entries_process_buf.on_process_exit(
                                 &mut self.ctx.editor.picker,
@@ -393,3 +402,4 @@ where
         self.restore_screen();
     }
 }
+

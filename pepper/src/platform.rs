@@ -229,19 +229,6 @@ impl BufPool {
     }
 }
 
-pub fn drop_event(buf_pool: &mut BufPool, event: PlatformEvent) {
-    match event {
-        PlatformEvent::ConnectionOutput { buf, .. } | PlatformEvent::ProcessOutput { buf, .. } => {
-            buf_pool.release(buf);
-        }
-        PlatformEvent::Idle
-        | PlatformEvent::ConnectionOpen { .. }
-        | PlatformEvent::ConnectionClose { .. }
-        | PlatformEvent::ProcessSpawned { .. }
-        | PlatformEvent::ProcessExit { .. } => (),
-    }
-}
-
 pub fn drop_request(buf_pool: &mut BufPool, request: PlatformRequest) {
     match request {
         PlatformRequest::WriteToClient { buf, .. }
