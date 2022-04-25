@@ -1,4 +1,4 @@
-use std::{path::Path, process::Stdio};
+use std::{path::Path, process::Stdio, env};
 
 use crate::{
     buffer::{parse_path_and_position, BufferProperties, BufferWriteError},
@@ -405,6 +405,19 @@ pub fn register_commands(commands: &mut CommandManager) {
         let register = ctx.editor.registers.get_mut(key);
         register.clear();
         register.push_str(value);
+        Ok(())
+    });
+
+    r("set-env", &[], |_, io| {
+        let key = io.args.next()?;
+        let value = io.args.next()?;
+        io.args.assert_empty()?;
+
+        if key.is_empty() || key.contains('=') {
+            return Err(CommandError::InvalidEnvironmentVariable);
+        }
+
+        env::set_var(key, value);
         Ok(())
     });
 

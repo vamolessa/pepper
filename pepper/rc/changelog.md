@@ -1,5 +1,8 @@
 # changelog
 
+# 0.27.0
+- added `set-env` command to change the editor's environment variables
+
 ## 0.26.1
 - improved `find_path_and_position_at` to account for paths followed by `:`
 - unix: fix not being able to spawn server if the application was installed to a folder in path

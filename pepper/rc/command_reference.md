@@ -173,6 +173,10 @@ Enqueue keys as if they were typed in the current client.
 Set the content of register `<key>` to `<value>`.
 - usage: `set-register <key> <value>`
 
+## `set-env`
+Set the value of the environment variable `<key>` to `<value>`
+- usage: `set-env <key> <value>`
+
 ## `readline`
 Enters readline mode and once a line is read, executes the commands in `<continuation>`.
 Optionally pass a `<prompt>` which displays while waiting for user input.
