@@ -106,7 +106,7 @@ impl ServerApplication {
     where
         I: Iterator<Item = PlatformEvent>,
     {
-        while let Some(event) = events.next() {
+        for event in events {
             match event {
                 PlatformEvent::Idle => {
                     self.ctx.editor.on_idle();
