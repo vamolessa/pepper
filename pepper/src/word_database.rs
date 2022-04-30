@@ -81,16 +81,11 @@ struct Word {
     count: usize,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Hash)]
 struct WordHash(u64);
 impl WordHash {
     pub fn new(word: &str) -> Self {
         Self(hash_bytes(word.as_bytes()))
-    }
-}
-impl Hash for WordHash {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.0);
     }
 }
 
