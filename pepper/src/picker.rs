@@ -50,7 +50,7 @@ impl Picker {
         match &mut self.cursor {
             Some(cursor) => {
                 let mut index = *cursor as isize;
-                index = index + offset;
+                index += offset;
                 index = index.max(0);
 
                 *cursor = end_index.min(index as _);
