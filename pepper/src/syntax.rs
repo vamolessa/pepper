@@ -452,9 +452,9 @@ mod tests {
         assert_eq!(expect, iter.next().cloned());
     }
 
-    fn highlighted_tokens<'a>(
-        highlighted: &'a HighlightedBuffer,
-    ) -> impl 'a + Iterator<Item = &'a Token> {
+    fn highlighted_tokens(
+        highlighted: &HighlightedBuffer,
+    ) -> impl Iterator<Item = &Token> {
         highlighted.lines[..highlighted.highlighted_len]
             .iter()
             .map(|l| l.tokens.iter())
