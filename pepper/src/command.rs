@@ -206,6 +206,7 @@ impl<'a> Iterator for CommandIter<'a> {
 
 pub struct CommandToken<'a> {
     pub slice: &'a str,
+    pub is_simple: bool,
     pub can_expand_variables: bool,
     pub has_escaping: bool,
 }
@@ -290,6 +291,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                             self.0 = rest;
                             return Some(CommandToken {
                                 slice,
+                                is_simple: false,
                                 can_expand_variables,
                                 has_escaping,
                             });
@@ -299,6 +301,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                             self.0 = rest;
                             return Some(CommandToken {
                                 slice,
+                                is_simple: false,
                                 can_expand_variables,
                                 has_escaping: false,
                             });
@@ -312,6 +315,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                             self.0 = rest;
                             return Some(CommandToken {
                                 slice,
+                                is_simple: false,
                                 can_expand_variables,
                                 has_escaping: false,
                             });
@@ -328,6 +332,7 @@ impl<'a> Iterator for CommandTokenizer<'a> {
                     self.0 = rest;
                     return Some(CommandToken {
                         slice,
+                        is_simple: true,
                         can_expand_variables,
                         has_escaping: false,
                     });
@@ -695,7 +700,7 @@ fn expand_variables<'a>(
         }
     }
 
-    for token in CommandTokenizer(text) {
+    'tokens: for token in CommandTokenizer(text) {
         if !token.can_expand_variables {
             write_escaped(token.slice, token.has_escaping, output);
             output.push('\0');
@@ -739,7 +744,7 @@ fn expand_variables<'a>(
 
             rest = &rest[args_skip + variable_args.len() + 1..];
 
-            expansions::write_variable_expansion(
+            let result = expansions::write_variable_expansion(
                 ctx,
                 client_handle,
                 CommandArgs(args),
@@ -747,7 +752,16 @@ fn expand_variables<'a>(
                 variable_name,
                 variable_args,
                 output,
-            )?;
+            );
+            match result {
+                Ok(()) => (),
+                Err(expansions::ExpansionError::IgnoreExpansion) => {
+                    if token.is_simple {
+                        continue 'tokens;
+                    }
+                }
+                Err(error) => return Err(error),
+            }
         }
 
         output.push('\0');
@@ -1168,6 +1182,7 @@ mod tests {
         assert_expansion("\\\0", &ctx, "'\\\\'");
 
         let mut expanded = String::new();
+
         expanded.clear();
         let r = expand_variables(
             &ctx,
@@ -1179,6 +1194,19 @@ mod tests {
         );
         assert!(r.is_ok());
         assert_eq!("arg0\0arg1\0arg2\0", &expanded);
+
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "",
+            false,
+            "@arg(*)",
+            &mut expanded,
+        );
+        assert!(r.is_ok());
+        assert_eq!("\0", &expanded);
+
         expanded.clear();
         let r = expand_variables(
             &ctx,
@@ -1190,6 +1218,7 @@ mod tests {
         );
         assert!(r.is_ok());
         assert_eq!("arg0\0", &expanded);
+
         expanded.clear();
         let r = expand_variables(
             &ctx,
@@ -1201,6 +1230,7 @@ mod tests {
         );
         assert!(r.is_ok());
         assert_eq!("arg1\0", &expanded);
+
         expanded.clear();
         let r = expand_variables(
             &ctx,
@@ -1212,6 +1242,7 @@ mod tests {
         );
         assert!(r.is_ok());
         assert_eq!("arg2\0", &expanded);
+
         expanded.clear();
         let r = expand_variables(
             &ctx,

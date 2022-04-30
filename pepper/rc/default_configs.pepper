@@ -21,8 +21,8 @@ command h @{ help @arg(*) }
 command q @{ quit@arg(!) }
 command qa @{ quit-all@arg(!) }
 command o @{ open @arg(*) }
-command s @{ save@arg(!) }
-command sa @{ save-all@arg(!) }
+command s @{ save @arg(*) }
+command sa @{ save-all }
 command r @{ reopen@arg(!) }
 command ra @{ reopen-all@arg(!) }
 command c @{ close@arg(!) }

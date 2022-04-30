@@ -11,6 +11,7 @@ use crate::{
 };
 
 pub enum ExpansionError {
+    IgnoreExpansion,
     ArgumentNotEmpty,
     InvalidArgIndex,
     InvalidBufferId,
@@ -20,6 +21,7 @@ pub enum ExpansionError {
 impl fmt::Display for ExpansionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::IgnoreExpansion => unreachable!(),
             Self::ArgumentNotEmpty => f.write_str("argument not empty"),
             Self::InvalidArgIndex => f.write_str("invalid arg index"),
             Self::InvalidBufferId => f.write_str("invalid buffer id"),
@@ -50,7 +52,7 @@ pub fn write_variable_expansion<'ctx>(
             "*" => {
                 let args = match command_args.0.strip_suffix('\0') {
                     Some(args) => args,
-                    None => command_args.0,
+                    None => return Err(ExpansionError::IgnoreExpansion),
                 };
                 output.push_str(args);
             }

@@ -2,6 +2,8 @@
 
 # 0.27.0
 - added `set-env` command to change the editor's environment variables
+- fix `@arg(*)` expanding into no arguments if it's empty
+- fix `save` command alias `s` not taking arguments as it should
 
 ## 0.26.1
 - improved `find_path_and_position_at` to account for paths followed by `:`
