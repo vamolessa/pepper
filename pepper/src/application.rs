@@ -48,7 +48,7 @@ pub struct ServerApplication {
 }
 impl ServerApplication {
     pub fn new(config: ApplicationConfig) -> Option<Self> {
-        let current_dir = env::current_dir().unwrap_or(PathBuf::new());
+        let current_dir = env::current_dir().unwrap_or_default();
         let mut ctx = EditorContext {
             editor: Editor::new(current_dir),
             platform: Platform::default(),
@@ -385,4 +385,3 @@ where
         self.restore_screen();
     }
 }
-
