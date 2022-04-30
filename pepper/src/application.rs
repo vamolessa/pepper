@@ -102,7 +102,7 @@ impl ServerApplication {
         })
     }
 
-    pub fn update<I>(&mut self, mut events: I)
+    pub fn update<I>(&mut self, events: I)
     where
         I: Iterator<Item = PlatformEvent>,
     {
