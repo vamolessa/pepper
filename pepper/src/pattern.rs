@@ -1,4 +1,4 @@
-use std::{fmt, num::TryFromIntError, ops::Range, str::Chars};
+use std::{fmt, num::TryFromIntError, ops::Range, str::Chars, cmp::Ordering};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {
@@ -917,10 +917,10 @@ impl<'a> PatternCompiler<'a> {
         }
 
         fn fix_jump(jump: &mut Jump, index: usize, removed_jump: Jump) {
-            if jump.0 as usize > index {
-                jump.0 -= 1;
-            } else if jump.0 as usize == index {
-                *jump = removed_jump;
+            match (jump.0 as usize).cmp(&index) {
+                Ordering::Greater => jump.0 -= 1,
+                Ordering::Equal => *jump = removed_jump,
+                Ordering::Less => ()
             }
         }
 
