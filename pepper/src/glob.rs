@@ -247,7 +247,7 @@ fn matches_recursive<'data, 'cont>(
                 if matches_recursive(ops, texts, path.clone(), continuation) {
                     return true;
                 }
-                if !path.any(|c| std::path::is_separator(c)) {
+                if !path.any(std::path::is_separator) {
                     return false;
                 }
             },
