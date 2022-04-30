@@ -457,8 +457,7 @@ mod tests {
     ) -> impl Iterator<Item = &Token> {
         highlighted.lines[..highlighted.highlighted_len]
             .iter()
-            .map(|l| l.tokens.iter())
-            .flatten()
+            .flat_map(|l| l.tokens.iter())
     }
 
     fn assert_token(slice: &str, kind: TokenKind, line: &str, token: &Token) {
