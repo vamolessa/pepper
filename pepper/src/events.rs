@@ -482,7 +482,7 @@ where
     S: Serializer,
 {
     let mut flags = 0u8;
-    flags |= (key.shift as u8) << 0;
+    flags |= key.shift as u8;
     flags |= (key.control as u8) << 1;
     flags |= (key.alt as u8) << 2;
     flags.serialize(serializer);
