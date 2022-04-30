@@ -671,7 +671,7 @@ impl BufferContent {
             let mut line_count = 0 as BufferPositionIndex;
             let mut lines = text.lines();
             if let Some(line) = lines.next() {
-                position_line.push_text(position_display_len, &line);
+                position_line.push_text(position_display_len, line);
             }
             for line_text in lines {
                 line_count += 1;
