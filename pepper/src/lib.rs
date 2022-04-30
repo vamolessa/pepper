@@ -143,7 +143,7 @@ impl Args {
                     }
                 }
                 "--" => {
-                    while let Some(arg) = args.next() {
+                    for arg in args.by_ref() {
                         let arg = arg_to_str(&arg);
                         parsed.files.push(arg.into());
                     }
