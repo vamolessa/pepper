@@ -603,7 +603,7 @@ impl BufferContent {
         W: io::Write,
     {
         for line in &self.lines {
-            write!(write, "{}\n", line.as_str())?;
+            writeln!(write, "{}", line.as_str())?;
         }
         Ok(())
     }
