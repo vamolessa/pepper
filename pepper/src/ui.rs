@@ -339,7 +339,7 @@ fn draw_buffer_view(
                 TokenKind::Whitespace
             } else {
                 if !last_line_token.contains(char_index as _) {
-                    while let Some(token) = line_tokens.next() {
+                    for token in line_tokens.by_ref() {
                         if token.contains(char_index as _) {
                             last_line_token = token.clone();
                             break;
