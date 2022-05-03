@@ -17,8 +17,21 @@ lsp "lsp-server-command" "**.ext" my-lsp-server-log.txt
 
 You can then open the lsp log at any time with the command `lsp-open-log`.
 
-You can check a full example with many LSP server configured in my
-[my config repository](https://github.com/vamolessa/pepper-config/blob/master/init.pp#L3).
+### Example of LSP server configurations
+
+```
+# rust-analyzer (rust)
+lsp rust-analyzer "**.rs"
+
+# clangd (c/cpp)
+lsp "clangd --offset-encoding=utf-8" "**.{c,cpp,h,hpp}"
+
+# omnisharp (c#)
+lsp "omnisharp -lsp --encoding utf-8" "**.cs"
+
+# zls (zig)
+lsp zls "**.zig"
+```
 
 ## bindings
 
