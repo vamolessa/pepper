@@ -13,7 +13,7 @@ That is: `@"..."`, `@'...'` or `@{...}`.
 ## `arg`
 When used inside a command declared using the `command` command, expands to the `<index>`th argument it received whell called.
 If instead of a zero-based index, its argument is `!`, it expands to `!` if the command was called with a bang
-(that is, `command! ...`) and to `` (empty) otherwise.
+(that is, `command! ...`) and to ` ` (empty) otherwise.
 Also, this expansion's argument can be `*` which will make it expand to all arguments passed to the called command.
 In general, `@arg(*)` do not play well inside quoted arguments and are better used when creating command aliases.
 That is, something akin to `command my-alias @{ my-alised-command@arg(!) @arg(*) }`.
@@ -38,7 +38,7 @@ The buffer path as it appears in the statusbar of the current buffer or of the b
 If there is no such buffer, it results in an empty expansion.
 - usage: `@buffer-path()` `@buffer-path(<id>)`
 
-## `buffer-absolute-path
+## `buffer-absolute-path`
 The absolute path of the current buffer or of the buffer with id `<id>`.
 If there is no such buffer, it results in an empty expansion.
 - usage: `@buffer-absolute-path()` `@buffer-absolute-path(<id>)`
@@ -94,4 +94,3 @@ If there is no such environment variable, it results in an empty expansion.
 ## `pid`
 The process id of the server.
 - usage: `@pid()`
-
