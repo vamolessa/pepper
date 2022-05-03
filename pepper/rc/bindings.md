@@ -64,7 +64,8 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | --- | --- |
 | `cc` | swap the anchor and position of all cursors |
 | `cC`, `CC` | orientate all cursors such that their anchors come before their positions |
-| `cd` | clear all extra cursors and keep only the main cursor |
+| `cd` | remove main cursor if there's more than one cursor |
+| `cD`, `CD` | clear all extra cursors and keep only the main cursor |
 | `cl` | splits all selection in lines |
 | `cj`, `ck` | add a new cursor to the line bellow/above the bottom/top cursor |
 | `cn`, `cp` | set next/previous cursor as main cursor |

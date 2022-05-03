@@ -4,6 +4,9 @@
 - added `set-env` command to change the editor's environment variables
 - fix `@arg(*)` expanding into no arguments if it's empty
 - fix `save` command alias `s` not taking arguments as it should
+- changed `cd` binding (delete all cursors except the main cursor) to `CD`
+- added new `cd` binding that only deletes the main cursor
+- added lsp configuration examples
 
 ## 0.26.1
 - improved `find_path_and_position_at` to account for paths followed by `:`

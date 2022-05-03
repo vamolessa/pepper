@@ -1337,7 +1337,7 @@ impl State {
                     }
                 }
                 Key {
-                    code: KeyCode::Char('d'),
+                    code: KeyCode::Char('D'),
                     control: false,
                     alt: false,
                     ..
@@ -1347,6 +1347,22 @@ impl State {
                     cursors.clear();
                     cursors.add(main_cursor);
                     state.movement_kind = CursorMovementKind::PositionAndAnchor;
+                }
+                Key {
+                    code: KeyCode::Char('d'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
+                    let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                    if !cursors[..].is_empty() {
+                        let main_cursor_position = cursors.main_cursor().position;
+                        let main_cursor_index = cursors.main_cursor_index();
+                        cursors.swap_remove(main_cursor_index);
+                        cursors.set_main_cursor_near_position(main_cursor_position);
+
+                        state.movement_kind = CursorMovementKind::PositionAndAnchor;
+                    }
                 }
                 Key {
                     code: KeyCode::Char('v'),
