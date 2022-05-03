@@ -13,11 +13,14 @@ use crate::{
     plugin::PluginHandle,
 };
 
-mod builtin;
+mod builtins;
+mod expansions;
 
 const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandError {
+    InvalidMacroName,
+    ExpansionError(expansions::ExpansionError),
     NoSuchCommand,
     TooManyArguments,
     TooFewArguments,
@@ -30,8 +33,12 @@ pub enum CommandError {
     ConfigError(ParseConfigError),
     NoSuchColor,
     InvalidColorValue,
+    InvalidModeKind,
     KeyMapError(ParseKeyMapError),
     KeyParseError(KeyParseAllError),
+    InvalidRegisterKey,
+    InvalidEnvironmentVariable,
+    InvalidTokenKind,
     PatternError(PatternError),
     InvalidGlob(InvalidGlobError),
     OtherStatic(&'static str),
@@ -40,26 +47,37 @@ pub enum CommandError {
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::InvalidMacroName => f.write_str("invalid command name"),
+            Self::ExpansionError(error) => write!(f, "expansion error: {}", error),
             Self::NoSuchCommand => f.write_str("no such command"),
             Self::TooManyArguments => f.write_str("too many arguments"),
             Self::TooFewArguments => f.write_str("too few arguments"),
             Self::NoTargetClient => f.write_str("no target client"),
             Self::NoBufferOpened => f.write_str("no buffer opened"),
             Self::UnsavedChanges => f.write_str("unsaved changes"),
-            Self::BufferReadError(error) => error.fmt(f),
-            Self::BufferWriteError(error) => error.fmt(f),
+            Self::BufferReadError(error) => write!(f, "buffer read error: {}", error),
+            Self::BufferWriteError(error) => write!(f, "buffer write error: {}", error),
             Self::NoSuchBufferProperty => f.write_str("no such buffer property"),
-            Self::ConfigError(error) => error.fmt(f),
+            Self::ConfigError(error) => write!(f, "config error: {}", error),
             Self::NoSuchColor => f.write_str("no such color"),
             Self::InvalidColorValue => f.write_str("invalid color value"),
-            Self::KeyMapError(error) => error.fmt(f),
-            Self::KeyParseError(error) => error.fmt(f),
-            Self::PatternError(error) => error.fmt(f),
-            Self::InvalidGlob(error) => error.fmt(f),
+            Self::InvalidModeKind => f.write_str("invalid mode"),
+            Self::KeyMapError(error) => write!(f, "key map error: {}", error),
+            Self::KeyParseError(error) => write!(f, "key parse error: {}", error),
+            Self::InvalidRegisterKey => f.write_str("invalid register key"),
+            Self::InvalidEnvironmentVariable => f.write_str("invalid environment variable"),
+            Self::InvalidTokenKind => f.write_str("invalid token kind"),
+            Self::PatternError(error) => write!(f, "pattern error: {}", error),
+            Self::InvalidGlob(error) => write!(f, "glob error: {}", error),
             Self::OtherStatic(error) => f.write_str(error),
             Self::OtherOwned(error) => f.write_str(&error),
         }
     }
+}
+
+pub struct CommandErrorWithContext {
+    pub error: CommandError,
+    pub command_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,10 +88,13 @@ pub enum CompletionSource {
     Custom(&'static [&'static str]),
 }
 
-pub struct CommandArgs<'command>(CommandTokenizer<'command>);
+pub struct CommandArgs<'command>(pub(crate) &'command str);
 impl<'command> CommandArgs<'command> {
     pub fn try_next(&mut self) -> Option<&'command str> {
-        self.0.next()
+        let i = self.0.find('\0')?;
+        let next = &self.0[..i];
+        self.0 = &self.0[i + 1..];
+        Some(next)
     }
 
     pub fn next(&mut self) -> Result<&'command str, CommandError> {
@@ -153,87 +174,169 @@ impl<'a> CommandIO<'a> {
     }
 }
 
+pub struct CommandIter<'a>(pub &'a str);
+impl<'a> Iterator for CommandIter<'a> {
+    type Item = &'a str;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            self.0 = self.0.trim_start_matches(&[' ', '\t', '\n', '\r']);
+            if !self.0.starts_with('#') {
+                break;
+            }
+            match self.0.find('\n') {
+                Some(i) => self.0 = &self.0[i + 1..],
+                None => self.0 = "",
+            }
+        }
+
+        let mut tokens = CommandTokenizer(self.0);
+        tokens.next()?;
+        while tokens.next().is_some() {}
+        let len = tokens.0.as_ptr() as usize - self.0.as_ptr() as usize;
+        if len == 0 {
+            return None;
+        }
+
+        let command = &self.0[..len];
+        self.0 = tokens.0;
+
+        Some(command)
+    }
+}
+
+pub struct CommandToken<'a> {
+    pub slice: &'a str,
+    pub is_simple: bool,
+    pub can_expand_variables: bool,
+    pub has_escaping: bool,
+}
+
 #[derive(Clone)]
 pub struct CommandTokenizer<'a>(pub &'a str);
 impl<'a> Iterator for CommandTokenizer<'a> {
-    type Item = &'a str;
+    type Item = CommandToken<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         fn next_literal_end(s: &str) -> usize {
-            match s.find(&[' ', '\t'][..]) {
+            match s.find(&[' ', '\t', '\n', '\r', '"', '\'', '{', '}', '#']) {
+                Some(0) => 1,
                 Some(i) => i,
                 None => s.len(),
             }
         }
 
-        fn parse_balanced_token(s: &str) -> Option<(&str, &str)> {
+        fn parse_string_token(delim: char, s: &str) -> Option<(&str, &str, bool)> {
             let mut chars = s.chars();
-            let mut depth = 0;
+            let mut has_escaping = false;
             loop {
                 match chars.next()? {
-                    '=' => depth += 1,
-                    '[' => break,
-                    _ => return None,
-                }
-            }
-            let start = chars.as_str().as_ptr() as usize;
-            let mut end = start;
-            let mut ending = false;
-            let mut matched = 0;
-            loop {
-                match chars.next()? {
-                    ']' => {
-                        if ending && matched == depth {
-                            break;
-                        }
-
-                        ending = true;
-                        matched = 0;
-                        end = chars.as_str().as_ptr() as usize - 1;
+                    '\n' | '\r' => break None,
+                    '\\' => {
+                        chars.next();
+                        has_escaping = true;
                     }
-                    '=' => matched += 1,
-                    _ => ending = false,
+                    c if c == delim => {
+                        let rest = chars.as_str();
+                        let len = rest.as_ptr() as usize - s.as_ptr() as usize - 1;
+                        let slice = &s[..len];
+                        break Some((slice, rest, has_escaping));
+                    }
+                    _ => (),
                 }
             }
-            let rest = chars.as_str();
-            let base = s.as_ptr() as usize;
-            let start = start - base;
-            let end = end - base;
-            let token = &s[start..end];
-
-            Some((token, rest))
         }
 
-        self.0 = self.0.trim_start_matches(&[' ', '\t'][..]);
-
-        match self.0.chars().next()? {
-            delim @ ('"' | '\'') => {
-                let rest = &self.0[1..];
-                match rest.find(delim) {
-                    Some(i) => {
-                        let token = &rest[..i];
-                        self.0 = &rest[i + 1..];
-                        Some(token)
+        fn parse_block_token(s: &str) -> Option<(&str, &str)> {
+            let mut chars = s.chars();
+            let mut balance = 1;
+            loop {
+                match chars.next()? {
+                    '{' => balance += 1,
+                    '}' => {
+                        balance -= 1;
+                        if balance == 0 {
+                            let rest = chars.as_str();
+                            let len = rest.as_ptr() as usize - s.as_ptr() as usize - 1;
+                            break Some((&s[..len], rest));
+                        }
                     }
-                    None => {
-                        let end = next_literal_end(rest);
-                        let (token, rest) = self.0.split_at(end + 1);
-                        self.0 = rest;
-                        Some(token)
+                    '#' => {
+                        let rest = chars.as_str();
+                        let i = rest.find('\n')?;
+                        chars = rest[i + 1..].chars();
                     }
+                    '\\' => {
+                        chars.next();
+                    }
+                    _ => (),
                 }
             }
-            c => {
-                if c == '[' {
-                    if let Some((token, rest)) = parse_balanced_token(&self.0[1..]) {
-                        self.0 = rest;
-                        return Some(token);
+        }
+
+        self.0 = self.0.trim_start_matches(&[' ', '\t']);
+
+        let previous_text = self.0;
+        let mut can_expand_variables = true;
+
+        loop {
+            let mut chars = self.0.chars();
+            match chars.next()? {
+                '@' => {
+                    can_expand_variables = false;
+                    self.0 = chars.as_str();
+                }
+                delim @ ('"' | '\'') => {
+                    let rest = chars.as_str();
+                    match parse_string_token(delim, rest) {
+                        Some((slice, rest, has_escaping)) => {
+                            self.0 = rest;
+                            return Some(CommandToken {
+                                slice,
+                                is_simple: false,
+                                can_expand_variables,
+                                has_escaping,
+                            });
+                        }
+                        None => {
+                            let slice = &self.0[..1];
+                            self.0 = rest;
+                            return Some(CommandToken {
+                                slice,
+                                is_simple: false,
+                                can_expand_variables,
+                                has_escaping: false,
+                            });
+                        }
                     }
                 }
+                '\n' | '\r' | '#' => return None,
+                c => {
+                    if c == '{' {
+                        if let Some((slice, rest)) = parse_block_token(chars.as_str()) {
+                            self.0 = rest;
+                            return Some(CommandToken {
+                                slice,
+                                is_simple: false,
+                                can_expand_variables,
+                                has_escaping: false,
+                            });
+                        }
+                    }
 
-                let end = next_literal_end(self.0);
-                let (token, rest) = self.0.split_at(end);
-                self.0 = rest;
-                Some(token)
+                    if !can_expand_variables {
+                        can_expand_variables = true;
+                        self.0 = previous_text;
+                    }
+
+                    let end = next_literal_end(self.0);
+                    let (slice, rest) = self.0.split_at(end);
+                    self.0 = rest;
+                    return Some(CommandToken {
+                        slice,
+                        is_simple: true,
+                        can_expand_variables,
+                        has_escaping: false,
+                    });
+                }
             }
         }
     }
@@ -248,95 +351,110 @@ pub struct Command {
     command_fn: CommandFn,
 }
 
-struct Alias {
-    start: u32,
-    from_len: u16,
-    to_len: u16,
+struct Macro {
+    name_start: u16,
+    name_end: u16,
+    source_start: u32,
+    source_end: u32,
 }
-impl Alias {
-    pub fn from<'a>(&self, texts: &'a str) -> &'a str {
-        let end = self.start as usize + self.from_len as usize;
-        &texts[self.start as usize..end]
+impl Macro {
+    pub fn name<'a>(&self, names: &'a str) -> &'a str {
+        &names[self.name_start as usize..self.name_end as usize]
     }
 
-    pub fn to<'a>(&self, texts: &'a str) -> &'a str {
-        let start = self.start as usize + self.from_len as usize;
-        let end = start + self.to_len as usize;
-        &texts[start..end]
+    pub fn source<'a>(&self, sources: &'a str) -> &'a str {
+        &sources[self.source_start as usize..self.source_end as usize]
     }
 }
 
 #[derive(Default)]
-pub struct AliasCollection {
-    texts: String,
-    aliases: Vec<Alias>,
+pub struct MacroCollection {
+    macros: Vec<Macro>,
+    names: String,
+    sources: String,
 }
-impl AliasCollection {
-    pub fn add(&mut self, from: &str, to: &str) {
-        if from.len() > u16::MAX as _ || to.len() > u16::MAX as _ {
+impl MacroCollection {
+    fn add(&mut self, name: &str, source: &str) {
+        for (i, m) in self.macros.iter().enumerate() {
+            if name == m.name(&self.names) {
+                let old_source_range = m.source_start as usize..m.source_end as usize;
+                let old_source_len = old_source_range.end - old_source_range.start;
+
+                let new_source_len = source.len();
+                if self.sources.len() - old_source_len + new_source_len > u32::MAX as _ {
+                    return;
+                }
+
+                self.sources.replace_range(old_source_range, source);
+
+                let old_source_len = old_source_len as u32;
+                let new_source_len = new_source_len as u32;
+
+                self.macros[i].source_end =
+                    self.macros[i].source_end - old_source_len + new_source_len;
+                for m in &mut self.macros[i + 1..] {
+                    m.source_start = m.source_start - old_source_len + new_source_len;
+                    m.source_end = m.source_end - old_source_len + new_source_len;
+                }
+                return;
+            }
+        }
+
+        let name_start = self.names.len();
+        let name_end = name_start + name.len();
+        if name_end > u32::MAX as _ {
             return;
         }
 
-        for (i, alias) in self.aliases.iter().enumerate() {
-            if from == alias.from(&self.texts) {
-                let alias_start = alias.start as usize;
-                let alias_len = alias.from_len as u32 + alias.to_len as u32;
-                self.aliases.remove(i);
-                for alias in &mut self.aliases[i..] {
-                    alias.start -= alias_len;
-                }
-                self.texts
-                    .drain(alias_start..alias_start + alias_len as usize);
-                break;
-            }
+        let source_start = self.sources.len();
+        let source_end = source_start + source.len();
+        if source_end > u32::MAX as _ {
+            return;
         }
 
-        let start = self.texts.len() as _;
-        self.texts.push_str(from);
-        self.texts.push_str(to);
+        self.names.push_str(name);
+        self.sources.push_str(source);
 
-        self.aliases.push(Alias {
-            start,
-            from_len: from.len() as _,
-            to_len: to.len() as _,
+        self.macros.push(Macro {
+            name_start: name_start as _,
+            name_end: name_end as _,
+            source_start: source_start as _,
+            source_end: source_end as _,
         });
     }
 
-    pub fn find(&self, from: &str) -> Option<&str> {
-        for alias in &self.aliases {
-            if from == alias.from(&self.texts) {
-                return Some(alias.to(&self.texts));
+    pub fn find(&self, name: &str) -> Option<&str> {
+        for m in &self.macros {
+            if name == m.name(&self.names) {
+                return Some(m.source(&self.sources));
             }
         }
-
         None
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        self.aliases
-            .iter()
-            .map(move |a| (a.from(&self.texts), a.to(&self.texts)))
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.macros.iter().map(move |m| m.name(&self.names))
     }
 }
 
 pub struct CommandManager {
     commands: Vec<Command>,
+    pub macros: MacroCollection,
     history: VecDeque<String>,
-    pub aliases: AliasCollection,
 }
 
 impl CommandManager {
     pub fn new() -> Self {
         let mut this = Self {
             commands: Vec::new(),
+            macros: MacroCollection::default(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
-            aliases: AliasCollection::default(),
         };
-        builtin::register_commands(&mut this);
+        builtins::register_commands(&mut this);
         this
     }
 
-    pub fn register(
+    pub fn register_command(
         &mut self,
         plugin_handle: Option<PluginHandle>,
         name: &'static str,
@@ -349,6 +467,27 @@ impl CommandManager {
             completions,
             command_fn,
         });
+    }
+
+    pub fn register_macro(&mut self, name: &str, source: &str) -> Result<(), CommandError> {
+        if self.find_command(name).is_some() {
+            return Err(CommandError::InvalidMacroName);
+        }
+
+        let mut chars = name.chars();
+        match chars.next() {
+            Some(c) if c.is_ascii_alphabetic() || matches!(c, '-' | '_') => (),
+            _ => return Err(CommandError::InvalidMacroName),
+        }
+        if name
+            .chars()
+            .any(|c| !c.is_ascii_alphanumeric() && !matches!(c, '-' | '_'))
+        {
+            return Err(CommandError::InvalidMacroName);
+        }
+
+        self.macros.add(name, source);
+        Ok(())
     }
 
     pub fn find_command(&self, name: &str) -> Option<&Command> {
@@ -391,117 +530,729 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    pub fn eval_and_write_error(
+    pub fn unwrap_eval_result(
         ctx: &mut EditorContext,
-        client_handle: Option<ClientHandle>,
-        command: &mut String,
+        result: Result<EditorFlow, CommandErrorWithContext>,
+        source: &str,
+        name: Option<&str>,
     ) -> EditorFlow {
-        match Self::try_eval(ctx, client_handle, command) {
+        match result {
             Ok(flow) => flow,
             Err(error) => {
-                ctx.editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("{}", error));
+                let command = match CommandIter(source).nth(error.command_index) {
+                    Some(command) => command,
+                    None => &source[..0],
+                };
+                let offset = command.as_ptr() as usize - source.as_ptr() as usize;
+                let line_index = source[..offset].chars().filter(|&c| c == '\n').count();
+
+                let mut write = ctx.editor.status_bar.write(MessageKind::Error);
+                match name {
+                    Some(name) => write.fmt(format_args!(
+                        "{}:{}\n{}\n{}",
+                        name,
+                        line_index + 1,
+                        command,
+                        error.error,
+                    )),
+                    None => write.fmt(format_args!("{}", error.error)),
+                }
+
                 EditorFlow::Continue
             }
         }
     }
 
-    pub fn try_eval(
+    pub fn eval(
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
-        command: &mut String,
-    ) -> Result<EditorFlow, CommandError> {
-        if let Some(alias) = CommandTokenizer(command).next() {
-            let alias = alias.trim_end_matches('!');
-            if let Some(aliased) = ctx.editor.commands.aliases.find(alias) {
-                let start = alias.as_ptr() as usize - command.as_ptr() as usize;
-                let end = start + alias.len();
-                command.replace_range(start..end, aliased);
+        source: &str,
+    ) -> Result<EditorFlow, CommandErrorWithContext> {
+        for (i, command) in CommandIter(source).enumerate() {
+            match Self::eval_single(ctx, client_handle, command, "", false) {
+                Ok(EditorFlow::Continue) => (),
+                Ok(flow) => return Ok(flow),
+                Err(error) => {
+                    return Err(CommandErrorWithContext {
+                        error,
+                        command_index: i,
+                    });
+                }
             }
         }
 
-        Self::eval(ctx, client_handle, command)
+        Ok(EditorFlow::Continue)
     }
 
-    fn eval(
+    pub(crate) fn eval_single(
+        ctx: &mut EditorContext,
+        client_handle: Option<ClientHandle>,
+        command: &str,
+        args: &str,
+        bang: bool,
+    ) -> Result<EditorFlow, CommandError> {
+        let mut expanded = ctx.editor.string_pool.acquire();
+        let result = match expand_variables(ctx, client_handle, args, bang, command, &mut expanded)
+        {
+            Ok(()) => Self::eval_single_impl(ctx, client_handle, &expanded),
+            Err(error) => Err(CommandError::ExpansionError(error)),
+        };
+        ctx.editor.string_pool.release(expanded);
+        result
+    }
+
+    fn eval_single_impl(
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &str,
     ) -> Result<EditorFlow, CommandError> {
-        let mut tokenizer = CommandTokenizer(command);
-        let command = match tokenizer.next() {
+        let mut args = CommandArgs(command);
+        let command_name = match args.try_next() {
             Some(command) => command,
             None => return Err(CommandError::NoSuchCommand),
         };
-        let (command, bang) = match command.strip_suffix('!') {
+        let (command_name, bang) = match command_name.strip_suffix('!') {
             Some(command) => (command, true),
-            None => (command, false),
-        };
-        let (plugin_handle, command_fn) = match ctx.editor.commands.find_command(command) {
-            Some(command) => (command.plugin_handle, command.command_fn),
-            None => return Err(CommandError::NoSuchCommand),
+            None => (command_name, false),
         };
 
-        let mut io = CommandIO {
-            client_handle,
-            plugin_handle,
-            args: CommandArgs(tokenizer),
-            bang,
-            flow: EditorFlow::Continue,
-        };
-        command_fn(ctx, &mut io)?;
-        Ok(io.flow)
+        if let Some(command) = ctx.editor.commands.find_command(command_name) {
+            let plugin_handle = command.plugin_handle;
+            let command_fn = command.command_fn;
+            let mut io = CommandIO {
+                client_handle,
+                plugin_handle,
+                args,
+                bang,
+                flow: EditorFlow::Continue,
+            };
+            command_fn(ctx, &mut io)?;
+            return Ok(io.flow);
+        }
+
+        if let Some(macro_source) = ctx.editor.commands.macros.find(command_name) {
+            let macro_source = ctx.editor.string_pool.acquire_with(macro_source);
+            let mut result = Ok(EditorFlow::Continue);
+            for command in CommandIter(&macro_source) {
+                result = Self::eval_single(ctx, client_handle, command, args.0, bang);
+            }
+            ctx.editor.string_pool.release(macro_source);
+            return result;
+        }
+
+        Err(CommandError::NoSuchCommand)
     }
+}
+
+fn expand_variables<'a>(
+    ctx: &EditorContext,
+    client_handle: Option<ClientHandle>,
+    args: &str,
+    bang: bool,
+    text: &str,
+    output: &mut String,
+) -> Result<(), expansions::ExpansionError> {
+    fn parse_variable_name(text: &str) -> Result<&str, usize> {
+        let mut chars = text.chars();
+        loop {
+            match chars.next() {
+                Some('a'..='z' | '-') => (),
+                Some('(') => {
+                    let name = &text[..text.len() - chars.as_str().len() - 1];
+                    return Ok(name);
+                }
+                _ => return Err(text.len() - chars.as_str().len()),
+            }
+        }
+    }
+
+    fn parse_variable_args(text: &str) -> Option<&str> {
+        let i = text.find(')')?;
+        Some(&text[..i])
+    }
+
+    fn write_escaped(mut slice: &str, has_escaping: bool, output: &mut String) {
+        if !has_escaping {
+            output.push_str(slice);
+            return;
+        }
+
+        loop {
+            match slice.find('\\') {
+                Some(i) => {
+                    let (before, after) = slice.split_at(i);
+                    output.push_str(before);
+                    let mut chars = after.chars();
+                    chars.next();
+                    match chars.next() {
+                        Some('t') => output.push('\t'),
+                        Some('n') => output.push('\n'),
+                        Some(c) => output.push(c),
+                        _ => (),
+                    }
+                    slice = chars.as_str();
+                }
+                None => {
+                    output.push_str(slice);
+                    break;
+                }
+            }
+        }
+    }
+
+    'tokens: for token in CommandTokenizer(text) {
+        if !token.can_expand_variables {
+            write_escaped(token.slice, token.has_escaping, output);
+            output.push('\0');
+            continue;
+        }
+
+        let mut rest = token.slice;
+        loop {
+            match rest.find('@') {
+                Some(i) => {
+                    let (before, after) = rest.split_at(i);
+                    write_escaped(before, token.has_escaping, output);
+                    rest = after;
+                }
+                None => {
+                    write_escaped(rest, token.has_escaping, output);
+                    break;
+                }
+            }
+
+            let variable_name = match parse_variable_name(&rest[1..]) {
+                Ok(name) => name,
+                Err(skip) => {
+                    let (before, after) = rest.split_at(skip + 1);
+                    write_escaped(before, token.has_escaping, output);
+                    rest = after;
+                    continue;
+                }
+            };
+
+            let args_skip = 1 + variable_name.len() + 1;
+            let variable_args = match parse_variable_args(&rest[args_skip..]) {
+                Some(args) => args,
+                None => {
+                    let (before, after) = rest.split_at(args_skip);
+                    write_escaped(before, token.has_escaping, output);
+                    rest = after;
+                    continue;
+                }
+            };
+
+            rest = &rest[args_skip + variable_args.len() + 1..];
+
+            let result = expansions::write_variable_expansion(
+                ctx,
+                client_handle,
+                CommandArgs(args),
+                bang,
+                variable_name,
+                variable_args,
+                output,
+            );
+            match result {
+                Ok(()) => (),
+                Err(expansions::ExpansionError::IgnoreExpansion) => {
+                    if token.is_simple {
+                        continue 'tokens;
+                    }
+                }
+                Err(error) => return Err(error),
+            }
+        }
+
+        output.push('\0');
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use std::{
+        env,
+        path::{Path, PathBuf},
+    };
+
+    use crate::{
+        client::ClientManager, editor::Editor, editor_utils::RegisterKey, platform::Platform,
+        plugin::PluginCollection,
+    };
+
     #[test]
-    fn command_tokens() {
-        let mut tokens = CommandTokenizer("cmd arg");
-        assert_eq!(Some("cmd"), tokens.next());
-        assert_eq!(Some("arg"), tokens.next());
-        assert_eq!(None, tokens.next());
+    fn command_iter() {
+        let mut commands = CommandIter("cmd");
+        assert_eq!(Some("cmd"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("cmd1\ncmd2");
+        assert_eq!(Some("cmd1"), commands.next());
+        assert_eq!(Some("cmd2"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("cmd1 {\narg1\n} arg2\ncmd2 {\narg1}\n \t \n ");
+        assert_eq!(Some("cmd1 {\narg1\n} arg2"), commands.next());
+        assert_eq!(Some("cmd2 {\narg1}"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("cmd1 ' arg\ncmd2 arg'");
+        assert_eq!(Some("cmd1 ' arg"), commands.next());
+        assert_eq!(Some("cmd2 arg'"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("cmd1 '\ncmd2 arg'");
+        assert_eq!(Some("cmd1 '"), commands.next());
+        assert_eq!(Some("cmd2 arg'"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter(" #cmd1\ncmd2 arg #arg2\n \t #cmd3 arg\ncmd4 arg'");
+        assert_eq!(Some("cmd2 arg "), commands.next());
+        assert_eq!(Some("cmd4 arg'"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("cmd1 {\n a\n} b {\n c}\ncmd2");
+        assert_eq!(Some("cmd1 {\n a\n} b {\n c}"), commands.next());
+        assert_eq!(Some("cmd2"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("cmd1 {\ncmd2 arg #arg2\n \t #cmd3 arg}\ncmd4 arg'}");
+        assert_eq!(
+            Some("cmd1 {\ncmd2 arg #arg2\n \t #cmd3 arg}\ncmd4 arg'}"),
+            commands.next()
+        );
+        assert_eq!(None, commands.next());
+    }
+
+    #[test]
+    fn command_tokenizer() {
+        let mut tokens = CommandTokenizer("cmd arg1 arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1\\'arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1\\"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1\\'arg2'");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1\\"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd 'arg0 \"arg1 ");
-        assert_eq!(Some("cmd"), tokens.next());
-        assert_eq!(Some("'arg0"), tokens.next());
-        assert_eq!(Some("\"arg1"), tokens.next());
-        assert_eq!(None, tokens.next());
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg0"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd arg0'arg1 ");
-        assert_eq!(Some("cmd"), tokens.next());
-        assert_eq!(Some("arg0'arg1"), tokens.next());
-        assert_eq!(None, tokens.next());
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg0"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd arg0\"arg1 ");
-        assert_eq!(Some("cmd"), tokens.next());
-        assert_eq!(Some("arg0\"arg1"), tokens.next());
-        assert_eq!(None, tokens.next());
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg0"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd \"aaa\\\"bbb\"");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("aaa\\\"bbb"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("cmd 'arg\"0' \"arg'1\"");
-        assert_eq!(Some("cmd"), tokens.next());
-        assert_eq!(Some("arg\"0"), tokens.next());
-        assert_eq!(Some("arg'1"), tokens.next());
-        assert_eq!(None, tokens.next());
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg\"0"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg'1"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
 
-        let mut tokens = CommandTokenizer("cmd [[arg]]");
-        assert_eq!(Some("cmd"), tokens.next());
-        assert_eq!(Some("arg"), tokens.next());
-        assert_eq!(None, tokens.next());
+        let mut tokens = CommandTokenizer("cmd arg1\"arg2\"arg3");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg3"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
 
-        let mut tokens = CommandTokenizer("cmd [[%]%]=]]");
-        assert_eq!(Some("cmd"), tokens.next());
-        assert_eq!(Some("%]%]="), tokens.next());
-        assert_eq!(None, tokens.next());
+        let mut tokens = CommandTokenizer("cmd arg1 \" arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
 
-        let mut tokens = CommandTokenizer("cmd [==[arg]]=]]==]");
-        assert_eq!(Some("cmd"), tokens.next());
-        assert_eq!(Some("arg]]=]"), tokens.next());
-        assert_eq!(None, tokens.next());
+        let mut tokens = CommandTokenizer("cmd arg1 \"arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd 'arg1\narg2'");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd 'aaa\\'bbb'");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("aaa\\'bbb"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1 ' arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1 'arg2");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1'arg2'arg3");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg3"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {arg}");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {arg\\}}");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg\\}"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {aa\\{ bb} arg");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("aa\\{ bb"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg1{arg2}arg3");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg1"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg2"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg3"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {'}}'}");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("}"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("}"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {arg'}{'}");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd }arg");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("}"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {arg");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("{"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd arg}'{\"arg");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("}"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("{"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("\""), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd '{arg}");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("'"), tokens.next().map(|t| t.slice));
+        assert_eq!(Some("arg"), tokens.next().map(|t| t.slice));
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("cmd {\"{(\\\")!\".}|'{(\\')!'.}}");
+        assert_eq!(Some("cmd"), tokens.next().map(|t| t.slice));
+        assert_eq!(
+            Some("\"{(\\\")!\".}|'{(\\')!'.}"),
+            tokens.next().map(|t| t.slice)
+        );
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("@'aa'");
+        let token = tokens.next().unwrap();
+        assert_eq!("aa", token.slice);
+        assert!(!token.can_expand_variables);
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("@@'aa'");
+        let token = tokens.next().unwrap();
+        assert_eq!("aa", token.slice);
+        assert!(!token.can_expand_variables);
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("@{{aa}{}}");
+        let token = tokens.next().unwrap();
+        assert_eq!("{aa}{}", token.slice);
+        assert!(!token.can_expand_variables);
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("@@{{aa}{}}");
+        let token = tokens.next().unwrap();
+        assert_eq!("{aa}{}", token.slice);
+        assert!(!token.can_expand_variables);
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("@aa");
+        let token = tokens.next().unwrap();
+        assert_eq!("@aa", token.slice);
+        assert!(token.can_expand_variables);
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("@@aa");
+        let token = tokens.next().unwrap();
+        assert_eq!("@@aa", token.slice);
+        assert!(token.can_expand_variables);
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+    }
+
+    #[test]
+    fn variable_expansion() {
+        let current_dir = env::current_dir().unwrap_or(PathBuf::new());
+        let mut ctx = EditorContext {
+            editor: Editor::new(current_dir),
+            platform: Platform::default(),
+            clients: ClientManager::default(),
+            plugins: PluginCollection::default(),
+        };
+
+        let register = ctx
+            .editor
+            .registers
+            .get_mut(RegisterKey::from_char('x').unwrap());
+        register.clear();
+        register.push_str("my register contents");
+
+        let register = ctx
+            .editor
+            .registers
+            .get_mut(RegisterKey::from_char('l').unwrap());
+        register.clear();
+        register.push_str("very long register contents");
+
+        let register = ctx
+            .editor
+            .registers
+            .get_mut(RegisterKey::from_char('s').unwrap());
+        register.clear();
+        register.push_str("short");
+
+        let buffer = ctx.editor.buffers.add_new();
+        assert_eq!(0, buffer.handle().0);
+        buffer.set_path(Path::new("buffer/path0"));
+        let buffer = ctx.editor.buffers.add_new();
+        assert_eq!(1, buffer.handle().0);
+        buffer.set_path(Path::new("buffer/veryverylong/path1"));
+
+        let client_handle = ClientHandle(0);
+        let buffer_view_handle = ctx
+            .editor
+            .buffer_views
+            .add_new(client_handle, BufferHandle(0));
+
+        ctx.clients.on_client_joined(client_handle);
+        ctx.clients
+            .get_mut(client_handle)
+            .set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
+
+        fn assert_expansion(expected_expanded: &str, ctx: &EditorContext, text: &str) {
+            let mut expanded = String::new();
+            let result =
+                expand_variables(ctx, Some(ClientHandle(0)), "", false, text, &mut expanded);
+            if let Err(error) = result {
+                panic!("expansion error: {}", error);
+            }
+            assert_eq!(expected_expanded, &expanded);
+        }
+
+        let mut expanded = String::new();
+        let r = expand_variables(&ctx, Some(ClientHandle(0)), "", false, "  ", &mut expanded);
+        assert!(r.is_ok());
+        assert_eq!("", &expanded);
+
+        let mut expanded = String::new();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "",
+            false,
+            "two args",
+            &mut expanded,
+        );
+        assert!(r.is_ok());
+        assert_eq!("two\0args\0", &expanded);
+
+        assert_expansion("cmd\0", &ctx, "cmd");
+
+        assert_expansion("my register contents\0", &ctx, "@register(x)");
+        assert_expansion(
+            "very long register contents short\0",
+            &ctx,
+            "{@register(l) @register(s)}",
+        );
+        assert_expansion(
+            "short very long register contents\0",
+            &ctx,
+            "{@register(s) @register(l)}",
+        );
+
+        let mut expanded = String::new();
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "",
+            false,
+            "@register()",
+            &mut expanded,
+        );
+        assert!(matches!(
+            r,
+            Err(expansions::ExpansionError::InvalidRegisterKey)
+        ));
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "",
+            false,
+            "@register(xx)",
+            &mut expanded,
+        );
+        assert!(matches!(
+            r,
+            Err(expansions::ExpansionError::InvalidRegisterKey)
+        ));
+
+        assert_expansion("buffer/path0\0", &ctx, "@buffer-path()");
+        assert_expansion(
+            "cmd\0buffer/path0\0asd\0buffer/path0\0",
+            &ctx,
+            "cmd @buffer-path() asd @buffer-path()",
+        );
+
+        assert_expansion(
+            "cmd\0buffer/path0\0asd\0buffer/veryverylong/path1\0fgh\0\0",
+            &ctx,
+            "cmd @buffer-path(0) asd @buffer-path(1) fgh @buffer-path(2)",
+        );
+
+        assert_expansion("\"\0", &ctx, "\"\\\"\"");
+        assert_expansion("'\0", &ctx, "'\\''");
+        assert_expansion("\\}\0", &ctx, "{\\}}");
+        assert_expansion("\\\0", &ctx, "'\\\\'");
+
+        let mut expanded = String::new();
+
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg(*)",
+            &mut expanded,
+        );
+        assert!(r.is_ok());
+        assert_eq!("arg0\0arg1\0arg2\0", &expanded);
+
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "",
+            false,
+            "@arg(*)",
+            &mut expanded,
+        );
+        assert!(r.is_ok());
+        assert_eq!("", &expanded);
+
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg(0)",
+            &mut expanded,
+        );
+        assert!(r.is_ok());
+        assert_eq!("arg0\0", &expanded);
+
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg(1)",
+            &mut expanded,
+        );
+        assert!(r.is_ok());
+        assert_eq!("arg1\0", &expanded);
+
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg(2)",
+            &mut expanded,
+        );
+        assert!(r.is_ok());
+        assert_eq!("arg2\0", &expanded);
+
+        expanded.clear();
+        let r = expand_variables(
+            &ctx,
+            Some(ClientHandle(0)),
+            "arg0\0arg1\0arg2\0",
+            false,
+            "@arg(3)",
+            &mut expanded,
+        );
+        assert!(r.is_ok());
+        assert_eq!("\0", &expanded);
     }
 }

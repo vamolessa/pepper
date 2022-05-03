@@ -18,6 +18,84 @@ use crate::{
     Args,
 };
 
+fn spawn_server() {
+    let mut file_actions = unsafe {
+        let mut file_actions = std::mem::zeroed::<libc::posix_spawn_file_actions_t>();
+        if libc::posix_spawn_file_actions_init(&mut file_actions) != 0 {
+            panic!("could not init posix spawn file actions");
+        }
+        if libc::posix_spawn_file_actions_addclose(&mut file_actions, libc::STDIN_FILENO) != 0 {
+            panic!("could not add close stdin to posix spawn file actions");
+        }
+        if libc::posix_spawn_file_actions_addclose(&mut file_actions, libc::STDOUT_FILENO) != 0 {
+            panic!("could not add close stdout to posix spawn file actions");
+        }
+        file_actions
+    };
+
+    let mut attributes = unsafe {
+        let mut attributes = std::mem::zeroed::<libc::posix_spawnattr_t>();
+        if libc::posix_spawnattr_init(&mut attributes) != 0 {
+            panic!("could not init posix spawn attributes");
+        }
+        if libc::posix_spawnattr_setflags(&mut attributes, libc::POSIX_SPAWN_SETPGROUP as _) != 0 {
+            panic!("could not set posix spawn attributes flags");
+        }
+        if libc::posix_spawnattr_setpgroup(&mut attributes, 0) != 0 {
+            panic!("could not set pgroup to posix spawn attributes");
+        }
+        attributes
+    };
+
+    let argv_owned: Vec<_> = std::env::args_os().collect();
+    let mut argv = Vec::new();
+    let mut args = argv_owned.iter();
+    match args.next() {
+        Some(arg) => argv.push(arg.as_bytes().as_ptr()),
+        None => panic!("could not extract process path from argv"),
+    }
+    argv.push("--server\0".as_ptr());
+    for arg in args {
+        argv.push(arg.as_bytes().as_ptr());
+    }
+    argv.push(std::ptr::null());
+
+    let mut envp_owned = Vec::new();
+    for (key, value) in std::env::vars_os() {
+        let mut env = key;
+        env.push("=");
+        env.push(&value);
+        env.push("\0");
+        envp_owned.push(env);
+    }
+    let mut envp = Vec::new();
+    for var in &envp_owned {
+        envp.push(var.as_bytes().as_ptr());
+    }
+    envp.push(std::ptr::null());
+
+    unsafe {
+        let result = libc::posix_spawnp(
+            std::ptr::null_mut(),
+            argv[0] as _,
+            &file_actions,
+            &attributes,
+            argv.as_ptr() as _,
+            envp.as_ptr() as _,
+        );
+        if result != 0 {
+            panic!("could not spawn server {:?}", &argv_owned[0]);
+        }
+
+        if libc::posix_spawn_file_actions_destroy(&mut file_actions) != 0 {
+            panic!("could not destroy posix spawn file actions");
+        }
+        if libc::posix_spawnattr_destroy(&mut attributes) != 0 {
+            panic!("could not destroy posix spawn attributes");
+        }
+    }
+}
+
 pub(crate) fn run(
     config: ApplicationConfig,
     server_fn: fn(ApplicationConfig, UnixListener),
@@ -70,16 +148,9 @@ pub(crate) fn run(
     } else {
         match UnixStream::connect(session_path) {
             Ok(stream) => client_fn(config.args, stream),
-            Err(_) => match unsafe { libc::fork() } {
-                -1 => panic!("could not start server"),
-                0 => {
-                    // TODO: maybe expand this code on mac?
-                    // https://opensource.apple.com/source/Libc/Libc-1439.40.11/gen/FreeBSD/daemon.c.auto.html
-                    unsafe { libc::daemon(true as _, false as _) };
-                    server_fn(config, start_server(session_path));
-                    let _ = fs::remove_file(session_path);
-                }
-                _ => loop {
+            Err(_) => {
+                spawn_server();
+                loop {
                     match UnixStream::connect(session_path) {
                         Ok(stream) => {
                             client_fn(config.args, stream);
@@ -87,8 +158,8 @@ pub(crate) fn run(
                         }
                         Err(_) => std::thread::sleep(Duration::from_millis(100)),
                     }
-                },
-            },
+                }
+            }
         }
     }
 }
@@ -147,6 +218,8 @@ impl Terminal {
     }
 
     pub fn leave_raw_mode(&self) {
+        // TODO: enable kitty keyboard protocol
+        // https://sw.kovidgoyal.net/kitty/keyboard-protocol/
         //write_all_bytes(self.fd, b"\x1b[<u");
         unsafe { libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.original_state) };
     }

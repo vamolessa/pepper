@@ -1,5 +1,44 @@
 # changelog
 
+# 0.27.0
+- added `set-env` command to change the editor's environment variables
+- fix `@arg(*)` expanding into no arguments if it's empty
+- fix `save` command alias `s` not taking arguments as it should
+- changed `cd` binding (delete all cursors except the main cursor) to `CD`
+- added new `cd` binding that only deletes the main cursor
+- added lsp configuration examples
+
+## 0.26.1
+- improved `find_path_and_position_at` to account for paths followed by `:`
+- unix: fix not being able to spawn server if the application was installed to a folder in path
+
+## 0.26.0
+- removed escaping expansion from `{...}` string blocks
+- unix now uses `posix_spawn` instead of `fork` to spawn a server for better reliability and to remove the need to use `libc::daemon` which is deprecated on macos
+- fixed bug on windows that prevented the server from spawning when opening files using `--` cli positional args
+
+## 0.25.0
+- new variable expansion mechanism when evaluating commands
+- changed string syntax for commands
+- command strings now support some escapings
+- command aliases that start with `-` won't show up in auto completions
+- merged `default_commands.pepper` with `default_bindings.pepper` into `default_configs.pepper`
+- merged all `map-<mode>` commands into a single `map` command whose first parameter is the mode to map keys to
+- merged all `syntax-<token-kind>` commands into the `syntax` command which can take the first parameter the token kind for the defined pattern
+- insert processes now correctly adjust their insert positions on buffer insertions and deletions
+- added `set-register` command
+- changed `open` command parameters order, now buffer properties come before the `path` parameter
+- removed `alias` command since it's now possible to replicate its behavior by creating a new command that calls the aliased command and use the `@arg()` expansion
+- removed `find-file` and `find-command` commands as they're now implementable using other builtin commands (see `default_configs.pepper` for an example)
+- removed the old 255 cursor count limit
+- exiting search mode will fully restore the previous cursor state
+- it's now possible to use use the search mode to expand selections
+- included default config files to help pages
+- fix wrong error message when parsing color values
+- fix buffer would not read from file when opened with `saving-disabled`
+- lsp plugin correctly handle completion responses which only fill the `changes` field
+- added `pepper-` prefix to windows session named pipe paths
+
 ## 0.24.0
 - handle buffer paths beginning with `./` (on `Buffer::set_path` and `Buffer::find_with_path`)
 - command `$` is now `!` and what was `!` is now removed; that is, there's no longer a 'only insert from command output', just 'replace with command output' (`|` command) and if the selection is empty, it behaves as if it was the old `!`

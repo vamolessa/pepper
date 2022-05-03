@@ -2,7 +2,7 @@ These are the builtin commands that can be used to interact with the editor.
 Their main purpose is to provide features that complement text editing.
 Commands is also how you can configure your editor on config files.
 
-Also, when passing arguments that contain spaces, you can wrap them between `"`, `'` or `[[` and `]]` (like lua strings).
+When passing arguments that contain spaces, you can wrap them between `"`, `'` or a balanced `{}` pair.
 
 # builtin commands
 
@@ -43,9 +43,9 @@ It's also possible to change these properties in batch by passing:
 - `scratch`: will disable all properties
 
 Note that the property evaluation order is the same as the order of the arguments.
-That is, calling `open my-buffer history-enabled scratch` will actually open `my-buffer` with undo history disabled!
+That is, calling `open history-enabled scratch my-buffer.txt` will actually open `my-buffer.txt` with undo history disabled!
 
-- usage: `open <path> [<properties...>]`
+- usage: `open [<properties...>] <path>[:<line>[,<column>]]`
 - default alias: `o`
 
 ## `save`
@@ -125,50 +125,19 @@ key |  doc
 `token_string` | All highlighted `string` tokens have this color
 `token_literal` | All highlighted `literal` tokens have this color
 
-## `map-normal`, `map-insert`, `map-command`, `map-readline`, `map-picker`
+## `map`
 Creates a keyboard mapping for an editor mode.
+`<mode>` is one of `normal`, `insert`, `command`, `readline` and `picker`.
 `<from>` and `<to>` are a string of keys.
-- usage: `map-<mode> <from> <to>`
-
-## `alias`
-Create a alias with name `<name>` for the command `<command>`.
-Note that `<command>` can also contain arguments which will expand when calling the alias.
-- usage: `alias <name> <command>`
+- usage: `map <mode> <from> <to>`
 
 ## `syntax`
-Begins a new syntax definition for buffer paths that match a glob `<glob>`.
-In order to specify each syntax pattern, the other `syntax-<token-kind>` commands are used.
-- usage: `syntax <glob>`
+Either begins a new syntax definition for buffer paths that match a glob `<glob>`,
+or sets the pattern for tokens of kind `<token-kind>` for the previously defined syntax.
+`<token-kind>` is one of `keywords`, `types`, `symbols`, `literals`, `strings`, `comments` and `texts`.
+- usage: `syntax <glob>` or `syntax <token-kind> <pattern>`
 
 Read more about [language syntax definitions](language_syntax_definitions.md).
-
-## `syntax-keywords`
-Sets the pattern for tokens of kind 'keyword' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-keywords <pattern>`
-
-## `syntax-types`
-Sets the pattern for tokens of kind 'type' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-types <pattern>`
-
-## `syntax-symbols`
-Sets the pattern for tokens of kind 'symbol' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-symbols <pattern>`
-
-## `syntax-literals`
-Sets the pattern for tokens of kind 'literal' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-literals <pattern>`
-
-## `syntax-strings`
-Sets the pattern for tokens of kind 'string' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-strings <pattern>`
-
-## `syntax-comments`
-Sets the pattern for tokens of kind 'comment' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-comments <pattern>`
-
-## `syntax-texts`
-Sets the pattern for tokens of kind 'text' for the previously defined syntax (see the `syntax` command).
-- usage: `syntax-texts <pattern>`
 
 ## `copy-command`
 Sets the command to be used when copying text to clipboard.
@@ -200,16 +169,50 @@ By default, this is set per platform:
 Enqueue keys as if they were typed in the current client.
 - usage: `enqueue-keys <keys>`
 
-## `find-file`
-Executes external command `<command>` and fills the picker menu from each line of its stdout.
-When an entry is selected, it's opened as a buffer path.
-Also, it's possible to customize the `<prompt>` that is shown on the picker ui.
-- usage: `find-file <command> [<prompt>]`
+## `set-register`
+Set the content of register `<key>` to `<value>`.
+- usage: `set-register <key> <value>`
 
-## `find-pattern`
-Shows a readline ui that queries for the search pattern.
-When it's submitted, the external command `<command>` whose stdout will be inserted into a buffer named `<command>.refs`.
-Note that any `{}` in `<command>` will be substituted by the search pattern.
-Also, it's possible to customize the `<prompt>` that is shown on the readline ui.
-- usage: `find-pattern <command> [<prompt>]`
+## `set-env`
+Set the value of the environment variable `<key>` to `<value>`
+- usage: `set-env <key> <value>`
+
+## `readline`
+Enters readline mode and once a line is read, executes the commands in `<continuation>`.
+Optionally pass a `<prompt>` which displays while waiting for user input.
+It's possible to access the line input through `@readline-input()` when `<continuation>` executes.
+- usage: `readline [<prompt>] <continuation>`
+
+## `pick`
+Enters picker mode and once an entry is selected, executes the commands in `<continuation>`.
+Optionally pass a `<prompt>` which displays while waiting for user input.
+It's possible to access the selected entry input through `@picker-entry()` when `<continuation>` executes.
+- usage: `pick [<prompt>] <continuation>`
+
+## `picker-entries`
+Clears and then adds all `<entries...>` to be selected with the `pick` command.
+- usage: `picker-entries <entries...>`
+
+## `picker-entries-from-lines`
+Clears and then adds a picker entry for each `<command>` stdout line (with stdin closed) to be selected with the `pick` command.
+- usage: `picker-entries-from-lines <command>`
+
+## `spawn`
+Spawns the external `<command>` (with stdin closed and ignoring its stdout).
+- usage: `spawn <command>`
+
+## `replace-with-output`
+Pass each cursor selection as stdin to the external `<command>` and substitute each for its stdout.
+- usage: `replace-with-output <command>`
+
+## `command`
+Defines a new command that can be called by its `<name>` which executes all commands in its `<source>`.
+Commands which name starts with `-` won't show up in the command completion menu.
+- usage: `command <name> <source>`
+
+## `eval`
+Evaluate `<commands>` as if they were typed in directly.
+However it enables expansions to happen before evaluation.
+Optionally, filter evaluation based if we're on a platform listed in `<platforms...>`.
+- usage: `eval [on <platforms...>] <commands>`
 

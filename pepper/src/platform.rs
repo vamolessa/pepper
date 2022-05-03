@@ -99,8 +99,7 @@ pub enum PlatformRequest {
 pub enum ProcessTag {
     Ignored,
     Buffer(u32),
-    FindFiles,
-    FindPattern,
+    PickerEntries,
     Plugin {
         plugin_handle: PluginHandle,
         id: u32,
@@ -154,7 +153,6 @@ impl Platform {
             command.stderr(Stdio::null());
             if let Ok(output) = command.output() {
                 if let Ok(output) = String::from_utf8(output.stdout) {
-                    text.clear();
                     text.push_str(&output);
                 }
             }
@@ -228,19 +226,6 @@ impl BufPool {
 
     pub fn release(&mut self, buf: PooledBuf) {
         self.pool.push(ManuallyDrop::new(buf));
-    }
-}
-
-pub fn drop_event(buf_pool: &mut BufPool, event: PlatformEvent) {
-    match event {
-        PlatformEvent::ConnectionOutput { buf, .. } | PlatformEvent::ProcessOutput { buf, .. } => {
-            buf_pool.release(buf);
-        }
-        PlatformEvent::Idle
-        | PlatformEvent::ConnectionOpen { .. }
-        | PlatformEvent::ConnectionClose { .. }
-        | PlatformEvent::ProcessSpawned { .. }
-        | PlatformEvent::ProcessExit { .. } => (),
     }
 }
 

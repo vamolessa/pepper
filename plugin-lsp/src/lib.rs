@@ -30,9 +30,9 @@ use protocol::{ProtocolError, ResponseError, ServerEvent};
 
 const SERVER_PROCESS_BUFFER_LEN: usize = 4 * 1024;
 
-pub static DEFAULT_BINDINGS_CONFIG: ResourceFile = ResourceFile {
-    name: "lsp_default_bindings.pepper",
-    content: include_str!("../rc/default_bindings.pepper"),
+pub static DEFAULT_CONFIGS: ResourceFile = ResourceFile {
+    name: "lsp_default_configs.pepper",
+    content: include_str!("../rc/default_configs.pepper"),
 };
 
 pub static DEFINITION: PluginDefinition = PluginDefinition {

@@ -181,11 +181,13 @@ pub fn main(config: ApplicationConfig) {
 
     pipe_path.clear();
     pipe_path.extend(PIPE_PREFIX.encode_utf16());
+    pipe_path.extend(env!("CARGO_PKG_NAME").encode_utf16());
+    pipe_path.push(b'-' as _);
     pipe_path.extend(session_name.encode_utf16());
-    pipe_path.push(0);
+    pipe_path.push(b'\0' as _);
 
     if config.args.print_session {
-        print!("{}{}", PIPE_PREFIX, session_name);
+        print!("{}{}-{}", PIPE_PREFIX, env!("CARGO_PKG_NAME"), session_name);
         return;
     }
 
@@ -195,7 +197,7 @@ pub fn main(config: ApplicationConfig) {
         }
     } else {
         if !pipe_exists(&pipe_path) {
-            fork();
+            spawn_server();
             while !pipe_exists(&pipe_path) {
                 std::thread::sleep(Duration::from_millis(100));
             }
@@ -454,7 +456,7 @@ fn global_unlock(handle: HANDLE) {
     unsafe { GlobalUnlock(handle) };
 }
 
-fn fork() {
+fn spawn_server() {
     let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
     startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
     startup_info.dwFlags = STARTF_USESTDHANDLES;
@@ -464,19 +466,44 @@ fn fork() {
 
     let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
 
-    let mut client_command_line = unsafe { GetCommandLineW() };
-    let mut command_line = Vec::with_capacity(1024);
-    loop {
-        unsafe {
-            let short = std::ptr::read(client_command_line);
-            if short == 0 {
+    let client_command_line = unsafe {
+        let command_line_start = GetCommandLineW();
+        let mut command_line_end = command_line_start;
+        loop {
+            if std::ptr::read(command_line_end) == 0 {
                 break;
             }
-            client_command_line = client_command_line.offset(1);
-            command_line.push(short);
+            command_line_end = command_line_end.offset(1);
         }
+        let len = command_line_end.offset_from(command_line_start);
+        std::slice::from_raw_parts(command_line_start, len as _)
+    };
+
+    if client_command_line.is_empty() {
+        panic!("executable command line was empty");
     }
-    command_line.extend_from_slice(&b" --server".map(|b| b as _));
+    let application_name_len = if client_command_line[0] == b'"' as _ {
+        match client_command_line[1..]
+            .iter()
+            .position(|&s| s == b'"' as _)
+        {
+            Some(i) => i + 2,
+            None => client_command_line.len(),
+        }
+    } else {
+        match client_command_line.iter().position(|&s| s == b' ' as _) {
+            Some(i) => i,
+            None => client_command_line.len(),
+        }
+    };
+    let (client_application_name, client_command_line) =
+        client_command_line.split_at(application_name_len);
+
+    let server_flag = b" --server";
+    let mut command_line = Vec::with_capacity(client_command_line.len() + server_flag.len());
+    command_line.extend_from_slice(client_application_name);
+    command_line.extend_from_slice(&server_flag.map(|b| b as _));
+    command_line.extend_from_slice(client_command_line);
     command_line.push(0);
 
     let result = unsafe {
@@ -1057,7 +1084,6 @@ struct EventListener {
 impl EventListener {
     pub fn new() -> Self {
         const DEFAULT_EVENT_SOURCE: EventSource = EventSource::ConnectionListener;
-
         Self {
             wait_handles: [NULL; MAX_EVENT_COUNT],
             sources: [DEFAULT_EVENT_SOURCE; MAX_EVENT_COUNT],
@@ -1067,12 +1093,15 @@ impl EventListener {
 
     pub fn track(&mut self, event: &Event, source: EventSource) {
         let index = self.len as usize;
-        debug_assert!(index < self.wait_handles.len());
+        if index >= self.wait_handles.len() {
+            panic!("tried to track too many events");
+        }
         self.wait_handles[index] = event.handle();
         self.sources[index] = source;
         self.len += 1;
     }
 
+    #[inline(never)]
     pub fn wait_next(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
         let len = self.len;
         self.len = 0;
@@ -1648,7 +1677,10 @@ fn parse_console_events(
                         KeyCode::Char(c)
                     }
                     _ => match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                        Some(Ok(c)) if c.is_ascii_graphic() => KeyCode::Char(c),
+                        Some(Ok(c)) if c.is_ascii_graphic() => {
+                            shift = false;
+                            KeyCode::Char(c)
+                        }
                         _ => continue,
                     },
                 };

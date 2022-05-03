@@ -58,12 +58,34 @@ pub fn parse_path_and_position(text: &str) -> (&str, Option<BufferPosition>) {
 }
 
 pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<BufferPosition>) {
+    fn split_prefix(path: &str) -> (&str, &str) {
+        let mut chars = path.chars();
+        loop {
+            match chars.next() {
+                Some(':') => break,
+                None => return ("", path),
+                Some(c) => {
+                    if !c.is_ascii_alphabetic() {
+                        return ("", path);
+                    }
+                }
+            }
+        }
+        match chars.next() {
+            Some('/' | '\\') => {
+                let rest = chars.as_str();
+                (&path[..path.len() - rest.len()], rest)
+            }
+            _ => ("", path),
+        }
+    }
+
     let (left, right) = text.split_at(index);
     let from = match left.rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')')) {
         Some(i) => i + 1,
         None => 0,
     };
-    let to = match right.find(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')' | ':')) {
+    let to = match right.find(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '(' | ')')) {
         Some(i) => {
             if index + i - from == 1 {
                 text.len()
@@ -74,18 +96,21 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
         None => text.len(),
     };
     let path = &text[from..to];
-    match path.rfind(':') {
-        None | Some(1) => {
-            let position = text[to..].strip_prefix(':').and_then(|t| t.parse().ok());
-            (path, position)
-        }
+    let (prefix, rest) = split_prefix(path);
+    match rest.find(':') {
         Some(i) => {
+            let i = prefix.len() + i;
             let position = path[i + 1..].parse().ok();
             (&path[..i], position)
+        }
+        None => {
+            let position = text[to..].strip_prefix(':').and_then(|t| t.parse().ok());
+            (path, position)
         }
     }
 }
 
+// TODO: parse unicode database and implement this
 pub fn char_display_len(_: char) -> u8 {
     1
 }
@@ -925,15 +950,21 @@ impl From<io::Error> for BufferReadError {
     }
 }
 
-pub struct BufferWriteError;
+pub enum BufferWriteError {
+    SavingDisabled,
+    CouldNotWriteToFile,
+}
 impl fmt::Display for BufferWriteError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("could not write to file")
+        match self {
+            Self::SavingDisabled => f.write_str("buffer has saving disabled"),
+            Self::CouldNotWriteToFile => f.write_str("could not write to file"),
+        }
     }
 }
 impl From<io::Error> for BufferWriteError {
     fn from(_: io::Error) -> Self {
-        Self
+        Self::CouldNotWriteToFile
     }
 }
 
@@ -1343,9 +1374,7 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if !self.path.starts_with(help::HELP_PREFIX)
-            && (!self.properties.saving_enabled || !self.properties.is_file)
-        {
+        if !self.path.starts_with(help::HELP_PREFIX) && !self.properties.is_file {
             return Ok(());
         }
 
@@ -1395,7 +1424,7 @@ impl Buffer {
         };
 
         if !self.properties.saving_enabled {
-            return Ok(());
+            return Err(BufferWriteError::SavingDisabled);
         }
 
         if self.properties.is_file {
@@ -1452,6 +1481,19 @@ impl BufferCollection {
         let buffer = &mut self.buffers[handle.0 as usize];
         buffer.alive = true;
         buffer
+    }
+
+    pub fn try_get(&self, handle: BufferHandle) -> Option<&Buffer> {
+        let index = handle.0 as usize;
+        if self.buffers.len() <= index {
+            return None;
+        }
+        let buffer = &self.buffers[index];
+        if buffer.alive {
+            Some(buffer)
+        } else {
+            None
+        }
     }
 
     pub fn get(&self, handle: BufferHandle) -> &Buffer {
@@ -1518,6 +1560,30 @@ impl BufferCollection {
                 platform
                     .requests
                     .enqueue(PlatformRequest::KillProcess { handle });
+            }
+        }
+    }
+
+    pub(crate) fn on_buffer_insert_text(
+        &mut self,
+        buffer_handle: BufferHandle,
+        range: BufferRange,
+    ) {
+        for process in self.insert_processes.iter_mut() {
+            if process.alive && process.buffer_handle == buffer_handle {
+                process.position = process.position.insert(range);
+            }
+        }
+    }
+
+    pub(crate) fn on_buffer_delete_text(
+        &mut self,
+        buffer_handle: BufferHandle,
+        range: BufferRange,
+    ) {
+        for process in self.insert_processes.iter_mut() {
+            if process.alive && process.buffer_handle == buffer_handle {
+                process.position = process.position.delete(range);
             }
         }
     }
@@ -1612,17 +1678,10 @@ impl BufferCollection {
         let texts = process.output_residual_bytes.receive_bytes(&mut buf, bytes);
 
         let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
-        process.position = buffer.content().saturate_position(process.position);
         let mut position = process.position;
-
         for text in texts {
             let insert_range = buffer.insert_text(word_database, position, text, events);
             position = position.insert(insert_range);
-            for process in &mut self.insert_processes {
-                if process.buffer_handle == buffer.handle() {
-                    process.position = process.position.insert(insert_range);
-                }
-            }
         }
     }
 
@@ -1657,26 +1716,48 @@ mod tests {
 
     #[test]
     fn test_find_path_at() {
+        let text = "file.ext:12";
+        assert_eq!(
+            ("file.ext", Some(BufferPosition::line_col(11, 0))),
+            find_path_and_position_at(text, 0),
+        );
+        assert_eq!(
+            ("file.ext", Some(BufferPosition::line_col(11, 0))),
+            find_path_and_position_at(text, 3),
+        );
+        assert_eq!(
+            ("file.ext", Some(BufferPosition::line_col(11, 0))),
+            find_path_and_position_at(text, 4),
+        );
+        assert_eq!(
+            ("file.ext", Some(BufferPosition::line_col(11, 0))),
+            find_path_and_position_at(text, 5),
+        );
+        assert_eq!(
+            ("file.ext", Some(BufferPosition::line_col(11, 0))),
+            find_path_and_position_at(text, 8),
+        );
+
         let text = "/path/file:45";
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(44, 0))),
-            find_path_and_position_at(text, 0)
+            find_path_and_position_at(text, 0),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(44, 0))),
-            find_path_and_position_at(text, 1)
+            find_path_and_position_at(text, 1),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(44, 0))),
-            find_path_and_position_at(text, text.len())
+            find_path_and_position_at(text, text.len()),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(44, 0))),
-            find_path_and_position_at(text, 3)
+            find_path_and_position_at(text, 3),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(44, 0))),
-            find_path_and_position_at(text, 8)
+            find_path_and_position_at(text, 8),
         );
 
         let text = "xx /path/file:";
@@ -1686,41 +1767,41 @@ mod tests {
         assert_eq!(("/path/file", None), find_path_and_position_at(text, 3));
         assert_eq!(
             ("/path/file", None),
-            find_path_and_position_at(text, text.len() - 1)
+            find_path_and_position_at(text, text.len() - 1),
         );
         assert_eq!(
             ("/path/file", None),
-            find_path_and_position_at(text, text.len())
+            find_path_and_position_at(text, text.len()),
         );
 
         let text = "xx /path/file:3xx";
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(2, 0))),
-            find_path_and_position_at(text, 3)
+            find_path_and_position_at(text, 3),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(2, 0))),
-            find_path_and_position_at(text, text.len() - 5)
+            find_path_and_position_at(text, text.len() - 5),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(2, 0))),
-            find_path_and_position_at(text, text.len() - 4)
+            find_path_and_position_at(text, text.len() - 4),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(2, 0))),
-            find_path_and_position_at(text, text.len() - 3)
+            find_path_and_position_at(text, text.len() - 3),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(2, 0))),
-            find_path_and_position_at(text, text.len() - 2)
+            find_path_and_position_at(text, text.len() - 2),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(2, 0))),
-            find_path_and_position_at(text, text.len() - 1)
+            find_path_and_position_at(text, text.len() - 1),
         );
         assert_eq!(
             ("/path/file", Some(BufferPosition::line_col(2, 0))),
-            find_path_and_position_at(text, text.len())
+            find_path_and_position_at(text, text.len()),
         );
 
         let text = "c:/absolute/path/file";
@@ -1729,61 +1810,80 @@ mod tests {
         assert_eq!((text, None), find_path_and_position_at(text, 2));
         assert_eq!(
             (text, None),
-            find_path_and_position_at(text, text.len() - 1)
+            find_path_and_position_at(text, text.len() - 1),
         );
         assert_eq!(
             (text, None),
-            find_path_and_position_at(text, text.len() - 2)
+            find_path_and_position_at(text, text.len() - 2),
         );
 
         let text = "c:/absolute/path/file:4";
         let path = "c:/absolute/path/file";
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 0))),
-            find_path_and_position_at(text, 0)
+            find_path_and_position_at(text, 0),
         );
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 0))),
-            find_path_and_position_at(text, 1)
+            find_path_and_position_at(text, 1),
         );
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 0))),
-            find_path_and_position_at(text, 2)
+            find_path_and_position_at(text, 2),
         );
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 0))),
-            find_path_and_position_at(text, 3)
+            find_path_and_position_at(text, 3),
         );
 
         let text = "xx c:/absolute/path/file:4,5xx";
         let path = "c:/absolute/path/file";
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 4))),
-            find_path_and_position_at(text, 3)
+            find_path_and_position_at(text, 3),
         );
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 4))),
-            find_path_and_position_at(text, 4)
+            find_path_and_position_at(text, 4),
         );
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 4))),
-            find_path_and_position_at(text, 5)
+            find_path_and_position_at(text, 5),
         );
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 4))),
-            find_path_and_position_at(text, 24)
+            find_path_and_position_at(text, 24),
         );
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 4))),
-            find_path_and_position_at(text, 25)
+            find_path_and_position_at(text, 25),
         );
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 4))),
-            find_path_and_position_at(text, 26)
+            find_path_and_position_at(text, 26),
         );
         assert_eq!(
             (path, Some(BufferPosition::line_col(3, 4))),
-            find_path_and_position_at(text, 27)
+            find_path_and_position_at(text, 27),
+        );
+
+        let text = "c:/absolute/path/file:4:xxx";
+        let path = "c:/absolute/path/file";
+        assert_eq!(
+            (path, Some(BufferPosition::line_col(3, 0))),
+            find_path_and_position_at(text, 0),
+        );
+        assert_eq!(
+            (path, Some(BufferPosition::line_col(3, 0))),
+            find_path_and_position_at(text, 1),
+        );
+        assert_eq!(
+            (path, Some(BufferPosition::line_col(3, 0))),
+            find_path_and_position_at(text, 2),
+        );
+        assert_eq!(
+            (path, Some(BufferPosition::line_col(3, 0))),
+            find_path_and_position_at(text, 3),
         );
     }
 

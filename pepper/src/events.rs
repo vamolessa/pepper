@@ -101,16 +101,48 @@ impl EditorEventQueue {
         });
     }
 
-    pub fn enqueue_fix_cursors(&mut self, handle: BufferViewHandle, cursors: &[Cursor]) {
-        let from = self.write.cursors.len();
-        self.write.cursors.extend_from_slice(cursors);
+    pub fn fix_cursors_mut_guard(&mut self, handle: BufferViewHandle) -> FixCursorMutGuard {
+        let previous_cursors_len = self.write.cursors.len() as _;
+        FixCursorMutGuard {
+            inner: &mut self.write,
+            handle,
+            previous_cursors_len,
+        }
+    }
+}
+
+pub struct FixCursorMutGuard<'a> {
+    inner: &'a mut EventQueue,
+    handle: BufferViewHandle,
+    previous_cursors_len: u32,
+}
+impl<'a> FixCursorMutGuard<'a> {
+    pub fn clear(&mut self) {
+        self.inner.cursors.truncate(self.previous_cursors_len as _);
+    }
+
+    pub fn add(&mut self, cursor: Cursor) {
+        self.inner.cursors.push(cursor);
+    }
+
+    pub fn cursors(&mut self) -> &mut [Cursor] {
+        &mut self.inner.cursors[self.previous_cursors_len as usize..]
+    }
+}
+impl<'a> Drop for FixCursorMutGuard<'a> {
+    fn drop(&mut self) {
+        if self.inner.cursors.len() < self.previous_cursors_len as _ {
+            panic!("deleted too many cursors on `EditorEventQueue::fix_cursors_mut_guard`");
+        }
+
         let cursors = EditorEventCursors {
-            from: from as _,
-            to: self.write.cursors.len() as _,
+            from: self.previous_cursors_len,
+            to: self.inner.cursors.len() as _,
         };
-        self.write
-            .events
-            .push(EditorEvent::FixCursors { handle, cursors });
+        self.inner.events.push(EditorEvent::FixCursors {
+            handle: self.handle,
+            cursors,
+        });
     }
 }
 
@@ -614,7 +646,7 @@ impl<'de> Serialize<'de> for TargetClient {
 pub enum ClientEvent<'a> {
     Key(TargetClient, Key),
     Resize(u16, u16),
-    Command(TargetClient, &'a str),
+    Commands(TargetClient, &'a str),
     StdinInput(TargetClient, &'a [u8]),
 }
 impl<'de> Serialize<'de> for ClientEvent<'de> {
@@ -633,7 +665,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 width.serialize(serializer);
                 height.serialize(serializer);
             }
-            Self::Command(target, command) => {
+            Self::Commands(target, command) => {
                 2u8.serialize(serializer);
                 target.serialize(serializer);
                 command.serialize(serializer);
@@ -665,7 +697,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
             2 => {
                 let target = Serialize::deserialize(deserializer)?;
                 let command = Serialize::deserialize(deserializer)?;
-                Ok(Self::Command(target, command))
+                Ok(Self::Commands(target, command))
             }
             3 => {
                 let target = Serialize::deserialize(deserializer)?;
@@ -775,6 +807,8 @@ mod tests {
         assert_key_simple(KeyCode::Char('<'), "<less>");
         assert_key_simple(KeyCode::Char('>'), "<greater>");
         assert_key_simple(KeyCode::Char('\\'), "\\");
+        assert_key_simple(KeyCode::Char('!'), "!");
+        assert_key_simple(KeyCode::Char('|'), "|");
 
         fn assert_key_with_modifiers(expected_code: KeyCode, control: bool, alt: bool, text: &str) {
             let parsed = parse_key(&mut text.chars()).unwrap();
@@ -859,6 +893,8 @@ mod tests {
         assert_key_serialization(&mut buf, KeyCode::Char('0'));
         assert_key_serialization(&mut buf, KeyCode::Char('9'));
         assert_key_serialization(&mut buf, KeyCode::Char('$'));
+        assert_key_serialization(&mut buf, KeyCode::Char('!'));
+        assert_key_serialization(&mut buf, KeyCode::Char('|'));
         assert_key_serialization(&mut buf, KeyCode::Char('\n'));
         assert_key_serialization(&mut buf, KeyCode::Char('\t'));
         assert_key_serialization(&mut buf, KeyCode::Esc);
@@ -970,4 +1006,3 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
-

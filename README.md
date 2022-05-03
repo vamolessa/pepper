@@ -3,19 +3,20 @@
 
 ### A simple and opinionated modal code editor for your terminal
 
-![main screenshot](./.github/screenshots/main.png)
+![main screenshot](https://vamolessa.github.io/pepper/.github/screenshots/main.png)
 
-[more screenshots](./.github/screenshots/)
+[more screenshots](https://vamolessa.github.io/pepper/.github/screenshots/)
 
 Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
 
-## [help page](./pepper/rc/help.md)
-## [default keybindings](./pepper/rc/bindings.md)
-## [command reference](./pepper/rc/command_reference.md)
-## [defining language syntaxes](./pepper/rc/language_syntax_definitions.md)
-## [config recipes](./pepper/rc/config_recipes.md)
-## [changelog](./pepper/rc/changelog.md)
+## [help page](https://vamolessa.github.io/pepper/pepper/rc/help)
+## [default keybindings](https://vamolessa.github.io/pepper/pepper/rc/bindings)
+## [command reference](https://vamolessa.github.io/pepper/pepper/rc/command_reference)
+## [expansion reference](https://vamolessa.github.io/pepper/pepper/rc/expansion_reference)
+## [defining language syntaxes](https://vamolessa.github.io/pepper/pepper/rc/language_syntax_definitions)
+## [config recipes](https://vamolessa.github.io/pepper/pepper/rc/config_recipes)
+## [changelog](https://vamolessa.github.io/pepper/pepper/rc/changelog)
 
 ### [try it on your browser!](https://vamolessa.github.io/pepper/web)
 
@@ -53,7 +54,7 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 - small, however orthogonal, set of editing primitives
 - mnemonic and easy to reach default keybindings (assuming a qwerty keyboard)
-- cross-plaftorm (Windows, Linux, BSD, Mac and even [Web](./web))
+- cross-plaftorm (Windows, Linux, BSD, Mac and even [Web](https://vamolessa.github.io/pepper/web))
 - extensible through external cli tools
 - be as fast and reponsive as possible
 - zero runtime dependencies (besides platform libs)
@@ -107,7 +108,7 @@ Pepper expands on Vim's editing capabilities by supporting multiple cursors.
 This enables you to make several text transformations at once.
 Also, cursors behave like carets instead of blocks and can always go one-past-last-character-in-line.
 
-In [config recipes](./pepper/rc/config_recipes.md#vim-bindings) you'll find some basic "vim-like" keybindigns
+In [config recipes](https://vamolessa.github.io/pepper/pepper/rc/config_recipes#vim-bindings) you'll find some basic "vim-like" keybindigns
 for more vim comparisons.
 
 # comparing to kakoune
@@ -119,6 +120,11 @@ This way, there's no need for extra `alt-` based keybindings.
 Pepper is heavily inspired by Kakoune's selection based workflow and multiple cursors.
 However its cursors behave like caret ranges instead of block selections.
 That is, the cursor is not a one-char selection but only a visual cue to indicate the caret location.
+
+# keybindings at a glance
+
+![keybindings](https://vamolessa.github.io/pepper/.github/images/keybindings.png)
+Also at [keyboard-layout-editor](http://www.keyboard-layout-editor.com/#/gists/175ca15e15b350e1a2a808fe0b5eecb5).
 
 # development thread
 It's possible to kinda follow Pepper's development history in this

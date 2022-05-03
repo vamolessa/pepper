@@ -1,3 +1,0 @@
-alias build [[enqueue-keys ":o build.log scratch<enter>aad|cmd /c cargo build 2<greater>&1<enter>"]]
-alias test [[enqueue-keys ":o test.log scratch<enter>aad|cmd /c cargo test --workspace 2<greater>&1<enter>"]]
-

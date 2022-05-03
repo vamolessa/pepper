@@ -6,10 +6,11 @@ use std::{
 
 use crate::{
     client::ClientManager,
+    command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow},
-    editor_utils::{load_config, MessageKind},
+    editor_utils::MessageKind,
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
-    platform::{drop_event, Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
+    platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
     serialization::{DeserializeError, Serialize},
     ui, Args, ResourceFile,
@@ -31,12 +32,7 @@ impl Default for ApplicationConfig {
     fn default() -> Self {
         Self {
             args: Args::parse(),
-            static_configs: vec![
-                crate::DEFAULT_BINDINGS_CONFIG,
-                crate::DEFAULT_ALIASES_CONFIG,
-                crate::DEFAULT_SYNTAXES_CONFIG,
-                crate::DEFAULT_PLATFORM_CONFIG,
-            ],
+            static_configs: vec![crate::DEFAULT_CONFIGS, crate::DEFAULT_SYNTAXES],
             plugin_definitions: Vec::new(),
             on_panic_config: OnPanicConfig::default(),
         }
@@ -65,10 +61,16 @@ impl ServerApplication {
         }
 
         for config in &config.static_configs {
-            match load_config(&mut ctx, config.name, config.content) {
-                EditorFlow::Continue => (),
-                _ => return None,
-            };
+            let result = CommandManager::eval(&mut ctx, None, config.content);
+            let flow = CommandManager::unwrap_eval_result(
+                &mut ctx,
+                result,
+                config.content,
+                Some(config.name),
+            );
+            if !matches!(flow, EditorFlow::Continue) {
+                return None;
+            }
         }
 
         for config in config.args.configs {
@@ -77,10 +79,15 @@ impl ServerApplication {
                 continue;
             }
             match fs::read_to_string(path) {
-                Ok(source) => match load_config(&mut ctx, &config.path, &source) {
-                    EditorFlow::Continue => (),
-                    _ => return None,
-                },
+                Ok(source) => {
+                    let path = path.to_str().unwrap_or("");
+                    let result = CommandManager::eval(&mut ctx, None, &source);
+                    let flow =
+                        CommandManager::unwrap_eval_result(&mut ctx, result, &source, Some(path));
+                    if !matches!(flow, EditorFlow::Continue) {
+                        return None;
+                    }
+                }
                 Err(_) => ctx
                     .editor
                     .status_bar
@@ -112,11 +119,6 @@ impl ServerApplication {
                     self.ctx.clients.on_client_left(handle);
                     if self.ctx.clients.iter().next().is_none() {
                         self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
-
-                        for event in events {
-                            drop_event(&mut self.ctx.platform.buf_pool, event);
-                        }
-                        break;
                     }
                 }
                 PlatformEvent::ConnectionOutput { handle, buf } => {
@@ -136,16 +138,13 @@ impl ServerApplication {
                                     .requests
                                     .enqueue(PlatformRequest::WriteToClient { handle, buf });
                             }
-                            EditorFlow::Quit => {
-                                self.ctx
-                                    .platform
-                                    .requests
-                                    .enqueue(PlatformRequest::CloseClient { handle });
-                                break;
-                            }
+                            EditorFlow::Quit => self
+                                .ctx
+                                .platform
+                                .requests
+                                .enqueue(PlatformRequest::CloseClient { handle }),
                             EditorFlow::QuitAll => {
-                                self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
-                                break;
+                                self.ctx.platform.requests.enqueue(PlatformRequest::Quit)
                             }
                         }
                     }
@@ -159,8 +158,11 @@ impl ServerApplication {
                             index,
                             handle,
                         ),
-                        ProcessTag::FindFiles => (),
-                        ProcessTag::FindPattern => (),
+                        ProcessTag::PickerEntries => self
+                            .ctx
+                            .editor
+                            .picker_entries_process_buf
+                            .on_process_spawned(),
                         ProcessTag::Plugin { plugin_handle, id } => {
                             PluginCollection::on_process_spawned(
                                 &mut self.ctx,
@@ -182,21 +184,15 @@ impl ServerApplication {
                             bytes,
                             &mut self.ctx.editor.events,
                         ),
-                        ProcessTag::FindFiles => {
-                            self.ctx.editor.mode.picker_state.on_process_output(
+                        ProcessTag::PickerEntries => self
+                            .ctx
+                            .editor
+                            .picker_entries_process_buf
+                            .on_process_output(
                                 &mut self.ctx.editor.picker,
                                 &self.ctx.editor.read_line,
                                 bytes,
-                            )
-                        }
-                        ProcessTag::FindPattern => {
-                            self.ctx.editor.mode.read_line_state.on_process_output(
-                                &mut self.ctx.editor.buffers,
-                                &mut self.ctx.editor.word_database,
-                                bytes,
-                                &mut self.ctx.editor.events,
-                            )
-                        }
+                            ),
                         ProcessTag::Plugin { plugin_handle, id } => {
                             PluginCollection::on_process_output(
                                 &mut self.ctx,
@@ -217,15 +213,10 @@ impl ServerApplication {
                             index,
                             &mut self.ctx.editor.events,
                         ),
-                        ProcessTag::FindFiles => self.ctx.editor.mode.picker_state.on_process_exit(
-                            &mut self.ctx.editor.picker,
-                            &self.ctx.editor.read_line,
-                        ),
-                        ProcessTag::FindPattern => {
-                            self.ctx.editor.mode.read_line_state.on_process_exit(
-                                &mut self.ctx.editor.buffers,
-                                &mut self.ctx.editor.word_database,
-                                &mut self.ctx.editor.events,
+                        ProcessTag::PickerEntries => {
+                            self.ctx.editor.picker_entries_process_buf.on_process_exit(
+                                &mut self.ctx.editor.picker,
+                                &self.ctx.editor.read_line,
                             )
                         }
                         ProcessTag::Plugin { plugin_handle, id } => {
@@ -285,14 +276,20 @@ where
         for path in &args.files {
             commands.clear();
             commands.push_str("open \"");
-            commands.push_str(path);
+            for c in path.chars() {
+                match c {
+                    '\\' => commands.push_str("\\\\"),
+                    '"' => commands.push_str("\\\""),
+                    c => commands.push(c),
+                }
+            }
             commands.push('"');
-            ClientEvent::Command(self.target_client, &commands)
+            ClientEvent::Commands(self.target_client, &commands)
                 .serialize(&mut self.server_write_buf);
         }
 
         if args.quit {
-            ClientEvent::Command(TargetClient::Sender, "quit")
+            ClientEvent::Commands(TargetClient::Sender, "quit")
                 .serialize(&mut self.server_write_buf);
         }
 
@@ -388,3 +385,4 @@ where
         self.restore_screen();
     }
 }
+

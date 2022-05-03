@@ -2,10 +2,11 @@ use std::{fmt, process::Command};
 
 use crate::{
     buffer::char_display_len,
-    command::{CommandManager, CommandTokenizer},
-    editor::{BufferedKeys, EditorContext, EditorFlow, KeysIterator},
+    command::CommandTokenizer,
+    editor::{BufferedKeys, KeysIterator},
     events::{KeyParseAllError, KeyParser},
     mode::ModeKind,
+    picker::Picker,
     platform::{Key, KeyCode, Platform},
     word_database::{WordIter, WordKind},
 };
@@ -146,9 +147,9 @@ impl ReadLine {
         match keys_iter.next(buffered_keys) {
             Key {
                 code: KeyCode::Esc,
-                shift: false,
                 control: false,
                 alt: false,
+                ..
             }
             | Key {
                 code: KeyCode::Char('c'),
@@ -158,9 +159,9 @@ impl ReadLine {
             } => ReadLinePoll::Canceled,
             Key {
                 code: KeyCode::Char('\n'),
-                shift: false,
                 control: false,
                 alt: false,
+                ..
             }
             | Key {
                 code: KeyCode::Char('m'),
@@ -419,6 +420,15 @@ impl RegisterKey {
         }
     }
 
+    pub fn from_str(key: &str) -> Option<Self> {
+        let mut chars = key.chars();
+        let c = chars.next()?;
+        if chars.next().is_some() {
+            return None;
+        }
+        Self::from_char(c)
+    }
+
     pub fn as_u8(&self) -> u8 {
         self.0 + b'a'
     }
@@ -444,6 +454,74 @@ impl RegisterCollection {
 
     pub fn get_mut(&mut self, key: RegisterKey) -> &mut String {
         &mut self.registers[key.0 as usize]
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct PickerEntriesProcessBuf {
+    buf: Vec<u8>,
+    waiting_for_process: bool,
+}
+impl PickerEntriesProcessBuf {
+    pub(crate) fn on_process_spawned(&mut self) {
+        self.waiting_for_process = true;
+    }
+
+    pub(crate) fn on_process_output(
+        &mut self,
+        picker: &mut Picker,
+        read_line: &ReadLine,
+        bytes: &[u8],
+    ) {
+        if !self.waiting_for_process {
+            return;
+        }
+
+        self.buf.extend_from_slice(bytes);
+
+        {
+            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            if let Some(i) = self.buf.iter().rposition(|&b| b == b'\n') {
+                for line in self
+                    .buf
+                    .drain(..i + 1)
+                    .as_slice()
+                    .split(|&b| matches!(b, b'\n' | b'\r'))
+                {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if let Ok(line) = std::str::from_utf8(line) {
+                        entry_adder.add(line);
+                    }
+                }
+            }
+        }
+
+        picker.move_cursor(0);
+    }
+
+    pub(crate) fn on_process_exit(&mut self, picker: &mut Picker, read_line: &ReadLine) {
+        if !self.waiting_for_process {
+            return;
+        }
+
+        self.waiting_for_process = false;
+
+        {
+            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            for line in self.buf.split(|&b| b == b'\n') {
+                if line.is_empty() {
+                    continue;
+                }
+                if let Ok(line) = std::str::from_utf8(line) {
+                    entry_adder.add(line);
+                }
+            }
+        }
+
+        self.buf.clear();
+        picker.move_cursor(0);
     }
 }
 
@@ -526,47 +604,13 @@ impl ResidualStrBytes {
 }
 
 pub fn parse_process_command(command: &str) -> Option<Command> {
-    let mut tokenizer = CommandTokenizer(command);
-    let name = tokenizer.next()?;
+    let mut tokens = CommandTokenizer(command);
+    let name = tokens.next()?.slice;
     let mut command = Command::new(name);
-    for arg in tokenizer {
-        command.arg(arg);
+    for arg in tokens {
+        command.arg(arg.slice);
     }
     Some(command)
-}
-
-pub fn load_config(ctx: &mut EditorContext, config_name: &str, config_content: &str) -> EditorFlow {
-    for (line_index, line) in config_content.lines().enumerate() {
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        let mut command = ctx.editor.string_pool.acquire_with(line);
-        let result = CommandManager::try_eval(ctx, None, &mut command);
-        ctx.editor.string_pool.release(command);
-
-        match result {
-            Ok(flow) => match flow {
-                EditorFlow::Continue => (),
-                _ => return flow,
-            },
-            Err(error) => {
-                ctx.editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!(
-                        "{}:{}\n{}\n{}",
-                        config_name,
-                        line_index + 1,
-                        line,
-                        error
-                    ));
-                break;
-            }
-        }
-    }
-
-    EditorFlow::Continue
 }
 
 #[cfg(test)]

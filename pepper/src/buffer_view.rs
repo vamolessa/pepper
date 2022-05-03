@@ -371,14 +371,12 @@ impl BufferView {
         }
     }
 
-    pub fn append_selection_text(
+    pub fn append_selection_text_and_ranges(
         &self,
         buffers: &BufferCollection,
         text: &mut String,
-        ranges: &mut [(BufferPositionIndex, BufferPositionIndex)],
-    ) -> usize {
-        let mut ranges_index = 0;
-
+        ranges: &mut Vec<(BufferPositionIndex, BufferPositionIndex)>,
+    ) {
         let buffer = buffers.get(self.buffer_handle).content();
         let mut iter = self.cursors[..].iter();
         if let Some(cursor) = iter.next() {
@@ -387,8 +385,7 @@ impl BufferView {
             for t in buffer.text_range(last_range) {
                 text.push_str(t);
             }
-            ranges[ranges_index] = (from, text.len() as _);
-            ranges_index += 1;
+            ranges.push((from, text.len() as _));
 
             for cursor in iter {
                 let range = cursor.to_range();
@@ -399,14 +396,11 @@ impl BufferView {
                 for t in buffer.text_range(range) {
                     text.push_str(t);
                 }
-                ranges[ranges_index] = (from, text.len() as _);
-                ranges_index += 1;
+                ranges.push((from, text.len() as _));
 
                 last_range = range;
             }
         }
-
-        ranges_index
     }
 
     pub fn insert_text_at_cursor_positions(
@@ -478,30 +472,24 @@ impl BufferView {
             .get_mut(self.buffer_handle)
             .undo(word_database, events);
 
-        let mut cursors = [Cursor::zero(); CursorCollection::capacity()];
-        let mut cursors_len = 0;
+        let mut fix_cursors = events.fix_cursors_mut_guard(self.handle);
 
         let mut last_edit_kind = None;
         for edit in edits {
             if last_edit_kind != Some(edit.kind) {
-                cursors_len = 0;
+                fix_cursors.clear();
             }
             let position = match edit.kind {
                 EditKind::Insert => edit.range.to,
                 EditKind::Delete => edit.range.from,
             };
-            if cursors_len < cursors.len() {
-                cursors[cursors_len] = Cursor {
-                    anchor: edit.range.from,
-                    position,
-                };
-                cursors_len += 1;
-            }
+            fix_cursors.add(Cursor {
+                anchor: edit.range.from,
+                position,
+            });
 
             last_edit_kind = Some(edit.kind);
         }
-
-        events.enqueue_fix_cursors(self.handle, &cursors[..cursors_len]);
     }
 
     pub fn redo(
@@ -514,41 +502,35 @@ impl BufferView {
             .get_mut(self.buffer_handle)
             .redo(word_database, events);
 
-        let mut cursors = [Cursor::zero(); CursorCollection::capacity()];
-        let mut cursors_len = 0;
+        let mut fix_cursors = events.fix_cursors_mut_guard(self.handle);
 
         let mut last_edit_kind = None;
         for edit in edits {
             if last_edit_kind != Some(edit.kind) {
-                cursors_len = 0;
+                fix_cursors.clear();
             }
             let position = match edit.kind {
                 EditKind::Insert => {
-                    for cursor in &mut cursors[..cursors_len] {
+                    for cursor in fix_cursors.cursors() {
                         cursor.insert(edit.range);
                     }
                     edit.range.to
                 }
                 EditKind::Delete => {
-                    for cursor in &mut cursors[..cursors_len] {
+                    for cursor in fix_cursors.cursors() {
                         cursor.delete(edit.range);
                     }
                     edit.range.from
                 }
             };
 
-            if cursors_len < cursors.len() {
-                cursors[cursors_len] = Cursor {
-                    anchor: edit.range.from,
-                    position,
-                };
-                cursors_len += 1;
-            }
+            fix_cursors.add(Cursor {
+                anchor: edit.range.from,
+                position,
+            });
 
             last_edit_kind = Some(edit.kind);
         }
-
-        events.enqueue_fix_cursors(self.handle, &cursors[..cursors_len]);
     }
 }
 

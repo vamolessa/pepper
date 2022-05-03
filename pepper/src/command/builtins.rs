@@ -1,23 +1,25 @@
-use std::path::Path;
+use std::{path::Path, process::Stdio, env};
 
 use crate::{
-    buffer::{parse_path_and_position, BufferProperties},
+    buffer::{parse_path_and_position, BufferProperties, BufferWriteError},
     buffer_position::BufferPosition,
     client::ViewAnchor,
-    command::{CommandError, CommandIO, CommandManager, CompletionSource},
+    command::{CommandError, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
-    editor::{EditorContext, EditorFlow},
-    editor_utils::MessageKind,
+    editor::EditorFlow,
+    editor_utils::{parse_process_command, MessageKind, RegisterKey},
     help,
     mode::{picker, read_line, ModeKind},
+    platform::{PlatformRequest, ProcessTag},
     syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
+    word_database::WordIndicesIter,
 };
 
 pub fn register_commands(commands: &mut CommandManager) {
     let mut r = |name, completions, command_fn| {
-        commands.register(None, name, completions, command_fn);
+        commands.register_command(None, name, completions, command_fn);
     };
 
     static HELP_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Commands];
@@ -92,11 +94,11 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 
     r("open", &[CompletionSource::Files], |ctx, io| {
-        let path = io.args.next()?;
+        let mut path = io.args.next()?;
 
         let mut properties = BufferProperties::text();
-        while let Some(property) = io.args.try_next() {
-            match property {
+        while let Some(arg) = io.args.try_next() {
+            match path {
                 "text" => properties = BufferProperties::text(),
                 "scratch" => properties = BufferProperties::scratch(),
                 "history-enabled" => properties.history_enabled = true,
@@ -107,6 +109,7 @@ pub fn register_commands(commands: &mut CommandManager) {
                 "word-database-disabled" => properties.word_database_enabled = false,
                 _ => return Err(CommandError::NoSuchBufferProperty),
             }
+            path = arg;
         }
 
         let client_handle = io.client_handle()?;
@@ -165,11 +168,10 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let mut count = 0;
         for buffer in ctx.editor.buffers.iter_mut() {
-            if buffer.properties.saving_enabled {
-                buffer
-                    .write_to_file(None, &mut ctx.editor.events)
-                    .map_err(CommandError::BufferWriteError)?;
-                count += 1;
+            match buffer.write_to_file(None, &mut ctx.editor.events) {
+                Ok(()) => count += 1,
+                Err(BufferWriteError::SavingDisabled) => (),
+                Err(error) => return Err(CommandError::BufferWriteError(error)),
             }
         }
 
@@ -292,7 +294,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         match value {
             Some(value) => {
                 let encoded =
-                    u32::from_str_radix(value, 16).map_err(|_| CommandError::NoSuchColor)?;
+                    u32::from_str_radix(value, 16).map_err(|_| CommandError::InvalidColorValue)?;
                 *color = Color::from_u32(encoded);
             }
             None => ctx
@@ -305,55 +307,66 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("map-normal", &[], |ctx, io| map(ctx, io, ModeKind::Normal));
-    r("map-insert", &[], |ctx, io| map(ctx, io, ModeKind::Insert));
-    r("map-command", &[], |ctx, io| {
-        map(ctx, io, ModeKind::Command)
-    });
-    r("map-readline", &[], |ctx, io| {
-        map(ctx, io, ModeKind::ReadLine)
-    });
-    r("map-picker", &[], |ctx, io| map(ctx, io, ModeKind::Picker));
-
-    static ALIAS_COMPLETIONS: &[CompletionSource] =
-        &[CompletionSource::Custom(&[]), CompletionSource::Commands];
-    r("alias", ALIAS_COMPLETIONS, |ctx, io| {
+    static MAP_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&[
+        "normal", "insert", "command", "readline", "picker",
+    ])];
+    r("map", MAP_COMPLETIONS, |ctx, io| {
+        let mode = io.args.next()?;
         let from = io.args.next()?;
         let to = io.args.next()?;
         io.args.assert_empty()?;
-        ctx.editor.commands.aliases.add(from, to);
-        Ok(())
-    });
 
-    r("syntax", &[], |ctx, io| {
-        let glob = io.args.next()?;
-        io.args.assert_empty()?;
-        match ctx.editor.syntaxes.set_current_from_glob(glob) {
+        let mode = match mode {
+            "normal" => ModeKind::Normal,
+            "insert" => ModeKind::Insert,
+            "command" => ModeKind::Command,
+            "readline" => ModeKind::ReadLine,
+            "picker" => ModeKind::Picker,
+            _ => return Err(CommandError::InvalidModeKind),
+        };
+
+        match ctx.editor.keymaps.parse_and_map(mode, from, to) {
             Ok(()) => Ok(()),
-            Err(error) => Err(CommandError::InvalidGlob(error)),
+            Err(error) => Err(CommandError::KeyMapError(error)),
         }
     });
 
-    r("syntax-keywords", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Keyword)
-    });
-    r("syntax-types", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Type)
-    });
-    r("syntax-symbols", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Symbol)
-    });
-    r("syntax-literals", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Literal)
-    });
-    r("syntax-strings", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::String)
-    });
-    r("syntax-comments", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Comment)
-    });
-    r("syntax-texts", &[], |ctx, io| {
-        syntax_pattern(ctx, io, TokenKind::Text)
+    static SYNTAX_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&[
+        "keywords", "types", "symbols", "literals", "strings", "comments", "texts",
+    ])];
+    r("syntax", SYNTAX_COMPLETIONS, |ctx, io| {
+        let arg = io.args.next()?;
+        let pattern = io.args.try_next();
+        io.args.assert_empty()?;
+
+        let pattern = match pattern {
+            Some(pattern) => pattern,
+            None => match ctx.editor.syntaxes.set_current_from_glob(arg) {
+                Ok(()) => return Ok(()),
+                Err(error) => return Err(CommandError::InvalidGlob(error)),
+            },
+        };
+
+        let token_kind = match arg {
+            "keywords" => TokenKind::Keyword,
+            "types" => TokenKind::Type,
+            "symbols" => TokenKind::Symbol,
+            "literals" => TokenKind::Literal,
+            "strings" => TokenKind::String,
+            "comments" => TokenKind::Comment,
+            "texts" => TokenKind::Text,
+            _ => return Err(CommandError::InvalidTokenKind),
+        };
+
+        match ctx
+            .editor
+            .syntaxes
+            .get_current()
+            .set_rule(token_kind, pattern)
+        {
+            Ok(()) => Ok(()),
+            Err(error) => Err(CommandError::PatternError(error)),
+        }
     });
 
     r("copy-command", &[], |ctx, io| {
@@ -383,57 +396,215 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("find-file", &[], |ctx, io| {
-        let command = io.args.next()?;
-        let prompt = io.args.try_next().unwrap_or("open:");
+    r("set-register", &[], |ctx, io| {
+        let key = io.args.next()?;
+        let value = io.args.next()?;
         io.args.assert_empty()?;
-        picker::find_file::enter_mode(ctx, command, prompt);
+
+        let key = RegisterKey::from_str(key).ok_or(CommandError::InvalidRegisterKey)?;
+        let register = ctx.editor.registers.get_mut(key);
+        register.clear();
+        register.push_str(value);
         Ok(())
     });
 
-    r("find-pattern", &[], |ctx, io| {
-        let command = io.args.next()?;
-        let prompt = io.args.try_next().unwrap_or("find:");
+    r("set-env", &[], |_, io| {
+        let key = io.args.next()?;
+        let value = io.args.next()?;
         io.args.assert_empty()?;
-        read_line::find_pattern::enter_mode(ctx, command, prompt);
+
+        if key.is_empty() || key.contains('=') {
+            return Err(CommandError::InvalidEnvironmentVariable);
+        }
+
+        env::set_var(key, value);
         Ok(())
     });
 
-    r("pid", &[], |ctx, io| {
+    r("readline", &[], |ctx, io| {
+        let arg = io.args.next()?;
+        let (prompt, continuation) = match io.args.try_next() {
+            Some(continuation) => (arg, continuation),
+            None => ("readline:", arg),
+        };
         io.args.assert_empty()?;
+        read_line::custom::enter_mode(ctx, continuation, prompt);
+        Ok(())
+    });
+
+    r("pick", &[], |ctx, io| {
+        let arg = io.args.next()?;
+        let (prompt, continuation) = match io.args.try_next() {
+            Some(continuation) => (arg, continuation),
+            None => ("pick:", arg),
+        };
+        io.args.assert_empty()?;
+        picker::custom::enter_mode(ctx, continuation, prompt);
+        Ok(())
+    });
+
+    r("picker-entries", &[], |ctx, io| {
+        ctx.editor.picker.clear();
+        while let Some(arg) = io.args.try_next() {
+            ctx.editor.picker.add_custom_entry(arg);
+        }
         ctx.editor
-            .status_bar
-            .write(MessageKind::Info)
-            .fmt(format_args!("{}", std::process::id()));
+            .picker
+            .filter(WordIndicesIter::empty(), ctx.editor.read_line.input());
         Ok(())
     });
-}
 
-fn map(ctx: &mut EditorContext, io: &mut CommandIO, mode: ModeKind) -> Result<(), CommandError> {
-    let from = io.args.next()?;
-    let to = io.args.next()?;
-    io.args.assert_empty()?;
+    r("picker-entries-from-lines", &[], |ctx, io| {
+        let command = io.args.next()?;
+        io.args.assert_empty()?;
 
-    match ctx.editor.keymaps.parse_and_map(mode, from, to) {
-        Ok(()) => Ok(()),
-        Err(error) => Err(CommandError::KeyMapError(error)),
-    }
-}
+        ctx.editor.picker.clear();
 
-fn syntax_pattern(
-    ctx: &mut EditorContext,
-    io: &mut CommandIO,
-    token_kind: TokenKind,
-) -> Result<(), CommandError> {
-    let pattern = io.args.next()?;
-    io.args.assert_empty()?;
-    match ctx
-        .editor
-        .syntaxes
-        .get_current()
-        .set_rule(token_kind, pattern)
-    {
-        Ok(()) => Ok(()),
-        Err(error) => Err(CommandError::PatternError(error)),
-    }
+        match parse_process_command(command) {
+            Some(mut command) => {
+                command.stdin(Stdio::null());
+                command.stdout(Stdio::piped());
+                command.stderr(Stdio::null());
+
+                ctx.platform
+                    .requests
+                    .enqueue(PlatformRequest::SpawnProcess {
+                        tag: ProcessTag::PickerEntries,
+                        command,
+                        buf_len: 4 * 1024,
+                    });
+            }
+            None => {
+                ctx.editor
+                    .status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!("invalid command '{}'", command));
+            }
+        }
+
+        Ok(())
+    });
+
+    r("spawn", &[], |ctx, io| {
+        let command = io.args.next()?;
+        io.args.assert_empty()?;
+
+        if let Some(mut command) = parse_process_command(command) {
+            command.stdin(Stdio::null());
+            command.stdout(Stdio::null());
+            command.stderr(Stdio::null());
+
+            ctx.platform
+                .requests
+                .enqueue(PlatformRequest::SpawnProcess {
+                    tag: ProcessTag::Ignored,
+                    command,
+                    buf_len: 0,
+                });
+        }
+
+        Ok(())
+    });
+
+    r("replace-with-output", &[], |ctx, io| {
+        let command = io.args.next()?;
+        io.args.assert_empty()?;
+
+        let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
+        let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+
+        for cursor in buffer_view.cursors[..].iter().rev() {
+            let command = match parse_process_command(command) {
+                Some(command) => command,
+                None => continue,
+            };
+
+            let range = cursor.to_range();
+            let stdin = if range.from == range.to {
+                None
+            } else {
+                let mut buf = ctx.platform.buf_pool.acquire();
+                let write = buf.write();
+
+                let content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
+                for text in content.text_range(range) {
+                    write.extend_from_slice(text.as_bytes());
+                }
+
+                Some(buf)
+            };
+
+            ctx.editor.buffers.spawn_insert_process(
+                &mut ctx.platform,
+                command,
+                buffer_view.buffer_handle,
+                cursor.position,
+                stdin,
+            );
+        }
+
+        buffer_view.delete_text_in_cursor_ranges(
+            &mut ctx.editor.buffers,
+            &mut ctx.editor.word_database,
+            &mut ctx.editor.events,
+        );
+
+        Ok(())
+    });
+
+    r("command", &[], |ctx, io| {
+        let name = io.args.next()?;
+        let source = io.args.next()?;
+        io.args.assert_empty()?;
+        ctx.editor.commands.register_macro(name, source)
+    });
+
+    static EVAL_COMPLETIONS: &[CompletionSource] = &[
+        CompletionSource::Custom(&["on"]),
+        CompletionSource::Custom(&["windows", "linux", "bsd", "macos"]),
+    ];
+    r("eval", EVAL_COMPLETIONS, |ctx, io| {
+        let mut continuation = io.args.next()?;
+
+        let mut should_execute = true;
+        if continuation == "on" {
+            let current_platform = if cfg!(target_os = "windows") {
+                "windows"
+            } else if cfg!(target_os = "linux") {
+                "linux"
+            } else if cfg!(any(
+                target_os = "freebsd",
+                target_os = "netbsd",
+                target_os = "openbsd",
+                target_os = "dragonfly",
+            )) {
+                "bsd"
+            } else if cfg!(target_os = "macos") {
+                "macos"
+            } else {
+                ""
+            };
+
+            should_execute = false;
+            while let Some(arg) = io.args.try_next() {
+                continuation = arg;
+                should_execute = should_execute || arg == current_platform;
+            }
+        }
+
+        io.args.assert_empty()?;
+
+        if !should_execute {
+            return Ok(());
+        }
+
+        io.args.assert_empty()?;
+        match CommandManager::eval(ctx, io.client_handle, continuation) {
+            Ok(flow) => {
+                io.flow = flow;
+                Ok(())
+            }
+            Err(error) => Err(error.error),
+        }
+    });
 }

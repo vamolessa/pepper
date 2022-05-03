@@ -31,6 +31,10 @@ static MAIN_HELP_PAGES: HelpPages = HelpPages::new(&[
         content: include_str!("../rc/command_reference.md"),
     },
     ResourceFile {
+        name: "expansion_reference.md",
+        content: include_str!("../rc/expansion_reference.md"),
+    },
+    ResourceFile {
         name: "bindings.md",
         content: include_str!("../rc/bindings.md"),
     },
@@ -42,6 +46,8 @@ static MAIN_HELP_PAGES: HelpPages = HelpPages::new(&[
         name: "config_recipes.md",
         content: include_str!("../rc/config_recipes.md"),
     },
+    crate::DEFAULT_CONFIGS,
+    crate::DEFAULT_SYNTAXES,
     ResourceFile {
         name: "help.md",
         content: include_str!("../rc/help.md"),
