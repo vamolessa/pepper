@@ -1205,7 +1205,7 @@ mod tests {
             &mut expanded,
         );
         assert!(r.is_ok());
-        assert_eq!("\0", &expanded);
+        assert_eq!("", &expanded);
 
         expanded.clear();
         let r = expand_variables(
