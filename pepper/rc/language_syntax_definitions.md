@@ -26,6 +26,7 @@ Then following the call to `syntax` command, it's possible to override each toke
 - `syntax-strings`
 - `syntax-comments`
 - `syntax-texts`
+
 Each of these commands takes a single pattern argument.
 
 Also, if a syntax can't match a token to a text slice, it will assume a `text` token kind which is used for normal text.
@@ -122,9 +123,9 @@ it's possible to use subpatterns with different lengths.
 
 | pattern | matches | does not match |
 | --- | --- | --- |
-| `a|b` | `a`, `b` | `c` |
-| `abc|%d` | `abc`, `0`, `8` | `!`, `ab` |
-| `{a}|bb` | `` (empty), `a`, `aaa`, `bb` | `b`, `c` |
+| <code>a&#124;b</code> | `a`, `b` | `c` |
+| <code>abc&#124;%d</code> | `abc`, `0`, `8` | `!`, `ab` |
+| <code>{a}&#124;bb</code> | ` ` (empty), `a`, `aaa`, `bb` | `b`, `c` |
 
 ### common patterns
 
@@ -135,6 +136,6 @@ it's possible to use subpatterns with different lengths.
 | `"{(\")!".}` | string delimited by `"` which can contain escaped `\"`. note that `(\")` is checked first so it can be ignored correctly |
 | `//{.}` | c-style single line comment. will match everything to the right of the `//` |
 | `/*{!(*/).$}` | c-style multi line comment. the order inside `{}` is important. the 'exit pattern' comes first to stop as soon as a `*/` is found |
-| `if|while|for` | tries to match against several keywords |
+| <code>if&#124;while&#124;for</code> | tries to match against several keywords |
 
 <!-- {% endraw %} -->
