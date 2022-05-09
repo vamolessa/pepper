@@ -1355,7 +1355,7 @@ impl State {
                     ..
                 } => {
                     let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                    if !cursors[..].is_empty() {
+                    if cursors[..].len() > 1 {
                         let main_cursor_position = cursors.main_cursor().position;
                         let main_cursor_index = cursors.main_cursor_index();
                         cursors.swap_remove(main_cursor_index);

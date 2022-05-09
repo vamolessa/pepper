@@ -1,5 +1,5 @@
-map normal <esc> cdcVs<esc>
-map normal <c-c> cdcVs<esc>
+map normal <esc> CDCVs<esc>
+map normal <c-c> CDCVs<esc>
 
 map normal . Qa
 
