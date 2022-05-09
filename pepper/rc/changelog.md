@@ -7,6 +7,7 @@
 - changed `cd` binding (delete all cursors except the main cursor) to `CD`
 - added new `cd` binding that only deletes the main cursor
 - added lsp configuration examples
+- fix `gf` (and `GF`) that could open a duplicate of an already opened buffer if trying to open the same path but absolute
 
 ## 0.26.1
 - improved `find_path_and_position_at` to account for paths followed by `:`

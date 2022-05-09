@@ -1508,6 +1508,10 @@ impl BufferCollection {
         let mut components = path.components();
         let path = match components.next()? {
             Component::CurDir => components.as_path(),
+            Component::RootDir | Component::Prefix(_) => match path.strip_prefix(buffers_root) {
+                Ok(path) => path,
+                Err(_) => path,
+            },
             _ => path,
         };
 
