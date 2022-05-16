@@ -1,4 +1,4 @@
-use std::{path::Path, process::Stdio, env};
+use std::{env, path::Path, process::Stdio};
 
 use crate::{
     buffer::{parse_path_and_position, BufferProperties, BufferWriteError},
@@ -491,7 +491,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         if let Some(mut command) = parse_process_command(command) {
             command.stdin(Stdio::null());
-            command.stdout(Stdio::null());
+            command.stdout(Stdio::piped());
             command.stderr(Stdio::null());
 
             ctx.platform
