@@ -505,7 +505,7 @@ pub fn register_commands(commands: &mut CommandManager) {
                 .enqueue(PlatformRequest::SpawnProcess {
                     tag: ProcessTag::Ignored,
                     command,
-                    buf_len: 0,
+                    buf_len: 4 * 1024,
                 });
         }
 
