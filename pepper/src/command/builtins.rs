@@ -1,7 +1,7 @@
 use std::{env, path::Path, process::Stdio};
 
 use crate::{
-    buffer::{parse_path_and_position, BufferProperties, BufferWriteError},
+    buffer::{parse_path_and_position, BufferProperties, BufferWriteError, BufferReadError},
     buffer_position::BufferPosition,
     client::ViewAnchor,
     command::{CommandError, CommandManager, CompletionSource},
@@ -205,11 +205,17 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         io.assert_can_discard_all_buffers(ctx)?;
         let mut count = 0;
+        let mut all_files_found = true;
         for buffer in ctx.editor.buffers.iter_mut() {
-            buffer
-                .read_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
-                .map_err(CommandError::BufferReadError)?;
-            count += 1;
+            match buffer.read_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events) {
+                Ok(()) => count += 1,
+                Err(BufferReadError::FileNotFound) => all_files_found = true,
+                Err(error) => return Err(CommandError::BufferReadError(error)),
+            }
+        }
+
+        if count == 0 && all_files_found {
+            return Err(CommandError::BufferReadError(BufferReadError::FileNotFound));
         }
 
         ctx.editor
