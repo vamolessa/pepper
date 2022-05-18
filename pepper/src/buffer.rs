@@ -1366,6 +1366,12 @@ impl Buffer {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> Result<(), BufferReadError> {
+        fn clear_buffer(buffer: &mut Buffer, word_database: &mut WordDatabase) {
+            buffer.remove_all_words_from_database(word_database);
+            buffer.content.clear();
+            buffer.highlighted.clear();
+        }
+
         self.needs_save = false;
         self.history.clear();
         self.search_ranges.clear();
@@ -1378,16 +1384,14 @@ impl Buffer {
             return Ok(());
         }
 
-        self.remove_all_words_from_database(word_database);
-        self.content.clear();
-        self.highlighted.clear();
-
         if self.path.as_os_str().is_empty() {
             return Err(BufferReadError::FileNotFound);
         } else if let Some(mut reader) = help::open(&self.path) {
+            clear_buffer(self, word_database);
             self.content.read(&mut reader)?;
         } else {
             let file = File::open(&self.path)?;
+            clear_buffer(self, word_database);
             let mut reader = io::BufReader::new(file);
             self.content.read(&mut reader)?;
         }
