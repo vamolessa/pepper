@@ -1,7 +1,7 @@
 use std::{env, path::Path, process::Stdio};
 
 use crate::{
-    buffer::{parse_path_and_position, BufferProperties, BufferWriteError, BufferReadError},
+    buffer::{parse_path_and_position, BufferProperties, BufferReadError, BufferWriteError},
     buffer_position::BufferPosition,
     client::ViewAnchor,
     command::{CommandError, CommandManager, CompletionSource},
