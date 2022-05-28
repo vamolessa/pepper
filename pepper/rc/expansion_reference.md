@@ -50,22 +50,22 @@ Lines are always separated by `\n`.
 - usage: `@buffer-content()` `@buffer-content(<id>)`
 
 ## `cursor-anchor-column`
-The column byte index (zero-based) of the anchor of the current cursor or of the cursor of index `<index>`.
+The column byte number (one-based) of the anchor of the current cursor or of the cursor of index `<index>`.
 If there is no such cursor, it results in an empty expansion.
 - usage: `@cursor-anchor-column()` `@cursor-anchor-column(<index>)`
 
 ## `cursor-anchor-line`
-The line index (zero-based) of the anchor of the current cursor or of the cursor of index `<index>`.
+The line number (one-based) of the anchor of the current cursor or of the cursor of index `<index>`.
 If there is no such cursor, it results in an empty expansion.
 - usage: `@cursor-anchor-line()` `@cursor-anchor-line(<index>)`
 
 ## `cursor-position-column`
-The column byte index (zero-based) of the position of the of the current cursor or of the cursor of index `<index>`.
+The column byte number (one-based) of the position of the of the current cursor or of the cursor of index `<index>`.
 If there is no such cursor, it results in an empty expansion.
 - usage: `@cursor-position-column()` `@cursor-position-column(<index>)`
 
 ## `cursor-position-line`
-The line index (zero-based) of the position of the current cursor or of the cursor of index `<index>`.
+The line number (one-based) of the position of the current cursor or of the cursor of index `<index>`.
 If there is no such cursor, it results in an empty expansion.
 - usage: `@cursor-position-line()` `@cursor-position-line(<index>)`
 

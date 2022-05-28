@@ -130,22 +130,22 @@ pub fn write_variable_expansion<'ctx>(
         }
         "cursor-anchor-column" => {
             if let Some(cursor) = cursor(ctx, client_handle, args)? {
-                let _ = write!(output, "{}", cursor.anchor.column_byte_index);
+                let _ = write!(output, "{}", cursor.anchor.column_byte_index + 1);
             }
         }
         "cursor-anchor-line" => {
             if let Some(cursor) = cursor(ctx, client_handle, args)? {
-                let _ = write!(output, "{}", cursor.anchor.line_index);
+                let _ = write!(output, "{}", cursor.anchor.line_index + 1);
             }
         }
         "cursor-position-column" => {
             if let Some(cursor) = cursor(ctx, client_handle, args)? {
-                let _ = write!(output, "{}", cursor.position.column_byte_index);
+                let _ = write!(output, "{}", cursor.position.column_byte_index + 1);
             }
         }
         "cursor-position-line" => {
             if let Some(cursor) = cursor(ctx, client_handle, args)? {
-                let _ = write!(output, "{}", cursor.position.line_index);
+                let _ = write!(output, "{}", cursor.position.line_index + 1);
             }
         }
         "cursor-selection" => {

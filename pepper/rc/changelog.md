@@ -8,8 +8,9 @@
 - added new `cd` binding that only deletes the main cursor
 - added lsp configuration examples
 - fix `gf` (and `GF`) that could open a duplicate of an already opened buffer if trying to open the same path but absolute
-- changed `spawn` command to use a piped stdout in order to detect when the process exits
 - fix `reopen-all` would fail if there was a scratch buffer with a path that does not exist
+- changed `spawn` command to use a piped stdout in order to detect when the process exits
+- changed `cursor-<anchor/position>-<column/line>` expansions to be one based (instead of zero based) for easier interoperability with other softwares
 
 ## 0.26.1
 - improved `find_path_and_position_at` to account for paths followed by `:`
