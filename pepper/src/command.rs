@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt};
+use std::{collections::VecDeque, fmt, ops::Range};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
@@ -352,18 +352,16 @@ pub struct Command {
 }
 
 struct Macro {
-    name_start: u16,
-    name_end: u16,
-    source_start: u32,
-    source_end: u32,
+    name_range: Range<u16>,
+    source_range: Range<u32>,
 }
 impl Macro {
     pub fn name<'a>(&self, names: &'a str) -> &'a str {
-        &names[self.name_start as usize..self.name_end as usize]
+        &names[self.name_range.start as usize..self.name_range.end as usize]
     }
 
     pub fn source<'a>(&self, sources: &'a str) -> &'a str {
-        &sources[self.source_start as usize..self.source_end as usize]
+        &sources[self.source_range.start as usize..self.source_range.end as usize]
     }
 }
 
@@ -377,7 +375,7 @@ impl MacroCollection {
     fn add(&mut self, name: &str, source: &str) {
         for (i, m) in self.macros.iter().enumerate() {
             if name == m.name(&self.names) {
-                let old_source_range = m.source_start as usize..m.source_end as usize;
+                let old_source_range = m.source_range.start as usize..m.source_range.end as usize;
                 let old_source_len = old_source_range.end - old_source_range.start;
 
                 let new_source_len = source.len();
@@ -390,11 +388,11 @@ impl MacroCollection {
                 let old_source_len = old_source_len as u32;
                 let new_source_len = new_source_len as u32;
 
-                self.macros[i].source_end =
-                    self.macros[i].source_end - old_source_len + new_source_len;
+                self.macros[i].source_range.end =
+                    self.macros[i].source_range.end - old_source_len + new_source_len;
                 for m in &mut self.macros[i + 1..] {
-                    m.source_start = m.source_start - old_source_len + new_source_len;
-                    m.source_end = m.source_end - old_source_len + new_source_len;
+                    m.source_range.start = m.source_range.start - old_source_len + new_source_len;
+                    m.source_range.end = m.source_range.end - old_source_len + new_source_len;
                 }
                 return;
             }
@@ -402,7 +400,7 @@ impl MacroCollection {
 
         let name_start = self.names.len();
         let name_end = name_start + name.len();
-        if name_end > u32::MAX as _ {
+        if name_end > u16::MAX as _ {
             return;
         }
 
@@ -416,10 +414,8 @@ impl MacroCollection {
         self.sources.push_str(source);
 
         self.macros.push(Macro {
-            name_start: name_start as _,
-            name_end: name_end as _,
-            source_start: source_start as _,
-            source_end: source_end as _,
+            name_range: name_start as _..name_end as _,
+            source_range: source_start as _..source_end as _,
         });
     }
 

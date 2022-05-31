@@ -1734,7 +1734,7 @@ impl ModeState for State {
                     ctx.editor
                         .status_bar
                         .write(MessageKind::Info)
-                        .str(&lints[index].message);
+                        .str(&lints[index].message(&buffer.lints));
                 }
             }
         }

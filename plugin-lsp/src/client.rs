@@ -784,7 +784,7 @@ impl Client {
                 if let Some(data) = buffer_diagnostics.get_data(i) {
                     let range = DocumentRange::from_buffer_range(lint.range);
                     let diagnostic = DocumentDiagnostic::to_json_value_from_parts(
-                        &lint.message,
+                        lint.message(&buffer.lints),
                         range,
                         data,
                         &mut self.json,

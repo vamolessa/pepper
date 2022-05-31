@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct PluginHandle(u32);
+pub struct PluginHandle(pub(crate) u32);
 
 #[derive(Clone, Copy)]
 pub struct PluginDefinition {

@@ -2,7 +2,7 @@ use std::{
     fmt,
     fs::File,
     io,
-    ops::{Add, RangeBounds, Sub},
+    ops::{Add, RangeBounds, Sub, Range},
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     str::CharIndices,
@@ -240,36 +240,47 @@ impl<'a> WordRefWithPosition<'a> {
 }
 
 pub struct BufferLint {
-    pub message: String,
+    pub message_range: Range<u32>,
     pub range: BufferRange,
     pub plugin_handle: PluginHandle,
+}
+impl BufferLint {
+    pub fn message<'a>(&self, buffer_lints: &'a BufferLintCollection) -> &'a str {
+        let message_range = self.message_range.start as usize..self.message_range.end as usize;
+        let plugin_messages = &buffer_lints.plugin_messages[self.plugin_handle.0 as usize];
+        &plugin_messages[message_range]
+    }
 }
 
 #[derive(Default)]
 pub struct BufferLintCollection {
     lints: Vec<BufferLint>,
-    len: u32,
+    plugin_messages: Vec<String>,
 }
 impl BufferLintCollection {
     pub fn all(&self) -> &[BufferLint] {
-        &self.lints[..self.len as usize]
+        &self.lints
     }
 
     fn insert_range(&mut self, range: BufferRange) {
-        for lint in &mut self.lints[..self.len as usize] {
+        for lint in &mut self.lints {
             lint.range.from = lint.range.from.insert(range);
             lint.range.to = lint.range.to.insert(range);
         }
     }
 
     fn delete_range(&mut self, range: BufferRange) {
-        for lint in &mut self.lints[..self.len as usize] {
+        for lint in &mut self.lints {
             lint.range.from = lint.range.from.delete(range);
             lint.range.to = lint.range.to.delete(range);
         }
     }
 
     pub fn mut_guard(&mut self, plugin_handle: PluginHandle) -> BufferLintCollectionMutGuard {
+        let min_messages_per_plugin_len = plugin_handle.0 as usize + 1;
+        if self.plugin_messages.len() < min_messages_per_plugin_len {
+            self.plugin_messages.resize(min_messages_per_plugin_len, String::new());
+        }
         BufferLintCollectionMutGuard {
             inner: self,
             plugin_handle,
@@ -283,36 +294,30 @@ pub struct BufferLintCollectionMutGuard<'a> {
 }
 impl<'a> BufferLintCollectionMutGuard<'a> {
     pub fn clear(&mut self) {
-        for i in (0..self.inner.len as usize).rev() {
+        self.inner.plugin_messages[self.plugin_handle.0 as usize].clear();
+        for i in (0..self.inner.lints.len()).rev() {
             if self.inner.lints[i].plugin_handle == self.plugin_handle {
-                self.inner.len -= 1;
-                self.inner.lints.swap(self.inner.len as usize, i);
+                self.inner.lints.swap_remove(i);
             }
         }
     }
 
     pub fn add(&mut self, message: &str, range: BufferRange) {
-        match self.inner.lints.get_mut(self.inner.len as usize) {
-            Some(lint) => {
-                lint.message.clear();
-                lint.message.push_str(message);
-                lint.range = range;
-                lint.plugin_handle = self.plugin_handle;
-            }
-            None => {
-                self.inner.lints.push(BufferLint {
-                    message: message.into(),
-                    range,
-                    plugin_handle: self.plugin_handle,
-                });
-            }
-        }
-        self.inner.len += 1;
+        let plugin_messages = &mut self.inner.plugin_messages[self.plugin_handle.0 as usize];
+        let message_start = plugin_messages.len() as _;
+        plugin_messages.push_str(message);
+        let message_end = plugin_messages.len() as _;
+
+        self.inner.lints.push(BufferLint {
+            message_range: message_start..message_end,
+            range,
+            plugin_handle: self.plugin_handle,
+        });
     }
 }
 impl<'a> Drop for BufferLintCollectionMutGuard<'a> {
     fn drop(&mut self) {
-        self.inner.lints[..self.inner.len as usize].sort_unstable_by_key(|l| l.range.from);
+        self.inner.lints.sort_unstable_by_key(|l| l.range.from);
     }
 }
 
