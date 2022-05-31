@@ -90,6 +90,7 @@ Available subcommands:
 - `clear-all`: clear all breakpoints on all buffers
 - `clear-buffer`: clear all breakpoints on current buffer
 - `toggle-under-cursors`: toggle breakpoints on all lines covered by cursors
+- `list`: list all breakpoints in a buffer
 - usage: `breakpoint <subcommand>`
 
 ## `config`

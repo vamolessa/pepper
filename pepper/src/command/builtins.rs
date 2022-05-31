@@ -1,8 +1,8 @@
-use std::{env, path::Path, process::Stdio};
+use std::{env, path::Path, process::Stdio, fmt};
 
 use crate::{
     buffer::{parse_path_and_position, BufferProperties, BufferReadError, BufferWriteError},
-    buffer_position::BufferPosition,
+    buffer_position::{BufferRange, BufferPosition},
     client::ViewAnchor,
     command::{CommandError, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
@@ -265,6 +265,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         "clear-all",
         "clear-buffer",
         "toggle-under-cursors",
+        "list",
     ])];
     r("breakpoint", BREAKPOINT_COMPLETIONS, |ctx, io| {
         let subcommand = io.args.next()?;
@@ -320,6 +321,44 @@ pub fn register_commands(commands: &mut CommandManager) {
                         breakpoints.toggle_at(last_line_index);
                     }
                 }
+            }
+            "list" => {
+                let client_handle = io.client_handle()?;
+                let buffer_view_handle = ctx.editor.buffer_view_handle_from_path(
+                    client_handle,
+                    Path::new("breakpoints.refs"),
+                    BufferProperties::scratch(),
+                    true,
+                ).map_err(CommandError::BufferReadError)?;
+
+                let mut content = ctx.editor.string_pool.acquire();
+                for buffer in ctx.editor.buffers.iter() {
+                    let buffer_path = match buffer.path.to_str() {
+                        Some(path) => path,
+                        None => continue,
+                    };
+
+                    for breakpoint in buffer.breakpoints.all() {
+                        use fmt::Write;
+                        let line_content =  buffer.content().lines()[breakpoint.line_index as usize].as_str();
+                        let _ = write!(content, "{}:{}:{}\n", buffer_path, breakpoint.line_index + 1, line_content);
+                    }
+
+                    if !buffer.breakpoints.all().is_empty() {
+                        content.push('\n');
+                    }
+                }
+
+                let buffer_handle = ctx.editor.buffer_views.get(buffer_view_handle).buffer_handle;
+                let buffer = ctx.editor.buffers.get_mut(buffer_handle);
+                let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
+                buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
+                buffer.insert_text(&mut ctx.editor.word_database, BufferPosition::zero(), &content, &mut ctx.editor.events);
+
+                ctx.editor.string_pool.release(content);
+
+                let client = ctx.clients.get_mut(client_handle);
+                client.set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
             }
             _ => return Err(CommandError::NoSuchBreakpointSubcommand),
         };
