@@ -1,5 +1,12 @@
 # changelog
 
+# 0.28.0
+- added the concept of breakpoints for plugins to use
+- added `breakpoint` command that interacts with breakpoints (toggle, remove, etc)
+- changed theme color name from `background` to `normal_background`
+- changed theme color name from `active_line_background` to `active_background`
+- added theme color `breakpoint_background`
+
 # 0.27.0
 - added `set-env` command to change the editor's environment variables
 - fix `@arg(*)` expanding into no arguments if it's empty

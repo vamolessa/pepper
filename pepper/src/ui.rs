@@ -79,7 +79,7 @@ pub fn draw(ctx: &RenderContext, buffer_view_handle: Option<BufferViewHandle>, b
 fn draw_empty_view(ctx: &RenderContext, buf: &mut Vec<u8>) {
     move_cursor_to(buf, 0, 0);
     buf.extend_from_slice(RESET_STYLE_CODE);
-    set_background_color(buf, ctx.editor.theme.background);
+    set_background_color(buf, ctx.editor.theme.normal_background);
     set_foreground_color(buf, ctx.editor.theme.token_whitespace);
 
     let message_lines = &[
@@ -196,6 +196,9 @@ fn draw_buffer_view(
     let lints = buffer.lints.all();
     let lints_end_index = lints.len().saturating_sub(1);
 
+    let breakpoints = buffer.breakpoints.all();
+    let breakpoints_end_index = breakpoints.len().saturating_sub(1);
+
     let mut scroll_offset = BufferPosition::zero();
     let mut scroll_padding_top = ctx.scroll as usize;
     for (line_index, display_len) in buffer_content.line_display_lens().iter().enumerate() {
@@ -257,8 +260,18 @@ fn draw_buffer_view(
         }
     }
 
+    let mut current_breakpoint_index = breakpoints.len();
+    let mut current_breakpoint_line_index = BufferPositionIndex::MAX;
+    for (i, breakpoint) in breakpoints.iter().enumerate() {
+        if scroll_offset.line_index < breakpoint.line_index {
+            current_breakpoint_index = i;
+            current_breakpoint_line_index = breakpoint.line_index;
+            break;
+        }
+    }
+
     move_cursor_to(buf, 0, 0);
-    set_background_color(buf, ctx.editor.theme.background);
+    set_background_color(buf, ctx.editor.theme.normal_background);
     set_not_underlined(buf);
 
     let mut char_buf = [0; std::mem::size_of::<char>()];
@@ -322,10 +335,18 @@ fn draw_buffer_view(
         let mut last_line_token = Token::default();
         let mut line_tokens = highlighted_buffer.line_tokens(line_index).iter();
 
-        let background_color = if line_index == active_line_index as _ {
-            ctx.editor.theme.active_line_background
+        while (current_breakpoint_line_index as usize) < line_index && current_breakpoint_index < breakpoints_end_index {
+            current_breakpoint_index += 1;
+            current_breakpoint_line_index = breakpoints[current_breakpoint_index].line_index;
+        }
+        let inside_breakpoint_line = line_index == current_breakpoint_line_index as _;
+
+        let background_color = if inside_breakpoint_line {
+            ctx.editor.theme.breakpoint_background
+        } else if line_index == active_line_index as _ {
+            ctx.editor.theme.active_background
         } else {
-            ctx.editor.theme.background
+            ctx.editor.theme.normal_background
         };
 
         set_background_color(buf, background_color);
@@ -469,7 +490,7 @@ fn draw_buffer_view(
     }
 
     set_not_underlined(buf);
-    set_background_color(buf, ctx.editor.theme.background);
+    set_background_color(buf, ctx.editor.theme.normal_background);
     set_foreground_color(buf, ctx.editor.theme.token_whitespace);
 
     for _ in lines_drawn_count..draw_height {

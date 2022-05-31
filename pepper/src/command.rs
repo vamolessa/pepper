@@ -16,7 +16,7 @@ use crate::{
 mod builtins;
 mod expansions;
 
-const HISTORY_CAPACITY: usize = 10;
+const HISTORY_CAPACITY: usize = 8;
 
 pub enum CommandError {
     InvalidMacroName,
@@ -30,6 +30,7 @@ pub enum CommandError {
     BufferReadError(BufferReadError),
     BufferWriteError(BufferWriteError),
     NoSuchBufferProperty,
+    NoSuchBreakpointSubcommand,
     ConfigError(ParseConfigError),
     NoSuchColor,
     InvalidColorValue,
@@ -58,6 +59,7 @@ impl fmt::Display for CommandError {
             Self::BufferReadError(error) => write!(f, "buffer read error: {}", error),
             Self::BufferWriteError(error) => write!(f, "buffer write error: {}", error),
             Self::NoSuchBufferProperty => f.write_str("no such buffer property"),
+            Self::NoSuchBreakpointSubcommand => f.write_str("no such breakpoint subcommand"),
             Self::ConfigError(error) => write!(f, "config error: {}", error),
             Self::NoSuchColor => f.write_str("no such color"),
             Self::InvalidColorValue => f.write_str("invalid color value"),

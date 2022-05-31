@@ -2,7 +2,7 @@ use std::{
     fmt,
     fs::File,
     io,
-    ops::{Add, RangeBounds, Sub, Range},
+    ops::{Add, Range, RangeBounds, Sub},
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     str::CharIndices,
@@ -11,6 +11,7 @@ use std::{
 use crate::{
     buffer_history::{BufferHistory, Edit, EditKind},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
+    cursor::Cursor,
     editor_utils::ResidualStrBytes,
     events::{EditorEvent, EditorEventQueue},
     help,
@@ -279,7 +280,8 @@ impl BufferLintCollection {
     pub fn mut_guard(&mut self, plugin_handle: PluginHandle) -> BufferLintCollectionMutGuard {
         let min_messages_per_plugin_len = plugin_handle.0 as usize + 1;
         if self.plugin_messages.len() < min_messages_per_plugin_len {
-            self.plugin_messages.resize(min_messages_per_plugin_len, String::new());
+            self.plugin_messages
+                .resize(min_messages_per_plugin_len, String::new());
         }
         BufferLintCollectionMutGuard {
             inner: self,
@@ -318,6 +320,142 @@ impl<'a> BufferLintCollectionMutGuard<'a> {
 impl<'a> Drop for BufferLintCollectionMutGuard<'a> {
     fn drop(&mut self) {
         self.inner.lints.sort_unstable_by_key(|l| l.range.from);
+    }
+}
+
+pub struct BufferBreakpoint {
+    pub line_index: BufferPositionIndex,
+}
+
+#[derive(Default)]
+pub struct BufferBreakpointCollection {
+    breakpoints: Vec<BufferBreakpoint>,
+}
+impl BufferBreakpointCollection {
+    pub fn all(&self) -> &[BufferBreakpoint] {
+        &self.breakpoints
+    }
+
+    fn insert_range(&mut self, range: BufferRange) {
+        let line_count = range.to.line_index - range.from.line_index;
+        if line_count == 0 {
+            return;
+        }
+        for breakpoint in &mut self.breakpoints {
+            if range.from.line_index < breakpoint.line_index {
+                breakpoint.line_index += line_count;
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn delete_range(&mut self, range: BufferRange) {
+        let line_count = range.to.line_index - range.from.line_index;
+        if line_count == 0 {
+            return;
+        }
+        let mut removed_breakpoint = false;
+        for i in (0..self.breakpoints.len()).rev() {
+            let breakpoint_line_index = self.breakpoints[i].line_index;
+            if range.to.line_index < breakpoint_line_index {
+                self.breakpoints[i].line_index -= line_count;
+            } else if range.from.line_index < breakpoint_line_index
+                || range.from.line_index == breakpoint_line_index
+                    && range.from.column_byte_index == 0
+            {
+                self.breakpoints.swap_remove(i);
+                removed_breakpoint = true;
+            } else {
+                break;
+            }
+        }
+        if removed_breakpoint {
+            self.breakpoints.sort_unstable_by_key(|b| b.line_index);
+        }
+    }
+
+    pub fn mut_guard(&mut self) -> BufferBreakpointCollectionMutGuard {
+        BufferBreakpointCollectionMutGuard { inner: self }
+    }
+}
+
+pub struct BufferBreakpointCollectionMutGuard<'a> {
+    inner: &'a mut BufferBreakpointCollection,
+}
+impl<'a> BufferBreakpointCollectionMutGuard<'a> {
+    pub fn clear(&mut self) {
+        self.inner.breakpoints.clear();
+    }
+
+    /*
+    pub fn remove_under_cursors(&mut self, cursors: &[Cursor]) {
+        let mut breakpoint_index = self.inner.breakpoint_line_indices.len().saturating_sub(1);
+
+        'cursors_loop: for cursor in cursors.iter().rev() {
+            let range = cursor.to_range();
+
+            loop {
+                if breakpoint_index == 0 {
+                    break;
+                }
+                //if self.inner.breakpoint_line_indices[breakpoint_index]
+            }
+
+            loop {
+                if self.inner.breakpoint_line_indices.is_empty() {
+                    break 'cursors_loop;
+                }
+
+                //if self.inner.breakpoint_line_indices[breakpoint_index]
+                //if range.from.line_index
+            }
+        }
+
+        / *
+        for cursor in &buffer_view.cursors[..] {
+            let range = cursor.to_range();
+            if range.from.line_index != last_line {
+                last_line = range.from.line_index;
+                breakpoints.remove_at(last_line);
+            }
+            for line_index in range.from.line_index + 1..=range.to.line_index {
+                last_line = line_index;
+                breakpoints.remove_at(last_line);
+            }
+        }
+        * /
+    }
+    */
+
+    pub fn remove_at(&mut self, line_index: BufferPositionIndex) {
+        if let Ok(i) = self
+            .inner
+            .breakpoints
+            .binary_search_by_key(&line_index, |b| b.line_index)
+        {
+            self.inner.breakpoints.swap_remove(i);
+        }
+    }
+
+    pub fn toggle_at(&mut self, line_index: BufferPositionIndex) {
+        match self
+            .inner
+            .breakpoints
+            .binary_search_by_key(&line_index, |b| b.line_index)
+        {
+            Ok(i) => {
+                self.inner.breakpoints.swap_remove(i);
+            }
+            Err(_) => self.inner.breakpoints.push(BufferBreakpoint { line_index }),
+        }
+    }
+}
+impl<'a> Drop for BufferBreakpointCollectionMutGuard<'a> {
+    fn drop(&mut self) {
+        self.inner
+            .breakpoints
+            .sort_unstable_by_key(|b| b.line_index);
     }
 }
 
@@ -1009,6 +1147,7 @@ pub struct Buffer {
     highlighted: HighlightedBuffer,
     history: BufferHistory,
     pub lints: BufferLintCollection,
+    pub breakpoints: BufferBreakpointCollection,
     search_ranges: Vec<BufferRange>,
     needs_save: bool,
     pub properties: BufferProperties,
@@ -1025,6 +1164,7 @@ impl Buffer {
             highlighted: HighlightedBuffer::new(),
             history: BufferHistory::new(),
             lints: BufferLintCollection::default(),
+            breakpoints: BufferBreakpointCollection::default(),
             search_ranges: Vec::new(),
             needs_save: false,
             properties: BufferProperties::default(),
@@ -1123,6 +1263,7 @@ impl Buffer {
             &mut self.content,
             &mut self.highlighted,
             &mut self.lints,
+            &mut self.breakpoints,
             self.properties.word_database_enabled,
             word_database,
             position,
@@ -1146,6 +1287,7 @@ impl Buffer {
         content: &mut BufferContent,
         highlighted: &mut HighlightedBuffer,
         lints: &mut BufferLintCollection,
+        breakpoints: &mut BufferBreakpointCollection,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         position: BufferPosition,
@@ -1162,6 +1304,7 @@ impl Buffer {
         let range = content.insert_text(position, text);
         highlighted.insert_range(range);
         lints.insert_range(range);
+        breakpoints.insert_range(range);
 
         if uses_word_database {
             for line in
@@ -1245,6 +1388,7 @@ impl Buffer {
             &mut self.content,
             &mut self.highlighted,
             &mut self.lints,
+            &mut self.breakpoints,
             self.properties.word_database_enabled,
             word_database,
             range,
@@ -1255,6 +1399,7 @@ impl Buffer {
         content: &mut BufferContent,
         highlighted: &mut HighlightedBuffer,
         lints: &mut BufferLintCollection,
+        breakpoints: &mut BufferBreakpointCollection,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         range: BufferRange,
@@ -1281,6 +1426,7 @@ impl Buffer {
 
         highlighted.delete_range(range);
         lints.delete_range(range);
+        breakpoints.delete_range(range);
     }
 
     pub fn commit_edits(&mut self) {
@@ -1319,6 +1465,7 @@ impl Buffer {
         let content = &mut self.content;
         let highlighted = &mut self.highlighted;
         let lints = &mut self.lints;
+        let breakpoints = &mut self.breakpoints;
         let uses_word_database = self.properties.word_database_enabled;
 
         let edits = selector(&mut self.history);
@@ -1329,6 +1476,7 @@ impl Buffer {
                         content,
                         highlighted,
                         lints,
+                        breakpoints,
                         uses_word_database,
                         word_database,
                         edit.range.from,
@@ -1341,6 +1489,7 @@ impl Buffer {
                         content,
                         highlighted,
                         lints,
+                        breakpoints,
                         uses_word_database,
                         word_database,
                         edit.range,
@@ -2360,3 +2509,4 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
+

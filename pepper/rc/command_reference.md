@@ -84,6 +84,14 @@ With '!' will discard any unsaved changes.
 - usage: `close-all[!]`
 - default alias: `ca`
 
+## `breakpoint`
+Interacts with breakpoints depending on subcommand.
+Available subcommands:
+- `clear-all`: clear all breakpoints on all buffers
+- `clear-buffer`: clear all breakpoints on current buffer
+- `toggle-under-cursors`: toggle breakpoints on all lines covered by cursors
+- usage: `breakpoint <subcommand>`
+
 ## `config`
 If `<value>` is present, it sets the editor config `<key>` to its value (if valid).
 Otherwise, it returns its current value.
