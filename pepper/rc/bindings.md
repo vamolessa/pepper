@@ -23,6 +23,11 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `gB`, `GB` | open the buffer that is open in the previously focused client, then that client opens its previous buffer |
 | `gf` | if the filepath under the cursor exists, open it as a buffer |
 | `gF`, `GF` | if the filepath under the cursor exists, open it as a buffer, then close the current buffer |
+| `xx` | toggle breakpoints on all lines covered by cursors |
+| `xX`, `XX` | remove breakpoints on all lines covered by cursors |
+| `xB`, `XB` | remove all breakpoints on current buffer |
+| `xA`, `XA` | remove all breakpoints on all buffers |
+| `xa` | list all breakpoints as references in a new buffer |
 | `]]<char>`, `[[<char>` | move cursors to next/previous `<char>` (inclusive) |
 | `][<char>`, `[]<char>` | move cursors to next/previous `<char>` (exclusive) |
 | `}`, `{` | repeat last find char in forward/backward mode |

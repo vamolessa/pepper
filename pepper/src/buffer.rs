@@ -418,6 +418,12 @@ impl<'a> BufferBreakpointCollectionMutGuard<'a> {
 
     pub fn toggle_under_cursors(&mut self, cursors: &[Cursor]) {
         // TODO: implement
+        for cursor in cursors {
+            let range = cursor.to_range();
+            for line_index in range.from.line_index..=range.to.line_index {
+                self.toggle_at(line_index);
+            }
+        }
     }
 
     pub fn toggle_at(&mut self, line_index: BufferPositionIndex) {

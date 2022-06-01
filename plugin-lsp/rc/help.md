@@ -1,4 +1,3 @@
-
 ## make lsp server run automatically
 An LSP server is usually started when a file it should handle is opened, normally known from its extension.
 By using the `lsp` command, it's possible to automatically start an LSP server like that.
@@ -113,3 +112,4 @@ Optionally pre-filters results with a `<query>`.
 ### `lsp-format`
 Format the whole buffer.
 - usage: `lsp-format`
+
