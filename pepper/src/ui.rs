@@ -335,7 +335,7 @@ fn draw_buffer_view(
         let mut last_line_token = Token::default();
         let mut line_tokens = highlighted_buffer.line_tokens(line_index).iter();
 
-        while (current_breakpoint_line_index as usize) < line_index && current_breakpoint_index < breakpoints_end_index {
+        if (current_breakpoint_line_index as usize) < line_index && current_breakpoint_index < breakpoints_end_index {
             current_breakpoint_index += 1;
             current_breakpoint_line_index = breakpoints[current_breakpoint_index].line_index;
         }
@@ -381,6 +381,7 @@ fn draw_buffer_view(
                 TokenKind::Whitespace => ctx.editor.theme.token_whitespace,
             };
 
+            // TODO: experiment just replace these while with ifs
             while current_cursor_index < cursors_end_index
                 && current_cursor_range.to < char_position
             {

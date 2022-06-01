@@ -388,53 +388,31 @@ impl<'a> BufferBreakpointCollectionMutGuard<'a> {
         self.inner.breakpoints.clear();
     }
 
-    /*
     pub fn remove_under_cursors(&mut self, cursors: &[Cursor]) {
-        let mut breakpoint_index = self.inner.breakpoint_line_indices.len().saturating_sub(1);
+        let mut breakpoint_index = self.inner.breakpoints.len().saturating_sub(1);
 
         'cursors_loop: for cursor in cursors.iter().rev() {
             let range = cursor.to_range();
 
             loop {
-                if breakpoint_index == 0 {
-                    break;
-                }
-                //if self.inner.breakpoint_line_indices[breakpoint_index]
-            }
-
-            loop {
-                if self.inner.breakpoint_line_indices.is_empty() {
+                if self.inner.breakpoints.is_empty() {
                     break 'cursors_loop;
                 }
 
-                //if self.inner.breakpoint_line_indices[breakpoint_index]
-                //if range.from.line_index
-            }
-        }
+                let breakpoint_line_index = self.inner.breakpoints[breakpoint_index].line_index;
+                if breakpoint_line_index < range.from.line_index {
+                    break;
+                }
 
-        / *
-        for cursor in &buffer_view.cursors[..] {
-            let range = cursor.to_range();
-            if range.from.line_index != last_line {
-                last_line = range.from.line_index;
-                breakpoints.remove_at(last_line);
-            }
-            for line_index in range.from.line_index + 1..=range.to.line_index {
-                last_line = line_index;
-                breakpoints.remove_at(last_line);
-            }
-        }
-        * /
-    }
-    */
+                if breakpoint_line_index <= range.to.line_index {
+                    self.inner.breakpoints.swap_remove(breakpoint_index);
+                }
 
-    pub fn remove_at(&mut self, line_index: BufferPositionIndex) {
-        if let Ok(i) = self
-            .inner
-            .breakpoints
-            .binary_search_by_key(&line_index, |b| b.line_index)
-        {
-            self.inner.breakpoints.swap_remove(i);
+                if breakpoint_index == 0 {
+                    break 'cursors_loop;
+                }
+                breakpoint_index -= 1;
+            }
         }
     }
 

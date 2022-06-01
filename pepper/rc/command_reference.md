@@ -87,9 +87,10 @@ With '!' will discard any unsaved changes.
 ## `breakpoint`
 Interacts with breakpoints depending on subcommand.
 Available subcommands:
-- `clear-all`: clear all breakpoints on all buffers
-- `clear-buffer`: clear all breakpoints on current buffer
-- `toggle-under-cursors`: toggle breakpoints on all lines covered by cursors
+- `remove-all`: remove all breakpoints on all buffers
+- `remove-buffer`: remove all breakpoints on current buffer
+- `remove-cursors`: remove breakpoints on all lines covered by cursors
+- `toggle-cursors`: toggle breakpoints on all lines covered by cursors
 - `list`: list all breakpoints in a buffer
 - usage: `breakpoint <subcommand>`
 

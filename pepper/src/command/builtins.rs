@@ -262,9 +262,10 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 
     static BREAKPOINT_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&[
-        "clear-all",
-        "clear-buffer",
-        "toggle-under-cursors",
+        "remove-all",
+        "remove-buffer",
+        "remove-cursors",
+        "toggle-cursors",
         "list",
     ])];
     r("breakpoint", BREAKPOINT_COMPLETIONS, |ctx, io| {
@@ -272,37 +273,25 @@ pub fn register_commands(commands: &mut CommandManager) {
         io.args.assert_empty()?;
 
         match subcommand {
-            "clear-all" => {
+            "remove-all" => {
                 for buffer in ctx.editor.buffers.iter_mut() {
                     buffer.breakpoints.mut_guard().clear();
                 }
             }
-            "clear-buffer" => {
+            "remove-buffer" => {
                 let buffer_handle = io.current_buffer_handle(ctx)?;
                 let buffer = ctx.editor.buffers.get_mut(buffer_handle);
                 buffer.breakpoints.mut_guard().clear();
             }
-            "clear-under-cursors" => {
+            "remove-cursors" => {
                 let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
                 let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
                 let mut breakpoints = buffer.breakpoints.mut_guard();
-
-                let mut last_line_index = u32::MAX;
-                for cursor in &buffer_view.cursors[..] {
-                    let range = cursor.to_range();
-                    if range.from.line_index != last_line_index {
-                        last_line_index = range.from.line_index;
-                        breakpoints.remove_at(last_line_index);
-                    }
-                    for line_index in range.from.line_index + 1..=range.to.line_index {
-                        last_line_index = line_index;
-                        breakpoints.remove_at(last_line_index);
-                    }
-                }
+                breakpoints.remove_under_cursors(&buffer_view.cursors[..]);
             }
-            "toggle-under-cursors" => {
+            "toggle-cursors" => {
                 let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
                 let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
