@@ -416,6 +416,10 @@ impl<'a> BufferBreakpointCollectionMutGuard<'a> {
         }
     }
 
+    pub fn toggle_under_cursors(&mut self, cursors: &[Cursor]) {
+        // TODO: implement
+    }
+
     pub fn toggle_at(&mut self, line_index: BufferPositionIndex) {
         match self
             .inner

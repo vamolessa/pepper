@@ -297,19 +297,7 @@ pub fn register_commands(commands: &mut CommandManager) {
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
                 let mut breakpoints = buffer.breakpoints.mut_guard();
-
-                let mut last_line_index = u32::MAX;
-                for cursor in &buffer_view.cursors[..] {
-                    let range = cursor.to_range();
-                    if range.from.line_index != last_line_index {
-                        last_line_index = range.from.line_index;
-                        breakpoints.toggle_at(last_line_index);
-                    }
-                    for line_index in range.from.line_index + 1..=range.to.line_index {
-                        last_line_index = line_index;
-                        breakpoints.toggle_at(last_line_index);
-                    }
-                }
+                breakpoints.toggle_under_cursors(&buffer_view.cursors[..]);
             }
             "list" => {
                 let client_handle = io.client_handle()?;
