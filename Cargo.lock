@@ -72,6 +72,7 @@ version = "0.2.0"
 dependencies = [
  "pepper",
  "pepper-plugin-lsp",
+ "pepper-plugin-remedybg",
 ]
 
 [[package]]
@@ -84,7 +85,14 @@ dependencies = [
 
 [[package]]
 name = "pepper-plugin-lsp"
-version = "0.14.0"
+version = "0.15.0"
+dependencies = [
+ "pepper",
+]
+
+[[package]]
+name = "pepper-plugin-remedybg"
+version = "0.1.0"
 dependencies = [
  "pepper",
 ]
@@ -99,10 +107,6 @@ dependencies = [
  "wasm-bindgen",
  "wee_alloc",
 ]
-
-[[package]]
-name = "plugin-remedybg"
-version = "0.1.0"
 
 [[package]]
 name = "proc-macro2"

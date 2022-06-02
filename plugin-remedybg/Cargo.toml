@@ -1,8 +1,21 @@
 [package]
-name = "plugin-remedybg"
+name = "pepper-plugin-remedybg"
 version = "0.1.0"
+authors = ["Matheus Lessa"]
 edition = "2021"
+description = "RemedyBG plugin for Pepper editor"
+license = "GPL-3.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+documentation = "https://vamolessa.github.io/pepper/plugin-remedybg/rc/help"
+homepage = "https://vamolessa.github.io/pepper"
+repository = "https://github.com/vamolessa/pepper"
+readme = "README.md"
+categories = ["command-line-utilities", "text-editors"]
+
+[lib]
+name = "pepper_plugin_remedybg"
+path = "src/lib.rs"
 
 [dependencies]
+pepper = { path = "../pepper", version = "0.28" }
+

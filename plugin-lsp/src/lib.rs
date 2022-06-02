@@ -385,13 +385,13 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
 }
 
 fn on_process_spawned(
-    handle: PluginHandle,
+    plugin_handle: PluginHandle,
     ctx: &mut EditorContext,
     client_index: u32,
     process_handle: PlatformProcessHandle,
 ) {
     if let ClientEntry::Occupied(client) =
-        &mut ctx.plugins.get_as::<LspPlugin>(handle).entries[client_index as usize]
+        &mut ctx.plugins.get_as::<LspPlugin>(plugin_handle).entries[client_index as usize]
     {
         client.protocol.set_process_handle(process_handle);
         client.json.clear();
@@ -476,13 +476,13 @@ fn on_process_output(
     lsp.release(client_guard);
 }
 
-fn on_process_exit(handle: PluginHandle, ctx: &mut EditorContext, client_index: u32) {
+fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, client_index: u32) {
     for buffer in ctx.editor.buffers.iter_mut() {
-        let mut lints = buffer.lints.mut_guard(handle);
+        let mut lints = buffer.lints.mut_guard(plugin_handle);
         lints.clear();
     }
 
-    let lsp = ctx.plugins.get_as::<LspPlugin>(handle);
+    let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
     if let ClientEntry::Occupied(client) = &mut lsp.entries[client_index as usize] {
         client.write_to_log_file(|buf, _| {
             use io::Write;

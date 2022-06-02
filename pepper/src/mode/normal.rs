@@ -788,7 +788,7 @@ impl State {
                 } => {
                     let buffer_view = ctx.editor.buffer_views.get(handle);
                     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
-                    buffer.breakpoints.toggle_under_cursors(&buffer_view.cursors[..]);
+                    buffer.breakpoints_mut().toggle_under_cursors(&buffer_view.cursors[..], &mut ctx.editor.events);
                 }
                 Key {
                     code: KeyCode::Char('X'),
@@ -798,7 +798,7 @@ impl State {
                 } => {
                     let buffer_view = ctx.editor.buffer_views.get(handle);
                     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
-                    buffer.breakpoints.remove_under_cursors(&buffer_view.cursors[..]);
+                    buffer.breakpoints_mut().remove_under_cursors(&buffer_view.cursors[..], &mut ctx.editor.events);
                 }
                 Key {
                     code: KeyCode::Char('B'),
@@ -808,7 +808,7 @@ impl State {
                 } => {
                     let buffer_view = ctx.editor.buffer_views.get(handle);
                     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
-                    buffer.breakpoints.clear();
+                    buffer.breakpoints_mut().clear(&mut ctx.editor.events);
                 }
                 _ => (),
             },
@@ -2051,7 +2051,7 @@ impl ModeState for State {
                     ..
                 } => {
                     for buffer in ctx.editor.buffers.iter_mut() {
-                        buffer.breakpoints.clear();
+                        buffer.breakpoints_mut().clear(&mut ctx.editor.events);
                     }
                 }
                 Key {
@@ -2083,7 +2083,7 @@ impl ModeState for State {
                             None => continue,
                         };
 
-                        for breakpoint in buffer.breakpoints.all() {
+                        for breakpoint in buffer.breakpoints() {
                             let line_content =
                                 buffer.content().lines()[breakpoint.line_index as usize].as_str();
                             let _ = write!(
@@ -2095,7 +2095,7 @@ impl ModeState for State {
                             );
                         }
 
-                        if !buffer.breakpoints.all().is_empty() {
+                        if !buffer.breakpoints().is_empty() {
                             content.push('\n');
                         }
                     }

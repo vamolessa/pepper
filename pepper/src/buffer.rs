@@ -323,6 +323,7 @@ impl<'a> Drop for BufferLintCollectionMutGuard<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct BufferBreakpoint {
     pub line_index: BufferPositionIndex,
 }
@@ -332,31 +333,91 @@ pub struct BufferBreakpointCollection {
     breakpoints: Vec<BufferBreakpoint>,
 }
 impl BufferBreakpointCollection {
-    pub fn all(&self) -> &[BufferBreakpoint] {
-        &self.breakpoints
+    fn insert_range(&mut self, range: BufferRange) -> bool {
+        let line_count = range.to.line_index - range.from.line_index;
+        if line_count == 0 {
+            return false;
+        }
+
+        let mut changed = false;
+        for breakpoint in &mut self.breakpoints {
+            if range.from.line_index < breakpoint.line_index {
+                breakpoint.line_index += line_count;
+                changed = true;
+            } else {
+                break;
+            }
+        }
+
+        return changed;
     }
 
-    pub fn clear(&mut self) {
-        self.breakpoints.clear();
+    fn delete_range(&mut self, range: BufferRange) -> bool {
+        let line_count = range.to.line_index - range.from.line_index;
+        if line_count == 0 {
+            return false;
+        }
+
+        let mut changed = false;
+        let mut removed_breakpoint = false;
+        for i in (0..self.breakpoints.len()).rev() {
+            let breakpoint_line_index = self.breakpoints[i].line_index;
+            if range.to.line_index < breakpoint_line_index {
+                changed = true;
+                self.breakpoints[i].line_index -= line_count;
+            } else if range.from.line_index < breakpoint_line_index
+                || range.from.line_index == breakpoint_line_index
+                    && range.from.column_byte_index == 0
+            {
+                self.breakpoints.swap_remove(i);
+                changed = true;
+                removed_breakpoint = true;
+            } else {
+                break;
+            }
+        }
+
+        if removed_breakpoint {
+            self.breakpoints.sort_unstable_by_key(|b| b.line_index);
+        }
+
+        return changed;
+    }
+}
+
+pub struct BufferBreakpointMutCollection<'a> {
+    inner: &'a mut BufferBreakpointCollection,
+    buffer_handle: BufferHandle,
+}
+impl<'a> BufferBreakpointMutCollection<'a> {
+    pub fn clear(&mut self, events: &mut EditorEventQueue) {
+        if self.inner.breakpoints.len() > 0 {
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
+                handle: self.buffer_handle,
+            });
+        }
+        self.inner.breakpoints.clear();
     }
 
-    pub fn remove_under_cursors(&mut self, cursors: &[Cursor]) {
-        let mut breakpoint_index = self.breakpoints.len().saturating_sub(1);
+    pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventQueue) {
+        let previous_breakpoints_len = self.inner.breakpoints.len();
+
+        let mut breakpoint_index = self.inner.breakpoints.len().saturating_sub(1);
         'cursors_loop: for cursor in cursors.iter().rev() {
             let range = cursor.to_range();
 
             loop {
-                if self.breakpoints.is_empty() {
+                if self.inner.breakpoints.is_empty() {
                     break 'cursors_loop;
                 }
 
-                let breakpoint_line_index = self.breakpoints[breakpoint_index].line_index;
+                let breakpoint_line_index = self.inner.breakpoints[breakpoint_index].line_index;
                 if breakpoint_line_index < range.from.line_index {
                     break;
                 }
 
                 if breakpoint_line_index <= range.to.line_index {
-                    self.breakpoints.swap_remove(breakpoint_index);
+                    self.inner.breakpoints.swap_remove(breakpoint_index);
                 }
 
                 if breakpoint_index == 0 {
@@ -365,9 +426,15 @@ impl BufferBreakpointCollection {
                 breakpoint_index -= 1;
             }
         }
+
+        if self.inner.breakpoints.len() < previous_breakpoints_len {
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
+                handle: self.buffer_handle,
+            });
+        }
     }
 
-    pub fn toggle_under_cursors(&mut self, cursors: &[Cursor]) {
+    pub fn toggle_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventQueue) {
         let mut last_line_index = BufferPositionIndex::MAX;
         for cursor in cursors {
             let range = cursor.to_range();
@@ -377,20 +444,20 @@ impl BufferBreakpointCollection {
             let to_line_index = range.to.line_index;
 
             for line_index in from_line_index..=to_line_index {
-                self.breakpoints.push(BufferBreakpoint { line_index });
+                self.inner.breakpoints.push(BufferBreakpoint { line_index });
             }
 
             last_line_index = to_line_index;
         }
 
-        self
+        self.inner
             .breakpoints
             .sort_unstable_by_key(|b| b.line_index);
 
-        self.breakpoints.push(BufferBreakpoint {
+        self.inner.breakpoints.push(BufferBreakpoint {
             line_index: BufferPositionIndex::MAX,
         });
-        let breakpoints = &mut self.breakpoints[..];
+        let breakpoints = &mut self.inner.breakpoints[..];
         let mut write_needle = 0;
         let mut check_needle = 0;
 
@@ -406,48 +473,11 @@ impl BufferBreakpointCollection {
             }
         }
 
-        self.breakpoints.truncate(write_needle);
-    }
+        self.inner.breakpoints.truncate(write_needle);
 
-    // TODO: maybe enqueue BreakpointsChanged event
-    fn insert_range(&mut self, range: BufferRange) {
-        let line_count = range.to.line_index - range.from.line_index;
-        if line_count == 0 {
-            return;
-        }
-        for breakpoint in &mut self.breakpoints {
-            if range.from.line_index < breakpoint.line_index {
-                breakpoint.line_index += line_count;
-            } else {
-                break;
-            }
-        }
-    }
-
-    // TODO: maybe enqueue BreakpointsChanged event
-    fn delete_range(&mut self, range: BufferRange) {
-        let line_count = range.to.line_index - range.from.line_index;
-        if line_count == 0 {
-            return;
-        }
-        let mut removed_breakpoint = false;
-        for i in (0..self.breakpoints.len()).rev() {
-            let breakpoint_line_index = self.breakpoints[i].line_index;
-            if range.to.line_index < breakpoint_line_index {
-                self.breakpoints[i].line_index -= line_count;
-            } else if range.from.line_index < breakpoint_line_index
-                || range.from.line_index == breakpoint_line_index
-                    && range.from.column_byte_index == 0
-            {
-                self.breakpoints.swap_remove(i);
-                removed_breakpoint = true;
-            } else {
-                break;
-            }
-        }
-        if removed_breakpoint {
-            self.breakpoints.sort_unstable_by_key(|b| b.line_index);
-        }
+        events.enqueue(EditorEvent::BufferBreakpointsChanged {
+            handle: self.buffer_handle,
+        });
     }
 }
 
@@ -1139,7 +1169,7 @@ pub struct Buffer {
     highlighted: HighlightedBuffer,
     history: BufferHistory,
     pub lints: BufferLintCollection,
-    pub breakpoints: BufferBreakpointCollection,
+    breakpoints: BufferBreakpointCollection,
     search_ranges: Vec<BufferRange>,
     needs_save: bool,
     pub properties: BufferProperties,
@@ -1201,6 +1231,10 @@ impl Buffer {
         }
     }
 
+    pub fn content(&self) -> &BufferContent {
+        &self.content
+    }
+
     pub fn highlighted(&self) -> &HighlightedBuffer {
         &self.highlighted
     }
@@ -1228,8 +1262,15 @@ impl Buffer {
         }
     }
 
-    pub fn content(&self) -> &BufferContent {
-        &self.content
+    pub fn breakpoints(&self) -> &[BufferBreakpoint] {
+        &self.breakpoints.breakpoints
+    }
+
+    pub fn breakpoints_mut(&mut self) -> BufferBreakpointMutCollection {
+        BufferBreakpointMutCollection {
+            inner: &mut self.breakpoints,
+            buffer_handle: self.handle,
+        }
     }
 
     pub fn needs_save(&self) -> bool {
@@ -1251,6 +1292,7 @@ impl Buffer {
         }
         self.needs_save = true;
 
+        let mut breakpoints_changed = false;
         let range = Self::insert_text_no_history(
             &mut self.content,
             &mut self.highlighted,
@@ -1260,7 +1302,13 @@ impl Buffer {
             word_database,
             position,
             text,
+            &mut breakpoints_changed,
         );
+        if breakpoints_changed {
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
+                handle: self.handle,
+            });
+        }
 
         events.enqueue_buffer_insert(self.handle, range, text);
 
@@ -1284,6 +1332,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         position: BufferPosition,
         text: &str,
+        breakpoints_changed: &mut bool
     ) -> BufferRange {
         if uses_word_database {
             for word in WordIter(content.lines()[position.line_index as usize].as_str())
@@ -1296,7 +1345,7 @@ impl Buffer {
         let range = content.insert_text(position, text);
         highlighted.insert_range(range);
         lints.insert_range(range);
-        breakpoints.insert_range(range);
+        *breakpoints_changed = breakpoints.insert_range(range);
 
         if uses_word_database {
             for line in
@@ -1376,6 +1425,7 @@ impl Buffer {
             }
         }
 
+        let mut breakpoints_changed = false;
         Self::delete_range_no_history(
             &mut self.content,
             &mut self.highlighted,
@@ -1384,7 +1434,13 @@ impl Buffer {
             self.properties.word_database_enabled,
             word_database,
             range,
+            &mut breakpoints_changed,
         );
+        if breakpoints_changed {
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
+                handle: self.handle,
+            });
+        }
     }
 
     fn delete_range_no_history(
@@ -1395,6 +1451,7 @@ impl Buffer {
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         range: BufferRange,
+        breakpoints_changed: &mut bool,
     ) {
         if uses_word_database {
             for line in
@@ -1418,7 +1475,7 @@ impl Buffer {
 
         highlighted.delete_range(range);
         lints.delete_range(range);
-        breakpoints.delete_range(range);
+        *breakpoints_changed = breakpoints.delete_range(range);
     }
 
     pub fn commit_edits(&mut self) {
@@ -1460,8 +1517,10 @@ impl Buffer {
         let breakpoints = &mut self.breakpoints;
         let uses_word_database = self.properties.word_database_enabled;
 
+        let mut breakpoints_changed = false;
         let edits = selector(&mut self.history);
         for edit in edits.clone() {
+            let mut breakpoints_changed_here = false;
             match edit.kind {
                 EditKind::Insert => {
                     Self::insert_text_no_history(
@@ -1473,6 +1532,7 @@ impl Buffer {
                         word_database,
                         edit.range.from,
                         edit.text,
+                        &mut breakpoints_changed_here,
                     );
                     events.enqueue_buffer_insert(self.handle, edit.range, edit.text);
                 }
@@ -1485,6 +1545,7 @@ impl Buffer {
                         uses_word_database,
                         word_database,
                         edit.range,
+                        &mut breakpoints_changed_here,
                     );
                     events.enqueue(EditorEvent::BufferDeleteText {
                         handle: self.handle,
@@ -1492,6 +1553,13 @@ impl Buffer {
                     });
                 }
             }
+            breakpoints_changed = breakpoints_changed || breakpoints_changed_here;
+        }
+
+        if breakpoints_changed {
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
+                handle: self.handle,
+            });
         }
 
         edits
@@ -2499,5 +2567,6 @@ mod tests {
         assert_eq!(0, len(&buffer, 0));
         assert_eq!(6, len(&buffer, 1));
         assert_eq!(3, len(&buffer, 2));
-    }
+ 
+   }
 }

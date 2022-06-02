@@ -196,7 +196,7 @@ fn draw_buffer_view(
     let lints = buffer.lints.all();
     let lints_end_index = lints.len().saturating_sub(1);
 
-    let breakpoints = buffer.breakpoints.all();
+    let breakpoints = buffer.breakpoints();
     let breakpoints_end_index = breakpoints.len().saturating_sub(1);
 
     let mut scroll_offset = BufferPosition::zero();
