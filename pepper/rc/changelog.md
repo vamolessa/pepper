@@ -1,5 +1,14 @@
 # changelog
 
+# 0.28.0
+- added the concept of breakpoints for plugins to use
+- added bindings starting with `x` that interact with breakpoints
+- changed theme color name from `background` to `normal_background`
+- changed theme color name from `active_line_background` to `active_background`
+- added theme color `breakpoint_background`
+- changed smart search patterns: if your search pattern contains a `%` character, it will perform a pattern search instead of a fixed string search (it's still possible to force a fixed string search by prefixing it with either `f/` or `F/`)
+- new remedybg plugin (under the `plugin-remedybg` folder)
+
 # 0.27.0
 - added `set-env` command to change the editor's environment variables
 - fix `@arg(*)` expanding into no arguments if it's empty

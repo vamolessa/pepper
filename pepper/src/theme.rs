@@ -38,8 +38,9 @@ macro_rules! theme_colors {
 }
 
 theme_colors! {
-    background,
-    active_line_background,
+    normal_background,
+    active_background,
+    breakpoint_background,
     highlight,
     normal_cursor,
     select_cursor,
@@ -66,8 +67,9 @@ impl Default for Theme {
 
 pub fn gruvbox_theme() -> Theme {
     Theme {
-        background: Color::from_u32(0x1d2021),
-        active_line_background: Color::from_u32(0x282828),
+        normal_background: Color::from_u32(0x1d2021),
+        active_background: Color::from_u32(0x282828),
+        breakpoint_background: Color::from_u32(0x3d2021),
         highlight: Color::from_u32(0xfabd2f),
         normal_cursor: Color::from_u32(0xcc241d),
         insert_cursor: Color::from_u32(0xfabd2f),

@@ -2,6 +2,7 @@
 members = [
     "pepper",
     "plugin-lsp",
+    "plugin-remedybg",
     "mine",
     "web",
 ]

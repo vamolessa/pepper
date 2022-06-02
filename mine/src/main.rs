@@ -79,6 +79,13 @@ fn main() {
     config
         .plugin_definitions
         .push(pepper_plugin_lsp::DEFINITION);
+
+    if cfg!(windows) {
+        config
+            .plugin_definitions
+            .push(pepper_plugin_remedybg::DEFINITION);
+    }
+
     config.plugin_definitions.push(ALTERNATE_FILE_PLUGIN);
 
     config
@@ -91,3 +98,4 @@ fn main() {
 
     pepper::run(config);
 }
+
