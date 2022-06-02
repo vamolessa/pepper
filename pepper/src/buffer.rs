@@ -82,11 +82,11 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     }
 
     let (left, right) = text.split_at(index);
-    let from = match left.rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')')) {
+    let from = match left.rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')' | '"' | '\'')) {
         Some(i) => i + 1,
         None => 0,
     };
-    let to = match right.find(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '(' | ')')) {
+    let to = match right.find(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '(' | ')' | '"' | '\'')) {
         Some(i) => {
             if index + i - from == 1 {
                 text.len()
