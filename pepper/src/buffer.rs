@@ -336,6 +336,7 @@ impl BufferBreakpointCollection {
         &self.breakpoints
     }
 
+    // TODO: maybe enqueue BreakpointsChanged event
     fn insert_range(&mut self, range: BufferRange) {
         let line_count = range.to.line_index - range.from.line_index;
         if line_count == 0 {
@@ -350,6 +351,7 @@ impl BufferBreakpointCollection {
         }
     }
 
+    // TODO: maybe enqueue BreakpointsChanged event
     fn delete_range(&mut self, range: BufferRange) {
         let line_count = range.to.line_index - range.from.line_index;
         if line_count == 0 {
@@ -390,7 +392,6 @@ impl<'a> BufferBreakpointCollectionMutGuard<'a> {
 
     pub fn remove_under_cursors(&mut self, cursors: &[Cursor]) {
         let mut breakpoint_index = self.inner.breakpoints.len().saturating_sub(1);
-
         'cursors_loop: for cursor in cursors.iter().rev() {
             let range = cursor.to_range();
 
@@ -417,26 +418,45 @@ impl<'a> BufferBreakpointCollectionMutGuard<'a> {
     }
 
     pub fn toggle_under_cursors(&mut self, cursors: &[Cursor]) {
-        // TODO: implement
+        let mut last_line_index = BufferPositionIndex::MAX;
         for cursor in cursors {
             let range = cursor.to_range();
-            for line_index in range.from.line_index..=range.to.line_index {
-                self.toggle_at(line_index);
-            }
-        }
-    }
 
-    pub fn toggle_at(&mut self, line_index: BufferPositionIndex) {
-        match self
-            .inner
-            .breakpoints
-            .binary_search_by_key(&line_index, |b| b.line_index)
-        {
-            Ok(i) => {
-                self.inner.breakpoints.swap_remove(i);
+            let mut from_line_index = range.from.line_index;
+            from_line_index += (from_line_index == last_line_index) as BufferPositionIndex;
+            let to_line_index = range.to.line_index;
+
+            for line_index in from_line_index..=to_line_index {
+                self.inner.breakpoints.push(BufferBreakpoint { line_index });
             }
-            Err(_) => self.inner.breakpoints.push(BufferBreakpoint { line_index }),
+
+            last_line_index = to_line_index;
         }
+
+        self.inner
+            .breakpoints
+            .sort_unstable_by_key(|b| b.line_index);
+
+        self.inner.breakpoints.push(BufferBreakpoint {
+            line_index: BufferPositionIndex::MAX,
+        });
+        let breakpoints = &mut self.inner.breakpoints[..];
+        let mut write_needle = 0;
+        let mut check_needle = 0;
+
+        let breakpoints_len = breakpoints.len() - 1;
+        while check_needle < breakpoints_len {
+            let left_breakpoint_line_index = breakpoints[check_needle].line_index;
+            if left_breakpoint_line_index == breakpoints[check_needle + 1].line_index {
+                check_needle += 2;
+            } else {
+                breakpoints[write_needle].line_index = left_breakpoint_line_index;
+                check_needle += 1;
+                write_needle += 1;
+            }
+        }
+
+        self.inner.breakpoints.truncate(write_needle);
     }
 }
 impl<'a> Drop for BufferBreakpointCollectionMutGuard<'a> {
