@@ -788,8 +788,7 @@ impl State {
                 } => {
                     let buffer_view = ctx.editor.buffer_views.get(handle);
                     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
-                    let mut breakpoints = buffer.breakpoints.mut_guard();
-                    breakpoints.toggle_under_cursors(&buffer_view.cursors[..]);
+                    buffer.breakpoints.toggle_under_cursors(&buffer_view.cursors[..]);
                 }
                 Key {
                     code: KeyCode::Char('X'),
@@ -799,8 +798,7 @@ impl State {
                 } => {
                     let buffer_view = ctx.editor.buffer_views.get(handle);
                     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
-                    let mut breakpoints = buffer.breakpoints.mut_guard();
-                    breakpoints.remove_under_cursors(&buffer_view.cursors[..]);
+                    buffer.breakpoints.remove_under_cursors(&buffer_view.cursors[..]);
                 }
                 Key {
                     code: KeyCode::Char('B'),
@@ -810,7 +808,7 @@ impl State {
                 } => {
                     let buffer_view = ctx.editor.buffer_views.get(handle);
                     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
-                    buffer.breakpoints.mut_guard().clear();
+                    buffer.breakpoints.clear();
                 }
                 _ => (),
             },
@@ -2053,7 +2051,7 @@ impl ModeState for State {
                     ..
                 } => {
                     for buffer in ctx.editor.buffers.iter_mut() {
-                        buffer.breakpoints.mut_guard().clear();
+                        buffer.breakpoints.clear();
                     }
                 }
                 Key {
@@ -2485,4 +2483,3 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
-

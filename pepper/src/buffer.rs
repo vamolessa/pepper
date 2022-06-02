@@ -336,6 +336,79 @@ impl BufferBreakpointCollection {
         &self.breakpoints
     }
 
+    pub fn clear(&mut self) {
+        self.breakpoints.clear();
+    }
+
+    pub fn remove_under_cursors(&mut self, cursors: &[Cursor]) {
+        let mut breakpoint_index = self.breakpoints.len().saturating_sub(1);
+        'cursors_loop: for cursor in cursors.iter().rev() {
+            let range = cursor.to_range();
+
+            loop {
+                if self.breakpoints.is_empty() {
+                    break 'cursors_loop;
+                }
+
+                let breakpoint_line_index = self.breakpoints[breakpoint_index].line_index;
+                if breakpoint_line_index < range.from.line_index {
+                    break;
+                }
+
+                if breakpoint_line_index <= range.to.line_index {
+                    self.breakpoints.swap_remove(breakpoint_index);
+                }
+
+                if breakpoint_index == 0 {
+                    break 'cursors_loop;
+                }
+                breakpoint_index -= 1;
+            }
+        }
+    }
+
+    pub fn toggle_under_cursors(&mut self, cursors: &[Cursor]) {
+        let mut last_line_index = BufferPositionIndex::MAX;
+        for cursor in cursors {
+            let range = cursor.to_range();
+
+            let mut from_line_index = range.from.line_index;
+            from_line_index += (from_line_index == last_line_index) as BufferPositionIndex;
+            let to_line_index = range.to.line_index;
+
+            for line_index in from_line_index..=to_line_index {
+                self.breakpoints.push(BufferBreakpoint { line_index });
+            }
+
+            last_line_index = to_line_index;
+        }
+
+        self
+            .breakpoints
+            .sort_unstable_by_key(|b| b.line_index);
+
+        self.breakpoints.push(BufferBreakpoint {
+            line_index: BufferPositionIndex::MAX,
+        });
+        let breakpoints = &mut self.breakpoints[..];
+        let mut write_needle = 0;
+        let mut check_needle = 0;
+
+        let breakpoints_len = breakpoints.len() - 1;
+        while check_needle < breakpoints_len {
+            let left_breakpoint_line_index = breakpoints[check_needle].line_index;
+            if left_breakpoint_line_index == breakpoints[check_needle + 1].line_index {
+                check_needle += 2;
+            } else {
+                breakpoints[write_needle].line_index = left_breakpoint_line_index;
+                check_needle += 1;
+                write_needle += 1;
+            }
+        }
+
+        self.breakpoints.truncate(write_needle);
+    }
+
     // TODO: maybe enqueue BreakpointsChanged event
     fn insert_range(&mut self, range: BufferRange) {
         let line_count = range.to.line_index - range.from.line_index;
@@ -375,95 +448,6 @@ impl BufferBreakpointCollection {
         if removed_breakpoint {
             self.breakpoints.sort_unstable_by_key(|b| b.line_index);
         }
-    }
-
-    pub fn mut_guard(&mut self) -> BufferBreakpointCollectionMutGuard {
-        BufferBreakpointCollectionMutGuard { inner: self }
-    }
-}
-
-pub struct BufferBreakpointCollectionMutGuard<'a> {
-    inner: &'a mut BufferBreakpointCollection,
-}
-impl<'a> BufferBreakpointCollectionMutGuard<'a> {
-    pub fn clear(&mut self) {
-        self.inner.breakpoints.clear();
-    }
-
-    pub fn remove_under_cursors(&mut self, cursors: &[Cursor]) {
-        let mut breakpoint_index = self.inner.breakpoints.len().saturating_sub(1);
-        'cursors_loop: for cursor in cursors.iter().rev() {
-            let range = cursor.to_range();
-
-            loop {
-                if self.inner.breakpoints.is_empty() {
-                    break 'cursors_loop;
-                }
-
-                let breakpoint_line_index = self.inner.breakpoints[breakpoint_index].line_index;
-                if breakpoint_line_index < range.from.line_index {
-                    break;
-                }
-
-                if breakpoint_line_index <= range.to.line_index {
-                    self.inner.breakpoints.swap_remove(breakpoint_index);
-                }
-
-                if breakpoint_index == 0 {
-                    break 'cursors_loop;
-                }
-                breakpoint_index -= 1;
-            }
-        }
-    }
-
-    pub fn toggle_under_cursors(&mut self, cursors: &[Cursor]) {
-        let mut last_line_index = BufferPositionIndex::MAX;
-        for cursor in cursors {
-            let range = cursor.to_range();
-
-            let mut from_line_index = range.from.line_index;
-            from_line_index += (from_line_index == last_line_index) as BufferPositionIndex;
-            let to_line_index = range.to.line_index;
-
-            for line_index in from_line_index..=to_line_index {
-                self.inner.breakpoints.push(BufferBreakpoint { line_index });
-            }
-
-            last_line_index = to_line_index;
-        }
-
-        self.inner
-            .breakpoints
-            .sort_unstable_by_key(|b| b.line_index);
-
-        self.inner.breakpoints.push(BufferBreakpoint {
-            line_index: BufferPositionIndex::MAX,
-        });
-        let breakpoints = &mut self.inner.breakpoints[..];
-        let mut write_needle = 0;
-        let mut check_needle = 0;
-
-        let breakpoints_len = breakpoints.len() - 1;
-        while check_needle < breakpoints_len {
-            let left_breakpoint_line_index = breakpoints[check_needle].line_index;
-            if left_breakpoint_line_index == breakpoints[check_needle + 1].line_index {
-                check_needle += 2;
-            } else {
-                breakpoints[write_needle].line_index = left_breakpoint_line_index;
-                check_needle += 1;
-                write_needle += 1;
-            }
-        }
-
-        self.inner.breakpoints.truncate(write_needle);
-    }
-}
-impl<'a> Drop for BufferBreakpointCollectionMutGuard<'a> {
-    fn drop(&mut self) {
-        self.inner
-            .breakpoints
-            .sort_unstable_by_key(|b| b.line_index);
     }
 }
 
@@ -2517,4 +2501,3 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
-

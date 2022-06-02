@@ -252,6 +252,7 @@ impl EditorContext {
                             view_cursors.add(cursor);
                         }
                     }
+                    EditorEvent::BufferBreakpointsChanged { .. } => {}
                 }
             }
         }
@@ -479,3 +480,4 @@ impl Editor {
         self.events.enqueue(EditorEvent::Idle);
     }
 }
+

@@ -57,6 +57,9 @@ pub enum EditorEvent {
         handle: BufferViewHandle,
         cursors: EditorEventCursors,
     },
+    BufferBreakpointsChanged {
+        handle: BufferHandle,
+    },
 }
 
 #[derive(Default)]
@@ -1006,3 +1009,4 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
+

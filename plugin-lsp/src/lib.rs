@@ -378,6 +378,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                     }
                 }
                 EditorEvent::FixCursors { .. } => (),
+                EditorEvent::BufferBreakpointsChanged { .. } => (),
             }
         }
     }
