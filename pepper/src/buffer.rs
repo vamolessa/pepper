@@ -82,11 +82,15 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     }
 
     let (left, right) = text.split_at(index);
-    let from = match left.rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')' | '"' | '\'')) {
+    let from = match left
+        .rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')' | '"' | '\''))
+    {
         Some(i) => i + 1,
         None => 0,
     };
-    let to = match right.find(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '(' | ')' | '"' | '\'')) {
+    let to = match right
+        .find(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '(' | ')' | '"' | '\''))
+    {
         Some(i) => {
             if index + i - from == 1 {
                 text.len()
@@ -1332,7 +1336,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         position: BufferPosition,
         text: &str,
-        breakpoints_changed: &mut bool
+        breakpoints_changed: &mut bool,
     ) -> BufferRange {
         if uses_word_database {
             for word in WordIter(content.lines()[position.line_index as usize].as_str())
@@ -2567,6 +2571,5 @@ mod tests {
         assert_eq!(0, len(&buffer, 0));
         assert_eq!(6, len(&buffer, 1));
         assert_eq!(3, len(&buffer, 2));
- 
-   }
+    }
 }

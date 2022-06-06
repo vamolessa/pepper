@@ -290,29 +290,53 @@ impl State {
                         });
                     }
                     Key {
-                        code: KeyCode::Char('(' | ')'),
+                        code: KeyCode::Char('('),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
                     Key {
-                        code: KeyCode::Char('[' | ']'),
+                        code: KeyCode::Char(')'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], ')', '('),
+                    Key {
+                        code: KeyCode::Char('['),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
                     Key {
-                        code: KeyCode::Char('{' | '}'),
+                        code: KeyCode::Char(']'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], ']', '['),
+                    Key {
+                        code: KeyCode::Char('{'),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
                     Key {
-                        code: KeyCode::Char('<' | '>'),
+                        code: KeyCode::Char('}'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '}', '{'),
+                    Key {
+                        code: KeyCode::Char('<'),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
+                    Key {
+                        code: KeyCode::Char('>'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '>', '<'),
                     Key {
                         code: KeyCode::Char('|'),
                         control: false,
@@ -438,29 +462,53 @@ impl State {
                         });
                     }
                     Key {
-                        code: KeyCode::Char('(' | ')'),
+                        code: KeyCode::Char('('),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
                     Key {
-                        code: KeyCode::Char('[' | ']'),
+                        code: KeyCode::Char(')'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], ')', '('),
+                    Key {
+                        code: KeyCode::Char('['),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
                     Key {
-                        code: KeyCode::Char('{' | '}'),
+                        code: KeyCode::Char(']'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], ']', '['),
+                    Key {
+                        code: KeyCode::Char('{'),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
                     Key {
-                        code: KeyCode::Char('<' | '>'),
+                        code: KeyCode::Char('}'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '}', '{'),
+                    Key {
+                        code: KeyCode::Char('<'),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
+                    Key {
+                        code: KeyCode::Char('>'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '>', '<'),
                     Key {
                         code: KeyCode::Char('|'),
                         control: false,
@@ -788,7 +836,9 @@ impl State {
                 } => {
                     let buffer_view = ctx.editor.buffer_views.get(handle);
                     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
-                    buffer.breakpoints_mut().toggle_under_cursors(&buffer_view.cursors[..], &mut ctx.editor.events);
+                    buffer
+                        .breakpoints_mut()
+                        .toggle_under_cursors(&buffer_view.cursors[..], &mut ctx.editor.events);
                 }
                 Key {
                     code: KeyCode::Char('X'),
@@ -798,7 +848,9 @@ impl State {
                 } => {
                     let buffer_view = ctx.editor.buffer_views.get(handle);
                     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
-                    buffer.breakpoints_mut().remove_under_cursors(&buffer_view.cursors[..], &mut ctx.editor.events);
+                    buffer
+                        .breakpoints_mut()
+                        .remove_under_cursors(&buffer_view.cursors[..], &mut ctx.editor.events);
                 }
                 Key {
                     code: KeyCode::Char('B'),

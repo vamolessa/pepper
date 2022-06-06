@@ -261,4 +261,3 @@ fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32
         _ => (),
     }
 }
-
