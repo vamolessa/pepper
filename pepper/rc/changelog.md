@@ -9,6 +9,7 @@
 - changed smart search patterns: if your search pattern contains a `%` character, it will perform a pattern search instead of a fixed string search (it's still possible to force a fixed string search by prefixing it with either `f/` or `F/`)
 - changed `find_path_and_position_at` to also break on `"` and `'`
 - added remedybg plugin (under the `plugin-remedybg` folder)
+- added css syntax
 
 # 0.27.0
 - added `set-env` command to change the editor's environment variables
