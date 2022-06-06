@@ -71,6 +71,15 @@ syntax literals "null|undefined|this|true|false|%d{%d_}%.%w{%w_}|%d{%w_}"
 syntax strings {'{(\\\\)(\\')!'.}|"{(\\\\)(\\")!".}|`{(\\\\)(\\`)!`.}}
 syntax comments "//{.}|/*{!(*/).$}"
 
+syntax "**/*.css"
+syntax keywords ""
+syntax types "@{%w_-}"
+syntax symbols "%(|%)|%{|%}|%[|%]|<|>|*|:|;|,"
+syntax literals "%d{%d_}%.%w{%w%%_}|%d{%w%%_}"
+syntax strings {"{(\\\\)(\\")!".}}
+syntax comments "/*{!(*/).$}"
+syntax texts "{%w_-}"
+
 syntax "**/*.md"
 syntax keywords "^#{.}"
 syntax symbols "%||%!|-"
