@@ -57,6 +57,9 @@ pub enum EditorEvent {
         handle: BufferViewHandle,
         cursors: EditorEventCursors,
     },
+    BufferBreakpointsChanged {
+        handle: BufferHandle,
+    },
 }
 
 #[derive(Default)]

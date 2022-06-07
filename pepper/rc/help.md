@@ -12,6 +12,6 @@ Help Index:
 - [config recipes](config_recipes.md)
 
 Default Config Files:
-- [default bindings](default_configs.pepper)
+- [default configs](default_configs.pepper)
 - [default syntaxes](default_syntaxes.pepper)
 

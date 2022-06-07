@@ -51,6 +51,8 @@ function main() {
 
         const displayBytes = pepper_on_event(STATE.pepperApplication, key, ctrl, alt);
         terminal.write(displayBytes);
+
+        event.domEvent.preventDefault();
     });
 
     const displayBytes = pepper_init(STATE.pepperApplication, terminal.cols, terminal.rows);

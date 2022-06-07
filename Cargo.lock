@@ -72,11 +72,12 @@ version = "0.2.0"
 dependencies = [
  "pepper",
  "pepper-plugin-lsp",
+ "pepper-plugin-remedybg",
 ]
 
 [[package]]
 name = "pepper"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "libc",
  "winapi",
@@ -84,7 +85,14 @@ dependencies = [
 
 [[package]]
 name = "pepper-plugin-lsp"
-version = "0.14.0"
+version = "0.15.0"
+dependencies = [
+ "pepper",
+]
+
+[[package]]
+name = "pepper-plugin-remedybg"
+version = "0.1.0"
 dependencies = [
  "pepper",
 ]

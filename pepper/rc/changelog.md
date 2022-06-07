@@ -1,9 +1,28 @@
 # changelog
 
+# 0.28.0
+- added the concept of breakpoints for plugins to use
+- added bindings starting with `x` that interact with breakpoints
+- changed theme color name from `background` to `normal_background`
+- changed theme color name from `active_line_background` to `active_background`
+- added theme color `breakpoint_background`
+- changed smart search patterns: if your search pattern contains a `%` character, it will perform a pattern search instead of a fixed string search (it's still possible to force a fixed string search by prefixing it with either `f/` or `F/`)
+- changed `find_path_and_position_at` to also break on `"` and `'`
+- added remedybg plugin (under the `plugin-remedybg` folder)
+- added css syntax
+- changed bracket objects to invert bracket positions if invoked with the closing bracket. that is, `a)` will now select text between `)` and `(` instead of `(` and `)`.
+
 # 0.27.0
 - added `set-env` command to change the editor's environment variables
 - fix `@arg(*)` expanding into no arguments if it's empty
 - fix `save` command alias `s` not taking arguments as it should
+- changed `cd` binding (delete all cursors except the main cursor) to `CD`
+- added new `cd` binding that only deletes the main cursor
+- added lsp configuration examples
+- fix `gf` (and `GF`) that could open a duplicate of an already opened buffer if trying to open the same path but absolute
+- fix `reopen-all` would fail if there was a scratch buffer with a path that does not exist
+- changed `spawn` command to use a piped stdout in order to detect when the process exits
+- changed `cursor-<anchor/position>-<column/line>` expansions to be one based (instead of zero based) for easier interoperability with other softwares
 
 ## 0.26.1
 - improved `find_path_and_position_at` to account for paths followed by `:`

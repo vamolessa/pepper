@@ -252,6 +252,7 @@ impl EditorContext {
                             view_cursors.add(cursor);
                         }
                     }
+                    EditorEvent::BufferBreakpointsChanged { .. } => {}
                 }
             }
         }

@@ -290,29 +290,53 @@ impl State {
                         });
                     }
                     Key {
-                        code: KeyCode::Char('(' | ')'),
+                        code: KeyCode::Char('('),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
                     Key {
-                        code: KeyCode::Char('[' | ']'),
+                        code: KeyCode::Char(')'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], ')', '('),
+                    Key {
+                        code: KeyCode::Char('['),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
                     Key {
-                        code: KeyCode::Char('{' | '}'),
+                        code: KeyCode::Char(']'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], ']', '['),
+                    Key {
+                        code: KeyCode::Char('{'),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
                     Key {
-                        code: KeyCode::Char('<' | '>'),
+                        code: KeyCode::Char('}'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '}', '{'),
+                    Key {
+                        code: KeyCode::Char('<'),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
+                    Key {
+                        code: KeyCode::Char('>'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '>', '<'),
                     Key {
                         code: KeyCode::Char('|'),
                         control: false,
@@ -438,29 +462,53 @@ impl State {
                         });
                     }
                     Key {
-                        code: KeyCode::Char('(' | ')'),
+                        code: KeyCode::Char('('),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
                     Key {
-                        code: KeyCode::Char('[' | ']'),
+                        code: KeyCode::Char(')'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], ')', '('),
+                    Key {
+                        code: KeyCode::Char('['),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
                     Key {
-                        code: KeyCode::Char('{' | '}'),
+                        code: KeyCode::Char(']'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], ']', '['),
+                    Key {
+                        code: KeyCode::Char('{'),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
                     Key {
-                        code: KeyCode::Char('<' | '>'),
+                        code: KeyCode::Char('}'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '}', '{'),
+                    Key {
+                        code: KeyCode::Char('<'),
                         control: false,
                         alt: false,
                         ..
                     } => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
+                    Key {
+                        code: KeyCode::Char('>'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => balanced_brackets(buffer, &mut cursors[..], '>', '<'),
                     Key {
                         code: KeyCode::Char('|'),
                         control: false,
@@ -770,6 +818,52 @@ impl State {
                     _ => (),
                 }
             }
+            Key {
+                code: KeyCode::Char('x' | 'X'),
+                control: false,
+                alt: false,
+                ..
+            } => match keys.next(&ctx.editor.buffered_keys) {
+                Key {
+                    code: KeyCode::None,
+                    ..
+                } => return None,
+                Key {
+                    code: KeyCode::Char('x'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
+                    let buffer_view = ctx.editor.buffer_views.get(handle);
+                    let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
+                    buffer
+                        .breakpoints_mut()
+                        .toggle_under_cursors(&buffer_view.cursors[..], &mut ctx.editor.events);
+                }
+                Key {
+                    code: KeyCode::Char('X'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
+                    let buffer_view = ctx.editor.buffer_views.get(handle);
+                    let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
+                    buffer
+                        .breakpoints_mut()
+                        .remove_under_cursors(&buffer_view.cursors[..], &mut ctx.editor.events);
+                }
+                Key {
+                    code: KeyCode::Char('B'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
+                    let buffer_view = ctx.editor.buffer_views.get(handle);
+                    let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
+                    buffer.breakpoints_mut().clear(&mut ctx.editor.events);
+                }
+                _ => (),
+            },
             Key {
                 code: KeyCode::Char('['),
                 control: false,
@@ -1337,7 +1431,7 @@ impl State {
                     }
                 }
                 Key {
-                    code: KeyCode::Char('d'),
+                    code: KeyCode::Char('D'),
                     control: false,
                     alt: false,
                     ..
@@ -1347,6 +1441,22 @@ impl State {
                     cursors.clear();
                     cursors.add(main_cursor);
                     state.movement_kind = CursorMovementKind::PositionAndAnchor;
+                }
+                Key {
+                    code: KeyCode::Char('d'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
+                    let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+                    if cursors[..].len() > 1 {
+                        let main_cursor_position = cursors.main_cursor().position;
+                        let main_cursor_index = cursors.main_cursor_index();
+                        cursors.swap_remove(main_cursor_index);
+                        cursors.set_main_cursor_near_position(main_cursor_position);
+
+                        state.movement_kind = CursorMovementKind::PositionAndAnchor;
+                    }
                 }
                 Key {
                     code: KeyCode::Char('v'),
@@ -1718,7 +1828,7 @@ impl ModeState for State {
                     ctx.editor
                         .status_bar
                         .write(MessageKind::Info)
-                        .str(&lints[index].message);
+                        .str(&lints[index].message(&buffer.lints));
                 }
             }
         }
@@ -1976,6 +2086,100 @@ impl ModeState for State {
                 );
                 handled_keys = true;
             }
+            Key {
+                code: KeyCode::Char('x' | 'X'),
+                control: false,
+                alt: false,
+                ..
+            } => match keys.next(&ctx.editor.buffered_keys) {
+                Key {
+                    code: KeyCode::None,
+                    ..
+                } => return None,
+                Key {
+                    code: KeyCode::Char('A'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
+                    for buffer in ctx.editor.buffers.iter_mut() {
+                        buffer.breakpoints_mut().clear(&mut ctx.editor.events);
+                    }
+                }
+                Key {
+                    code: KeyCode::Char('a'),
+                    control: false,
+                    alt: false,
+                    ..
+                } => {
+                    let buffer_view_handle = match ctx.editor.buffer_view_handle_from_path(
+                        client_handle,
+                        Path::new("breakpoints.refs"),
+                        BufferProperties::scratch(),
+                        true,
+                    ) {
+                        Ok(handle) => handle,
+                        Err(error) => {
+                            ctx.editor
+                                .status_bar
+                                .write(MessageKind::Error)
+                                .fmt(format_args!("{}", error));
+                            return Some(EditorFlow::Continue);
+                        }
+                    };
+
+                    let mut content = ctx.editor.string_pool.acquire();
+                    for buffer in ctx.editor.buffers.iter() {
+                        let buffer_path = match buffer.path.to_str() {
+                            Some(path) => path,
+                            None => continue,
+                        };
+
+                        for breakpoint in buffer.breakpoints() {
+                            let line_content =
+                                buffer.content().lines()[breakpoint.line_index as usize].as_str();
+                            let _ = write!(
+                                content,
+                                "{}:{}:{}\n",
+                                buffer_path,
+                                breakpoint.line_index + 1,
+                                line_content
+                            );
+                        }
+
+                        if !buffer.breakpoints().is_empty() {
+                            content.push('\n');
+                        }
+                    }
+
+                    let buffer_handle = ctx
+                        .editor
+                        .buffer_views
+                        .get(buffer_view_handle)
+                        .buffer_handle;
+                    let buffer = ctx.editor.buffers.get_mut(buffer_handle);
+                    let range =
+                        BufferRange::between(BufferPosition::zero(), buffer.content().end());
+                    buffer.delete_range(
+                        &mut ctx.editor.word_database,
+                        range,
+                        &mut ctx.editor.events,
+                    );
+                    buffer.insert_text(
+                        &mut ctx.editor.word_database,
+                        BufferPosition::zero(),
+                        &content,
+                        &mut ctx.editor.events,
+                    );
+
+                    ctx.editor.string_pool.release(content);
+
+                    let client = ctx.clients.get_mut(client_handle);
+                    client
+                        .set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
+                }
+                _ => (),
+            },
             Key {
                 code: KeyCode::Char(c),
                 control: false,

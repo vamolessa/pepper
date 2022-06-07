@@ -23,6 +23,11 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `gB`, `GB` | open the buffer that is open in the previously focused client, then that client opens its previous buffer |
 | `gf` | if the filepath under the cursor exists, open it as a buffer |
 | `gF`, `GF` | if the filepath under the cursor exists, open it as a buffer, then close the current buffer |
+| `xx` | toggle breakpoints on all lines covered by cursors |
+| `xX`, `XX` | remove breakpoints on all lines covered by cursors |
+| `xB`, `XB` | remove all breakpoints on current buffer |
+| `xA`, `XA` | remove all breakpoints on all buffers |
+| `xa` | list all breakpoints as references in a new buffer |
 | `]]<char>`, `[[<char>` | move cursors to next/previous `<char>` (inclusive) |
 | `][<char>`, `[]<char>` | move cursors to next/previous `<char>` (exclusive) |
 | `}`, `{` | repeat last find char in forward/backward mode |
@@ -37,6 +42,11 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `rn`, `rp` | move to next/previous lint (provided by a plugin) |
 
 **NOTE**: the register `a` always contains the last selection+edit keys.
+
+| binding | expands to | action |
+| --- | --- | --- |
+| `<space>o` | `:<space>-find-file<enter>` | fuzzy pick a file |
+| `<space>f` | `:<space>-find-pattern<enter>` | workspace wide search |
 
 ### text-object
 
@@ -64,7 +74,8 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | --- | --- |
 | `cc` | swap the anchor and position of all cursors |
 | `cC`, `CC` | orientate all cursors such that their anchors come before their positions |
-| `cd` | clear all extra cursors and keep only the main cursor |
+| `cd` | remove main cursor if there's more than one cursor |
+| `cD`, `CD` | clear all extra cursors and keep only the main cursor |
 | `cl` | splits all selection in lines |
 | `cj`, `ck` | add a new cursor to the line bellow/above the bottom/top cursor |
 | `cn`, `cp` | set next/previous cursor as main cursor |
@@ -90,15 +101,15 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `<c-y><lowercase-char>` | copy selected text to register `<char>` |
 | `<c-y><uppercase-char>` | delete selected text and paste the contents of register `<char>` |
 | `u`, `U` | undo/redo |
-| <code>A&#124;</code> | pass each selection as stdin to a command line and substitute each for its stdout |
-| `!` | execute a command line (with closed stdin and ignoring its output) |
 
 | binding | expands to | action |
 | --- | --- | --- |
-| `I`, `<c-i>`, | `dgii`, `dgli` | move cursors to first non-blank/last column and enter insert mode |
+| `I`, `<c-i>` | `dgii`, `dgli` | move cursors to first non-blank/last column and enter insert mode |
 | `ci` | `cvcCglccgii` | delete all lines touching a selection and enter insert mode |
 | `o`, `O` | `dgli<enter>`, `dgii<enter><up>` | create an empty line bellow/above each cursor and enter insert mode |
 | `J` | `djgivkgli<space><esc>` | join one line bellow each cursor |
+| `!` | `:<space>-spawn<enter>` | execute a command line (with closed stdin and ignoring its output) |
+| <code>&#124;</code> | `:<space>-replace-with-output<enter>` | pass each selection as stdin to a command line and substitute each for its stdout |
 
 ## insert mode
 Insert new text to the current buffer.
@@ -119,6 +130,7 @@ Perform actions not directly related to editing such as: open/save/close buffer,
 In order to enter command mode, type `:` while in normal mode.
 
 When the input is empty, you can navigate through history with `<c-n>` and `<c-p>`.
+
 **NOTE**: if a command starts with a space, it will not be recorded to the command history.
 
 Also, `<c-n>` and `<c-p>` will choose from the autocomplete entries.
