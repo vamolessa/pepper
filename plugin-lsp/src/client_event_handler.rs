@@ -34,6 +34,7 @@ pub(crate) fn on_request(
 ) -> Result<JsonValue, ProtocolError> {
     {
         let mut log_writer = ctx.editor.logger.write(LogKind::Diagnostic);
+        log_writer.str("lsp: ");
         log_writer.str("receive request\nid: ");
         let _ = client.json.write(&mut log_writer, &request.id);
         log_writer.fmt(format_args!(
@@ -236,6 +237,7 @@ pub(crate) fn on_notification(
 ) -> Result<(), ProtocolError> {
     {
         let mut log_writer = ctx.editor.logger.write(LogKind::Diagnostic);
+        log_writer.str("lsp: ");
         log_writer.fmt(format_args!(
             "receive notification\nmethod: '{}'\nparams:\n",
             notification.method.as_str(&client.json),
@@ -353,6 +355,7 @@ pub(crate) fn on_response(
 
     {
         let mut log_writer = ctx.editor.logger.write(LogKind::Diagnostic);
+        log_writer.str("lsp: ");
         log_writer.fmt(format_args!(
             "receive response\nid: {}\nmethod: '{}'\n",
             response.id.0, method
@@ -377,7 +380,10 @@ pub(crate) fn on_response(
         Ok(result) => result,
         Err(error) => {
             client.request_state = RequestState::Idle;
-            ctx.editor.logger.write(LogKind::Error).str(error.message.as_str(&client.json));
+            ctx.editor
+                .logger
+                .write(LogKind::Error)
+                .str(error.message.as_str(&client.json));
             return Ok(());
         }
     };
@@ -414,10 +420,21 @@ pub(crate) fn on_response(
             }
 
             client.initialized = true;
-            client.notify(&mut ctx.platform, "initialized", JsonObject::default(), &mut ctx.editor.logger);
+            client.notify(
+                &mut ctx.platform,
+                "initialized",
+                JsonObject::default(),
+                &mut ctx.editor.logger,
+            );
 
             for buffer in ctx.editor.buffers.iter() {
-                util::send_did_open(client, &ctx.editor.buffers, &mut ctx.platform, buffer.handle(), &mut ctx.editor.logger);
+                util::send_did_open(
+                    client,
+                    &ctx.editor.buffers,
+                    &mut ctx.platform,
+                    buffer.handle(),
+                    &mut ctx.editor.logger,
+                );
             }
 
             Ok(())
@@ -1085,4 +1102,3 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(()),
     }
 }
-

@@ -183,7 +183,12 @@ impl LspPlugin {
         handle
     }
 
-    pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle, logger: &mut Logger) -> bool {
+    pub fn stop(
+        &mut self,
+        platform: &mut Platform,
+        handle: ClientHandle,
+        logger: &mut Logger,
+    ) -> bool {
         match &mut self.entries[handle.0 as usize] {
             ClientEntry::Occupied(client) => {
                 let _ = client.notify(platform, "exit", JsonObject::default(), logger);
@@ -318,7 +323,13 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                     let buffer = ctx.editor.buffers.get(handle);
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         client.versioned_buffers.dispose(handle);
-                        util::send_did_open(client, &ctx.editor.buffers, &mut ctx.platform, handle, &mut ctx.editor.logger);
+                        util::send_did_open(
+                            client,
+                            &ctx.editor.buffers,
+                            &mut ctx.platform,
+                            handle,
+                            &mut ctx.editor.logger,
+                        );
                     }
                 }
                 EditorEvent::BufferInsertText {
@@ -398,6 +409,7 @@ fn on_process_output(
             ServerEvent::ParseError => {
                 {
                     let mut log_writer = ctx.editor.logger.write(LogKind::Diagnostic);
+                    log_writer.str("lsp: ");
                     log_writer.str("send parse error\nrequest_id: ");
                     let _ = client.json.write(&mut log_writer, &JsonValue::Null);
                 }
@@ -412,7 +424,12 @@ fn on_process_output(
             ServerEvent::Request(request) => {
                 let request_id = request.id.clone();
                 match client_event_handler::on_request(client, ctx, request) {
-                    Ok(value) => client.respond(&mut ctx.platform, request_id, Ok(value), &mut ctx.editor.logger),
+                    Ok(value) => client.respond(
+                        &mut ctx.platform,
+                        request_id,
+                        Ok(value),
+                        &mut ctx.editor.logger,
+                    ),
                     Err(ProtocolError::ParseError) => {
                         client.respond(
                             &mut ctx.platform,
@@ -467,7 +484,11 @@ fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, client_
 
     let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
     if let ClientEntry::Occupied(client) = &mut lsp.entries[client_index as usize] {
-        ctx.editor.logger.write(LogKind::Diagnostic).str("lsp server stopped");
+        {
+            let mut log_writer = ctx.editor.logger.write(LogKind::Diagnostic);
+            log_writer.str("lsp: ");
+            log_writer.str("lsp server stopped");
+        }
 
         let client_handle = client.handle();
         for recipe in &mut lsp.recipes {
@@ -531,4 +552,3 @@ fn on_completion(
 
     false
 }
-

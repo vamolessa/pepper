@@ -6,7 +6,7 @@ use std::{
 };
 
 use pepper::{
-    buffer::{BufferHandle, BufferProperties, BufferCollection},
+    buffer::{BufferCollection, BufferHandle, BufferProperties},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,
@@ -1101,7 +1101,10 @@ impl Client {
         {
             let mut log_writer = logger.write(LogKind::Diagnostic);
             log_writer.str("lsp: ");
-            log_writer.fmt(format_args!("send request\nmethod: '{}'\nparams:\n", method));
+            log_writer.fmt(format_args!(
+                "send request\nmethod: '{}'\nparams:\n",
+                method
+            ));
             let _ = self.json.write(&mut log_writer, &params);
         }
 
@@ -1132,7 +1135,7 @@ impl Client {
                 }
                 Err(error) => {
                     log_writer.fmt(format_args!(
-                         "\nerror.code: {}\nerror.message: {}\nerror.data:\n",
+                        "\nerror.code: {}\nerror.message: {}\nerror.data:\n",
                         error.code,
                         error.message.as_str(&self.json)
                     ));
@@ -1157,7 +1160,10 @@ impl Client {
         {
             let mut log_writer = logger.write(LogKind::Diagnostic);
             log_writer.str("lsp: ");
-            log_writer.fmt(format_args!("send notification\nmethod: '{}'\nparams:\n", method));
+            log_writer.fmt(format_args!(
+                "send notification\nmethod: '{}'\nparams:\n",
+                method
+            ));
             let _ = self.json.write(&mut log_writer, &params);
         }
 
@@ -1308,7 +1314,11 @@ pub(crate) mod util {
         client.notify(platform, "textDocument/didOpen", params, logger);
     }
 
-    pub fn send_pending_did_change(client: &mut Client, editor: &mut Editor, platform: &mut Platform) {
+    pub fn send_pending_did_change(
+        client: &mut Client,
+        editor: &mut Editor,
+        platform: &mut Platform,
+    ) {
         let mut versioned_buffers = std::mem::take(&mut client.versioned_buffers);
         for (buffer_handle, versioned_buffer) in versioned_buffers.iter_pending_mut() {
             if versioned_buffer.pending_edits.is_empty() {
@@ -1442,4 +1452,3 @@ pub(crate) mod util {
         );
     }
 }
-
