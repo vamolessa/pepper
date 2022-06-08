@@ -348,6 +348,7 @@ impl Logger {
                         break;
                     }
 
+                    x = 0;
                     lines[lines_len] = &self.status_bar_message[line_start_index..i];
                     lines_len += 1;
                     line_start_index = i + 1;
@@ -356,12 +357,11 @@ impl Logger {
                     let c_len = char_display_len(c) as usize;
                     x += c_len;
                     if x >= available_size.0 as _ {
-                        x = c_len;
-
                         if lines_len >= lines.len() {
                             break;
                         }
 
+                        x = c_len;
                         lines[lines_len] = &self.status_bar_message[line_start_index..i];
                         lines_len += 1;
                         line_start_index = i;
