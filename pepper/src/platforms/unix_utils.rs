@@ -132,7 +132,8 @@ pub(crate) fn run(
         }
 
         let _ = fs::remove_file(session_path);
-        let listener = UnixListener::bind(session_path).expect("could not start unix domain socket server");
+        let listener =
+            UnixListener::bind(session_path).expect("could not start unix domain socket server");
 
         server_fn(config, listener);
         let _ = fs::remove_file(session_path);

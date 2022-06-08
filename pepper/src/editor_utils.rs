@@ -1,4 +1,4 @@
-use std::{fmt, io, process::Command, fs};
+use std::{fmt, fs, io, process::Command};
 
 use crate::{
     buffer::char_display_len,

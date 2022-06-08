@@ -175,7 +175,12 @@ pub fn main(mut config: ApplicationConfig) {
     pipe_path.push(b'\0' as _);
 
     if config.args.print_session {
-        print!("{}{}-{}", PIPE_PREFIX, env!("CARGO_PKG_NAME"), &config.args.session_name);
+        print!(
+            "{}{}-{}",
+            PIPE_PREFIX,
+            env!("CARGO_PKG_NAME"),
+            &config.args.session_name
+        );
         return;
     }
 
@@ -1692,4 +1697,3 @@ fn parse_console_events(
         }
     }
 }
-

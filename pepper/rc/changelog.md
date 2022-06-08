@@ -10,7 +10,8 @@
 - changed `find_path_and_position_at` to also break on `"` and `'`
 - added remedybg plugin (under the `plugin-remedybg` folder)
 - added css syntax
-- changed bracket objects to invert bracket positions if invoked with the closing bracket. that is, `a)` will now select text between `)` and `(` instead of `(` and `)`.
+- changed bracket objects to invert bracket positions if invoked with the closing bracket. that is, `a)` will now select text between `)` and `(` instead of `(` and `)`
+- added logging to the editor which you can open it with the `open-log` command
 
 # 0.27.0
 - added `set-env` command to change the editor's environment variables

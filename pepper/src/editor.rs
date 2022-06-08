@@ -290,7 +290,12 @@ pub struct Editor {
     pub(crate) picker_entries_process_buf: PickerEntriesProcessBuf,
 }
 impl Editor {
-    pub fn new(current_directory: PathBuf, session_name: String, log_file_path: String, log_file: Option<File>) -> Self {
+    pub fn new(
+        current_directory: PathBuf,
+        session_name: String,
+        log_file_path: String,
+        log_file: Option<File>,
+    ) -> Self {
         Self {
             current_directory,
             session_name,

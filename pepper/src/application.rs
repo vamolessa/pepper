@@ -64,7 +64,12 @@ impl ServerApplication {
         }
 
         let mut ctx = EditorContext {
-            editor: Editor::new(current_dir, config.args.session_name, log_file_path, log_file),
+            editor: Editor::new(
+                current_dir,
+                config.args.session_name,
+                log_file_path,
+                log_file,
+            ),
             platform: Platform::default(),
             clients: ClientManager::default(),
             plugins: PluginCollection::default(),
