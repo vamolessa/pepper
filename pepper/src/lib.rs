@@ -47,7 +47,7 @@ pub struct ArgsConfig {
 #[derive(Default)]
 pub struct Args {
     pub version: bool,
-    pub session: Option<String>,
+    pub session_name: String,
     pub print_session: bool,
     pub as_focused_client: bool,
     pub quit: bool,
@@ -121,7 +121,7 @@ impl Args {
                                 "invalid session name '{}'. it can only contain alphanumeric characters", arg
                             ));
                         }
-                        parsed.session = Some(arg.into());
+                        parsed.session_name = arg.into();
                     }
                     None => error(format_args!("expected session after {}", arg)),
                 },

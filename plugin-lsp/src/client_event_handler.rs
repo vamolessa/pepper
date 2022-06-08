@@ -429,7 +429,7 @@ pub(crate) fn on_response(
         "textDocument/hover" => {
             let contents = result.get("contents", &client.json);
             let info = util::extract_markup_content(contents, &client.json);
-            ctx.editor.status_bar.write(MessageKind::Info).str(info);
+            ctx.editor.status_bar.write(MessageKind::Status).str(info);
             Ok(())
         }
         "textDocument/signatureHelp" => {
@@ -496,11 +496,11 @@ pub(crate) fn on_response(
             let label = signature.label.as_str(&client.json);
 
             if signature.documentation.is_empty() {
-                ctx.editor.status_bar.write(MessageKind::Info).str(label);
+                ctx.editor.status_bar.write(MessageKind::Status).str(label);
             } else {
                 ctx.editor
                     .status_bar
-                    .write(MessageKind::Info)
+                    .write(MessageKind::Status)
                     .fmt(format_args!("{}\n{}", signature.documentation, label));
             }
 

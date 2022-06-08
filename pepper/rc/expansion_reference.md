@@ -91,6 +91,13 @@ The environment variable of name `<name>`.
 If there is no such environment variable, it results in an empty expansion.
 - usage: `@env(<name>)`
 
+## `session-name`
+The editor session name.
+Either the value passed to the `--session` flag when invoking the editor, or a hash of the current directory when invoked.
+This is used when connecting servers and clients.
+That is, the name of the NamedPipe on windows and the name of the DomainSocket on unix.
+- usage: `@session-name()`
+
 ## `pid`
 The process id of the server.
 - usage: `@pid()`

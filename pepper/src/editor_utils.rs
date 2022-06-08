@@ -1,4 +1,4 @@
-use std::{fmt, process::Command};
+use std::{fmt, io, process::Command, fs};
 
 use crate::{
     buffer::char_display_len,
@@ -228,6 +228,15 @@ impl ReadLine {
                 ReadLinePoll::Pending
             }
             Key {
+                code: KeyCode::Char('\t'),
+                control: false,
+                alt: false,
+                ..
+            } => {
+                self.input.push(' ');
+                ReadLinePoll::Pending
+            }
+            Key {
                 code: KeyCode::Char(c),
                 control: false,
                 alt: false,
@@ -243,6 +252,7 @@ impl ReadLine {
 
 #[derive(Debug, Clone, Copy)]
 pub enum MessageKind {
+    Status,
     Info,
     Error,
 }
@@ -257,12 +267,16 @@ pub struct StatusBarDisplay<'status_bar, 'lines> {
 pub struct StatusBar {
     kind: MessageKind,
     message: String,
+    log_file_path: String,
+    log_file: Option<fs::File>,
 }
 impl StatusBar {
-    pub fn new() -> Self {
+    pub fn new(log_file_path: String, log_file: Option<fs::File>) -> Self {
         Self {
             kind: MessageKind::Info,
             message: String::new(),
+            log_file_path,
+            log_file,
         }
     }
 
@@ -277,7 +291,7 @@ impl StatusBar {
     pub fn write(&mut self, kind: MessageKind) -> StatusBarWriter {
         self.kind = kind;
         self.message.clear();
-        StatusBarWriter(&mut self.message)
+        StatusBarWriter(self)
     }
 
     pub(crate) fn on_before_render(&mut self) {
@@ -305,7 +319,7 @@ impl StatusBar {
         };
 
         let prefix = match self.kind {
-            MessageKind::Info => "",
+            MessageKind::Status | MessageKind::Info => "",
             MessageKind::Error => "error:",
         };
 
@@ -359,15 +373,41 @@ impl StatusBar {
             lines: &lines[..lines_len],
         }
     }
+
+    pub fn log_file_path(&self) -> Option<&str> {
+        if self.log_file.is_some() {
+            Some(&self.log_file_path)
+        } else {
+            None
+        }
+    }
 }
-pub struct StatusBarWriter<'a>(&'a mut String);
+impl Drop for StatusBar {
+    fn drop(&mut self) {
+        if self.log_file.is_some() {
+            let _ = fs::remove_file(&self.log_file_path);
+        }
+    }
+}
+
+pub struct StatusBarWriter<'a>(&'a mut StatusBar);
 impl<'a> StatusBarWriter<'a> {
     pub fn str(&mut self, message: &str) {
-        self.0.push_str(message);
+        self.0.message.push_str(message);
     }
 
     pub fn fmt(&mut self, args: fmt::Arguments) {
-        let _ = fmt::write(&mut self.0, args);
+        let _ = fmt::write(&mut self.0.message, args);
+    }
+}
+impl<'a> Drop for StatusBarWriter<'a> {
+    fn drop(&mut self) {
+        if let MessageKind::Error = self.0.kind {
+            if let Some(log_file) = &mut self.0.log_file {
+                use io::Write;
+                let _ = log_file.write_all(self.0.message.as_bytes());
+            }
+        }
     }
 }
 

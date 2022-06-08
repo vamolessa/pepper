@@ -49,8 +49,22 @@ pub struct ServerApplication {
 impl ServerApplication {
     pub fn new(config: ApplicationConfig) -> Option<Self> {
         let current_dir = env::current_dir().unwrap_or(PathBuf::new());
+
+        let mut temp_dir = env::temp_dir();
+        temp_dir.push(env!("CARGO_PKG_NAME"));
+        let _ = fs::create_dir(&temp_dir);
+
+        let mut log_file_path = String::new();
+        let mut log_file = None;
+        if let Ok(temp_dir) = temp_dir.into_os_string().into_string() {
+            log_file_path = temp_dir;
+            log_file_path.push('/');
+            log_file_path.push_str(&config.args.session_name);
+            log_file = fs::File::create(&log_file_path).ok();
+        }
+
         let mut ctx = EditorContext {
-            editor: Editor::new(current_dir),
+            editor: Editor::new(current_dir, config.args.session_name, log_file_path, log_file),
             platform: Platform::default(),
             clients: ClientManager::default(),
             plugins: PluginCollection::default(),

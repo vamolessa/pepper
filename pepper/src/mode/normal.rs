@@ -1644,7 +1644,7 @@ impl State {
 
                         ctx.editor
                             .status_bar
-                            .write(MessageKind::Info)
+                            .write(MessageKind::Status)
                             .fmt(format_args!("mark saved to register {}", c));
                     }
                 }
@@ -1827,7 +1827,7 @@ impl ModeState for State {
                 {
                     ctx.editor
                         .status_bar
-                        .write(MessageKind::Info)
+                        .write(MessageKind::Status)
                         .str(&lints[index].message(&buffer.lints));
                 }
             }

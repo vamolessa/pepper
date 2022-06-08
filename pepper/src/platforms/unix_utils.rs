@@ -97,32 +97,25 @@ fn spawn_server() {
 }
 
 pub(crate) fn run(
-    config: ApplicationConfig,
+    mut config: ApplicationConfig,
     server_fn: fn(ApplicationConfig, UnixListener),
     client_fn: fn(Args, UnixStream),
 ) {
+    if config.args.session_name.is_empty() {
+        use std::fmt::Write;
+
+        let current_dir = env::current_dir().expect("could not retrieve the current directory");
+        let current_dir_bytes = current_dir.as_os_str().as_bytes();
+        let current_directory_hash = hash_bytes(current_dir_bytes);
+
+        write!(config.args.session_name, "{:x}", current_directory_hash).unwrap();
+    }
+
     let mut session_path = String::new();
     session_path.push_str("/tmp/");
     session_path.push_str(env!("CARGO_PKG_NAME"));
     session_path.push('/');
-
-    match config.args.session {
-        Some(ref name) => session_path.push_str(name),
-        None => {
-            use io::Write;
-
-            let current_dir = env::current_dir().expect("could not retrieve the current directory");
-            let current_dir_bytes = current_dir.as_os_str().as_bytes();
-            let current_directory_hash = hash_bytes(current_dir_bytes);
-
-            let mut hash_buf = [0u8; 16];
-            let mut cursor = io::Cursor::new(&mut hash_buf[..]);
-            write!(&mut cursor, "{:x}", current_directory_hash).unwrap();
-            let len = cursor.position() as usize;
-            let name = std::str::from_utf8(&hash_buf[..len]).unwrap();
-            session_path.push_str(name);
-        }
-    }
+    session_path.push_str(&config.args.session_name);
 
     if config.args.print_session {
         print!("{}", session_path);
@@ -131,7 +124,7 @@ pub(crate) fn run(
 
     let session_path = Path::new(&session_path);
 
-    fn start_server(session_path: &Path) -> UnixListener {
+    if config.args.server {
         if let Some(dir) = session_path.parent() {
             if !dir.exists() {
                 let _ = fs::create_dir(dir);
@@ -139,11 +132,9 @@ pub(crate) fn run(
         }
 
         let _ = fs::remove_file(session_path);
-        UnixListener::bind(session_path).expect("could not start unix domain socket server")
-    }
+        let listener = UnixListener::bind(session_path).expect("could not start unix domain socket server");
 
-    if config.args.server {
-        server_fn(config, start_server(session_path));
+        server_fn(config, listener);
         let _ = fs::remove_file(session_path);
     } else {
         match UnixStream::connect(session_path) {

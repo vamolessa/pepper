@@ -66,7 +66,12 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 
     r("print", &[], |ctx, io| {
-        let mut write = ctx.editor.status_bar.write(MessageKind::Info);
+        let message_kind = if io.bang {
+            MessageKind::Error
+        } else {
+            MessageKind::Info
+        };
+        let mut write = ctx.editor.status_bar.write(message_kind);
         if let Some(arg) = io.args.try_next() {
             write.str(arg);
         }
@@ -74,6 +79,34 @@ pub fn register_commands(commands: &mut CommandManager) {
             write.str("\n");
             write.str(arg);
         }
+        Ok(())
+    });
+
+    r("open-log", &[], |ctx, io| {
+        io.args.assert_empty()?;
+
+        let client_handle = io.client_handle()?;
+        let path = ctx
+            .editor
+            .status_bar
+            .log_file_path()
+            .ok_or(CommandError::EditorNotLogging)?;
+
+        let path = ctx.editor.string_pool.acquire_with(path);
+        let buffer_view_handle = ctx
+            .editor
+            .buffer_view_handle_from_path(
+                client_handle,
+                Path::new(&path),
+                BufferProperties::scratch(),
+                true,
+            )
+            .map_err(CommandError::BufferReadError)?;
+        ctx.editor.string_pool.release(path);
+
+        let client = ctx.clients.get_mut(client_handle);
+        client.set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
+
         Ok(())
     });
 
@@ -158,7 +191,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .status_bar
-            .write(MessageKind::Info)
+            .write(MessageKind::Status)
             .fmt(format_args!("buffer saved to {:?}", &buffer.path));
         Ok(())
     });
@@ -177,7 +210,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .status_bar
-            .write(MessageKind::Info)
+            .write(MessageKind::Status)
             .fmt(format_args!("{} buffers saved", count));
         Ok(())
     });
@@ -195,7 +228,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .status_bar
-            .write(MessageKind::Info)
+            .write(MessageKind::Status)
             .str("buffer reopened");
         Ok(())
     });
@@ -220,7 +253,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .status_bar
-            .write(MessageKind::Info)
+            .write(MessageKind::Status)
             .fmt(format_args!("{} buffers reopened", count));
         Ok(())
     });
@@ -236,7 +269,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .status_bar
-            .write(MessageKind::Info)
+            .write(MessageKind::Status)
             .str("buffer closed");
 
         Ok(())
@@ -256,7 +289,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .status_bar
-            .write(MessageKind::Info)
+            .write(MessageKind::Status)
             .fmt(format_args!("{} buffers closed", count));
         Ok(())
     });
@@ -276,7 +309,7 @@ pub fn register_commands(commands: &mut CommandManager) {
                 Some(display) => {
                     ctx.editor
                         .status_bar
-                        .write(MessageKind::Info)
+                        .write(MessageKind::Status)
                         .fmt(format_args!("{}", display));
                     Ok(())
                 }
@@ -306,7 +339,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             None => ctx
                 .editor
                 .status_bar
-                .write(MessageKind::Info)
+                .write(MessageKind::Status)
                 .fmt(format_args!("0x{:0<6x}", color.into_u32())),
         }
 
@@ -614,3 +647,4 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
+

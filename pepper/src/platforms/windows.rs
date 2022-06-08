@@ -150,44 +150,32 @@ pub fn try_launching_debugger() {
     unsafe { DebugBreak() };
 }
 
-pub fn main(config: ApplicationConfig) {
-    let mut pipe_path = Vec::new();
-    let mut hash_buf = [0u8; 16];
-    let session_name = match &config.args.session {
-        Some(name) => name.as_str(),
-        None => {
-            use io::Write;
+pub fn main(mut config: ApplicationConfig) {
+    if config.args.session_name.is_empty() {
+        use std::fmt::Write;
 
-            let current_dir = env::current_dir().expect("could not retrieve the current directory");
-            let current_dir_bytes: Vec<_> = current_dir
-                .as_os_str()
-                .encode_wide()
-                .map(|s| {
-                    let bytes = s.to_le_bytes();
-                    std::iter::once(bytes[0]).chain(std::iter::once(bytes[1]))
-                })
-                .flatten()
-                .collect();
+        let current_dir = env::current_dir().expect("could not retrieve the current directory");
+        let current_dir_bytes: Vec<_> = current_dir
+            .as_os_str()
+            .encode_wide()
+            .flat_map(u16::to_le_bytes)
+            .collect();
 
-            let current_directory_hash = hash_bytes(&current_dir_bytes);
-            let mut cursor = io::Cursor::new(&mut hash_buf[..]);
-            write!(&mut cursor, "{:x}", current_directory_hash).unwrap();
-            let len = cursor.position() as usize;
-            std::str::from_utf8(&hash_buf[..len]).unwrap()
-        }
-    };
+        let current_directory_hash = hash_bytes(&current_dir_bytes);
+        write!(config.args.session_name, "{:x}", current_directory_hash).unwrap();
+    }
 
     const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
-    pipe_path.clear();
+    let mut pipe_path = Vec::new();
     pipe_path.extend(PIPE_PREFIX.encode_utf16());
     pipe_path.extend(env!("CARGO_PKG_NAME").encode_utf16());
     pipe_path.push(b'-' as _);
-    pipe_path.extend(session_name.encode_utf16());
+    pipe_path.extend(config.args.session_name.encode_utf16());
     pipe_path.push(b'\0' as _);
 
     if config.args.print_session {
-        print!("{}{}-{}", PIPE_PREFIX, env!("CARGO_PKG_NAME"), session_name);
+        print!("{}{}-{}", PIPE_PREFIX, env!("CARGO_PKG_NAME"), &config.args.session_name);
         return;
     }
 
@@ -1704,3 +1692,4 @@ fn parse_console_events(
         }
     }
 }
+

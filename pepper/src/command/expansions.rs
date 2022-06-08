@@ -179,6 +179,10 @@ pub fn write_variable_expansion<'ctx>(
                 output.push_str(&env_var);
             }
         }
+        "session-name" => {
+            assert_empty_args(args)?;
+            output.push_str(&ctx.editor.session_name);
+        }
         "pid" => {
             assert_empty_args(args)?;
             let _ = write!(output, "{}", std::process::id());

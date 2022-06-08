@@ -14,7 +14,12 @@ If `<keyword>` is not present, opens the main help page.
 
 ## `print`
 Prints earch `<argument>` to status bar. Each argument is separated by a new line.
-- usage: `print <arguments...>`
+With `!` will print an error message.
+- usage: `print[!] <arguments...>`
+
+## `open-log`
+Opens the editor log file as a buffer (if you want to refresh it, use the `reopen` command).
+- usage: `open-log`
 
 ## `quit`
 Quits this client.
