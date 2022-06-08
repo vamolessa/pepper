@@ -56,7 +56,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             }
             Err(error) => ctx
                 .editor
-                .status_bar
+                .logger
                 .write(MessageKind::Error)
                 .fmt(format_args!("{}", error)),
         }
@@ -71,7 +71,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         } else {
             MessageKind::Info
         };
-        let mut write = ctx.editor.status_bar.write(message_kind);
+        let mut write = ctx.editor.logger.write(message_kind);
         if let Some(arg) = io.args.try_next() {
             write.str(arg);
         }
@@ -88,7 +88,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         let client_handle = io.client_handle()?;
         let path = ctx
             .editor
-            .status_bar
+            .logger
             .log_file_path()
             .ok_or(CommandError::EditorNotLogging)?;
 
@@ -170,7 +170,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             }
             Err(error) => ctx
                 .editor
-                .status_bar
+                .logger
                 .write(MessageKind::Error)
                 .fmt(format_args!("{}", error)),
         }
@@ -190,7 +190,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             .map_err(CommandError::BufferWriteError)?;
 
         ctx.editor
-            .status_bar
+            .logger
             .write(MessageKind::Status)
             .fmt(format_args!("buffer saved to {:?}", &buffer.path));
         Ok(())
@@ -209,7 +209,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
 
         ctx.editor
-            .status_bar
+            .logger
             .write(MessageKind::Status)
             .fmt(format_args!("{} buffers saved", count));
         Ok(())
@@ -227,7 +227,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             .map_err(CommandError::BufferReadError)?;
 
         ctx.editor
-            .status_bar
+            .logger
             .write(MessageKind::Status)
             .str("buffer reopened");
         Ok(())
@@ -252,7 +252,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
 
         ctx.editor
-            .status_bar
+            .logger
             .write(MessageKind::Status)
             .fmt(format_args!("{} buffers reopened", count));
         Ok(())
@@ -268,7 +268,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             .defer_remove(buffer_handle, &mut ctx.editor.events);
 
         ctx.editor
-            .status_bar
+            .logger
             .write(MessageKind::Status)
             .str("buffer closed");
 
@@ -288,7 +288,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
 
         ctx.editor
-            .status_bar
+            .logger
             .write(MessageKind::Status)
             .fmt(format_args!("{} buffers closed", count));
         Ok(())
@@ -308,7 +308,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             None => match ctx.editor.config.display_config(key) {
                 Some(display) => {
                     ctx.editor
-                        .status_bar
+                        .logger
                         .write(MessageKind::Status)
                         .fmt(format_args!("{}", display));
                     Ok(())
@@ -338,7 +338,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             }
             None => ctx
                 .editor
-                .status_bar
+                .logger
                 .write(MessageKind::Status)
                 .fmt(format_args!("0x{:0<6x}", color.into_u32())),
         }
@@ -515,7 +515,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             }
             None => {
                 ctx.editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Error)
                     .fmt(format_args!("invalid command '{}'", command));
             }

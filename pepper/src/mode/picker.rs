@@ -227,7 +227,7 @@ pub mod opened_buffers {
             ctx.editor.enter_mode(ModeKind::Picker);
         } else {
             ctx.editor
-                .status_bar
+                .logger
                 .write(MessageKind::Error)
                 .str("no buffer opened");
         }

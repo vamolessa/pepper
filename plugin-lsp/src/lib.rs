@@ -288,7 +288,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 Some(command) => command,
                 None => {
                     ctx.editor
-                        .status_bar
+                        .logger
                         .write(MessageKind::Error)
                         .fmt(format_args!("invalid lsp command '{}'", &recipe.command));
                     continue;
@@ -453,7 +453,7 @@ fn on_process_output(
                     client_event_handler::on_notification(client, ctx, plugin_handle, notification);
                 if let Err(error) = result {
                     ctx.editor
-                        .status_bar
+                        .logger
                         .write(MessageKind::Error)
                         .fmt(format_args!("lsp protocol error: {}", error));
                 }
@@ -463,7 +463,7 @@ fn on_process_output(
                     client_event_handler::on_response(client, ctx, plugin_handle, response);
                 if let Err(error) = result {
                     ctx.editor
-                        .status_bar
+                        .logger
                         .write(MessageKind::Error)
                         .fmt(format_args!("lsp protocol error: {}", error));
                 }

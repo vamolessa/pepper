@@ -14,7 +14,7 @@ use pepper::{
     client,
     cursor::Cursor,
     editor::{Editor, EditorContext},
-    editor_utils::{MessageKind, StatusBar},
+    editor_utils::{Logger, MessageKind},
     glob::Glob,
     navigation_history::NavigationHistory,
     platform::Platform,
@@ -981,7 +981,7 @@ impl Client {
                     });
                 }
                 Err(error) => editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Error)
                     .fmt(format_args!("{}", error)),
             }
@@ -1189,8 +1189,8 @@ pub(crate) mod util {
         }
     }
 
-    pub fn write_response_error(status_bar: &mut StatusBar, error: ResponseError, json: &Json) {
-        status_bar
+    pub fn write_response_error(logger: &mut Logger, error: ResponseError, json: &Json) {
+        logger
             .write(MessageKind::Error)
             .str(error.message.as_str(json));
     }

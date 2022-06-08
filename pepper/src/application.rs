@@ -60,6 +60,7 @@ impl ServerApplication {
             log_file_path = temp_dir;
             log_file_path.push('/');
             log_file_path.push_str(&config.args.session_name);
+            log_file_path.push_str(".txt");
             log_file = fs::File::create(&log_file_path).ok();
         }
 
@@ -109,7 +110,7 @@ impl ServerApplication {
                 }
                 Err(_) => ctx
                     .editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Error)
                     .fmt(format_args!("could not load config '{}'", config.path)),
             }

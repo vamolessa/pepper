@@ -65,7 +65,7 @@ pub fn enter_definition_mode(
                         }
                         Err(error) => ctx
                             .editor
-                            .status_bar
+                            .logger
                             .write(MessageKind::Error)
                             .fmt(format_args!("{}", error)),
                     }

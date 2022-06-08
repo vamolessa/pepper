@@ -546,7 +546,7 @@ impl CommandManager {
                 let offset = command.as_ptr() as usize - source.as_ptr() as usize;
                 let line_index = source[..offset].chars().filter(|&c| c == '\n').count();
 
-                let mut write = ctx.editor.status_bar.write(MessageKind::Error);
+                let mut write = ctx.editor.logger.write(MessageKind::Error);
                 match name {
                     Some(name) => write.fmt(format_args!(
                         "{}:{}\n{}\n{}",

@@ -12,8 +12,8 @@ use crate::{
     command::CommandManager,
     config::Config,
     editor_utils::{
-        KeyMapCollection, MatchResult, PickerEntriesProcessBuf, ReadLine, RegisterCollection,
-        RegisterKey, StatusBar, StatusBarDisplay, StringPool,
+        KeyMapCollection, Logger, LoggerStatusBarDisplay, MatchResult, PickerEntriesProcessBuf,
+        ReadLine, RegisterCollection, RegisterKey, StringPool,
     },
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
@@ -98,7 +98,7 @@ impl EditorContext {
             .editor
             .picker
             .update_scroll(self.editor.config.picker_max_height as _);
-        self.editor.status_bar.on_before_render();
+        self.editor.logger.on_before_render();
         let focused_client = self.clients.focused_client();
 
         let mut status_bar_lines_buf = [""; u8::MAX as _];
@@ -127,15 +127,15 @@ impl EditorContext {
 
                 let status_bar_display = self
                     .editor
-                    .status_bar
-                    .display((width, max_height), &mut status_bar_lines_buf);
+                    .logger
+                    .display_to_status_bar((width, max_height), &mut status_bar_lines_buf);
                 let status_bar_height =
                     status_bar_display.lines.len() + status_bar_display.prefix_is_line as usize;
 
                 let margin_bottom = status_bar_height.saturating_sub(1).max(picker_height);
                 (status_bar_display, margin_bottom)
             } else {
-                (StatusBarDisplay::default(), 0)
+                (LoggerStatusBarDisplay::default(), 0)
             };
 
             c.scroll_to_main_cursor(&self.editor, margin_bottom);
@@ -281,7 +281,7 @@ pub struct Editor {
     pub picker: Picker,
     pub string_pool: StringPool,
 
-    pub status_bar: StatusBar,
+    pub logger: Logger,
     pub aux_pattern: Pattern,
 
     pub commands: CommandManager,
@@ -318,7 +318,7 @@ impl Editor {
             picker: Picker::default(),
             string_pool: StringPool::default(),
 
-            status_bar: StatusBar::new(log_file_path, log_file),
+            logger: Logger::new(log_file_path, log_file),
             aux_pattern: Pattern::new(),
 
             commands: CommandManager::new(),
@@ -446,7 +446,7 @@ impl Editor {
                 }
 
                 if key.code != KeyCode::None {
-                    ctx.editor.status_bar.clear();
+                    ctx.editor.logger.clear();
                 }
                 ctx.editor.buffered_keys.0.push(key);
                 Self::execute_keys(ctx, client_handle, KeysIterator { index: 0 })

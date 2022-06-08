@@ -148,7 +148,7 @@ pub(crate) fn on_request(
             }
 
             let (kind, message) = parse_params(request.params, &client.json)?;
-            ctx.editor.status_bar.write(kind).str(message);
+            ctx.editor.logger.write(kind).str(message);
             Ok(JsonValue::Null)
         }
         "window/showDocument" => {
@@ -211,7 +211,7 @@ pub(crate) fn on_request(
                     }
                     Err(error) => {
                         ctx.editor
-                            .status_bar
+                            .logger
                             .write(MessageKind::Error)
                             .fmt(format_args!("{}", error));
                         false
@@ -258,18 +258,18 @@ pub(crate) fn on_notification(
             }
             let message = message.as_str(&client.json);
             match message_type {
-                1 => ctx.editor.status_bar.write(MessageKind::Error).str(message),
+                1 => ctx.editor.logger.write(MessageKind::Error).str(message),
                 2 => ctx
                     .editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Info)
                     .fmt(format_args!("warning: {}", message)),
                 3 => ctx
                     .editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Info)
                     .fmt(format_args!("info: {}", message)),
-                4 => ctx.editor.status_bar.write(MessageKind::Info).str(message),
+                4 => ctx.editor.logger.write(MessageKind::Info).str(message),
                 _ => (),
             }
             Ok(())
@@ -381,7 +381,7 @@ pub(crate) fn on_response(
         Ok(result) => result,
         Err(error) => {
             client.request_state = RequestState::Idle;
-            util::write_response_error(&mut ctx.editor.status_bar, error, &client.json);
+            util::write_response_error(&mut ctx.editor.logger, error, &client.json);
             return Ok(());
         }
     };
@@ -407,12 +407,12 @@ pub(crate) fn on_response(
             match server_name {
                 "" => ctx
                     .editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Info)
                     .str("lsp server started"),
                 _ => ctx
                     .editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Info)
                     .fmt(format_args!("lsp server '{}' started", server_name)),
             }
@@ -429,7 +429,7 @@ pub(crate) fn on_response(
         "textDocument/hover" => {
             let contents = result.get("contents", &client.json);
             let info = util::extract_markup_content(contents, &client.json);
-            ctx.editor.status_bar.write(MessageKind::Status).str(info);
+            ctx.editor.logger.write(MessageKind::Status).str(info);
             Ok(())
         }
         "textDocument/signatureHelp" => {
@@ -496,10 +496,10 @@ pub(crate) fn on_response(
             let label = signature.label.as_str(&client.json);
 
             if signature.documentation.is_empty() {
-                ctx.editor.status_bar.write(MessageKind::Status).str(label);
+                ctx.editor.logger.write(MessageKind::Status).str(label);
             } else {
                 ctx.editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Status)
                     .fmt(format_args!("{}\n{}", signature.documentation, label));
             }
@@ -575,7 +575,7 @@ pub(crate) fn on_response(
                 Ok(handle) => handle,
                 Err(error) => {
                     ctx.editor
-                        .status_bar
+                        .logger
                         .write(MessageKind::Error)
                         .fmt(format_args!("{}", error));
                     return Ok(());
@@ -702,7 +702,7 @@ pub(crate) fn on_response(
             let result = match result {
                 JsonValue::Null => {
                     ctx.editor
-                        .status_bar
+                        .logger
                         .write(MessageKind::Error)
                         .str("could not rename item under cursor");
                     return Ok(());
@@ -757,7 +757,7 @@ pub(crate) fn on_response(
         "textDocument/rename" => {
             if let JsonValue::Null = result {
                 ctx.editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Error)
                     .str("could not rename item under cursor");
                 return Ok(());
@@ -1052,7 +1052,7 @@ fn goto_definition(
                 }
                 Err(error) => ctx
                     .editor
-                    .status_bar
+                    .logger
                     .write(MessageKind::Error)
                     .fmt(format_args!("{}", error)),
             }

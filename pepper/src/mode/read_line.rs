@@ -291,7 +291,7 @@ pub mod filter_cursors {
 
         if let Err(error) = ctx.editor.aux_pattern.compile_searcher(pattern) {
             ctx.editor
-                .status_bar
+                .logger
                 .write(MessageKind::Error)
                 .fmt(format_args!("{}", error));
             return;
@@ -424,7 +424,7 @@ pub mod split_cursors {
 
         if let Err(error) = ctx.editor.aux_pattern.compile_searcher(pattern) {
             ctx.editor
-                .status_bar
+                .logger
                 .write(MessageKind::Error)
                 .fmt(format_args!("{}", error));
             return;

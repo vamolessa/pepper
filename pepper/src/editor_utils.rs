@@ -258,19 +258,19 @@ pub enum MessageKind {
 }
 
 #[derive(Default)]
-pub struct StatusBarDisplay<'status_bar, 'lines> {
+pub struct LoggerStatusBarDisplay<'logger, 'lines> {
     pub prefix: &'static str,
     pub prefix_is_line: bool,
-    pub lines: &'lines [&'status_bar str],
+    pub lines: &'lines [&'logger str],
 }
 
-pub struct StatusBar {
+pub struct Logger {
     kind: MessageKind,
     message: String,
     log_file_path: String,
     log_file: Option<fs::File>,
 }
-impl StatusBar {
+impl Logger {
     pub fn new(log_file_path: String, log_file: Option<fs::File>) -> Self {
         Self {
             kind: MessageKind::Info,
@@ -288,10 +288,10 @@ impl StatusBar {
         self.message.clear();
     }
 
-    pub fn write(&mut self, kind: MessageKind) -> StatusBarWriter {
+    pub fn write(&mut self, kind: MessageKind) -> LogWriter {
         self.kind = kind;
         self.message.clear();
-        StatusBarWriter(self)
+        LogWriter(self)
     }
 
     pub(crate) fn on_before_render(&mut self) {
@@ -307,11 +307,11 @@ impl StatusBar {
         }
     }
 
-    pub(crate) fn display<'this, 'lines>(
+    pub(crate) fn display_to_status_bar<'this, 'lines>(
         &'this self,
         available_size: (u16, u8),
         lines: &'lines mut [&'this str],
-    ) -> StatusBarDisplay<'this, 'lines> {
+    ) -> LoggerStatusBarDisplay<'this, 'lines> {
         let lines = if lines.len() > available_size.1 as _ {
             &mut lines[..available_size.1 as usize]
         } else {
@@ -367,7 +367,7 @@ impl StatusBar {
             lines_len += 1;
         }
 
-        StatusBarDisplay {
+        LoggerStatusBarDisplay {
             prefix,
             prefix_is_line,
             lines: &lines[..lines_len],
@@ -382,7 +382,7 @@ impl StatusBar {
         }
     }
 }
-impl Drop for StatusBar {
+impl Drop for Logger {
     fn drop(&mut self) {
         if self.log_file.is_some() {
             let _ = fs::remove_file(&self.log_file_path);
@@ -390,8 +390,8 @@ impl Drop for StatusBar {
     }
 }
 
-pub struct StatusBarWriter<'a>(&'a mut StatusBar);
-impl<'a> StatusBarWriter<'a> {
+pub struct LogWriter<'a>(&'a mut Logger);
+impl<'a> LogWriter<'a> {
     pub fn str(&mut self, message: &str) {
         self.0.message.push_str(message);
     }
@@ -400,12 +400,14 @@ impl<'a> StatusBarWriter<'a> {
         let _ = fmt::write(&mut self.0.message, args);
     }
 }
-impl<'a> Drop for StatusBarWriter<'a> {
+impl<'a> Drop for LogWriter<'a> {
     fn drop(&mut self) {
         if let MessageKind::Error = self.0.kind {
             if let Some(log_file) = &mut self.0.log_file {
                 use io::Write;
+                self.0.message.push('\n');
                 let _ = log_file.write_all(self.0.message.as_bytes());
+                self.0.message.truncate(self.0.message.len() - 1);
             }
         }
     }
