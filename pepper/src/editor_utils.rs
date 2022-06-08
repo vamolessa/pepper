@@ -267,40 +267,46 @@ pub struct LoggerStatusBarDisplay<'logger, 'lines> {
 
 pub struct Logger {
     current_kind: LogKind,
-    current_message: String,
+    status_bar_message: String,
     log_file_path: String,
-    log_file: Option<fs::File>,
+    log_writer: Option<io::BufWriter<fs::File>>,
 }
 impl Logger {
     pub fn new(log_file_path: String, log_file: Option<fs::File>) -> Self {
         Self {
             current_kind: LogKind::Info,
-            current_message: String::new(),
+            status_bar_message: String::new(),
             log_file_path,
-            log_file,
+            log_writer: log_file.map(io::BufWriter::new),
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.current_message.is_empty()
+    pub fn is_status_bar_message_empty(&self) -> bool {
+        self.status_bar_message.is_empty()
     }
 
-    pub fn clear(&mut self) {
-        self.current_message.clear();
+    pub fn clear_status_bar_message(&mut self) {
+        self.status_bar_message.clear();
     }
 
     pub fn write(&mut self, kind: LogKind) -> LogWriter {
         self.current_kind = kind;
-        self.current_message.clear();
+        if !matches!(kind, LogKind::Diagnostic) {
+            self.status_bar_message.clear();
+        }
+        if let (LogKind::Error, Some(log_writer)) = (kind, &mut self.log_writer) {
+            use io::Write;
+            let _ = log_writer.write_all(b"error: ");
+        }
         LogWriter(self)
     }
 
     pub(crate) fn on_before_render(&mut self) {
-        let trimmed_len = self.current_message.trim_end().len();
-        self.current_message.truncate(trimmed_len);
+        let trimmed_len = self.status_bar_message.trim_end().len();
+        self.status_bar_message.truncate(trimmed_len);
 
         unsafe {
-            for b in self.current_message.as_mut_vec().iter_mut() {
+            for b in self.status_bar_message.as_mut_vec().iter_mut() {
                 if *b == b'\t' {
                     *b = b' ';
                 }
@@ -320,13 +326,6 @@ impl Logger {
         };
 
         let prefix = match self.current_kind {
-            LogKind::Diagnostic => {
-                return LoggerStatusBarDisplay {
-                    prefix: "",
-                    prefix_is_line: false,
-                    lines,
-                };
-            }
             LogKind::Error => "error:",
             _ => "",
         };
@@ -336,20 +335,20 @@ impl Logger {
         let mut line_start_index = 0;
         let mut prefix_is_line = false;
 
-        if (prefix.len() + self.current_message.len()) < available_size.0 as _ {
+        if (prefix.len() + self.status_bar_message.len()) < available_size.0 as _ {
             x = prefix.len();
         } else {
             prefix_is_line = !prefix.is_empty();
         }
 
-        for (i, c) in self.current_message.char_indices() {
+        for (i, c) in self.status_bar_message.char_indices() {
             match c {
                 '\n' => {
                     if lines_len >= lines.len() {
                         break;
                     }
 
-                    lines[lines_len] = &self.current_message[line_start_index..i];
+                    lines[lines_len] = &self.status_bar_message[line_start_index..i];
                     lines_len += 1;
                     line_start_index = i + 1;
                 }
@@ -363,15 +362,15 @@ impl Logger {
                             break;
                         }
 
-                        lines[lines_len] = &self.current_message[line_start_index..i];
+                        lines[lines_len] = &self.status_bar_message[line_start_index..i];
                         lines_len += 1;
                         line_start_index = i;
                     }
                 }
             }
         }
-        if lines_len < lines.len() && line_start_index < self.current_message.len() {
-            lines[lines_len] = &self.current_message[line_start_index..];
+        if lines_len < lines.len() && line_start_index < self.status_bar_message.len() {
+            lines[lines_len] = &self.status_bar_message[line_start_index..];
             lines_len += 1;
         }
 
@@ -383,7 +382,7 @@ impl Logger {
     }
 
     pub fn log_file_path(&self) -> Option<&str> {
-        if self.log_file.is_some() {
+        if self.log_writer.is_some() {
             Some(&self.log_file_path)
         } else {
             None
@@ -392,7 +391,7 @@ impl Logger {
 }
 impl Drop for Logger {
     fn drop(&mut self) {
-        if self.log_file.is_some() {
+        if self.log_writer.take().is_some() {
             let _ = fs::remove_file(&self.log_file_path);
         }
     }
@@ -401,23 +400,51 @@ impl Drop for Logger {
 pub struct LogWriter<'a>(&'a mut Logger);
 impl<'a> LogWriter<'a> {
     pub fn str(&mut self, message: &str) {
-        self.0.current_message.push_str(message);
+        if !matches!(self.0.current_kind, LogKind::Diagnostic) {
+            self.0.status_bar_message.push_str(message);
+        }
+        if !matches!(self.0.current_kind, LogKind::Status) {
+            if let Some(log_writer) = &mut self.0.log_writer {
+                use io::Write;
+                let _ = log_writer.write_all(message.as_bytes());
+            }
+        }
     }
 
     pub fn fmt(&mut self, args: fmt::Arguments) {
-        let _ = fmt::write(&mut self.0.current_message, args);
+        if !matches!(self.0.current_kind, LogKind::Diagnostic) {
+            let _ = fmt::write(&mut self.0.status_bar_message, args);
+        }
+        if !matches!(self.0.current_kind, LogKind::Status) {
+            if let Some(log_writer) = &mut self.0.log_writer {
+                use io::Write;
+                let _ = log_writer.write_fmt(args);
+            }
+        }
+    }
+}
+impl<'a> io::Write for LogWriter<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if let Some(log_writer) = &mut self.0.log_writer {
+            log_writer.write_all(buf)?;
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if let Some(log_writer) = &mut self.0.log_writer {
+            log_writer.flush()?;
+        }
+        Ok(())
     }
 }
 impl<'a> Drop for LogWriter<'a> {
     fn drop(&mut self) {
         if !matches!(self.0.current_kind, LogKind::Status) {
-            if let Some(log_file) = &mut self.0.log_file {
+            if let Some(log_writer) = &mut self.0.log_writer {
                 use io::Write;
-                self.0.current_message.push('\n');
-                let _ = log_file.write_all(self.0.current_message.as_bytes());
-                self.0
-                    .current_message
-                    .truncate(self.0.current_message.len() - 1);
+                let _ = log_writer.write_all(&[b'\n']);
+                let _ = log_writer.flush();
             }
         }
     }

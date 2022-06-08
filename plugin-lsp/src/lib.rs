@@ -1,5 +1,4 @@
 use std::{
-    io,
     ops::{Deref, DerefMut},
     path::PathBuf,
     process::{Command, Stdio},
@@ -8,7 +7,7 @@ use std::{
 use pepper::{
     buffer_position::BufferRange,
     editor::EditorContext,
-    editor_utils::{hash_bytes, parse_process_command, LogKind},
+    editor_utils::{hash_bytes, parse_process_command, LogKind, Logger},
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
@@ -184,10 +183,10 @@ impl LspPlugin {
         handle
     }
 
-    pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) -> bool {
+    pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle, logger: &mut Logger) -> bool {
         match &mut self.entries[handle.0 as usize] {
             ClientEntry::Occupied(client) => {
-                let _ = client.notify(platform, "exit", JsonObject::default());
+                let _ = client.notify(platform, "exit", JsonObject::default(), logger);
                 if let Some(process_handle) = client.protocol.process_handle() {
                     platform.requests.enqueue(PlatformRequest::KillProcess {
                         handle: process_handle,
@@ -207,10 +206,10 @@ impl LspPlugin {
         }
     }
 
-    pub fn stop_all(&mut self, platform: &mut Platform) -> bool {
+    pub fn stop_all(&mut self, platform: &mut Platform, logger: &mut Logger) -> bool {
         let mut any_stopped = false;
         for i in 0..self.entries.len() {
-            any_stopped = any_stopped || self.stop(platform, ClientHandle(i as _));
+            any_stopped = any_stopped || self.stop(platform, ClientHandle(i as _), logger);
         }
 
         any_stopped
@@ -293,12 +292,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 recipe.root.clone()
             };
 
-            let client_handle = lsp.start(
-                &mut ctx.platform,
-                plugin_handle,
-                command,
-                root,
-            );
+            let client_handle = lsp.start(&mut ctx.platform, plugin_handle, command, root);
             lsp.recipes[index].running_client = Some(client_handle);
         }
     }
@@ -318,13 +312,13 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
 
             match *event {
                 EditorEvent::Idle => {
-                    util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
+                    util::send_pending_did_change(client, &mut ctx.editor, &mut ctx.platform);
                 }
                 EditorEvent::BufferRead { handle } => {
                     let buffer = ctx.editor.buffers.get(handle);
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         client.versioned_buffers.dispose(handle);
-                        util::send_did_open(client, &ctx.editor, &mut ctx.platform, handle);
+                        util::send_did_open(client, &ctx.editor.buffers, &mut ctx.platform, handle, &mut ctx.editor.logger);
                     }
                 }
                 EditorEvent::BufferInsertText {
@@ -349,8 +343,8 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 EditorEvent::BufferWrite { handle, .. } => {
                     let buffer = ctx.editor.buffers.get(handle);
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
-                        util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
-                        util::send_did_save(client, &ctx.editor, &mut ctx.platform, handle);
+                        util::send_pending_did_change(client, &mut ctx.editor, &mut ctx.platform);
+                        util::send_did_save(client, &mut ctx.editor, &mut ctx.platform, handle);
                     }
                 }
                 EditorEvent::BufferClose { handle } => {
@@ -358,8 +352,8 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         client.versioned_buffers.dispose(handle);
                         client.diagnostics.on_close_buffer(handle);
-                        util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
-                        util::send_did_close(client, &ctx.editor, &mut ctx.platform, handle);
+                        util::send_pending_did_change(client, &mut ctx.editor, &mut ctx.platform);
+                        util::send_did_close(client, &mut ctx.editor, &mut ctx.platform, handle);
                     }
                 }
                 EditorEvent::FixCursors { .. } => (),
@@ -380,7 +374,7 @@ fn on_process_spawned(
     {
         client.protocol.set_process_handle(process_handle);
         client.json.clear();
-        client.initialize(&mut ctx.platform);
+        client.initialize(&mut ctx.platform, &mut ctx.editor.logger);
     }
 }
 
@@ -402,26 +396,29 @@ fn on_process_output(
     while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
         match event {
             ServerEvent::ParseError => {
-                client.write_to_log_file(|buf, json| {
-                    use io::Write;
-                    let _ = write!(buf, "send parse error\nrequest_id: ");
-                    let _ = json.write(buf, &JsonValue::Null);
-                });
+                {
+                    let mut log_writer = ctx.editor.logger.write(LogKind::Diagnostic);
+                    log_writer.str("send parse error\nrequest_id: ");
+                    let _ = client.json.write(&mut log_writer, &JsonValue::Null);
+                }
+
                 client.respond(
                     &mut ctx.platform,
                     JsonValue::Null,
                     Err(ResponseError::parse_error()),
+                    &mut ctx.editor.logger,
                 );
             }
             ServerEvent::Request(request) => {
                 let request_id = request.id.clone();
                 match client_event_handler::on_request(client, ctx, request) {
-                    Ok(value) => client.respond(&mut ctx.platform, request_id, Ok(value)),
+                    Ok(value) => client.respond(&mut ctx.platform, request_id, Ok(value), &mut ctx.editor.logger),
                     Err(ProtocolError::ParseError) => {
                         client.respond(
                             &mut ctx.platform,
                             request_id,
                             Err(ResponseError::parse_error()),
+                            &mut ctx.editor.logger,
                         );
                     }
                     Err(ProtocolError::MethodNotFound) => {
@@ -429,6 +426,7 @@ fn on_process_output(
                             &mut ctx.platform,
                             request_id,
                             Err(ResponseError::method_not_found()),
+                            &mut ctx.editor.logger,
                         );
                     }
                 }
@@ -469,10 +467,7 @@ fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, client_
 
     let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
     if let ClientEntry::Occupied(client) = &mut lsp.entries[client_index as usize] {
-        client.write_to_log_file(|buf, _| {
-            use io::Write;
-            let _ = write!(buf, "lsp server stopped");
-        });
+        ctx.editor.logger.write(LogKind::Diagnostic).str("lsp server stopped");
 
         let client_handle = client.handle();
         for recipe in &mut lsp.recipes {
@@ -510,7 +505,7 @@ fn on_completion(
             {
                 if client.signature_help_triggers().contains(c) {
                     client.signature_help(
-                        &ctx.editor,
+                        &mut ctx.editor,
                         &mut ctx.platform,
                         completion_ctx.buffer_handle,
                         completion_ctx.cursor_position,
@@ -524,7 +519,7 @@ fn on_completion(
 
         if should_complete {
             client.completion(
-                &ctx.editor,
+                &mut ctx.editor,
                 &mut ctx.platform,
                 completion_ctx.client_handle,
                 completion_ctx.buffer_handle,
@@ -536,3 +531,4 @@ fn on_completion(
 
     false
 }
+

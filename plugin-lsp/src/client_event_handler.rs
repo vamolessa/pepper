@@ -32,17 +32,16 @@ pub(crate) fn on_request(
     ctx: &mut EditorContext,
     request: ServerRequest,
 ) -> Result<JsonValue, ProtocolError> {
-    client.write_to_log_file(|buf, json| {
-        use io::Write;
-        let _ = write!(buf, "receive request\nid: ");
-        let _ = json.write(buf, &request.id);
-        let _ = write!(
-            buf,
+    {
+        let mut log_writer = ctx.editor.logger.write(LogKind::Diagnostic);
+        log_writer.str("receive request\nid: ");
+        let _ = client.json.write(&mut log_writer, &request.id);
+        log_writer.fmt(format_args!(
             "\nmethod: '{}'\nparams:\n",
-            request.method.as_str(json)
-        );
-        let _ = json.write(buf, &request.params);
-    });
+            request.method.as_str(&client.json)
+        ));
+        let _ = client.json.write(&mut log_writer, &request.params);
+    }
 
     match request.method.as_str(&client.json) {
         "client/registerCapability" => {
@@ -235,15 +234,14 @@ pub(crate) fn on_notification(
     plugin_handle: PluginHandle,
     notification: ServerNotification,
 ) -> Result<(), ProtocolError> {
-    client.write_to_log_file(|buf, json| {
-        use io::Write;
-        let _ = write!(
-            buf,
+    {
+        let mut log_writer = ctx.editor.logger.write(LogKind::Diagnostic);
+        log_writer.fmt(format_args!(
             "receive notification\nmethod: '{}'\nparams:\n",
-            notification.method.as_str(json)
-        );
-        let _ = json.write(buf, &notification.params);
-    });
+            notification.method.as_str(&client.json),
+        ));
+        let _ = client.json.write(&mut log_writer, &notification.params);
+    }
 
     match notification.method.as_str(&client.json) {
         "window/showMessage" => {
@@ -353,35 +351,33 @@ pub(crate) fn on_response(
         None => return Ok(()),
     };
 
-    client.write_to_log_file(|buf, json| {
-        use io::Write;
-        let _ = write!(
-            buf,
+    {
+        let mut log_writer = ctx.editor.logger.write(LogKind::Diagnostic);
+        log_writer.fmt(format_args!(
             "receive response\nid: {}\nmethod: '{}'\n",
             response.id.0, method
-        );
+        ));
         match &response.result {
             Ok(result) => {
-                let _ = buf.write_all(b"result:\n");
-                let _ = json.write(buf, result);
+                log_writer.str("result:\n");
+                let _ = client.json.write(&mut log_writer, result);
             }
             Err(error) => {
-                let _ = write!(
-                    buf,
+                log_writer.fmt(format_args!(
                     "error_code: {}\nerror_message: '{}'\nerror_data:\n",
                     error.code,
-                    error.message.as_str(json)
-                );
-                let _ = json.write(buf, &error.data);
+                    error.message.as_str(&client.json),
+                ));
+                let _ = client.json.write(&mut log_writer, &error.data);
             }
         }
-    });
+    }
 
     let result = match response.result {
         Ok(result) => result,
         Err(error) => {
             client.request_state = RequestState::Idle;
-            util::write_response_error(&mut ctx.editor.logger, error, &client.json);
+            ctx.editor.logger.write(LogKind::Error).str(error.message.as_str(&client.json));
             return Ok(());
         }
     };
@@ -418,10 +414,10 @@ pub(crate) fn on_response(
             }
 
             client.initialized = true;
-            client.notify(&mut ctx.platform, "initialized", JsonObject::default());
+            client.notify(&mut ctx.platform, "initialized", JsonObject::default(), &mut ctx.editor.logger);
 
             for buffer in ctx.editor.buffers.iter() {
-                util::send_did_open(client, &ctx.editor, &mut ctx.platform, buffer.handle());
+                util::send_did_open(client, &ctx.editor.buffers, &mut ctx.platform, buffer.handle(), &mut ctx.editor.logger);
             }
 
             Ok(())
@@ -1089,3 +1085,4 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(()),
     }
 }
+

@@ -55,9 +55,9 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
             Some(client) => {
                 let handle = client.handle();
                 lsp.release(client);
-                lsp.stop(&mut ctx.platform, handle)
+                lsp.stop(&mut ctx.platform, handle, &mut ctx.editor.logger)
             }
-            None => lsp.stop_all(&mut ctx.platform),
+            None => lsp.stop_all(&mut ctx.platform, &mut ctx.editor.logger),
         };
         if any_stopped {
             Ok(())
@@ -70,7 +70,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
         io.args.assert_empty()?;
 
         let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
-        if lsp.stop_all(&mut ctx.platform) {
+        if lsp.stop_all(&mut ctx.platform, &mut ctx.editor.logger) {
             Ok(())
         } else {
             Err(CommandError::OtherStatic("no lsp server running"))

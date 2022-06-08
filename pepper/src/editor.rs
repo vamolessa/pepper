@@ -446,7 +446,7 @@ impl Editor {
                 }
 
                 if key.code != KeyCode::None {
-                    ctx.editor.logger.clear();
+                    ctx.editor.logger.clear_status_bar_message();
                 }
                 ctx.editor.buffered_keys.0.push(key);
                 Self::execute_keys(ctx, client_handle, KeysIterator { index: 0 })

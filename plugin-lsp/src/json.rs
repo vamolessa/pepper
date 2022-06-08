@@ -340,14 +340,8 @@ impl Json {
         self.members.truncate(1);
     }
 
-    pub fn read<R>(&mut self, reader: &mut R) -> io::Result<JsonValue>
-    where
-        R: io::BufRead,
-    {
-        fn next_byte<R>(reader: &mut R) -> io::Result<u8>
-        where
-            R: io::BufRead,
-        {
+    pub fn read(&mut self, reader: &mut dyn io::BufRead) -> io::Result<JsonValue> {
+        fn next_byte(reader: &mut dyn io::BufRead) -> io::Result<u8> {
             let mut buf = [0; 1];
             if reader.read(&mut buf)? == buf.len() {
                 Ok(buf[0])
@@ -356,10 +350,7 @@ impl Json {
             }
         }
 
-        fn match_byte<R>(reader: &mut R, byte: u8) -> io::Result<bool>
-        where
-            R: io::BufRead,
-        {
+        fn match_byte(reader: &mut dyn io::BufRead, byte: u8) -> io::Result<bool> {
             let buf = reader.fill_buf()?;
             if !buf.is_empty() && buf[0] == byte {
                 reader.consume(1);
@@ -369,10 +360,7 @@ impl Json {
             }
         }
 
-        fn skip_whitespace<R>(reader: &mut R) -> io::Result<()>
-        where
-            R: io::BufRead,
-        {
+        fn skip_whitespace(reader: &mut dyn io::BufRead) -> io::Result<()> {
             loop {
                 let buf = reader.fill_buf()?;
                 match buf
@@ -386,10 +374,10 @@ impl Json {
             }
         }
 
-        fn consume_bytes<R, const LEN: usize>(reader: &mut R, bytes: &[u8; LEN]) -> io::Result<()>
-        where
-            R: io::BufRead,
-        {
+        fn consume_bytes<const LEN: usize>(
+            reader: &mut dyn io::BufRead,
+            bytes: &[u8; LEN],
+        ) -> io::Result<()> {
             let mut buf = [0; LEN];
             if reader.read(&mut buf)? == buf.len() {
                 if &buf == bytes {
@@ -402,10 +390,7 @@ impl Json {
             }
         }
 
-        fn consume_string<R>(json: &mut Json, reader: &mut R) -> io::Result<JsonString>
-        where
-            R: io::BufRead,
-        {
+        fn consume_string(json: &mut Json, reader: &mut dyn io::BufRead) -> io::Result<JsonString> {
             let start = json.strings.len();
             loop {
                 match next_byte(reader)? {
@@ -459,10 +444,7 @@ impl Json {
             }
         }
 
-        fn read_value<R>(json: &mut Json, reader: &mut R) -> io::Result<JsonValue>
-        where
-            R: io::BufRead,
-        {
+        fn read_value(json: &mut Json, reader: &mut dyn io::BufRead) -> io::Result<JsonValue> {
             skip_whitespace(reader)?;
             match next_byte(reader)? {
                 b'n' => {
@@ -516,10 +498,7 @@ impl Json {
                     Ok(JsonValue::Object(object))
                 }
                 b => {
-                    fn next_digit<R>(reader: &mut R) -> io::Result<Option<u8>>
-                    where
-                        R: io::BufRead,
-                    {
+                    fn next_digit(reader: &mut dyn io::BufRead) -> io::Result<Option<u8>> {
                         let buf = reader.fill_buf()?;
                         if !buf.is_empty() {
                             let byte = buf[0];
@@ -587,14 +566,8 @@ impl Json {
         read_value(self, reader)
     }
 
-    pub fn write<W>(&self, buf: &mut W, value: &JsonValue) -> io::Result<()>
-    where
-        W: io::Write,
-    {
-        fn append_str<W>(buf: &mut W, s: &str) -> io::Result<()>
-        where
-            W: io::Write,
-        {
+    pub fn write(&self, buf: &mut dyn io::Write, value: &JsonValue) -> io::Result<()> {
+        fn append_str(buf: &mut dyn io::Write, s: &str) -> io::Result<()> {
             buf.write_all(b"\"")?;
             for c in s.chars() {
                 match c {
@@ -861,3 +834,4 @@ mod tests {
         }
     }
 }
+

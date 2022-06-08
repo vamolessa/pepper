@@ -1,14 +1,12 @@
 use std::{
-    fmt,
-    fs::File,
-    io,
+    fmt, io,
     ops::Range,
     path::{Path, PathBuf},
     str::FromStr,
 };
 
 use pepper::{
-    buffer::{BufferHandle, BufferProperties},
+    buffer::{BufferHandle, BufferProperties, BufferCollection},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,
@@ -457,7 +455,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub(crate) fn new(handle: ClientHandle, root: PathBuf,) -> Self {
+    pub(crate) fn new(handle: ClientHandle, root: PathBuf) -> Self {
         Self {
             handle,
             protocol: Protocol::new(),
@@ -510,7 +508,7 @@ impl Client {
 
     pub fn hover(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -533,12 +531,12 @@ impl Client {
             &mut self.json,
         );
 
-        self.request(platform, "textDocument/hover", params);
+        self.request(platform, "textDocument/hover", params, &mut editor.logger);
     }
 
     pub fn signature_help(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -561,12 +559,17 @@ impl Client {
             &mut self.json,
         );
 
-        self.request(platform, "textDocument/signatureHelp", params);
+        self.request(
+            platform,
+            "textDocument/signatureHelp",
+            params,
+            &mut editor.logger,
+        );
     }
 
     pub fn definition(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -579,12 +582,17 @@ impl Client {
         let params =
             util::create_definition_params(self, editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Definition { client_handle };
-        self.request(platform, "textDocument/definition", params);
+        self.request(
+            platform,
+            "textDocument/definition",
+            params,
+            &mut editor.logger,
+        );
     }
 
     pub fn declaration(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -597,12 +605,17 @@ impl Client {
         let params =
             util::create_definition_params(self, editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Declaration { client_handle };
-        self.request(platform, "textDocument/declaration", params);
+        self.request(
+            platform,
+            "textDocument/declaration",
+            params,
+            &mut editor.logger,
+        );
     }
 
     pub fn implementation(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -615,12 +628,17 @@ impl Client {
         let params =
             util::create_definition_params(self, editor, platform, buffer_handle, buffer_position);
         self.request_state = RequestState::Implementation { client_handle };
-        self.request(platform, "textDocument/implementation", params);
+        self.request(
+            platform,
+            "textDocument/implementation",
+            params,
+            &mut editor.logger,
+        );
     }
 
     pub fn references(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -653,7 +671,12 @@ impl Client {
             client_handle,
             context_len,
         };
-        self.request(platform, "textDocument/references", params);
+        self.request(
+            platform,
+            "textDocument/references",
+            params,
+            &mut editor.logger,
+        );
     }
 
     pub fn rename(
@@ -686,7 +709,12 @@ impl Client {
                 buffer_handle,
                 buffer_position,
             };
-            self.request(&mut ctx.platform, "textDocument/prepareRename", params);
+            self.request(
+                &mut ctx.platform,
+                "textDocument/prepareRename",
+                params,
+                &mut ctx.editor.logger,
+            );
         } else {
             self.request_state = RequestState::FinishRename {
                 buffer_handle,
@@ -697,7 +725,7 @@ impl Client {
         }
     }
 
-    pub(crate) fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform) {
+    pub(crate) fn finish_rename(&mut self, editor: &mut Editor, platform: &mut Platform) {
         let (buffer_handle, buffer_position) = match self.request_state {
             RequestState::FinishRename {
                 buffer_handle,
@@ -726,12 +754,12 @@ impl Client {
         );
         params.set("newName".into(), new_name.into(), &mut self.json);
 
-        self.request(platform, "textDocument/rename", params);
+        self.request(platform, "textDocument/rename", params, &mut editor.logger);
     }
 
     pub fn code_action(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         plugin_handle: PluginHandle,
         buffer_handle: BufferHandle,
@@ -785,7 +813,12 @@ impl Client {
         params.set("context".into(), context.into(), &mut self.json);
 
         self.request_state = RequestState::CodeAction;
-        self.request(platform, "textDocument/codeAction", params);
+        self.request(
+            platform,
+            "textDocument/codeAction",
+            params,
+            &mut editor.logger,
+        );
     }
 
     pub(crate) fn finish_code_action(&mut self, editor: &mut Editor, index: usize) {
@@ -816,7 +849,7 @@ impl Client {
 
     pub fn document_symbols(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_view_handle: BufferViewHandle,
     ) {
@@ -834,7 +867,12 @@ impl Client {
         params.set("textDocument".into(), text_document.into(), &mut self.json);
 
         self.request_state = RequestState::DocumentSymbols { buffer_view_handle };
-        self.request(platform, "textDocument/documentSymbol", params);
+        self.request(
+            platform,
+            "textDocument/documentSymbol",
+            params,
+            &mut editor.logger,
+        );
     }
 
     pub(crate) fn finish_document_symbols(
@@ -897,7 +935,7 @@ impl Client {
         }
     }
 
-    pub fn workspace_symbols(&mut self, editor: &Editor, platform: &mut Platform, query: &str) {
+    pub fn workspace_symbols(&mut self, editor: &mut Editor, platform: &mut Platform, query: &str) {
         if !self.server_capabilities.workspace_symbol_provider.0 || !self.request_state.is_idle() {
             return;
         }
@@ -909,7 +947,7 @@ impl Client {
         params.set("query".into(), query.into(), &mut self.json);
 
         self.request_state = RequestState::WorkspaceSymbols;
-        self.request(platform, "workspace/symbol", params);
+        self.request(platform, "workspace/symbol", params, &mut editor.logger);
     }
 
     pub(crate) fn finish_workspace_symbols(
@@ -968,7 +1006,7 @@ impl Client {
 
     pub fn formatting(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
@@ -1000,12 +1038,17 @@ impl Client {
         params.set("options".into(), options.into(), &mut self.json);
 
         self.request_state = RequestState::Formatting { buffer_handle };
-        self.request(platform, "textDocument/formatting", params);
+        self.request(
+            platform,
+            "textDocument/formatting",
+            params,
+            &mut editor.logger,
+        );
     }
 
     pub fn completion(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
@@ -1034,35 +1077,34 @@ impl Client {
             buffer_handle,
         };
 
-        self.request(platform, "textDocument/completion", params);
+        self.request(
+            platform,
+            "textDocument/completion",
+            params,
+            &mut editor.logger,
+        );
     }
 
-    pub(crate) fn write_to_log_file<F>(&mut self, writer: F)
-    where
-        F: FnOnce(&mut io::BufWriter<File>, &mut Json),
-    {
-        // TODO: fix
-        /*
-        if let Some(ref mut buf) = self.log_file {
-            use io::Write;
-            writer(buf, &mut self.json);
-            let _ = buf.write_all(b"\n\n");
-            let _ = buf.flush();
-        }
-        */
-    }
-
-    fn request(&mut self, platform: &mut Platform, method: &'static str, params: JsonObject) {
+    fn request(
+        &mut self,
+        platform: &mut Platform,
+        method: &'static str,
+        params: JsonObject,
+        logger: &mut Logger,
+    ) {
         if !self.initialized {
             return;
         }
 
         let params = params.into();
-        self.write_to_log_file(|buf, json| {
-            use io::Write;
-            let _ = write!(buf, "send request\nmethod: '{}'\nparams:\n", method);
-            let _ = json.write(buf, &params);
-        });
+
+        {
+            let mut log_writer = logger.write(LogKind::Diagnostic);
+            log_writer.str("lsp: ");
+            log_writer.fmt(format_args!("send request\nmethod: '{}'\nparams:\n", method));
+            let _ = self.json.write(&mut log_writer, &params);
+        }
+
         let id = self
             .protocol
             .request(platform, &mut self.json, method, params);
@@ -1075,27 +1117,30 @@ impl Client {
         platform: &mut Platform,
         request_id: JsonValue,
         result: Result<JsonValue, ResponseError>,
+        logger: &mut Logger,
     ) {
-        self.write_to_log_file(|buf, json| {
-            use io::Write;
-            let _ = write!(buf, "send response\nid: ");
-            let _ = json.write(buf, &request_id);
+        {
+            let mut log_writer = logger.write(LogKind::Diagnostic);
+            log_writer.str("lsp: ");
+            log_writer.str("send response\nid: ");
+            let _ = self.json.write(&mut log_writer, &request_id);
+
             match &result {
                 Ok(result) => {
-                    let _ = write!(buf, "\nresult:\n");
-                    let _ = json.write(buf, result);
+                    log_writer.str("\nresult:\n");
+                    let _ = self.json.write(&mut log_writer, result);
                 }
                 Err(error) => {
-                    let _ = write!(
-                        buf,
-                        "\nerror.code: {}\nerror.message: {}\nerror.data:\n",
+                    log_writer.fmt(format_args!(
+                         "\nerror.code: {}\nerror.message: {}\nerror.data:\n",
                         error.code,
-                        error.message.as_str(json)
-                    );
-                    let _ = json.write(buf, &error.data);
+                        error.message.as_str(&self.json)
+                    ));
+                    let _ = self.json.write(&mut log_writer, &error.data);
                 }
             }
-        });
+        }
+
         self.protocol
             .respond(platform, &mut self.json, request_id, result);
     }
@@ -1105,18 +1150,22 @@ impl Client {
         platform: &mut Platform,
         method: &'static str,
         params: JsonObject,
+        logger: &mut Logger,
     ) {
         let params = params.into();
-        self.write_to_log_file(|buf, json| {
-            use io::Write;
-            let _ = write!(buf, "send notification\nmethod: '{}'\nparams:\n", method);
-            let _ = json.write(buf, &params);
-        });
+
+        {
+            let mut log_writer = logger.write(LogKind::Diagnostic);
+            log_writer.str("lsp: ");
+            log_writer.fmt(format_args!("send notification\nmethod: '{}'\nparams:\n", method));
+            let _ = self.json.write(&mut log_writer, &params);
+        }
+
         self.protocol
             .notify(platform, &mut self.json, method, params);
     }
 
-    pub fn initialize(&mut self, platform: &mut Platform) {
+    pub fn initialize(&mut self, platform: &mut Platform, logger: &mut Logger) {
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
@@ -1145,7 +1194,7 @@ impl Client {
         );
 
         self.initialized = true;
-        self.request(platform, "initialize", params);
+        self.request(platform, "initialize", params, logger);
         self.initialized = false;
     }
 }
@@ -1168,10 +1217,6 @@ pub(crate) mod util {
                 .chain(editor_path.components())
                 .eq(lsp_components)
         }
-    }
-
-    pub fn write_response_error(logger: &mut Logger, error: ResponseError, json: &Json) {
-        logger.write(LogKind::Error).str(error.message.as_str(json));
     }
 
     pub fn text_document_with_id(root: &Path, path: &Path, json: &mut Json) -> JsonObject {
@@ -1201,7 +1246,7 @@ pub(crate) mod util {
 
     pub fn create_definition_params(
         client: &mut Client,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -1230,15 +1275,16 @@ pub(crate) mod util {
 
     pub fn send_did_open(
         client: &mut Client,
-        editor: &Editor,
+        buffers: &BufferCollection,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
+        logger: &mut Logger,
     ) {
         if !client.server_capabilities.text_document_sync.open_close {
             return;
         }
 
-        let buffer = editor.buffers.get(buffer_handle);
+        let buffer = buffers.get(buffer_handle);
         if !buffer.properties.saving_enabled {
             return;
         }
@@ -1259,10 +1305,10 @@ pub(crate) mod util {
             &mut client.json,
         );
 
-        client.notify(platform, "textDocument/didOpen", params);
+        client.notify(platform, "textDocument/didOpen", params, logger);
     }
 
-    pub fn send_pending_did_change(client: &mut Client, editor: &Editor, platform: &mut Platform) {
+    pub fn send_pending_did_change(client: &mut Client, editor: &mut Editor, platform: &mut Platform) {
         let mut versioned_buffers = std::mem::take(&mut client.versioned_buffers);
         for (buffer_handle, versioned_buffer) in versioned_buffers.iter_pending_mut() {
             if versioned_buffer.pending_edits.is_empty() {
@@ -1324,14 +1370,19 @@ pub(crate) mod util {
             );
 
             versioned_buffer.flush();
-            client.notify(platform, "textDocument/didChange", params);
+            client.notify(
+                platform,
+                "textDocument/didChange",
+                params,
+                &mut editor.logger,
+            );
         }
         std::mem::swap(&mut client.versioned_buffers, &mut versioned_buffers);
     }
 
     pub fn send_did_save(
         client: &mut Client,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
@@ -1357,12 +1408,12 @@ pub(crate) mod util {
             params.set("text".into(), text.into(), &mut client.json);
         }
 
-        client.notify(platform, "textDocument/didSave", params)
+        client.notify(platform, "textDocument/didSave", params, &mut editor.logger)
     }
 
     pub fn send_did_close(
         client: &mut Client,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
@@ -1383,6 +1434,12 @@ pub(crate) mod util {
             &mut client.json,
         );
 
-        client.notify(platform, "textDocument/didClose", params);
+        client.notify(
+            platform,
+            "textDocument/didClose",
+            params,
+            &mut editor.logger,
+        );
     }
 }
+
