@@ -454,21 +454,10 @@ pub struct Client {
 
     pub(crate) request_state: RequestState,
     pub(crate) request_raw_json: Vec<u8>,
-
-    log_file_path: String,
-    log_file: Option<io::BufWriter<File>>,
 }
 
 impl Client {
-    pub(crate) fn new(handle: ClientHandle, root: PathBuf, log_file_path: Option<String>) -> Self {
-        let (log_file_path, log_file) = match log_file_path {
-            Some(path) => match File::create(&path) {
-                Ok(file) => (path, Some(io::BufWriter::new(file))),
-                Err(_) => (String::new(), None),
-            },
-            None => (String::new(), None),
-        };
-
+    pub(crate) fn new(handle: ClientHandle, root: PathBuf,) -> Self {
         Self {
             handle,
             protocol: Protocol::new(),
@@ -486,9 +475,6 @@ impl Client {
             request_state: RequestState::Idle,
             request_raw_json: Vec::new(),
             temp_edits: Vec::new(),
-
-            log_file_path,
-            log_file,
         }
     }
 
@@ -501,14 +487,6 @@ impl Client {
             true
         } else {
             self.document_selectors.iter().any(|g| g.matches(path))
-        }
-    }
-
-    pub fn log_file_path(&self) -> Option<&str> {
-        if self.log_file_path.is_empty() {
-            None
-        } else {
-            Some(&self.log_file_path)
         }
     }
 
@@ -1063,12 +1041,15 @@ impl Client {
     where
         F: FnOnce(&mut io::BufWriter<File>, &mut Json),
     {
+        // TODO: fix
+        /*
         if let Some(ref mut buf) = self.log_file {
             use io::Write;
             writer(buf, &mut self.json);
             let _ = buf.write_all(b"\n\n");
             let _ = buf.flush();
         }
+        */
     }
 
     fn request(&mut self, platform: &mut Platform, method: &'static str, params: JsonObject) {

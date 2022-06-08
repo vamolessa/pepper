@@ -320,8 +320,15 @@ impl Logger {
         };
 
         let prefix = match self.current_kind {
-            LogKind::Status | LogKind::Info | LogKind::Diagnostic => "",
+            LogKind::Diagnostic => {
+                return LoggerStatusBarDisplay {
+                    prefix: "",
+                    prefix_is_line: false,
+                    lines,
+                };
+            }
             LogKind::Error => "error:",
+            _ => "",
         };
 
         let mut lines_len = 0;
@@ -403,12 +410,14 @@ impl<'a> LogWriter<'a> {
 }
 impl<'a> Drop for LogWriter<'a> {
     fn drop(&mut self) {
-        if let LogKind::Error = self.0.current_kind {
+        if !matches!(self.0.current_kind, LogKind::Status) {
             if let Some(log_file) = &mut self.0.log_file {
                 use io::Write;
                 self.0.current_message.push('\n');
                 let _ = log_file.write_all(self.0.current_message.as_bytes());
-                self.0.current_message.truncate(self.0.current_message.len() - 1);
+                self.0
+                    .current_message
+                    .truncate(self.0.current_message.len() - 1);
             }
         }
     }
@@ -740,3 +749,4 @@ mod tests {
         );
     }
 }
+

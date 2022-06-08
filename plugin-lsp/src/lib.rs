@@ -63,7 +63,6 @@ struct ClientRecipe {
     glob: Glob,
     command: String,
     root: PathBuf,
-    log_file_path: String,
     running_client: Option<ClientHandle>,
 }
 
@@ -119,7 +118,6 @@ impl LspPlugin {
         glob: &str,
         command: &str,
         root: Option<&str>,
-        log_file_path: Option<&str>,
     ) -> Result<(), InvalidGlobError> {
         let glob_hash = hash_bytes(glob.as_bytes());
         for recipe in &mut self.recipes {
@@ -129,10 +127,6 @@ impl LspPlugin {
                 recipe.root.clear();
                 if let Some(path) = root {
                     recipe.root.push(path);
-                }
-                recipe.log_file_path.clear();
-                if let Some(name) = log_file_path {
-                    recipe.log_file_path.push_str(name);
                 }
                 recipe.running_client = None;
                 return Ok(());
@@ -146,7 +140,6 @@ impl LspPlugin {
             glob: recipe_glob,
             command: command.into(),
             root: root.unwrap_or("").into(),
-            log_file_path: log_file_path.unwrap_or("").into(),
             running_client: None,
         });
         Ok(())
@@ -158,7 +151,6 @@ impl LspPlugin {
         plugin_handle: PluginHandle,
         mut command: Command,
         root: PathBuf,
-        log_file_path: Option<String>,
     ) -> ClientHandle {
         fn find_vacant_entry(lsp: &mut LspPlugin) -> ClientHandle {
             for (i, entry) in lsp.entries.iter_mut().enumerate() {
@@ -187,7 +179,7 @@ impl LspPlugin {
             buf_len: SERVER_PROCESS_BUFFER_LEN,
         });
 
-        let client = Client::new(handle, root, log_file_path);
+        let client = Client::new(handle, root);
         self.entries[handle.0 as usize] = ClientEntry::Occupied(Box::new(client));
         handle
     }
@@ -301,18 +293,11 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 recipe.root.clone()
             };
 
-            let log_file_path = if recipe.log_file_path.is_empty() {
-                None
-            } else {
-                Some(recipe.log_file_path.clone())
-            };
-
             let client_handle = lsp.start(
                 &mut ctx.platform,
                 plugin_handle,
                 command,
                 root,
-                log_file_path,
             );
             lsp.recipes[index].running_client = Some(client_handle);
         }
@@ -337,7 +322,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 }
                 EditorEvent::BufferRead { handle } => {
                     let buffer = ctx.editor.buffers.get(handle);
-                    if buffer.path.to_str() != client.log_file_path() {
+                    if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         client.versioned_buffers.dispose(handle);
                         util::send_did_open(client, &ctx.editor, &mut ctx.platform, handle);
                     }
@@ -349,7 +334,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                     ..
                 } => {
                     let buffer = ctx.editor.buffers.get(handle);
-                    if buffer.path.to_str() != client.log_file_path() {
+                    if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         let text = text.as_str(&ctx.editor.events);
                         let range = BufferRange::between(range.from, range.from);
                         client.versioned_buffers.add_edit(handle, range, text);
@@ -357,20 +342,20 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 }
                 EditorEvent::BufferDeleteText { handle, range, .. } => {
                     let buffer = ctx.editor.buffers.get(handle);
-                    if buffer.path.to_str() != client.log_file_path() {
+                    if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         client.versioned_buffers.add_edit(handle, range, "");
                     }
                 }
                 EditorEvent::BufferWrite { handle, .. } => {
                     let buffer = ctx.editor.buffers.get(handle);
-                    if buffer.path.to_str() != client.log_file_path() {
+                    if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);
                         util::send_did_save(client, &ctx.editor, &mut ctx.platform, handle);
                     }
                 }
                 EditorEvent::BufferClose { handle } => {
                     let buffer = ctx.editor.buffers.get(handle);
-                    if buffer.path.to_str() != client.log_file_path() {
+                    if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         client.versioned_buffers.dispose(handle);
                         client.diagnostics.on_close_buffer(handle);
                         util::send_pending_did_change(client, &ctx.editor, &mut ctx.platform);

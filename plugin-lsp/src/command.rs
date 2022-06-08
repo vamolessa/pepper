@@ -1,7 +1,5 @@
-use std::path::Path;
-
 use pepper::{
-    buffer::{BufferHandle, BufferProperties},
+    buffer::BufferHandle,
     command::{CommandError, CommandIO, CommandManager},
     cursor::Cursor,
     editor::{Editor, EditorContext},
@@ -22,46 +20,18 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
     r("lsp", &[], |ctx, io| {
         let command = io.args.next()?;
         let glob = io.args.next()?;
-        let log_path = io.args.try_next();
         io.args.assert_empty()?;
 
         let lsp = ctx.plugins.get_as::<LspPlugin>(io.plugin_handle());
-        let result = match lsp.add_recipe(glob, command, None, log_path) {
+        let result = match lsp.add_recipe(glob, command, None) {
             Ok(()) => Ok(()),
             Err(error) => Err(CommandError::InvalidGlob(error)),
         };
         result
     });
 
-    r("lsp-open-log", &[], |ctx, io| {
-        io.args.assert_empty()?;
-        let client_handle = io.client_handle()?;
-        let buffer_handle = io.current_buffer_handle(ctx).ok();
-        access(ctx, io, buffer_handle, |ctx, client| {
-            let path = client
-                .log_file_path()
-                .ok_or(CommandError::OtherStatic("lsp server is not logging"))?;
-
-            let buffer_view_handle = ctx
-                .editor
-                .buffer_view_handle_from_path(
-                    client_handle,
-                    Path::new(path),
-                    BufferProperties::scratch(),
-                    true,
-                )
-                .map_err(CommandError::BufferReadError)?;
-
-            let client = ctx.clients.get_mut(client_handle);
-            client.set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
-
-            Ok(())
-        })
-    });
-
     r("lsp-start", &[], |ctx, io| {
         let command = io.args.next()?;
-        let log_path = io.args.try_next();
         io.args.assert_empty()?;
 
         let command = parse_process_command(command).ok_or(CommandError::OtherOwned(format!(
@@ -72,13 +42,7 @@ pub fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHan
 
         let plugin_handle = io.plugin_handle();
         let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
-        lsp.start(
-            &mut ctx.platform,
-            plugin_handle,
-            command,
-            root,
-            log_path.map(String::from),
-        );
+        lsp.start(&mut ctx.platform, plugin_handle, command, root);
         Ok(())
     });
 
@@ -320,3 +284,4 @@ where
 
     Ok(())
 }
+

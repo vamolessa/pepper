@@ -9,12 +9,7 @@ Where `"**.ext"` is a glob pattern that, when matched against a buffer just open
 will invoke the LSP server using `"lsp-server-command"`.
 In this case, whenever we open a buffer with the extension `.ext`.
 
-If you need to inspect/debug the protocol messages, you can pass an extra path argument of a log file:
-```
-lsp "lsp-server-command" "**.ext" my-lsp-server-log.txt
-```
-
-You can then open the lsp log at any time with the command `lsp-open-log`.
+If you need to inspect/debug the protocol messages, they are logged to the editor log which you can open with the `open-log` command.
 
 ### Example of LSP server configurations
 
@@ -49,19 +44,11 @@ lsp zls "**.zig"
 ### `lsp`
 Automatically starts a lsp server (by running `<lsp-command>`) when a buffer matching a glob `<glob>` is opened.
 The lsp command only runs if the server is not already running.
-Optionally it's possible to set a log file where all lsp communication will be dumped into by setting `<log-path>`
-(it can be latter opened with the `lsp-open-log` command).
-- usage: `lsp <lsp-command> <glob> [<log-path>]`
-
-### `lsp-open-log`
-If the lsp server associated with the current buffer is logging to a file, opens it as a buffer
-(if you want to refresh it, use the `reopen` command).
-- usage: `lsp-open-log`
+- usage: `lsp <lsp-command> <glob>`
 
 ### `lsp-start`
 Manually starts a lsp server (by running `<lsp-command>`).
-Optionally it's possible to set a log file where all lsp communication will be dumped into by setting `<log-path>`
-- usage: `lsp-start <lsp-command> [<log-path>]`
+- usage: `lsp-start <lsp-command>`
 
 ### `lsp-stop`
 Stops the lsp server associated with the current buffer.
