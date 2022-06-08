@@ -14,7 +14,7 @@ use pepper::{
     client,
     cursor::Cursor,
     editor::{Editor, EditorContext},
-    editor_utils::{Logger, LogKind},
+    editor_utils::{LogKind, Logger},
     glob::Glob,
     navigation_history::NavigationHistory,
     platform::Platform,
@@ -1190,9 +1190,7 @@ pub(crate) mod util {
     }
 
     pub fn write_response_error(logger: &mut Logger, error: ResponseError, json: &Json) {
-        logger
-            .write(LogKind::Error)
-            .str(error.message.as_str(json));
+        logger.write(LogKind::Error).str(error.message.as_str(json));
     }
 
     pub fn text_document_with_id(root: &Path, path: &Path, json: &mut Json) -> JsonObject {
