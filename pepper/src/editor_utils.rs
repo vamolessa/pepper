@@ -266,41 +266,41 @@ pub struct LoggerStatusBarDisplay<'logger, 'lines> {
 }
 
 pub struct Logger {
-    kind: LogKind,
-    message: String,
+    current_kind: LogKind,
+    current_message: String,
     log_file_path: String,
     log_file: Option<fs::File>,
 }
 impl Logger {
     pub fn new(log_file_path: String, log_file: Option<fs::File>) -> Self {
         Self {
-            kind: LogKind::Info,
-            message: String::new(),
+            current_kind: LogKind::Info,
+            current_message: String::new(),
             log_file_path,
             log_file,
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.message.is_empty()
+        self.current_message.is_empty()
     }
 
     pub fn clear(&mut self) {
-        self.message.clear();
+        self.current_message.clear();
     }
 
     pub fn write(&mut self, kind: LogKind) -> LogWriter {
-        self.kind = kind;
-        self.message.clear();
+        self.current_kind = kind;
+        self.current_message.clear();
         LogWriter(self)
     }
 
     pub(crate) fn on_before_render(&mut self) {
-        let trimmed_len = self.message.trim_end().len();
-        self.message.truncate(trimmed_len);
+        let trimmed_len = self.current_message.trim_end().len();
+        self.current_message.truncate(trimmed_len);
 
         unsafe {
-            for b in self.message.as_mut_vec().iter_mut() {
+            for b in self.current_message.as_mut_vec().iter_mut() {
                 if *b == b'\t' {
                     *b = b' ';
                 }
@@ -319,7 +319,7 @@ impl Logger {
             lines
         };
 
-        let prefix = match self.kind {
+        let prefix = match self.current_kind {
             LogKind::Status | LogKind::Info | LogKind::Diagnostic => "",
             LogKind::Error => "error:",
         };
@@ -329,20 +329,20 @@ impl Logger {
         let mut line_start_index = 0;
         let mut prefix_is_line = false;
 
-        if (prefix.len() + self.message.len()) < available_size.0 as _ {
+        if (prefix.len() + self.current_message.len()) < available_size.0 as _ {
             x = prefix.len();
         } else {
             prefix_is_line = !prefix.is_empty();
         }
 
-        for (i, c) in self.message.char_indices() {
+        for (i, c) in self.current_message.char_indices() {
             match c {
                 '\n' => {
                     if lines_len >= lines.len() {
                         break;
                     }
 
-                    lines[lines_len] = &self.message[line_start_index..i];
+                    lines[lines_len] = &self.current_message[line_start_index..i];
                     lines_len += 1;
                     line_start_index = i + 1;
                 }
@@ -356,15 +356,15 @@ impl Logger {
                             break;
                         }
 
-                        lines[lines_len] = &self.message[line_start_index..i];
+                        lines[lines_len] = &self.current_message[line_start_index..i];
                         lines_len += 1;
                         line_start_index = i;
                     }
                 }
             }
         }
-        if lines_len < lines.len() && line_start_index < self.message.len() {
-            lines[lines_len] = &self.message[line_start_index..];
+        if lines_len < lines.len() && line_start_index < self.current_message.len() {
+            lines[lines_len] = &self.current_message[line_start_index..];
             lines_len += 1;
         }
 
@@ -394,21 +394,21 @@ impl Drop for Logger {
 pub struct LogWriter<'a>(&'a mut Logger);
 impl<'a> LogWriter<'a> {
     pub fn str(&mut self, message: &str) {
-        self.0.message.push_str(message);
+        self.0.current_message.push_str(message);
     }
 
     pub fn fmt(&mut self, args: fmt::Arguments) {
-        let _ = fmt::write(&mut self.0.message, args);
+        let _ = fmt::write(&mut self.0.current_message, args);
     }
 }
 impl<'a> Drop for LogWriter<'a> {
     fn drop(&mut self) {
-        if let LogKind::Error = self.0.kind {
+        if let LogKind::Error = self.0.current_kind {
             if let Some(log_file) = &mut self.0.log_file {
                 use io::Write;
-                self.0.message.push('\n');
-                let _ = log_file.write_all(self.0.message.as_bytes());
-                self.0.message.truncate(self.0.message.len() - 1);
+                self.0.current_message.push('\n');
+                let _ = log_file.write_all(self.0.current_message.as_bytes());
+                self.0.current_message.truncate(self.0.current_message.len() - 1);
             }
         }
     }
