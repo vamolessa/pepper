@@ -12,10 +12,16 @@ If `<keyword>` is not present, opens the main help page.
 - default alias: `h`
 - usage: `help [<keyword>]`
 
-## `print`
-Prints earch `<argument>` to status bar. Each argument is separated by a new line.
-With `!` will print an error message.
-- usage: `print[!] <arguments...>`
+## `log`
+Logs each `<argument>` to the editor log using the `<log-kind>`.
+Each argument is separated by a new line.
+Possible `<log-kind>`:
+- `status`: will write a message only to the status bar
+- `info`: will write a message only to both the log file status bar
+- `diagnostic`: will write a message only to the log file
+- `error`: will write an error message to both the log file and status bar
+
+- usage: `log <log-kind> <arguments...>`
 
 ## `open-log`
 Opens the editor log file as a buffer (if you want to refresh it, use the `reopen` command).

@@ -5,7 +5,7 @@ use crate::{
     command::CommandManager,
     cursor::{Cursor, CursorCollectionMutGuard},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{MessageKind, ReadLinePoll},
+    editor_utils::{LogKind, ReadLinePoll},
     mode::{ModeKind, ModeState},
     navigation_history::NavigationHistory,
     pattern::Pattern,
@@ -292,7 +292,7 @@ pub mod filter_cursors {
         if let Err(error) = ctx.editor.aux_pattern.compile_searcher(pattern) {
             ctx.editor
                 .logger
-                .write(MessageKind::Error)
+                .write(LogKind::Error)
                 .fmt(format_args!("{}", error));
             return;
         }
@@ -425,7 +425,7 @@ pub mod split_cursors {
         if let Err(error) = ctx.editor.aux_pattern.compile_searcher(pattern) {
             ctx.editor
                 .logger
-                .write(MessageKind::Error)
+                .write(LogKind::Error)
                 .fmt(format_args!("{}", error));
             return;
         }

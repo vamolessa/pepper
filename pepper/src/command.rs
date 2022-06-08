@@ -6,7 +6,7 @@ use crate::{
     client::ClientHandle,
     config::ParseConfigError,
     editor::{EditorContext, EditorFlow},
-    editor_utils::{MessageKind, ParseKeyMapError},
+    editor_utils::{LogKind, ParseKeyMapError},
     events::KeyParseAllError,
     glob::InvalidGlobError,
     pattern::PatternError,
@@ -25,6 +25,7 @@ pub enum CommandError {
     TooManyArguments,
     TooFewArguments,
     NoTargetClient,
+    InvalidLogKind,
     EditorNotLogging,
     NoBufferOpened,
     UnsavedChanges,
@@ -55,6 +56,7 @@ impl fmt::Display for CommandError {
             Self::TooManyArguments => f.write_str("too many arguments"),
             Self::TooFewArguments => f.write_str("too few arguments"),
             Self::NoTargetClient => f.write_str("no target client"),
+            Self::InvalidLogKind => f.write_str("invalid log kind"),
             Self::EditorNotLogging => f.write_str("editor is not logging"),
             Self::NoBufferOpened => f.write_str("no buffer opened"),
             Self::UnsavedChanges => f.write_str("unsaved changes"),
@@ -546,7 +548,7 @@ impl CommandManager {
                 let offset = command.as_ptr() as usize - source.as_ptr() as usize;
                 let line_index = source[..offset].chars().filter(|&c| c == '\n').count();
 
-                let mut write = ctx.editor.logger.write(MessageKind::Error);
+                let mut write = ctx.editor.logger.write(LogKind::Error);
                 match name {
                     Some(name) => write.fmt(format_args!(
                         "{}:{}\n{}\n{}",

@@ -251,9 +251,10 @@ impl ReadLine {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum MessageKind {
+pub enum LogKind {
     Status,
     Info,
+    Diagnostic,
     Error,
 }
 
@@ -265,7 +266,7 @@ pub struct LoggerStatusBarDisplay<'logger, 'lines> {
 }
 
 pub struct Logger {
-    kind: MessageKind,
+    kind: LogKind,
     message: String,
     log_file_path: String,
     log_file: Option<fs::File>,
@@ -273,7 +274,7 @@ pub struct Logger {
 impl Logger {
     pub fn new(log_file_path: String, log_file: Option<fs::File>) -> Self {
         Self {
-            kind: MessageKind::Info,
+            kind: LogKind::Info,
             message: String::new(),
             log_file_path,
             log_file,
@@ -288,7 +289,7 @@ impl Logger {
         self.message.clear();
     }
 
-    pub fn write(&mut self, kind: MessageKind) -> LogWriter {
+    pub fn write(&mut self, kind: LogKind) -> LogWriter {
         self.kind = kind;
         self.message.clear();
         LogWriter(self)
@@ -319,8 +320,8 @@ impl Logger {
         };
 
         let prefix = match self.kind {
-            MessageKind::Status | MessageKind::Info => "",
-            MessageKind::Error => "error:",
+            LogKind::Status | LogKind::Info | LogKind::Diagnostic => "",
+            LogKind::Error => "error:",
         };
 
         let mut lines_len = 0;
@@ -402,7 +403,7 @@ impl<'a> LogWriter<'a> {
 }
 impl<'a> Drop for LogWriter<'a> {
     fn drop(&mut self) {
-        if let MessageKind::Error = self.0.kind {
+        if let LogKind::Error = self.0.kind {
             if let Some(log_file) = &mut self.0.log_file {
                 use io::Write;
                 self.0.message.push('\n');

@@ -3,7 +3,7 @@ use crate::{
     client::ClientHandle,
     command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{MessageKind, ReadLinePoll},
+    editor_utils::{LogKind, ReadLinePoll},
     mode::{ModeKind, ModeState},
     platform::{Key, KeyCode},
     word_database::WordIndicesIter,
@@ -228,7 +228,7 @@ pub mod opened_buffers {
         } else {
             ctx.editor
                 .logger
-                .write(MessageKind::Error)
+                .write(LogKind::Error)
                 .str("no buffer opened");
         }
     }

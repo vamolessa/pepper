@@ -8,7 +8,7 @@ use crate::{
     client::ClientManager,
     command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow},
-    editor_utils::MessageKind,
+    editor_utils::LogKind,
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
@@ -111,7 +111,7 @@ impl ServerApplication {
                 Err(_) => ctx
                     .editor
                     .logger
-                    .write(MessageKind::Error)
+                    .write(LogKind::Error)
                     .fmt(format_args!("could not load config '{}'", config.path)),
             }
         }

@@ -8,7 +8,7 @@ use crate::{
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
     editor::EditorFlow,
-    editor_utils::{parse_process_command, MessageKind, RegisterKey},
+    editor_utils::{parse_process_command, LogKind, RegisterKey},
     help,
     mode::{picker, read_line, ModeKind},
     platform::{PlatformRequest, ProcessTag},
@@ -57,7 +57,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             Err(error) => ctx
                 .editor
                 .logger
-                .write(MessageKind::Error)
+                .write(LogKind::Error)
                 .fmt(format_args!("{}", error)),
         }
         ctx.editor.string_pool.release(buffer_path);
@@ -65,13 +65,15 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("print", &[], |ctx, io| {
-        let message_kind = if io.bang {
-            MessageKind::Error
-        } else {
-            MessageKind::Info
+    r("log", &[], |ctx, io| {
+        let log_kind = match io.args.next()? {
+            "status" => LogKind::Status,
+            "info" => LogKind::Info,
+            "diagnostic" => LogKind::Diagnostic,
+            "error" => LogKind::Error,
+            _ => return Err(CommandError::InvalidLogKind),
         };
-        let mut write = ctx.editor.logger.write(message_kind);
+        let mut write = ctx.editor.logger.write(log_kind);
         if let Some(arg) = io.args.try_next() {
             write.str(arg);
         }
@@ -171,7 +173,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             Err(error) => ctx
                 .editor
                 .logger
-                .write(MessageKind::Error)
+                .write(LogKind::Error)
                 .fmt(format_args!("{}", error)),
         }
 
@@ -191,7 +193,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .logger
-            .write(MessageKind::Status)
+            .write(LogKind::Status)
             .fmt(format_args!("buffer saved to {:?}", &buffer.path));
         Ok(())
     });
@@ -210,7 +212,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .logger
-            .write(MessageKind::Status)
+            .write(LogKind::Status)
             .fmt(format_args!("{} buffers saved", count));
         Ok(())
     });
@@ -228,7 +230,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .logger
-            .write(MessageKind::Status)
+            .write(LogKind::Status)
             .str("buffer reopened");
         Ok(())
     });
@@ -253,7 +255,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .logger
-            .write(MessageKind::Status)
+            .write(LogKind::Status)
             .fmt(format_args!("{} buffers reopened", count));
         Ok(())
     });
@@ -269,7 +271,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .logger
-            .write(MessageKind::Status)
+            .write(LogKind::Status)
             .str("buffer closed");
 
         Ok(())
@@ -289,7 +291,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor
             .logger
-            .write(MessageKind::Status)
+            .write(LogKind::Status)
             .fmt(format_args!("{} buffers closed", count));
         Ok(())
     });
@@ -309,7 +311,7 @@ pub fn register_commands(commands: &mut CommandManager) {
                 Some(display) => {
                     ctx.editor
                         .logger
-                        .write(MessageKind::Status)
+                        .write(LogKind::Status)
                         .fmt(format_args!("{}", display));
                     Ok(())
                 }
@@ -339,7 +341,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             None => ctx
                 .editor
                 .logger
-                .write(MessageKind::Status)
+                .write(LogKind::Status)
                 .fmt(format_args!("0x{:0<6x}", color.into_u32())),
         }
 
@@ -516,7 +518,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             None => {
                 ctx.editor
                     .logger
-                    .write(MessageKind::Error)
+                    .write(LogKind::Error)
                     .fmt(format_args!("invalid command '{}'", command));
             }
         }

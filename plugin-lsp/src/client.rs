@@ -14,7 +14,7 @@ use pepper::{
     client,
     cursor::Cursor,
     editor::{Editor, EditorContext},
-    editor_utils::{Logger, MessageKind},
+    editor_utils::{Logger, LogKind},
     glob::Glob,
     navigation_history::NavigationHistory,
     platform::Platform,
@@ -982,7 +982,7 @@ impl Client {
                 }
                 Err(error) => editor
                     .logger
-                    .write(MessageKind::Error)
+                    .write(LogKind::Error)
                     .fmt(format_args!("{}", error)),
             }
         }
@@ -1191,7 +1191,7 @@ pub(crate) mod util {
 
     pub fn write_response_error(logger: &mut Logger, error: ResponseError, json: &Json) {
         logger
-            .write(MessageKind::Error)
+            .write(LogKind::Error)
             .str(error.message.as_str(json));
     }
 

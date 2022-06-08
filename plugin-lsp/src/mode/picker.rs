@@ -6,7 +6,7 @@ use pepper::{
     client::ClientHandle,
     cursor::Cursor,
     editor::{EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{MessageKind, ReadLinePoll},
+    editor_utils::{LogKind, ReadLinePoll},
     mode::ModeKind,
     picker::EntrySource,
     plugin::PluginHandle,
@@ -66,7 +66,7 @@ pub fn enter_definition_mode(
                         Err(error) => ctx
                             .editor
                             .logger
-                            .write(MessageKind::Error)
+                            .write(LogKind::Error)
                             .fmt(format_args!("{}", error)),
                     }
                     ctx.editor.string_pool.release(path);

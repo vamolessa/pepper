@@ -9,7 +9,7 @@ use pepper::{
     buffer::{BufferHandle, BufferProperties},
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
-    editor_utils::MessageKind,
+    editor_utils::LogKind,
     glob::InvalidGlobError,
     platform::{Platform, PlatformProcessHandle, PlatformRequest},
 };
@@ -703,7 +703,7 @@ impl WorkspaceEdit {
                     if open_options.open(path).is_err() && !op.ignore_if_exists {
                         editor
                             .logger
-                            .write(MessageKind::Error)
+                            .write(LogKind::Error)
                             .fmt(format_args!("could not create file {:?}", path));
                     }
                 }
@@ -719,7 +719,7 @@ impl WorkspaceEdit {
 
                     if op.overwrite || !new_path.exists() || !op.ignore_if_exists {
                         if fs::rename(old_path, new_path).is_err() && !op.ignore_if_exists {
-                            editor.logger.write(MessageKind::Error).fmt(format_args!(
+                            editor.logger.write(LogKind::Error).fmt(format_args!(
                                 "could not rename file {:?} to {:?}",
                                 old_path, new_path
                             ));
@@ -736,14 +736,14 @@ impl WorkspaceEdit {
                         if fs::remove_dir_all(path).is_err() && !op.ignore_if_not_exists {
                             editor
                                 .logger
-                                .write(MessageKind::Error)
+                                .write(LogKind::Error)
                                 .fmt(format_args!("could not delete directory {:?}", path));
                         }
                     } else {
                         if fs::remove_file(path).is_err() && !op.ignore_if_not_exists {
                             editor
                                 .logger
-                                .write(MessageKind::Error)
+                                .write(LogKind::Error)
                                 .fmt(format_args!("could not delete file {:?}", path));
                         }
                     }

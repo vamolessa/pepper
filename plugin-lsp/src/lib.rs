@@ -8,7 +8,7 @@ use std::{
 use pepper::{
     buffer_position::BufferRange,
     editor::EditorContext,
-    editor_utils::{hash_bytes, parse_process_command, MessageKind},
+    editor_utils::{hash_bytes, parse_process_command, LogKind},
     events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
@@ -289,7 +289,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 None => {
                     ctx.editor
                         .logger
-                        .write(MessageKind::Error)
+                        .write(LogKind::Error)
                         .fmt(format_args!("invalid lsp command '{}'", &recipe.command));
                     continue;
                 }
@@ -454,7 +454,7 @@ fn on_process_output(
                 if let Err(error) = result {
                     ctx.editor
                         .logger
-                        .write(MessageKind::Error)
+                        .write(LogKind::Error)
                         .fmt(format_args!("lsp protocol error: {}", error));
                 }
             }
@@ -464,7 +464,7 @@ fn on_process_output(
                 if let Err(error) = result {
                     ctx.editor
                         .logger
-                        .write(MessageKind::Error)
+                        .write(LogKind::Error)
                         .fmt(format_args!("lsp protocol error: {}", error));
                 }
             }

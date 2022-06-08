@@ -10,7 +10,7 @@ use crate::{
     client::{ClientHandle, ViewAnchor},
     cursor::Cursor,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{hash_bytes, MessageKind, RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
+    editor_utils::{hash_bytes, LogKind, RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     help::HELP_PREFIX,
     mode::{picker, read_line, ModeKind, ModeState},
     navigation_history::{NavigationHistory, NavigationMovement},
@@ -806,7 +806,7 @@ impl State {
                         }
 
                         if !error_buf.is_empty() {
-                            ctx.editor.logger.write(MessageKind::Error).str(&error_buf);
+                            ctx.editor.logger.write(LogKind::Error).str(&error_buf);
                         }
 
                         ctx.editor.string_pool.release(path_buf);
@@ -1641,7 +1641,7 @@ impl State {
 
                         ctx.editor
                             .logger
-                            .write(MessageKind::Status)
+                            .write(LogKind::Status)
                             .fmt(format_args!("mark saved to register {}", c));
                     }
                 }
@@ -1824,7 +1824,7 @@ impl ModeState for State {
                 {
                     ctx.editor
                         .logger
-                        .write(MessageKind::Status)
+                        .write(LogKind::Status)
                         .str(&lints[index].message(&buffer.lints));
                 }
             }
@@ -1906,7 +1906,7 @@ impl ModeState for State {
                                     Err(error) => ctx
                                         .editor
                                         .logger
-                                        .write(MessageKind::Error)
+                                        .write(LogKind::Error)
                                         .fmt(format_args!("{}", error)),
                                 }
                             }
@@ -1967,7 +1967,7 @@ impl ModeState for State {
                             Err(error) => ctx
                                 .editor
                                 .logger
-                                .write(MessageKind::Error)
+                                .write(LogKind::Error)
                                 .fmt(format_args!("invalid marker '{}': {}", &path, error)),
                         }
                         ctx.editor.string_pool.release(path);
@@ -2119,7 +2119,7 @@ impl ModeState for State {
                         Err(error) => {
                             ctx.editor
                                 .logger
-                                .write(MessageKind::Error)
+                                .write(LogKind::Error)
                                 .fmt(format_args!("{}", error));
                             return Some(EditorFlow::Continue);
                         }
@@ -2368,7 +2368,7 @@ where
                 Err(error) => {
                     ctx.editor
                         .logger
-                        .write(MessageKind::Error)
+                        .write(LogKind::Error)
                         .fmt(format_args!("{}", error));
                     return;
                 }
@@ -2378,7 +2378,7 @@ where
         if search_ranges.is_empty() {
             ctx.editor
                 .logger
-                .write(MessageKind::Error)
+                .write(LogKind::Error)
                 .str("no search result");
             return;
         }

@@ -6,7 +6,7 @@ use pepper::{
     client,
     cursor::Cursor,
     editor::EditorContext,
-    editor_utils::MessageKind,
+    editor_utils::LogKind,
     glob::Glob,
     mode::ModeKind,
     picker::Picker,
@@ -118,19 +118,19 @@ pub(crate) fn on_request(
             fn parse_params(
                 params: JsonValue,
                 json: &Json,
-            ) -> Result<(MessageKind, &str), JsonConvertError> {
+            ) -> Result<(LogKind, &str), JsonConvertError> {
                 let params = match params {
                     JsonValue::Object(object) => object,
                     _ => return Err(JsonConvertError),
                 };
-                let mut kind = MessageKind::Info;
+                let mut kind = LogKind::Info;
                 let mut message = "";
                 for (key, value) in params.members(json) {
                     match key {
                         "type" => {
                             kind = match value {
-                                JsonValue::Integer(1) => MessageKind::Error,
-                                JsonValue::Integer(2..=4) => MessageKind::Info,
+                                JsonValue::Integer(1) => LogKind::Error,
+                                JsonValue::Integer(2..=4) => LogKind::Info,
                                 _ => return Err(JsonConvertError),
                             }
                         }
@@ -212,7 +212,7 @@ pub(crate) fn on_request(
                     Err(error) => {
                         ctx.editor
                             .logger
-                            .write(MessageKind::Error)
+                            .write(LogKind::Error)
                             .fmt(format_args!("{}", error));
                         false
                     }
@@ -258,18 +258,18 @@ pub(crate) fn on_notification(
             }
             let message = message.as_str(&client.json);
             match message_type {
-                1 => ctx.editor.logger.write(MessageKind::Error).str(message),
+                1 => ctx.editor.logger.write(LogKind::Error).str(message),
                 2 => ctx
                     .editor
                     .logger
-                    .write(MessageKind::Info)
+                    .write(LogKind::Info)
                     .fmt(format_args!("warning: {}", message)),
                 3 => ctx
                     .editor
                     .logger
-                    .write(MessageKind::Info)
+                    .write(LogKind::Info)
                     .fmt(format_args!("info: {}", message)),
-                4 => ctx.editor.logger.write(MessageKind::Info).str(message),
+                4 => ctx.editor.logger.write(LogKind::Info).str(message),
                 _ => (),
             }
             Ok(())
@@ -408,12 +408,12 @@ pub(crate) fn on_response(
                 "" => ctx
                     .editor
                     .logger
-                    .write(MessageKind::Info)
+                    .write(LogKind::Info)
                     .str("lsp server started"),
                 _ => ctx
                     .editor
                     .logger
-                    .write(MessageKind::Info)
+                    .write(LogKind::Info)
                     .fmt(format_args!("lsp server '{}' started", server_name)),
             }
 
@@ -429,7 +429,7 @@ pub(crate) fn on_response(
         "textDocument/hover" => {
             let contents = result.get("contents", &client.json);
             let info = util::extract_markup_content(contents, &client.json);
-            ctx.editor.logger.write(MessageKind::Status).str(info);
+            ctx.editor.logger.write(LogKind::Status).str(info);
             Ok(())
         }
         "textDocument/signatureHelp" => {
@@ -496,11 +496,11 @@ pub(crate) fn on_response(
             let label = signature.label.as_str(&client.json);
 
             if signature.documentation.is_empty() {
-                ctx.editor.logger.write(MessageKind::Status).str(label);
+                ctx.editor.logger.write(LogKind::Status).str(label);
             } else {
                 ctx.editor
                     .logger
-                    .write(MessageKind::Status)
+                    .write(LogKind::Status)
                     .fmt(format_args!("{}\n{}", signature.documentation, label));
             }
 
@@ -576,7 +576,7 @@ pub(crate) fn on_response(
                 Err(error) => {
                     ctx.editor
                         .logger
-                        .write(MessageKind::Error)
+                        .write(LogKind::Error)
                         .fmt(format_args!("{}", error));
                     return Ok(());
                 }
@@ -703,7 +703,7 @@ pub(crate) fn on_response(
                 JsonValue::Null => {
                     ctx.editor
                         .logger
-                        .write(MessageKind::Error)
+                        .write(LogKind::Error)
                         .str("could not rename item under cursor");
                     return Ok(());
                 }
@@ -758,7 +758,7 @@ pub(crate) fn on_response(
             if let JsonValue::Null = result {
                 ctx.editor
                     .logger
-                    .write(MessageKind::Error)
+                    .write(LogKind::Error)
                     .str("could not rename item under cursor");
                 return Ok(());
             }
@@ -1053,7 +1053,7 @@ fn goto_definition(
                 Err(error) => ctx
                     .editor
                     .logger
-                    .write(MessageKind::Error)
+                    .write(LogKind::Error)
                     .fmt(format_args!("{}", error)),
             }
 
