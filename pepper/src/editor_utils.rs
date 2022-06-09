@@ -1,4 +1,4 @@
-use std::{fmt, fs, io, process::Command, path::Path};
+use std::{fmt, fs, io, path::Path, process::Command};
 
 use crate::{
     buffer::char_display_len,
@@ -625,11 +625,7 @@ pub const fn is_char_boundary(b: u8) -> bool {
 pub fn to_absolute_path_string(base_path: &str, path: &str, absolute_path: &mut String) {
     if Path::new(path).is_relative() {
         absolute_path.push_str(base_path);
-        if let Some(false) = base_path
-            .chars()
-            .next_back()
-            .map(std::path::is_separator)
-        {
+        if let Some(false) = base_path.chars().next_back().map(std::path::is_separator) {
             absolute_path.push(std::path::MAIN_SEPARATOR);
         }
     }
@@ -1068,4 +1064,3 @@ mod tests {
         );
     }
 }
-

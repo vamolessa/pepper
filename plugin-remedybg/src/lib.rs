@@ -6,7 +6,7 @@ use std::{
 
 use pepper::{
     buffer::{BufferBreakpoint, BufferHandle},
-    command::{CommandManager, CompletionSource, CommandError},
+    command::{CommandError, CommandManager, CompletionSource},
     editor::{Editor, EditorContext},
     editor_utils::to_absolute_path_string,
     events::{EditorEvent, EditorEventIter},
@@ -254,20 +254,26 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             "start-paused" => {
                 arg_ranges.push(write_arg(&mut args_string, "start-debugging"));
                 arg_ranges.push(write_arg(&mut args_string, "1"));
-            },
+            }
             "stop" => arg_ranges.push(write_arg(&mut args_string, "stop-debugging")),
             "attach" => {
                 let process_id = io.args.next()?;
                 arg_ranges.push(write_arg(&mut args_string, "attach-to-process-by-id"));
                 arg_ranges.push(write_arg(&mut args_string, process_id));
-            },
+            }
             "continue" => arg_ranges.push(write_arg(&mut args_string, "continue-execution")),
             "run-to-cursor" => {
                 use fmt::Write;
 
                 let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
                 let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
-                let buffer_path = match ctx.editor.buffers.get(buffer_view.buffer_handle).path.to_str() {
+                let buffer_path = match ctx
+                    .editor
+                    .buffers
+                    .get(buffer_view.buffer_handle)
+                    .path
+                    .to_str()
+                {
                     Some(path) => path,
                     None => {
                         ctx.editor.string_pool.release(args_string);
@@ -298,7 +304,9 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             }
             _ => {
                 ctx.editor.string_pool.release(args_string);
-                return Err(CommandError::OtherStatic("invalid remedybg-debub operation"));
+                return Err(CommandError::OtherStatic(
+                    "invalid remedybg-debub operation",
+                ));
             }
         }
         io.args.assert_empty()?;
@@ -323,14 +331,16 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
 
-        ctx.platform.requests.enqueue(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::Plugin {
-                plugin_handle,
-                id: COMMAND_PROCESS_ID,
-            },
-            command,
-            buf_len: 128,
-        });
+        ctx.platform
+            .requests
+            .enqueue(PlatformRequest::SpawnProcess {
+                tag: ProcessTag::Plugin {
+                    plugin_handle,
+                    id: COMMAND_PROCESS_ID,
+                },
+                command,
+                buf_len: 128,
+            });
 
         Ok(())
     });
@@ -380,4 +390,3 @@ fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32
         _ => (),
     }
 }
-

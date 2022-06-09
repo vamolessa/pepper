@@ -242,4 +242,3 @@ fn cursor(
     };
     Ok(cursors[..].get(index).cloned())
 }
-
