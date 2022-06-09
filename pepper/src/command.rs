@@ -1051,7 +1051,7 @@ mod tests {
     fn variable_expansion() {
         let current_dir = env::current_dir().unwrap_or(PathBuf::new());
         let mut ctx = EditorContext {
-            editor: Editor::new(current_dir),
+            editor: Editor::new(current_dir, String::new(), String::new(), None),
             platform: Platform::default(),
             clients: ClientManager::default(),
             plugins: PluginCollection::default(),

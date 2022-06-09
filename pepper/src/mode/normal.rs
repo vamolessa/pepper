@@ -1,16 +1,16 @@
 use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
-    buffer::{
-        find_path_and_position_at, parse_path_and_position, BufferContent, BufferHandle,
-        BufferProperties,
-    },
+    buffer::{BufferContent, BufferHandle, BufferProperties},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{ClientHandle, ViewAnchor},
     cursor::Cursor,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{hash_bytes, LogKind, RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
+    editor_utils::{
+        find_path_and_position_at, hash_bytes, parse_path_and_position, LogKind, RegisterKey,
+        AUTO_MACRO_REGISTER, SEARCH_REGISTER,
+    },
     help::HELP_PREFIX,
     mode::{picker, read_line, ModeKind, ModeState},
     navigation_history::{NavigationHistory, NavigationMovement},

@@ -1,12 +1,12 @@
 use std::path::Path;
 
 use pepper::{
-    buffer::{parse_path_and_position, BufferProperties},
+    buffer::BufferProperties,
     buffer_position::BufferPosition,
     client::ClientHandle,
     cursor::Cursor,
     editor::{EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{LogKind, ReadLinePoll},
+    editor_utils::{parse_path_and_position, LogKind, ReadLinePoll},
     mode::ModeKind,
     picker::EntrySource,
     plugin::PluginHandle,

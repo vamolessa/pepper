@@ -192,7 +192,7 @@ mod tests {
 
     fn setup() -> (Editor, Client) {
         let mut client = Client::new();
-        let mut editor = Editor::new(PathBuf::new());
+        let mut editor = Editor::new(PathBuf::new(), String::new(), String::new(), None);
 
         let buffer_a = editor.buffers.add_new();
         assert_eq!(0, buffer_a.handle().0);

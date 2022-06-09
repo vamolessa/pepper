@@ -1,14 +1,14 @@
 use std::{env, path::Path, process::Stdio};
 
 use crate::{
-    buffer::{parse_path_and_position, BufferProperties, BufferReadError, BufferWriteError},
+    buffer::{BufferProperties, BufferReadError, BufferWriteError},
     buffer_position::BufferPosition,
     client::ViewAnchor,
     command::{CommandError, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
     editor::EditorFlow,
-    editor_utils::{parse_process_command, LogKind, RegisterKey},
+    editor_utils::{parse_path_and_position, parse_process_command, LogKind, RegisterKey},
     help,
     mode::{picker, read_line, ModeKind},
     platform::{PlatformRequest, ProcessTag},
@@ -22,8 +22,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         commands.register_command(None, name, completions, command_fn);
     };
 
-    static HELP_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Commands];
-    r("help", HELP_COMPLETIONS, |ctx, io| {
+    r("help", &[CompletionSource::Commands], |ctx, io| {
         let keyword = io.args.try_next();
         io.args.assert_empty()?;
 
@@ -65,7 +64,13 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("log", &[], |ctx, io| {
+    static LOG_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&[
+        "status",
+        "info",
+        "diagnostic",
+        "error",
+    ])];
+    r("log", LOG_COMPLETIONS, |ctx, io| {
         let log_kind = match io.args.next()? {
             "status" => LogKind::Status,
             "info" => LogKind::Info,
