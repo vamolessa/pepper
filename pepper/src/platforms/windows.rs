@@ -33,7 +33,7 @@ use winapi::{
             CreateProcessW, GetCurrentProcessId, PROCESS_INFORMATION, STARTUPINFOW,
         },
         stringapiset::{MultiByteToWideChar, WideCharToMultiByte},
-        synchapi::{CreateEventW, SetEvent, Sleep, WaitForMultipleObjects},
+        synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects, WaitForSingleObject},
         sysinfoapi::GetSystemDirectoryW,
         winbase::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, CREATE_NEW_PROCESS_GROUP,
@@ -84,67 +84,75 @@ const _: () = assert!(MAX_EVENT_COUNT == MAXIMUM_WAIT_OBJECTS as _);
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 
+#[inline(always)]
 pub fn try_launching_debugger() {
-    let mut buf = [0; MAX_PATH + 1];
-    let len = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as _) as usize };
-    if len == 0 || len > buf.len() {
-        return;
+    fn is_debugger_present() -> bool {
+        unsafe { IsDebuggerPresent() != FALSE }
     }
 
-    let debugger_command = b"\\vsjitdebugger.exe -p ".map(|b| b as u16);
-    let mut pid_buf = [0; 10];
+    if !is_debugger_present() {
+        let mut buf = [0; MAX_PATH + 1];
+        let len = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as _) as usize };
+        if len == 0 || len > buf.len() {
+            return;
+        }
 
-    if len + debugger_command.len() + pid_buf.len() + 1 > buf.len() {
-        return;
-    }
+        let debugger_command = b"\\vsjitdebugger.exe -p ".map(|b| b as u16);
+        let mut pid_buf = [0; 10];
 
-    buf[len..len + debugger_command.len()].copy_from_slice(&debugger_command);
-    let len = len + debugger_command.len();
+        if len + debugger_command.len() + pid_buf.len() + 1 > buf.len() {
+            return;
+        }
 
-    let pid = unsafe { GetCurrentProcessId() };
+        buf[len..len + debugger_command.len()].copy_from_slice(&debugger_command);
+        let len = len + debugger_command.len();
 
-    use io::Write;
-    let mut pid_cursor = io::Cursor::new(&mut pid_buf[..]);
-    let _ = write!(pid_cursor, "{}", pid);
-    let pid_len = pid_cursor.position() as usize;
-    let pid_buf = pid_buf.map(|b| b as u16);
-    let pid_buf = &pid_buf[..pid_len];
+        let pid = unsafe { GetCurrentProcessId() };
 
-    buf[len..len + pid_buf.len()].copy_from_slice(&pid_buf);
-    let len = len + pid_buf.len();
+        use io::Write;
+        let mut pid_cursor = io::Cursor::new(&mut pid_buf[..]);
+        let _ = write!(pid_cursor, "{}", pid);
+        let pid_len = pid_cursor.position() as usize;
+        let pid_buf = pid_buf.map(|b| b as u16);
+        let pid_buf = &pid_buf[..pid_len];
 
-    buf[len] = 0;
-    let len = len + 1;
+        buf[len..len + pid_buf.len()].copy_from_slice(&pid_buf);
+        let len = len + pid_buf.len();
 
-    let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
-    startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
+        buf[len] = 0;
+        let len = len + 1;
 
-    let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
+        let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
+        startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
 
-    let result = unsafe {
-        CreateProcessW(
-            std::ptr::null(),
-            buf[..len].as_mut_ptr(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            FALSE,
-            0,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &mut startup_info,
-            &mut process_info,
-        )
-    };
+        let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
 
-    let _ = Handle(process_info.hProcess);
-    let _ = Handle(process_info.hThread);
+        let result = unsafe {
+            CreateProcessW(
+                std::ptr::null(),
+                buf[..len].as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                FALSE,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut startup_info,
+                &mut process_info,
+            )
+        };
 
-    if result == FALSE {
-        return;
-    }
+        let process_handle = Handle(process_info.hProcess);
+        let thread_handle = Handle(process_info.hThread);
 
-    while unsafe { IsDebuggerPresent() == FALSE } {
-        unsafe { Sleep(100) };
+        unsafe { WaitForSingleObject(process_handle.0, INFINITE) };
+
+        drop(process_handle);
+        drop(thread_handle);
+
+        if result == FALSE {
+            return;
+        }
     }
 
     unsafe { DebugBreak() };
