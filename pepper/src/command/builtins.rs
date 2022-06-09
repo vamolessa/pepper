@@ -608,12 +608,12 @@ pub fn register_commands(commands: &mut CommandManager) {
     r("eval", &[], |ctx, io| {
         let continuation = io.args.next()?;
         io.args.assert_empty()?;
-        match CommandManager::eval(ctx, io.client_handle, continuation) {
+        match CommandManager::eval(ctx, io.client_handle, "eval", continuation) {
             Ok(flow) => {
                 io.flow = flow;
                 Ok(())
             }
-            Err(error) => Err(error.error),
+            Err(error) => Err(error),
         }
     });
 
@@ -638,12 +638,12 @@ pub fn register_commands(commands: &mut CommandManager) {
             return Ok(());
         }
 
-        match CommandManager::eval(ctx, io.client_handle, continuation) {
+        match CommandManager::eval(ctx, io.client_handle, "if", continuation) {
             Ok(flow) => {
                 io.flow = flow;
                 Ok(())
             }
-            Err(error) => Err(error.error),
+            Err(error) => Err(error),
         }
     });
 }

@@ -83,11 +83,6 @@ impl fmt::Display for CommandError {
     }
 }
 
-pub struct CommandErrorWithContext {
-    pub error: CommandError,
-    pub command_index: usize,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionSource {
     Commands,
@@ -441,10 +436,17 @@ impl MacroCollection {
     }
 }
 
+struct EvalStackEntry {
+    name: String,
+    command: String,
+    line_index: u32,
+}
+
 pub struct CommandManager {
     commands: Vec<Command>,
     pub macros: MacroCollection,
     history: VecDeque<String>,
+    eval_stack: Vec<EvalStackEntry>,
 }
 
 impl CommandManager {
@@ -453,6 +455,7 @@ impl CommandManager {
             commands: Vec::new(),
             macros: MacroCollection::default(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
+            eval_stack: Vec::new(),
         };
         builtins::register_commands(&mut this);
         this
@@ -536,30 +539,37 @@ impl CommandManager {
 
     pub fn unwrap_eval_result(
         ctx: &mut EditorContext,
-        result: Result<EditorFlow, CommandErrorWithContext>,
-        source: &str,
-        name: Option<&str>,
+        result: Result<EditorFlow, CommandError>,
     ) -> EditorFlow {
         match result {
             Ok(flow) => flow,
             Err(error) => {
-                let command = match CommandIter(source).nth(error.command_index) {
-                    Some(command) => command,
-                    None => &source[..0],
-                };
-                let offset = command.as_ptr() as usize - source.as_ptr() as usize;
-                let line_index = source[..offset].chars().filter(|&c| c == '\n').count();
+                {
+                    let mut write = ctx.editor.logger.write(LogKind::Error);
+                    for eval_stack_entry in ctx.editor.commands.eval_stack.drain(..).rev() {
+                        write.fmt(format_args!(
+                            "\n{}:{}:",
+                            eval_stack_entry.name,
+                            eval_stack_entry.line_index + 1,
+                        ));
+                        if eval_stack_entry.command.find('\n').is_some() {
+                            for (line_index, line) in eval_stack_entry.command.lines().enumerate() {
+                                write.fmt(format_args!("\n    {:>4}| ", line_index + 1));
+                                write.str(line);
+                            }
+                        } else {
+                            write.str(" ");
+                            write.str(&eval_stack_entry.command);
+                        }
 
-                let mut write = ctx.editor.logger.write(LogKind::Error);
-                match name {
-                    Some(name) => write.fmt(format_args!(
-                        "{}:{}\n{}\n{}",
-                        name,
-                        line_index + 1,
-                        command,
-                        error.error,
-                    )),
-                    None => write.fmt(format_args!("{}", error.error)),
+                        ctx.editor.string_pool.release(eval_stack_entry.name);
+                        ctx.editor.string_pool.release(eval_stack_entry.command);
+                    }
+                }
+
+                {
+                    let mut write = ctx.editor.logger.write(LogKind::Error);
+                    write.fmt(format_args!("{}", error));
                 }
 
                 EditorFlow::Continue
@@ -570,17 +580,42 @@ impl CommandManager {
     pub fn eval(
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
+        name: &str,
         source: &str,
-    ) -> Result<EditorFlow, CommandErrorWithContext> {
-        for (i, command) in CommandIter(source).enumerate() {
-            match Self::eval_single(ctx, client_handle, command, "", false) {
+    ) -> Result<EditorFlow, CommandError> {
+        Self::eval_reentrant(ctx, client_handle, name, source, "", false)
+    }
+
+    fn eval_reentrant(
+        ctx: &mut EditorContext,
+        client_handle: Option<ClientHandle>,
+        name: &str,
+        source: &str,
+        args: &str,
+        bang: bool,
+    ) -> Result<EditorFlow, CommandError> {
+        for command in CommandIter(source) {
+            let mut expanded = ctx.editor.string_pool.acquire();
+            let result =
+                match expand_variables(ctx, client_handle, args, bang, command, &mut expanded) {
+                    Ok(()) => Self::eval_single(ctx, client_handle, &expanded),
+                    Err(error) => Err(CommandError::ExpansionError(error)),
+                };
+            ctx.editor.string_pool.release(expanded);
+
+            match result {
                 Ok(EditorFlow::Continue) => (),
                 Ok(flow) => return Ok(flow),
                 Err(error) => {
-                    return Err(CommandErrorWithContext {
-                        error,
-                        command_index: i,
+                    let offset = command.as_ptr() as usize - source.as_ptr() as usize;
+                    let line_index = source[..offset].chars().filter(|&c| c == '\n').count() as _;
+
+                    ctx.editor.commands.eval_stack.push(EvalStackEntry {
+                        name: ctx.editor.string_pool.acquire_with(name),
+                        command: ctx.editor.string_pool.acquire_with(command),
+                        line_index,
                     });
+                    return Err(error);
                 }
             }
         }
@@ -588,24 +623,7 @@ impl CommandManager {
         Ok(EditorFlow::Continue)
     }
 
-    pub(crate) fn eval_single(
-        ctx: &mut EditorContext,
-        client_handle: Option<ClientHandle>,
-        command: &str,
-        args: &str,
-        bang: bool,
-    ) -> Result<EditorFlow, CommandError> {
-        let mut expanded = ctx.editor.string_pool.acquire();
-        let result = match expand_variables(ctx, client_handle, args, bang, command, &mut expanded)
-        {
-            Ok(()) => Self::eval_single_impl(ctx, client_handle, &expanded),
-            Err(error) => Err(CommandError::ExpansionError(error)),
-        };
-        ctx.editor.string_pool.release(expanded);
-        result
-    }
-
-    fn eval_single_impl(
+    fn eval_single(
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         command: &str,
@@ -636,10 +654,14 @@ impl CommandManager {
 
         if let Some(macro_source) = ctx.editor.commands.macros.find(command_name) {
             let macro_source = ctx.editor.string_pool.acquire_with(macro_source);
-            let mut result = Ok(EditorFlow::Continue);
-            for command in CommandIter(&macro_source) {
-                result = Self::eval_single(ctx, client_handle, command, args.0, bang);
-            }
+            let result = Self::eval_reentrant(
+                ctx,
+                client_handle,
+                command_name,
+                &macro_source,
+                args.0,
+                bang,
+            );
             ctx.editor.string_pool.release(macro_source);
             return result;
         }

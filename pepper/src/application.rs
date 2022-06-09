@@ -81,13 +81,8 @@ impl ServerApplication {
         }
 
         for config in &config.static_configs {
-            let result = CommandManager::eval(&mut ctx, None, config.content);
-            let flow = CommandManager::unwrap_eval_result(
-                &mut ctx,
-                result,
-                config.content,
-                Some(config.name),
-            );
+            let result = CommandManager::eval(&mut ctx, None, config.name, config.content);
+            let flow = CommandManager::unwrap_eval_result(&mut ctx, result);
             if !matches!(flow, EditorFlow::Continue) {
                 return None;
             }
@@ -101,9 +96,8 @@ impl ServerApplication {
             match fs::read_to_string(path) {
                 Ok(source) => {
                     let path = path.to_str().unwrap_or("");
-                    let result = CommandManager::eval(&mut ctx, None, &source);
-                    let flow =
-                        CommandManager::unwrap_eval_result(&mut ctx, result, &source, Some(path));
+                    let result = CommandManager::eval(&mut ctx, None, path, &source);
+                    let flow = CommandManager::unwrap_eval_result(&mut ctx, result);
                     if !matches!(flow, EditorFlow::Continue) {
                         return None;
                     }

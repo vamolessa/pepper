@@ -465,8 +465,9 @@ impl Editor {
                     },
                 };
 
-                let result = CommandManager::eval(ctx, Some(client_handle), commands);
-                CommandManager::unwrap_eval_result(ctx, result, commands, Some("client-commands"))
+                let result =
+                    CommandManager::eval(ctx, Some(client_handle), "client-commands", commands);
+                CommandManager::unwrap_eval_result(ctx, result)
             }
             ClientEvent::StdinInput(target, bytes) => {
                 let client_handle = match target {

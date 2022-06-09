@@ -254,13 +254,13 @@ pub mod custom {
 
                     let continuation = &ctx.editor.mode.picker_state.continuation;
                     let continuation = ctx.editor.string_pool.acquire_with(continuation);
-                    let result = CommandManager::eval(ctx, Some(client_handle), &continuation);
-                    let flow = CommandManager::unwrap_eval_result(
+                    let result = CommandManager::eval(
                         ctx,
-                        result,
+                        Some(client_handle),
+                        "picker-continuation",
                         &continuation,
-                        Some("picker-continuation"),
                     );
+                    let flow = CommandManager::unwrap_eval_result(ctx, result);
                     ctx.editor.string_pool.release(continuation);
                     ctx.editor.enter_mode(ModeKind::default());
                     return Some(flow);

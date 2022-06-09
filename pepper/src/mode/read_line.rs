@@ -579,13 +579,13 @@ pub mod custom {
                 ReadLinePoll::Submitted => {
                     let continuation = &ctx.editor.mode.read_line_state.continuation;
                     let continuation = ctx.editor.string_pool.acquire_with(continuation);
-                    let result = CommandManager::eval(ctx, Some(client_handle), &continuation);
-                    let flow = CommandManager::unwrap_eval_result(
+                    let result = CommandManager::eval(
                         ctx,
-                        result,
+                        Some(client_handle),
+                        "readline-continuation",
                         &continuation,
-                        Some("readline-continuation"),
                     );
+                    let flow = CommandManager::unwrap_eval_result(ctx, result);
                     ctx.editor.string_pool.release(continuation);
                     ctx.editor.enter_mode(ModeKind::default());
                     return Some(flow);

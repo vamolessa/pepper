@@ -444,7 +444,7 @@ impl<'a> Drop for LogWriter<'a> {
         if !matches!(self.0.current_kind, LogKind::Status) {
             if let Some(log_writer) = &mut self.0.log_writer {
                 use io::Write;
-                let _ = log_writer.write_all(&[b'\n']);
+                let _ = log_writer.write_all(b"\n\n");
                 let _ = log_writer.flush();
             }
         }
