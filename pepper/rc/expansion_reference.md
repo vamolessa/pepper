@@ -98,6 +98,17 @@ This is used when connecting servers and clients.
 That is, the name of the NamedPipe on windows and the name of the DomainSocket on unix.
 - usage: `@session-name()`
 
+## `platform`
+The name of the platform the editor is running on.
+Can evaluate to one of:
+- `windows`
+- `linux`
+- `bsd`
+- `macos`
+- `unknown`
+
+- usage: `@platform()`
+
 ## `pid`
 The process id of the server.
 - usage: `@pid()`
