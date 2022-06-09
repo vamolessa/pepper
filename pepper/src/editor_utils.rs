@@ -1,4 +1,4 @@
-use std::{fmt, fs, io, process::Command};
+use std::{fmt, fs, io, process::Command, path::Path};
 
 use crate::{
     buffer::char_display_len,
@@ -622,6 +622,20 @@ pub const fn is_char_boundary(b: u8) -> bool {
     (b as i8) >= -0x40
 }
 
+pub fn to_absolute_path_string(base_path: &str, path: &str, absolute_path: &mut String) {
+    if Path::new(path).is_relative() {
+        absolute_path.push_str(base_path);
+        if let Some(false) = base_path
+            .chars()
+            .next_back()
+            .map(std::path::is_separator)
+        {
+            absolute_path.push(std::path::MAIN_SEPARATOR);
+        }
+    }
+    absolute_path.push_str(path);
+}
+
 #[derive(Default)]
 pub struct ResidualStrBytes {
     bytes: [u8; std::mem::size_of::<char>()],
@@ -1054,3 +1068,4 @@ mod tests {
         );
     }
 }
+

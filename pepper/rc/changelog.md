@@ -14,6 +14,7 @@
 - changed `StatusBar` to `Logger` (and `editor.status_bar` to `editor.logger`)
 - changed `print` command to `log` command which accepts a `<log-kind>` parameter (use `log status <args...>` for old behavior)
 - added logging to the editor which you can open it with the `open-log` command
+- added `if` command that supports `==` and `!=` operations to conditionally execute other commands
 
 # 0.27.0
 - added `set-env` command to change the editor's environment variables

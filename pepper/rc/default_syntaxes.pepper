@@ -5,8 +5,8 @@ syntax literals "%d{%d}"
 syntax texts "{%w_-}"
 
 syntax "**/*.pepper"
-syntax keywords "command|config|eval|map|syntax"
-syntax symbols "%{|%}|=|<|>|@"
+syntax keywords "command|config|eval|if|map|syntax"
+syntax symbols "%(|%)|%{|%}|=|%!|<|>|@"
 syntax strings {"{(\\")!".}|'{(\\')!'.}}
 syntax comments "#{.}"
 

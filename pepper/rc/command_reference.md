@@ -224,6 +224,14 @@ Commands which name starts with `-` won't show up in the command completion menu
 ## `eval`
 Evaluate `<commands>` as if they were typed in directly.
 However it enables expansions to happen before evaluation.
-Optionally, filter evaluation based if we're on a platform listed in `<platforms...>`.
-- usage: `eval [on <platforms...>] <commands>`
+- usage: `eval <commands>`
+
+## `if`
+Conditionally evaluate `<commands>` as if they were typed in directly.
+However it enables expansions to happen before evaluation.
+`<op>` can be one of the following:
+- `==`: executes if `<left-expr>` is equal to `<right-expr>`
+- `!=`: executes if `<left-expr>` is not equal to `<right-expr>`
+
+- usage: `if <left-expr> <op> <right-expr> <commands>`
 

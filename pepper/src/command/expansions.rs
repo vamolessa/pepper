@@ -1,4 +1,4 @@
-use std::{env, fmt, path::Path};
+use std::{env, fmt};
 
 use crate::{
     buffer::{Buffer, BufferHandle},
@@ -7,7 +7,7 @@ use crate::{
     command::CommandArgs,
     cursor::Cursor,
     editor::EditorContext,
-    editor_utils::RegisterKey,
+    editor_utils::{to_absolute_path_string, RegisterKey},
 };
 
 pub enum ExpansionError {
@@ -100,17 +100,7 @@ pub fn write_variable_expansion<'ctx>(
             let current_directory = ctx.editor.current_directory.to_str();
             let path = buffer.and_then(|b| b.path.to_str());
             if let (Some(current_directory), Some(path)) = (current_directory, path) {
-                if Path::new(path).is_relative() {
-                    output.push_str(current_directory);
-                    if let Some(false) = current_directory
-                        .chars()
-                        .next_back()
-                        .map(std::path::is_separator)
-                    {
-                        output.push(std::path::MAIN_SEPARATOR);
-                    }
-                }
-                output.push_str(path);
+                to_absolute_path_string(current_directory, path, output);
             }
         }
         "buffer-content" => {
@@ -183,6 +173,25 @@ pub fn write_variable_expansion<'ctx>(
             assert_empty_args(args)?;
             output.push_str(&ctx.editor.session_name);
         }
+        "platform" => {
+            let current_platform = if cfg!(target_os = "windows") {
+                "windows"
+            } else if cfg!(target_os = "linux") {
+                "linux"
+            } else if cfg!(any(
+                target_os = "freebsd",
+                target_os = "netbsd",
+                target_os = "openbsd",
+                target_os = "dragonfly",
+            )) {
+                "bsd"
+            } else if cfg!(target_os = "macos") {
+                "macos"
+            } else {
+                "unknown"
+            };
+            output.push_str(current_platform);
+        }
         "pid" => {
             assert_empty_args(args)?;
             let _ = write!(output, "{}", std::process::id());
@@ -233,3 +242,4 @@ fn cursor(
     };
     Ok(cursors[..].get(index).cloned())
 }
+

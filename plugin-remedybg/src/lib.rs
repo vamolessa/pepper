@@ -1,13 +1,14 @@
 use std::{
-    fmt::Write,
+    fmt,
     path::Path,
     process::{Command, Stdio},
 };
 
 use pepper::{
     buffer::{BufferBreakpoint, BufferHandle},
-    command::{CommandManager, CompletionSource},
+    command::{CommandManager, CompletionSource, CommandError},
     editor::{Editor, EditorContext},
+    editor_utils::to_absolute_path_string,
     events::{EditorEvent, EditorEventIter},
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
     plugin::{Plugin, PluginDefinition, PluginHandle},
@@ -48,6 +49,7 @@ impl Default for ProcessState {
 const MAIN_PROCESS_ID: u32 = 0;
 const CLEAR_BREAKPOINTS_PROCESS_ID: u32 = 1;
 const ADD_BREAKPOINT_PROCESS_ID: u32 = 2;
+const COMMAND_PROCESS_ID: u32 = 1;
 
 #[derive(Default)]
 pub(crate) struct RemedybgPlugin {
@@ -69,7 +71,7 @@ impl RemedybgPlugin {
         self.process_state = ProcessState::Spawning;
 
         command
-            .stdin(Stdio::piped())
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
 
@@ -104,7 +106,7 @@ impl RemedybgPlugin {
         command.arg("remove-all-breakpoints");
 
         command
-            .stdin(Stdio::piped())
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
 
@@ -137,6 +139,7 @@ impl RemedybgPlugin {
         command.arg("add-breakpoint-at-file");
 
         {
+            use fmt::Write;
             let mut arg = editor.string_pool.acquire();
 
             let current_directory = editor.current_directory.to_str();
@@ -165,7 +168,7 @@ impl RemedybgPlugin {
         }
 
         command
-            .stdin(Stdio::piped())
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
 
@@ -186,14 +189,13 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
     };
 
     r("remedybg-spawn", &[CompletionSource::Files], |ctx, io| {
-        let session_file = match io.args.try_next() {
-            Some(file) => file,
-            None => "session.rdbg",
-        };
+        let session_file = io.args.try_next();
         io.args.assert_empty()?;
 
         let mut command = Command::new("remedybg");
-        command.arg(session_file);
+        if let Some(session_file) = session_file {
+            command.arg(session_file);
+        }
 
         let plugin_handle = io.plugin_handle();
         let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
@@ -215,6 +217,123 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             Ok(())
         },
     );
+
+    static COMMAND_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&[
+        "start",
+        "start-paused",
+        "stop",
+        "attach",
+        "continue",
+        "run-to-cursor",
+    ])];
+    r("remedybg-command", COMMAND_COMPLETIONS, |ctx, io| {
+        fn write_arg(args: &mut String, arg: &str) -> (u32, u32) {
+            let start = args.len() as _;
+            args.push_str(arg);
+            let end = args.len() as _;
+            (start, end)
+        }
+
+        #[derive(Default)]
+        struct ArgRanges {
+            pub buf: [(u32, u32); 3],
+            pub len: u8,
+        }
+        impl ArgRanges {
+            pub fn push(&mut self, range: (u32, u32)) {
+                self.buf[self.len as usize] = range;
+                self.len += 1;
+            }
+        }
+
+        let mut args_string = ctx.editor.string_pool.acquire();
+        let mut arg_ranges = ArgRanges::default();
+
+        match io.args.next()? {
+            "start" => arg_ranges.push(write_arg(&mut args_string, "start-debugging")),
+            "start-paused" => {
+                arg_ranges.push(write_arg(&mut args_string, "start-debugging"));
+                arg_ranges.push(write_arg(&mut args_string, "1"));
+            },
+            "stop" => arg_ranges.push(write_arg(&mut args_string, "stop-debugging")),
+            "attach" => {
+                let process_id = io.args.next()?;
+                arg_ranges.push(write_arg(&mut args_string, "attach-to-process-by-id"));
+                arg_ranges.push(write_arg(&mut args_string, process_id));
+            },
+            "continue" => arg_ranges.push(write_arg(&mut args_string, "continue-execution")),
+            "run-to-cursor" => {
+                use fmt::Write;
+
+                let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
+                let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+                let buffer_path = match ctx.editor.buffers.get(buffer_view.buffer_handle).path.to_str() {
+                    Some(path) => path,
+                    None => {
+                        ctx.editor.string_pool.release(args_string);
+                        return Err(CommandError::OtherStatic("buffer path is not utf-8"));
+                    }
+                };
+
+                let current_directory = match ctx.editor.current_directory.to_str() {
+                    Some(path) => path,
+                    None => {
+                        ctx.editor.string_pool.release(args_string);
+                        return Err(CommandError::OtherStatic("current directory is not utf-8"));
+                    }
+                };
+
+                arg_ranges.push(write_arg(&mut args_string, "run-to-cursor"));
+
+                let start = args_string.len() as _;
+                to_absolute_path_string(current_directory, buffer_path, &mut args_string);
+                let end = args_string.len() as _;
+                arg_ranges.push((start, end));
+
+                let line_number = buffer_view.cursors.main_cursor().position.line_index + 1;
+                let start = args_string.len() as _;
+                write!(args_string, "{}", line_number).unwrap();
+                let end = args_string.len() as _;
+                arg_ranges.push((start, end));
+            }
+            _ => {
+                ctx.editor.string_pool.release(args_string);
+                return Err(CommandError::OtherStatic("invalid remedybg-debub operation"));
+            }
+        }
+        io.args.assert_empty()?;
+
+        let plugin_handle = io.plugin_handle();
+        let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
+
+        if !matches!(remedybg.process_state, ProcessState::Running(_)) {
+            ctx.editor.string_pool.release(args_string);
+            return Ok(());
+        }
+
+        let mut command = Command::new("remedybg");
+        for range in &arg_ranges.buf[..arg_ranges.len as usize] {
+            let arg = &args_string[range.0 as usize..range.1 as usize];
+            command.arg(arg);
+        }
+        ctx.editor.string_pool.release(args_string);
+
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+
+        ctx.platform.requests.enqueue(PlatformRequest::SpawnProcess {
+            tag: ProcessTag::Plugin {
+                plugin_handle,
+                id: COMMAND_PROCESS_ID,
+            },
+            command,
+            buf_len: 128,
+        });
+
+        Ok(())
+    });
 }
 
 fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
@@ -261,3 +380,4 @@ fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32
         _ => (),
     }
 }
+

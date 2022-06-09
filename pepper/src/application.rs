@@ -58,7 +58,7 @@ impl ServerApplication {
         let mut log_file = None;
         if let Ok(temp_dir) = temp_dir.into_os_string().into_string() {
             log_file_path = temp_dir;
-            log_file_path.push('/');
+            log_file_path.push(std::path::MAIN_SEPARATOR);
             log_file_path.push_str(&config.args.session_name);
             log_file_path.push_str(".txt");
             log_file = fs::File::create(&log_file_path).ok();

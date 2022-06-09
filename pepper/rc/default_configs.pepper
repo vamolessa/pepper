@@ -39,7 +39,7 @@ command -replace-with-output @{
     }
 }
 
-eval on windows @{
+if @platform() == windows @{
     command -find-file @{
         picker-entries-from-lines "cmd /c dir /a-d /s /b"
         pick "open:" @{
@@ -55,7 +55,7 @@ eval on windows @{
     }
 }
 
-eval on linux @{
+if @platform() == linux @{
     copy-command "xclip -selection clipboard -in"
     paste-command "xclip -selection clipboard -out"
 
@@ -65,9 +65,16 @@ eval on linux @{
             open "@picker-entry()"
         }
     }
+    command -find-pattern @{
+        readline "find:" @{
+            open scratch "@readline-input().refs"
+            enqueue-keys aad
+            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
+        }
+    }
 }
 
-eval on bsd @{
+if @platform() == bsd @{
     copy-command "xclip -in"
     paste-command "xclip -out"
 
@@ -77,9 +84,16 @@ eval on bsd @{
             open "@picker-entry()"
         }
     }
+    command -find-pattern @{
+        readline "find:" @{
+            open scratch "@readline-input().refs"
+            enqueue-keys aad
+            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
+        }
+    }
 }
 
-eval on macos @{
+if @platform() == macos @{
     copy-command "pbcopy"
     paste-command "pbpaste"
 
@@ -89,9 +103,6 @@ eval on macos @{
             open "@picker-entry()"
         }
     }
-}
-
-eval on linux bsd macos @{
     command -find-pattern @{
         readline "find:" @{
             open scratch "@readline-input().refs"

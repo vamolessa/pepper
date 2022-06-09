@@ -605,45 +605,8 @@ pub fn register_commands(commands: &mut CommandManager) {
         ctx.editor.commands.register_macro(name, source)
     });
 
-    static EVAL_COMPLETIONS: &[CompletionSource] = &[
-        CompletionSource::Custom(&["on"]),
-        CompletionSource::Custom(&["windows", "linux", "bsd", "macos"]),
-    ];
-    r("eval", EVAL_COMPLETIONS, |ctx, io| {
-        let mut continuation = io.args.next()?;
-
-        let mut should_execute = true;
-        if continuation == "on" {
-            let current_platform = if cfg!(target_os = "windows") {
-                "windows"
-            } else if cfg!(target_os = "linux") {
-                "linux"
-            } else if cfg!(any(
-                target_os = "freebsd",
-                target_os = "netbsd",
-                target_os = "openbsd",
-                target_os = "dragonfly",
-            )) {
-                "bsd"
-            } else if cfg!(target_os = "macos") {
-                "macos"
-            } else {
-                ""
-            };
-
-            should_execute = false;
-            while let Some(arg) = io.args.try_next() {
-                continuation = arg;
-                should_execute = should_execute || arg == current_platform;
-            }
-        }
-
-        io.args.assert_empty()?;
-
-        if !should_execute {
-            return Ok(());
-        }
-
+    r("eval", &[], |ctx, io| {
+        let continuation = io.args.next()?;
         io.args.assert_empty()?;
         match CommandManager::eval(ctx, io.client_handle, continuation) {
             Ok(flow) => {
@@ -653,4 +616,35 @@ pub fn register_commands(commands: &mut CommandManager) {
             Err(error) => Err(error.error),
         }
     });
+
+    static IF_COMPLETIONS: &[CompletionSource] = &[
+        CompletionSource::Custom(&[]),
+        CompletionSource::Custom(&["==", "!="]),
+    ];
+    r("if", IF_COMPLETIONS, |ctx, io| {
+        let left_expr = io.args.next()?;
+        let op = io.args.next()?;
+        let right_expr = io.args.next()?;
+        let continuation = io.args.next()?;
+        io.args.assert_empty()?;
+
+        let should_execute = match op {
+            "==" => left_expr == right_expr,
+            "!=" => left_expr != right_expr,
+            _ => return Err(CommandError::InvalidIfOp),
+        };
+
+        if !should_execute {
+            return Ok(());
+        }
+
+        match CommandManager::eval(ctx, io.client_handle, continuation) {
+            Ok(flow) => {
+                io.flow = flow;
+                Ok(())
+            }
+            Err(error) => Err(error.error),
+        }
+    });
 }
+
