@@ -114,6 +114,7 @@ impl fmt::Display for ExpansionError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionSource {
     Commands,
+    Expansions,
     Buffers,
     Files,
     Custom(&'static [&'static str]),
@@ -310,7 +311,23 @@ impl<'a> Iterator for CommandTokenizer<'a> {
 
         loop {
             let mut chars = self.0.chars();
-            match chars.next()? {
+            let next_char = match chars.next() {
+                Some(c) => c,
+                None => {
+                    return if can_expand_variables {
+                        None
+                    } else {
+                        Some(CommandToken {
+                            slice: &self.0,
+                            is_simple: true,
+                            can_expand_variables,
+                            has_escaping: false,
+                        })
+                    }
+                }
+            };
+
+            match next_char {
                 '@' => {
                     can_expand_variables = false;
                     self.0 = chars.as_str();
@@ -1197,6 +1214,12 @@ mod tests {
             Some("\"{(\\\")!\".}|'{(\\')!'.}"),
             tokens.next().map(|t| t.slice)
         );
+        assert_eq!(None, tokens.next().map(|t| t.slice));
+
+        let mut tokens = CommandTokenizer("@");
+        let token = tokens.next().unwrap();
+        assert_eq!("", token.slice);
+        assert!(!token.can_expand_variables);
         assert_eq!(None, tokens.next().map(|t| t.slice));
 
         let mut tokens = CommandTokenizer("@'aa'");

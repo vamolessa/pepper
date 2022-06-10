@@ -154,7 +154,7 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
     let mut tokens = CommandTokenizer(input);
 
     let mut last_token = match tokens.next() {
-        Some(token) => token.slice,
+        Some(token) => token,
         None => {
             ctx.editor.picker.clear();
             state.completion_index = input.len();
@@ -166,7 +166,7 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
             return;
         }
     };
-    let command_name = last_token.trim_end_matches('!');
+    let command_name = last_token.slice.trim_end_matches('!');
 
     if let ReadCommandState::NavigatingHistory(_) = state.read_state {
         state.read_state = ReadCommandState::TypingCommand;
@@ -174,15 +174,15 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
     ctx.editor.picker.clear_cursor();
 
     let mut arg_count = 0;
-    let ends_with_whitespace = input.ends_with(&[' ', '\t'][..]);
 
     for token in tokens {
         arg_count += 1;
-        last_token = token.slice;
+        last_token = token;
     }
 
-    let mut pattern = last_token;
+    let mut pattern = last_token.slice;
 
+    let ends_with_whitespace = input.ends_with(&[' ', '\t']);
     if ends_with_whitespace {
         arg_count += 1;
         pattern = &input[input.len()..];
@@ -200,6 +200,21 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
         completion_source = CompletionSource::Commands;
     }
 
+    if last_token.is_simple && !last_token.can_expand_variables && last_token.slice.is_empty() {
+        completion_source = CompletionSource::Expansions;
+    } else if last_token.can_expand_variables {
+        if let Some(i) = pattern.rfind('@') {
+            let rest = &pattern[i + 1..];
+            if rest
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+            {
+                pattern = rest;
+                completion_source = CompletionSource::Expansions;
+            }
+        }
+    }
+
     state.completion_index = pattern.as_ptr() as usize - input.as_ptr() as usize;
 
     if state.completion_source != completion_source {
@@ -215,6 +230,11 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
                     if !name.starts_with('-') {
                         ctx.editor.picker.add_custom_entry(name);
                     }
+                }
+            }
+            CompletionSource::Expansions => {
+                for expansion_name in ctx.editor.commands.expansion_names() {
+                    ctx.editor.picker.add_custom_entry(expansion_name);
                 }
             }
             CompletionSource::Buffers => {
