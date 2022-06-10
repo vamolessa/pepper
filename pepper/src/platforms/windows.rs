@@ -1622,6 +1622,22 @@ fn parse_console_events(
     keys: &mut Vec<Key>,
     resize: &mut Option<(u16, u16)>,
 ) {
+    fn decode_utf16(previous_codepoint: &mut Option<u16>, current_codepoint: u16) -> Option<char> {
+        let codepoints = previous_codepoint
+            .take()
+            .into_iter()
+            .chain(std::iter::once(current_codepoint));
+        match std::char::decode_utf16(codepoints).next() {
+            Some(Ok(c)) => Some(c),
+            _ => {
+                *previous_codepoint = Some(current_codepoint);
+                None
+            }
+        }
+    }
+
+    let mut previous_unicode_char = None;
+
     for event in console_events {
         match event.EventType {
             KEY_EVENT => {
@@ -1656,18 +1672,17 @@ fn parse_console_events(
                     VK_DELETE => KeyCode::Delete,
                     VK_F1..=VK_F24 => KeyCode::F((keycode - VK_F1 + 1) as _),
                     VK_ESCAPE => KeyCode::Esc,
-                    VK_SPACE => match std::char::decode_utf16(std::iter::once(unicode_char)).next()
-                    {
-                        Some(Ok(c)) => KeyCode::Char(c),
-                        _ => continue,
+                    VK_SPACE => match decode_utf16(&mut previous_unicode_char, unicode_char) {
+                        Some(c) => KeyCode::Char(c),
+                        None => continue,
                     },
                     CHAR_A..=CHAR_Z => {
                         let mut c = if control || alt {
                             ((keycode - CHAR_A) as u8 + b'a') as char
                         } else {
-                            match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                                Some(Ok(c)) => c,
-                                _ => continue,
+                            match decode_utf16(&mut previous_unicode_char, unicode_char) {
+                                Some(c) => c,
+                                None => continue,
                             }
                         };
                         if shift {
@@ -1677,8 +1692,8 @@ fn parse_console_events(
                         }
                         KeyCode::Char(c)
                     }
-                    _ => match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
-                        Some(Ok(c)) if c.is_ascii_graphic() => {
+                    _ => match decode_utf16(&mut previous_unicode_char, unicode_char) {
+                        Some(c) => {
                             shift = false;
                             KeyCode::Char(c)
                         }
@@ -1686,13 +1701,16 @@ fn parse_console_events(
                     },
                 };
 
+                if let KeyCode::Char('\0') = code {
+                    continue;
+                }
+
                 let key = Key {
                     code,
                     shift,
                     control,
                     alt,
                 };
-
                 for _ in 0..repeat_count {
                     keys.push(key);
                 }

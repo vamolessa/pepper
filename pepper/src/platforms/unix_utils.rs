@@ -285,6 +285,12 @@ impl Terminal {
                 },
             };
 
+            buf = rest;
+
+            if let KeyCode::Char('\0') = code {
+                continue;
+            }
+
             if let KeyCode::Char(c) = &mut code {
                 if shift {
                     *c = c.to_ascii_uppercase();
@@ -300,7 +306,6 @@ impl Terminal {
                 alt,
             };
 
-            buf = rest;
             keys.push(key);
         }
     }
