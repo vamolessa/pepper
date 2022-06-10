@@ -2,9 +2,10 @@ use std::{collections::VecDeque, fmt, ops::Range};
 
 use crate::{
     buffer::{Buffer, BufferHandle, BufferReadError, BufferWriteError},
-    buffer_view::BufferViewHandle,
+    buffer_view::{BufferView, BufferViewHandle},
     client::ClientHandle,
     config::ParseConfigError,
+    cursor::Cursor,
     editor::{EditorContext, EditorFlow},
     editor_utils::{LogKind, ParseKeyMapError},
     events::KeyParseAllError,
@@ -20,7 +21,7 @@ const HISTORY_CAPACITY: usize = 8;
 
 pub enum CommandError {
     InvalidMacroName,
-    ExpansionError(expansions::ExpansionError),
+    ExpansionError(ExpansionError),
     NoSuchCommand,
     TooManyArguments,
     TooFewArguments,
@@ -77,6 +78,33 @@ impl fmt::Display for CommandError {
             Self::InvalidEnvironmentVariable => f.write_str("invalid environment variable"),
             Self::InvalidIfOp => f.write_str("invalid if comparison operator"),
             Self::InvalidGlob(error) => write!(f, "glob error: {}", error),
+            Self::OtherStatic(error) => f.write_str(error),
+            Self::OtherOwned(error) => f.write_str(&error),
+        }
+    }
+}
+
+pub enum ExpansionError {
+    NoSuchExpansion,
+    IgnoreExpansion,
+    ArgumentNotEmpty,
+    InvalidArgIndex,
+    InvalidBufferId,
+    InvalidCursorIndex,
+    InvalidRegisterKey,
+    OtherStatic(&'static str),
+    OtherOwned(String),
+}
+impl fmt::Display for ExpansionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::NoSuchExpansion => f.write_str("no such expansion"),
+            Self::IgnoreExpansion => unreachable!(),
+            Self::ArgumentNotEmpty => f.write_str("argument not empty"),
+            Self::InvalidArgIndex => f.write_str("invalid arg index"),
+            Self::InvalidBufferId => f.write_str("invalid buffer id"),
+            Self::InvalidCursorIndex => f.write_str("invalid cursor index"),
+            Self::InvalidRegisterKey => f.write_str("invalid register key"),
             Self::OtherStatic(error) => f.write_str(error),
             Self::OtherOwned(error) => f.write_str(&error),
         }
@@ -349,7 +377,6 @@ pub type CommandFn = fn(ctx: &mut EditorContext, io: &mut CommandIO) -> Result<(
 
 pub struct Command {
     plugin_handle: Option<PluginHandle>,
-    pub name: &'static str,
     pub completions: &'static [CompletionSource],
     command_fn: CommandFn,
 }
@@ -366,6 +393,61 @@ impl Macro {
     pub fn source<'a>(&self, sources: &'a str) -> &'a str {
         &sources[self.source_range.start as usize..self.source_range.end as usize]
     }
+}
+
+pub struct ExpansionIO<'a> {
+    pub client_handle: Option<ClientHandle>,
+    plugin_handle: Option<PluginHandle>,
+    pub args: &'a str,
+    pub output: &'a mut String,
+}
+impl<'a> ExpansionIO<'a> {
+    pub fn plugin_handle(&self) -> PluginHandle {
+        self.plugin_handle.unwrap()
+    }
+
+    pub fn assert_empty_args(&self) -> Result<(), ExpansionError> {
+        if self.args.is_empty() {
+            Ok(())
+        } else {
+            Err(ExpansionError::ArgumentNotEmpty)
+        }
+    }
+
+    pub fn current_buffer_view<'ctx>(&self, ctx: &'ctx EditorContext) -> Option<&'ctx BufferView> {
+        let client_handle = self.client_handle?;
+        let buffer_view_handle = ctx.clients.get(client_handle).buffer_view_handle()?;
+        let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+        Some(buffer_view)
+    }
+
+    pub fn current_buffer<'ctx>(&self, ctx: &'ctx EditorContext) -> Option<&'ctx Buffer> {
+        let buffer_view = self.current_buffer_view(ctx)?;
+        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
+        Some(buffer)
+    }
+
+    pub fn cursor(&self, ctx: &EditorContext) -> Result<Option<Cursor>, ExpansionError> {
+        let cursors = match self.current_buffer_view(ctx) {
+            Some(view) => &view.cursors,
+            None => return Ok(None),
+        };
+        let index = if self.args.is_empty() {
+            cursors.main_cursor_index()
+        } else {
+            self.args
+                .parse()
+                .map_err(|_| ExpansionError::InvalidCursorIndex)?
+        };
+        Ok(cursors[..].get(index).cloned())
+    }
+}
+
+pub type ExpansionFn = fn(ctx: &EditorContext, io: &mut ExpansionIO) -> Result<(), ExpansionError>;
+
+pub struct Expansion {
+    plugin_handle: Option<PluginHandle>,
+    expansion_fn: ExpansionFn,
 }
 
 #[derive(Default)]
@@ -443,8 +525,11 @@ struct EvalStackEntry {
 }
 
 pub struct CommandManager {
+    command_names: Vec<&'static str>,
     commands: Vec<Command>,
     pub macros: MacroCollection,
+    expansion_names: Vec<&'static str>,
+    expansions: Vec<Expansion>,
     history: VecDeque<String>,
     eval_stack: Vec<EvalStackEntry>,
 }
@@ -452,12 +537,18 @@ pub struct CommandManager {
 impl CommandManager {
     pub fn new() -> Self {
         let mut this = Self {
+            command_names: Vec::new(),
             commands: Vec::new(),
             macros: MacroCollection::default(),
+            expansion_names: Vec::new(),
+            expansions: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
             eval_stack: Vec::new(),
         };
+
         builtins::register_commands(&mut this);
+        expansions::register_expansions(&mut this);
+
         this
     }
 
@@ -468,9 +559,9 @@ impl CommandManager {
         completions: &'static [CompletionSource],
         command_fn: CommandFn,
     ) {
+        self.command_names.push(name);
         self.commands.push(Command {
             plugin_handle,
-            name,
             completions,
             command_fn,
         });
@@ -497,12 +588,30 @@ impl CommandManager {
         Ok(())
     }
 
-    pub fn find_command(&self, name: &str) -> Option<&Command> {
-        self.commands.iter().find(|c| c.name == name)
+    pub fn register_expansion(
+        &mut self,
+        plugin_handle: Option<PluginHandle>,
+        name: &'static str,
+        expansion_fn: ExpansionFn,
+    ) {
+        self.expansion_names.push(name);
+        self.expansions.push(Expansion {
+            plugin_handle,
+            expansion_fn,
+        });
     }
 
-    pub fn commands(&self) -> &[Command] {
-        &self.commands
+    pub fn find_command(&self, name: &str) -> Option<&Command> {
+        let index = self.command_names.iter().position(|&n| n == name)?;
+        Some(&self.commands[index])
+    }
+
+    pub fn command_names(&self) -> &[&'static str] {
+        &self.command_names
+    }
+
+    pub fn expansion_names(&self) -> &[&'static str] {
+        &self.expansion_names
     }
 
     pub fn history_len(&self) -> usize {
@@ -677,7 +786,63 @@ fn expand_variables<'a>(
     bang: bool,
     text: &str,
     output: &mut String,
-) -> Result<(), expansions::ExpansionError> {
+) -> Result<(), ExpansionError> {
+    fn write_variable_expansion(
+        ctx: &EditorContext,
+        client_handle: Option<ClientHandle>,
+        mut command_args: CommandArgs,
+        command_bang: bool,
+        name: &str,
+        args: &str,
+        output: &mut String,
+    ) -> Result<(), ExpansionError> {
+        if name == "arg" {
+            match args {
+                "!" => {
+                    if command_bang {
+                        output.push('!');
+                    }
+                }
+                "*" => {
+                    let args = match command_args.0.strip_suffix('\0') {
+                        Some(args) => args,
+                        None => return Err(ExpansionError::IgnoreExpansion),
+                    };
+                    output.push_str(args);
+                }
+                _ => {
+                    let mut index: usize =
+                        args.parse().map_err(|_| ExpansionError::InvalidArgIndex)?;
+                    while let Some(arg) = command_args.try_next() {
+                        if index == 0 {
+                            output.push_str(arg);
+                            break;
+                        }
+                        index -= 1;
+                    }
+                }
+            }
+            Ok(())
+        } else {
+            for (i, &expansion_name) in ctx.editor.commands.expansion_names().iter().enumerate() {
+                if expansion_name == name {
+                    let expansion = &ctx.editor.commands.expansions[i];
+                    let plugin_handle = expansion.plugin_handle;
+                    let expansion_fn = expansion.expansion_fn;
+
+                    let mut io = ExpansionIO {
+                        client_handle,
+                        plugin_handle,
+                        args,
+                        output,
+                    };
+                    return expansion_fn(ctx, &mut io);
+                }
+            }
+            Err(ExpansionError::NoSuchExpansion)
+        }
+    }
+
     fn parse_variable_name(text: &str) -> Result<&str, usize> {
         let mut chars = text.chars();
         loop {
@@ -770,7 +935,7 @@ fn expand_variables<'a>(
 
             rest = &rest[args_skip + variable_args.len() + 1..];
 
-            let result = expansions::write_variable_expansion(
+            let result = write_variable_expansion(
                 ctx,
                 client_handle,
                 CommandArgs(args),
@@ -781,7 +946,7 @@ fn expand_variables<'a>(
             );
             match result {
                 Ok(()) => (),
-                Err(expansions::ExpansionError::IgnoreExpansion) => {
+                Err(ExpansionError::IgnoreExpansion) => {
                     if token.is_simple {
                         continue 'tokens;
                     }
@@ -1171,10 +1336,7 @@ mod tests {
             "@register()",
             &mut expanded,
         );
-        assert!(matches!(
-            r,
-            Err(expansions::ExpansionError::InvalidRegisterKey)
-        ));
+        assert!(matches!(r, Err(ExpansionError::InvalidRegisterKey)));
         expanded.clear();
         let r = expand_variables(
             &ctx,
@@ -1184,10 +1346,7 @@ mod tests {
             "@register(xx)",
             &mut expanded,
         );
-        assert!(matches!(
-            r,
-            Err(expansions::ExpansionError::InvalidRegisterKey)
-        ));
+        assert!(matches!(r, Err(ExpansionError::InvalidRegisterKey)));
 
         assert_expansion("buffer/path0\0", &ctx, "@buffer-path()");
         assert_expansion(

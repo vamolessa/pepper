@@ -208,8 +208,8 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
 
         match completion_source {
             CompletionSource::Commands => {
-                for command in ctx.editor.commands.commands() {
-                    ctx.editor.picker.add_custom_entry(command.name);
+                for command_name in ctx.editor.commands.command_names() {
+                    ctx.editor.picker.add_custom_entry(command_name);
                 }
                 for name in ctx.editor.commands.macros.names() {
                     if !name.starts_with('-') {

@@ -1,244 +1,188 @@
 use std::{env, fmt};
 
 use crate::{
-    buffer::{Buffer, BufferHandle},
-    buffer_view::BufferView,
-    client::ClientHandle,
-    command::CommandArgs,
-    cursor::Cursor,
-    editor::EditorContext,
+    buffer::BufferHandle,
+    command::{CommandManager, ExpansionError},
     editor_utils::{to_absolute_path_string, RegisterKey},
 };
 
-pub enum ExpansionError {
-    IgnoreExpansion,
-    ArgumentNotEmpty,
-    InvalidArgIndex,
-    InvalidBufferId,
-    InvalidCursorIndex,
-    InvalidRegisterKey,
-}
-impl fmt::Display for ExpansionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::IgnoreExpansion => unreachable!(),
-            Self::ArgumentNotEmpty => f.write_str("argument not empty"),
-            Self::InvalidArgIndex => f.write_str("invalid arg index"),
-            Self::InvalidBufferId => f.write_str("invalid buffer id"),
-            Self::InvalidCursorIndex => f.write_str("invalid cursor index"),
-            Self::InvalidRegisterKey => f.write_str("invalid register key"),
-        }
-    }
-}
-
-pub fn write_variable_expansion<'ctx>(
-    ctx: &'ctx EditorContext,
-    client_handle: Option<ClientHandle>,
-    mut command_args: CommandArgs,
-    command_bang: bool,
-    name: &str,
-    args: &str,
-    output: &mut String,
-) -> Result<(), ExpansionError> {
+pub fn register_expansions(commands: &mut CommandManager) {
     use fmt::Write;
 
-    match name {
-        "arg" => match args {
-            "!" => {
-                if command_bang {
-                    output.push('!');
-                }
-            }
-            "*" => {
-                let args = match command_args.0.strip_suffix('\0') {
-                    Some(args) => args,
-                    None => return Err(ExpansionError::IgnoreExpansion),
-                };
-                output.push_str(args);
-            }
-            _ => {
-                let mut index: usize = args.parse().map_err(|_| ExpansionError::InvalidArgIndex)?;
-                while let Some(arg) = command_args.try_next() {
-                    if index == 0 {
-                        output.push_str(arg);
-                        break;
-                    }
-                    index -= 1;
-                }
-            }
-        },
-        "client-id" => {
-            assert_empty_args(args)?;
-            if let Some(client_handle) = client_handle {
-                let _ = write!(output, "{}", client_handle.0);
-            }
-        }
-        "buffer-id" => {
-            assert_empty_args(args)?;
-            if let Some(buffer) = current_buffer(ctx, client_handle) {
-                let _ = write!(output, "{}", buffer.handle().0);
-            }
-        }
-        "buffer-path" => {
-            let buffer = if args.is_empty() {
-                current_buffer(ctx, client_handle)
-            } else {
-                let id = args.parse().map_err(|_| ExpansionError::InvalidBufferId)?;
-                ctx.editor.buffers.try_get(BufferHandle(id))
-            };
-            if let Some(path) = buffer.and_then(|b| b.path.to_str()) {
-                output.push_str(path);
-            }
-        }
-        "buffer-absolute-path" => {
-            let buffer = if args.is_empty() {
-                current_buffer(ctx, client_handle)
-            } else {
-                let id = args.parse().map_err(|_| ExpansionError::InvalidBufferId)?;
-                ctx.editor.buffers.try_get(BufferHandle(id))
-            };
-            let current_directory = ctx.editor.current_directory.to_str();
-            let path = buffer.and_then(|b| b.path.to_str());
-            if let (Some(current_directory), Some(path)) = (current_directory, path) {
-                to_absolute_path_string(current_directory, path, output);
-            }
-        }
-        "buffer-content" => {
-            let buffer = if args.is_empty() {
-                current_buffer(ctx, client_handle)
-            } else {
-                let id = args.parse().map_err(|_| ExpansionError::InvalidBufferId)?;
-                let handle = BufferHandle(id);
-                ctx.editor.buffers.try_get(handle)
-            };
-            if let Some(buffer) = buffer {
-                for line in buffer.content().lines() {
-                    output.push_str(line.as_str());
-                    output.push('\n');
-                }
-            }
-        }
-        "cursor-anchor-column" => {
-            if let Some(cursor) = cursor(ctx, client_handle, args)? {
-                let _ = write!(output, "{}", cursor.anchor.column_byte_index + 1);
-            }
-        }
-        "cursor-anchor-line" => {
-            if let Some(cursor) = cursor(ctx, client_handle, args)? {
-                let _ = write!(output, "{}", cursor.anchor.line_index + 1);
-            }
-        }
-        "cursor-position-column" => {
-            if let Some(cursor) = cursor(ctx, client_handle, args)? {
-                let _ = write!(output, "{}", cursor.position.column_byte_index + 1);
-            }
-        }
-        "cursor-position-line" => {
-            if let Some(cursor) = cursor(ctx, client_handle, args)? {
-                let _ = write!(output, "{}", cursor.position.line_index + 1);
-            }
-        }
-        "cursor-selection" => {
-            let buffer = current_buffer(ctx, client_handle);
-            let cursor = cursor(ctx, client_handle, args)?;
-            if let (Some(buffer), Some(cursor)) = (buffer, cursor) {
-                let range = cursor.to_range();
-                for text in buffer.content().text_range(range) {
-                    output.push_str(text);
-                }
-            }
-        }
-        "readline-input" => {
-            assert_empty_args(args)?;
-            output.push_str(ctx.editor.read_line.input());
-        }
-        "picker-entry" => {
-            assert_empty_args(args)?;
-            let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
-                Some(entry) => entry.1,
-                None => "",
-            };
-            output.push_str(entry);
-        }
-        "register" => {
-            let key = RegisterKey::from_str(args).ok_or(ExpansionError::InvalidRegisterKey)?;
-            output.push_str(ctx.editor.registers.get(key));
-        }
-        "env" => {
-            if let Ok(env_var) = env::var(args) {
-                output.push_str(&env_var);
-            }
-        }
-        "session-name" => {
-            assert_empty_args(args)?;
-            output.push_str(&ctx.editor.session_name);
-        }
-        "platform" => {
-            let current_platform = if cfg!(target_os = "windows") {
-                "windows"
-            } else if cfg!(target_os = "linux") {
-                "linux"
-            } else if cfg!(any(
-                target_os = "freebsd",
-                target_os = "netbsd",
-                target_os = "openbsd",
-                target_os = "dragonfly",
-            )) {
-                "bsd"
-            } else if cfg!(target_os = "macos") {
-                "macos"
-            } else {
-                "unknown"
-            };
-            output.push_str(current_platform);
-        }
-        "pid" => {
-            assert_empty_args(args)?;
-            let _ = write!(output, "{}", std::process::id());
-        }
-        _ => (),
-    }
+    let mut r = |name, expansion_fn| {
+        commands.register_expansion(None, name, expansion_fn);
+    };
 
-    Ok(())
-}
-
-fn assert_empty_args(args: &str) -> Result<(), ExpansionError> {
-    if args.is_empty() {
+    r("client-id", |_, io| {
+        io.assert_empty_args()?;
+        if let Some(client_handle) = io.client_handle {
+            let _ = write!(io.output, "{}", client_handle.0);
+        }
         Ok(())
-    } else {
-        Err(ExpansionError::ArgumentNotEmpty)
-    }
-}
+    });
 
-fn current_buffer_view(
-    ctx: &EditorContext,
-    client_handle: Option<ClientHandle>,
-) -> Option<&BufferView> {
-    let buffer_view_handle = ctx.clients.get(client_handle?).buffer_view_handle()?;
-    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
-    Some(buffer_view)
-}
+    r("buffer-id", |ctx, io| {
+        io.assert_empty_args()?;
+        if let Some(buffer) = io.current_buffer(ctx) {
+            let _ = write!(io.output, "{}", buffer.handle().0);
+        }
+        Ok(())
+    });
 
-fn current_buffer(ctx: &EditorContext, client_handle: Option<ClientHandle>) -> Option<&Buffer> {
-    let buffer_view = current_buffer_view(ctx, client_handle)?;
-    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
-    Some(buffer)
-}
+    r("buffer-path", |ctx, io| {
+        let buffer = if io.args.is_empty() {
+            io.current_buffer(ctx)
+        } else {
+            let id = io
+                .args
+                .parse()
+                .map_err(|_| ExpansionError::InvalidBufferId)?;
+            ctx.editor.buffers.try_get(BufferHandle(id))
+        };
+        if let Some(path) = buffer.and_then(|b| b.path.to_str()) {
+            io.output.push_str(path);
+        }
+        Ok(())
+    });
 
-fn cursor(
-    ctx: &EditorContext,
-    client_handle: Option<ClientHandle>,
-    args: &str,
-) -> Result<Option<Cursor>, ExpansionError> {
-    let cursors = match current_buffer_view(ctx, client_handle) {
-        Some(view) => &view.cursors,
-        None => return Ok(None),
-    };
-    let index = if args.is_empty() {
-        cursors.main_cursor_index()
-    } else {
-        args.parse()
-            .map_err(|_| ExpansionError::InvalidCursorIndex)?
-    };
-    Ok(cursors[..].get(index).cloned())
+    r("buffer-absolute-path", |ctx, io| {
+        let buffer = if io.args.is_empty() {
+            io.current_buffer(ctx)
+        } else {
+            let id = io
+                .args
+                .parse()
+                .map_err(|_| ExpansionError::InvalidBufferId)?;
+            ctx.editor.buffers.try_get(BufferHandle(id))
+        };
+        let current_directory = ctx.editor.current_directory.to_str();
+        let path = buffer.and_then(|b| b.path.to_str());
+        if let (Some(current_directory), Some(path)) = (current_directory, path) {
+            to_absolute_path_string(current_directory, path, io.output);
+        }
+        Ok(())
+    });
+
+    r("buffer-content", |ctx, io| {
+        let buffer = if io.args.is_empty() {
+            io.current_buffer(ctx)
+        } else {
+            let id = io
+                .args
+                .parse()
+                .map_err(|_| ExpansionError::InvalidBufferId)?;
+            let handle = BufferHandle(id);
+            ctx.editor.buffers.try_get(handle)
+        };
+        if let Some(buffer) = buffer {
+            for line in buffer.content().lines() {
+                io.output.push_str(line.as_str());
+                io.output.push('\n');
+            }
+        }
+        Ok(())
+    });
+
+    r("cursor-anchor-column", |ctx, io| {
+        if let Some(cursor) = io.cursor(ctx)? {
+            let _ = write!(io.output, "{}", cursor.anchor.column_byte_index + 1);
+        }
+        Ok(())
+    });
+
+    r("cursor-anchor-line", |ctx, io| {
+        if let Some(cursor) = io.cursor(ctx)? {
+            let _ = write!(io.output, "{}", cursor.anchor.line_index + 1);
+        }
+        Ok(())
+    });
+
+    r("cursor-position-column", |ctx, io| {
+        if let Some(cursor) = io.cursor(ctx)? {
+            let _ = write!(io.output, "{}", cursor.position.column_byte_index + 1);
+        }
+        Ok(())
+    });
+
+    r("cursor-position-line", |ctx, io| {
+        if let Some(cursor) = io.cursor(ctx)? {
+            let _ = write!(io.output, "{}", cursor.position.line_index + 1);
+        }
+        Ok(())
+    });
+
+    r("cursor-selection", |ctx, io| {
+        let buffer = io.current_buffer(ctx);
+        let cursor = io.cursor(ctx)?;
+        if let (Some(buffer), Some(cursor)) = (buffer, cursor) {
+            let range = cursor.to_range();
+            for text in buffer.content().text_range(range) {
+                io.output.push_str(text);
+            }
+        }
+        Ok(())
+    });
+
+    r("readline-input", |ctx, io| {
+        io.assert_empty_args()?;
+        io.output.push_str(ctx.editor.read_line.input());
+        Ok(())
+    });
+
+    r("picker-entry", |ctx, io| {
+        io.assert_empty_args()?;
+        let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
+            Some(entry) => entry.1,
+            None => "",
+        };
+        io.output.push_str(entry);
+        Ok(())
+    });
+
+    r("register", |ctx, io| {
+        let key = RegisterKey::from_str(io.args).ok_or(ExpansionError::InvalidRegisterKey)?;
+        io.output.push_str(ctx.editor.registers.get(key));
+        Ok(())
+    });
+
+    r("env", |_, io| {
+        if let Ok(env_var) = env::var(io.args) {
+            io.output.push_str(&env_var);
+        }
+        Ok(())
+    });
+
+    r("session-name", |ctx, io| {
+        io.assert_empty_args()?;
+        io.output.push_str(&ctx.editor.session_name);
+        Ok(())
+    });
+
+    r("platform", |_, io| {
+        io.assert_empty_args()?;
+        let current_platform = if cfg!(target_os = "windows") {
+            "windows"
+        } else if cfg!(target_os = "linux") {
+            "linux"
+        } else if cfg!(any(
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd",
+            target_os = "dragonfly",
+        )) {
+            "bsd"
+        } else if cfg!(target_os = "macos") {
+            "macos"
+        } else {
+            "unknown"
+        };
+        io.output.push_str(current_platform);
+        Ok(())
+    });
+
+    r("pid", |_, io| {
+        io.assert_empty_args()?;
+        let _ = write!(io.output, "{}", std::process::id());
+        Ok(())
+    });
 }
