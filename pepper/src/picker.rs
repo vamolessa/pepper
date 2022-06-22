@@ -11,6 +11,7 @@ pub enum EntrySource {
 struct FilteredEntry {
     pub source: EntrySource,
     pub score: u32,
+    pub total_end_len: u32,
 }
 
 #[derive(Default)]
@@ -116,19 +117,23 @@ impl Picker {
     }
 
     pub fn sort_filtered_entries(&mut self) {
-        self.filtered_entries
-            .sort_unstable_by(|a, b| b.score.cmp(&a.score));
+        self.filtered_entries.sort_unstable_by(|a, b| {
+            let score_ord = b.score.cmp(&a.score);
+            let total_end_len_ord = a.total_end_len.cmp(&b.total_end_len);
+            score_ord.then(total_end_len_ord)
+        });
     }
 
     pub fn filter(&mut self, word_indices: WordIndicesIter, pattern: &str) {
         self.filtered_entries.clear();
 
         for (i, word) in word_indices {
-            let score = self.fuzzy_matcher.score(word, pattern);
-            if score != 0 {
+            let result = self.fuzzy_matcher.score(word, pattern);
+            if result.score != 0 {
                 self.filtered_entries.push(FilteredEntry {
                     source: EntrySource::WordDatabase(i),
-                    score,
+                    score: result.score,
+                    total_end_len: result.total_end_len,
                 });
             }
         }
@@ -137,8 +142,7 @@ impl Picker {
             self.filter_custom_entry(i, pattern);
         }
 
-        self.filtered_entries
-            .sort_unstable_by(|a, b| b.score.cmp(&a.score));
+        self.sort_filtered_entries();
 
         let len = self.filtered_entries.len();
         if len > 0 {
@@ -164,14 +168,15 @@ impl Picker {
 
     fn filter_custom_entry(&mut self, index: usize, pattern: &str) -> bool {
         let entry = &self.custom_entries_buffer[index];
-        let score = self.fuzzy_matcher.score(entry, pattern);
-        if score == 0 {
+        let result = self.fuzzy_matcher.score(entry, pattern);
+        if result.score == 0 {
             return false;
         }
 
         self.filtered_entries.push(FilteredEntry {
             source: EntrySource::Custom(index),
-            score,
+            score: result.score,
+            total_end_len: result.total_end_len,
         });
         true
     }
@@ -222,9 +227,7 @@ impl<'picker, 'pattern> AddCustomFilteredEntryGuard<'picker, 'pattern> {
 impl<'picker, 'pattern> Drop for AddCustomFilteredEntryGuard<'picker, 'pattern> {
     fn drop(&mut self) {
         if self.needs_sorting {
-            self.picker
-                .filtered_entries
-                .sort_unstable_by(|a, b| b.score.cmp(&a.score));
+            self.picker.sort_filtered_entries();
         }
     }
 }
@@ -236,6 +239,12 @@ const CONSECUTIVE_MATCH_SCORE: u32 = 3;
 struct FuzzyMatch {
     rest_index: u32,
     score: u32,
+    total_end_len: u32,
+}
+
+struct FuzzyScoreResult {
+    score: u32,
+    total_end_len: u32,
 }
 
 #[derive(Default)]
@@ -244,15 +253,21 @@ struct FuzzyMatcher {
     next_matches: Vec<FuzzyMatch>,
 }
 impl FuzzyMatcher {
-    pub fn score(&mut self, text: &str, pattern: &str) -> u32 {
+    pub fn score(&mut self, text: &str, pattern: &str) -> FuzzyScoreResult {
+        let text_len = text.len() as u32;
+
         if pattern.is_empty() {
-            return 1;
+            return FuzzyScoreResult {
+                score: 1,
+                total_end_len: text_len,
+            };
         }
 
         self.previous_matches.clear();
         self.previous_matches.push(FuzzyMatch {
             rest_index: 0,
             score: 0,
+            total_end_len: text_len,
         });
 
         for pattern_char in pattern.chars() {
@@ -282,7 +297,13 @@ impl FuzzyMatcher {
                             let rest_index =
                                 previous_match.rest_index + (i + text_char.len_utf8()) as u32;
                             let score = previous_match.score + score;
-                            self.next_matches.push(FuzzyMatch { rest_index, score });
+                            let total_end_len =
+                                previous_match.total_end_len + (text_len - rest_index);
+                            self.next_matches.push(FuzzyMatch {
+                                rest_index,
+                                score,
+                                total_end_len,
+                            });
                         }
                     }
 
@@ -291,21 +312,30 @@ impl FuzzyMatcher {
             }
 
             if self.next_matches.is_empty() {
-                return 0;
+                return FuzzyScoreResult {
+                    score: 0,
+                    total_end_len: text_len,
+                };
             }
             std::mem::swap(&mut self.previous_matches, &mut self.next_matches);
         }
 
+        let mut total_end_len = 0;
         let mut best_score = 0;
         for previous_match in &self.previous_matches {
-            if best_score < previous_match.score {
+            if best_score < previous_match.score
+                || best_score == previous_match.score
+                    && total_end_len > previous_match.total_end_len
+            {
                 best_score = previous_match.score;
+                total_end_len = previous_match.total_end_len;
             }
         }
-        if best_score > 0 {
-            best_score += (text.len() == pattern.len()) as u32;
+
+        FuzzyScoreResult {
+            score: best_score,
+            total_end_len,
         }
-        best_score
     }
 }
 
@@ -315,68 +345,94 @@ mod tests {
 
     #[test]
     fn fuzzy_matcher_test() {
-        let mut fuzzy_matcher = FuzzyMatcher::default();
+        fn assert_score(
+            expected_score: u32,
+            expected_total_end_len: u32,
+            text: &str,
+            pattern: &str,
+        ) {
+            let mut fuzzy_matcher = FuzzyMatcher::default();
+            let result = fuzzy_matcher.score(text, pattern);
+            assert_eq!(expected_score, result.score);
+            assert_eq!(
+                expected_total_end_len,
+                result.total_end_len - text.len() as u32
+            );
+        }
 
-        assert_eq!(1, fuzzy_matcher.score("", ""));
-        assert_eq!(1, fuzzy_matcher.score("abc", ""));
-        assert_eq!(0, fuzzy_matcher.score("", "abc"));
-        assert_eq!(0, fuzzy_matcher.score("abc", "z"));
-        assert_eq!(0, fuzzy_matcher.score("a", "xyz"));
+        assert_score(1, 0, "", "");
+        assert_score(1, 0, "abc", "");
+        assert_score(0, 0, "", "abc");
+        assert_score(0, 0, "abc", "z");
+        assert_score(0, 0, "a", "xyz");
 
-        assert_eq!(
-            FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 3 + 1,
-            fuzzy_matcher.score("word", "word"),
+        assert_score(
+            FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 3,
+            3 + 2 + 1 + 0,
+            "word",
+            "word",
         );
 
-        assert_eq!(
+        assert_score(
             FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 2,
-            fuzzy_matcher.score("word", "wor"),
+            3 + 2 + 1,
+            "word",
+            "wor",
         );
 
-        assert_eq!(0, fuzzy_matcher.score("word", "wrd"),);
+        assert_score(0, 0, "word", "wrd");
 
-        assert_eq!(
+        assert_score(
             FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE,
-            fuzzy_matcher.score("first/second", "f/s")
+            11 + 6 + 5,
+            "first/second",
+            "f/s",
         );
 
-        assert_eq!(
+        assert_score(
             FIRST_CHAR_SCORE + (WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE) * 2,
-            fuzzy_matcher.score("camelCase", "caca"),
+            8 + 7 + 3 + 2,
+            "camelCase",
+            "caca",
         );
 
-        assert_eq!(
+        assert_score(
             FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE * 3,
-            fuzzy_matcher.score("ababAbA", "aaa")
+            6 + 2 + 0,
+            "ababAbA",
+            "aaa",
         );
-        assert_eq!(
+        assert_score(
             FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE * 2,
-            fuzzy_matcher.score("abc cde", "ac"),
+            6 + 2,
+            "abc cde",
+            "ac",
         );
-        assert_eq!(WORD_BOUNDARY_MATCH_SCORE, fuzzy_matcher.score("abc x", "x"));
+        assert_score(WORD_BOUNDARY_MATCH_SCORE, 0, "abc x", "x");
 
-        assert_eq!(
+        assert_score(
             WORD_BOUNDARY_MATCH_SCORE + CONSECUTIVE_MATCH_SCORE * 3,
-            fuzzy_matcher.score("AxxBxx Abcd", "abcd")
+            3 + 2 + 1 + 0,
+            "AxxBxx Abcd",
+            "abcd",
         );
 
-        assert_eq!(
-            FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE,
-            fuzzy_matcher.score("abc", "a")
-        );
-        assert_eq!(
-            WORD_BOUNDARY_MATCH_SCORE,
-            fuzzy_matcher.score("xyz-abc", "a")
-        );
+        assert_score(FIRST_CHAR_SCORE + WORD_BOUNDARY_MATCH_SCORE, 2, "abc", "a");
+        assert_score(WORD_BOUNDARY_MATCH_SCORE, 2, "xyz-abc", "a");
 
         let repetition_count = 100;
         let big_repetitive_text = "a".repeat(repetition_count);
-        assert_eq!(
+        let mut expected_total_end_len = 0;
+        for i in 1..repetition_count {
+            expected_total_end_len += i;
+        }
+        assert_score(
             FIRST_CHAR_SCORE
                 + WORD_BOUNDARY_MATCH_SCORE
-                + CONSECUTIVE_MATCH_SCORE * (repetition_count - 1) as u32
-                + 1,
-            fuzzy_matcher.score(&big_repetitive_text, &big_repetitive_text),
+                + CONSECUTIVE_MATCH_SCORE * (repetition_count - 1) as u32,
+            expected_total_end_len as _,
+            &big_repetitive_text,
+            &big_repetitive_text,
         );
     }
 }

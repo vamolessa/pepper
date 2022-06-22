@@ -18,6 +18,7 @@
 - added `@platform()` that expands to the platform name the editor is running on top of.
 - added the possibility for plugins to register its own expansions
 - added command variable expansion completion
+- better picker heuristics which favors matches that happen more to the end of the entry
 
 # 0.27.0
 - added `set-env` command to change the editor's environment variables
