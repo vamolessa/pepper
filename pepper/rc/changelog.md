@@ -19,6 +19,7 @@
 - added the possibility for plugins to register its own expansions
 - added command variable expansion completion
 - better picker heuristics which favors matches that happen more to the end of the entry
+- fix lsp-plugin documentation on globs
 
 # 0.27.0
 - added `set-env` command to change the editor's environment variables

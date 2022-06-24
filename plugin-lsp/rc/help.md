@@ -3,9 +3,9 @@ An LSP server is usually started when a file it should handle is opened, normall
 By using the `lsp` command, it's possible to automatically start an LSP server like that.
 For each LSP server you wish to register, add this to one of your config files:
 ```
-lsp "lsp-server-command" "**.ext"
+lsp "lsp-server-command" "**/*.ext"
 ```
-Where `"**.ext"` is a glob pattern that, when matched against a buffer just opened,
+Where `"**/*.ext"` is a glob pattern that, when matched against a buffer just opened,
 will invoke the LSP server using `"lsp-server-command"`.
 In this case, whenever we open a buffer with the extension `.ext`.
 
@@ -15,16 +15,16 @@ If you need to inspect/debug the protocol messages, they are logged to the edito
 
 ```
 # rust-analyzer (rust)
-lsp rust-analyzer "**.rs"
+lsp rust-analyzer "**/*.rs"
 
 # clangd (c/cpp)
-lsp "clangd --offset-encoding=utf-8" "**.{c,cpp,h,hpp}"
+lsp "clangd --offset-encoding=utf-8" "**/*.{c,cpp,h,hpp}"
 
 # omnisharp (c#)
-lsp "omnisharp -lsp --encoding utf-8" "**.cs"
+lsp "omnisharp -lsp --encoding utf-8" "**/*.cs"
 
 # zls (zig)
-lsp zls "**.zig"
+lsp zls "**/*.zig"
 ```
 
 ## bindings
