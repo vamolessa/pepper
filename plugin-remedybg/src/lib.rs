@@ -5,7 +5,7 @@ use std::{
 };
 
 use pepper::{
-    buffer::{BufferBreakpoint, BufferHandle},
+    buffer::{BufferBreakpoint, BufferHandle, BufferCollection},
     command::{CommandError, CommandManager, CompletionSource},
     editor::{Editor, EditorContext},
     editor_utils::to_absolute_path_string,
@@ -87,7 +87,7 @@ impl RemedybgPlugin {
 
     pub fn begin_sync_breakpoints(
         &mut self,
-        editor: &Editor,
+        buffers: &BufferCollection,
         platform: &mut Platform,
         plugin_handle: PluginHandle,
     ) {
@@ -95,12 +95,7 @@ impl RemedybgPlugin {
             return;
         }
 
-        self.pending_breakpoints.clear();
-        for buffer in editor.buffers.iter() {
-            for &breakpoint in buffer.breakpoints() {
-                self.pending_breakpoints.push((buffer.handle(), breakpoint));
-            }
-        }
+        self.refresh_pending_breakpoints(buffers);
 
         let mut command = Command::new("remedybg");
         command.arg("remove-all-breakpoints");
@@ -118,6 +113,15 @@ impl RemedybgPlugin {
             command,
             buf_len: 128,
         });
+    }
+
+    fn refresh_pending_breakpoints(&mut self, buffers: &BufferCollection) {
+        self.pending_breakpoints.clear();
+        for buffer in buffers.iter() {
+            for &breakpoint in buffer.breakpoints() {
+                self.pending_breakpoints.push((buffer.handle(), breakpoint));
+            }
+        }
     }
 
     fn add_next_breakpoint(
@@ -212,7 +216,7 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
 
             let plugin_handle = io.plugin_handle();
             let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-            remedybg.begin_sync_breakpoints(&ctx.editor, &mut ctx.platform, plugin_handle);
+            remedybg.begin_sync_breakpoints(&ctx.editor.buffers, &mut ctx.platform, plugin_handle);
 
             Ok(())
         },
@@ -355,7 +359,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
             EditorEvent::Idle => {
                 if remedybg.breakpoints_changed {
                     remedybg.breakpoints_changed = false;
-                    remedybg.begin_sync_breakpoints(&ctx.editor, &mut ctx.platform, plugin_handle);
+                    remedybg.begin_sync_breakpoints(&ctx.editor.buffers, &mut ctx.platform, plugin_handle);
                 }
             }
             EditorEvent::BufferBreakpointsChanged { .. } => remedybg.breakpoints_changed = true,
@@ -372,7 +376,11 @@ fn on_process_spawned(
 ) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
     match id {
-        MAIN_PROCESS_ID => remedybg.process_state = ProcessState::Running(process_handle),
+        MAIN_PROCESS_ID => {
+            remedybg.process_state = ProcessState::Running(process_handle);
+            remedybg.refresh_pending_breakpoints(&ctx.editor.buffers);
+            remedybg.add_next_breakpoint(&mut ctx.editor, &mut ctx.platform, plugin_handle)
+        }
         _ => (),
     }
 }

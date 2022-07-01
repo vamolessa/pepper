@@ -1,5 +1,9 @@
 # changelog
 
+# 0.29.0
+- added diagnostic logging to `spawn` command
+- fixed pattern bad optimization outupt when nonascii codepoints
+
 # 0.28.0
 - added the concept of breakpoints for plugins to use
 - added bindings starting with `x` that interact with breakpoints

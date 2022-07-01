@@ -11,8 +11,8 @@ if @platform() == windows @{
         replace-with-output "cmd /c cargo build 2>&1"
     }
     command test @{
-        open scratch "text.log"
-        enqueue.keys aad
+        open scratch "test.log"
+        enqueue-keys aad
         replace-with-output "cmd /c cargo test --workspace 2>&1"
     }
 
@@ -30,8 +30,8 @@ if @platform() == linux @{
         replace-with-output "sh -c 'cargo build 2<greater>&1'"
     }
     command test @{
-        open scratch "text.log"
-        enqueue.keys aad
+        open scratch "test.log"
+        enqueue-keys aad
         replace-with-output "sh -c 'cargo test --workspace 2<greater>&1'"
     }
 }

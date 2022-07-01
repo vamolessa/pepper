@@ -976,7 +976,8 @@ impl<'a> PatternCompiler<'a> {
 
         let from = index + 1;
         let to = op_index;
-        if from == to {
+        let fix = (to - from) as _;
+        if fix == 0 {
             return false;
         }
 
@@ -989,7 +990,6 @@ impl<'a> PatternCompiler<'a> {
             }
         }
 
-        let fix = (len - 1) as _;
         fix_jump(&mut self.start_jump, index, fix);
 
         for op in self.ops.iter_mut() {
@@ -1545,6 +1545,10 @@ mod tests {
 
     #[test]
     fn utf8() {
+        let p = new_pattern("aéb");
+        assert_eq!(MatchResult::Ok(4), p.matches("aéb", 0));
+        assert_eq!(MatchResult::Ok(4), p.matches("aébxx", 0));
+
         let p = new_pattern("[açé]");
         assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
         assert_eq!(MatchResult::Ok('ç'.len_utf8()), p.matches("ç", 0));

@@ -532,10 +532,10 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 
     r("spawn", &[], |ctx, io| {
-        let command = io.args.next()?;
+        let command_text = io.args.next()?;
         io.args.assert_empty()?;
 
-        if let Some(mut command) = parse_process_command(command) {
+        if let Some(mut command) = parse_process_command(command_text) {
             command.stdin(Stdio::null());
             command.stdout(Stdio::piped());
             command.stderr(Stdio::null());
@@ -547,6 +547,11 @@ pub fn register_commands(commands: &mut CommandManager) {
                     command,
                     buf_len: 4 * 1024,
                 });
+
+            ctx.editor
+                .logger
+                .write(LogKind::Diagnostic)
+                .fmt(format_args!("spawn '{}'", command_text));
         }
 
         Ok(())
@@ -647,3 +652,4 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
+
