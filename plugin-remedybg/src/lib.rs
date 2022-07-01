@@ -5,7 +5,7 @@ use std::{
 };
 
 use pepper::{
-    buffer::{BufferBreakpoint, BufferHandle, BufferCollection},
+    buffer::{BufferBreakpoint, BufferCollection, BufferHandle},
     command::{CommandError, CommandManager, CompletionSource},
     editor::{Editor, EditorContext},
     editor_utils::to_absolute_path_string,
@@ -359,7 +359,11 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
             EditorEvent::Idle => {
                 if remedybg.breakpoints_changed {
                     remedybg.breakpoints_changed = false;
-                    remedybg.begin_sync_breakpoints(&ctx.editor.buffers, &mut ctx.platform, plugin_handle);
+                    remedybg.begin_sync_breakpoints(
+                        &ctx.editor.buffers,
+                        &mut ctx.platform,
+                        plugin_handle,
+                    );
                 }
             }
             EditorEvent::BufferBreakpointsChanged { .. } => remedybg.breakpoints_changed = true,
