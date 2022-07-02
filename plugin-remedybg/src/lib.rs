@@ -95,7 +95,12 @@ impl RemedybgPlugin {
             return;
         }
 
-        self.refresh_pending_breakpoints(buffers);
+        self.pending_breakpoints.clear();
+        for buffer in buffers.iter() {
+            for &breakpoint in buffer.breakpoints() {
+                self.pending_breakpoints.push((buffer.handle(), breakpoint));
+            }
+        }
 
         let mut command = Command::new("remedybg");
         command.arg("remove-all-breakpoints");
@@ -113,15 +118,6 @@ impl RemedybgPlugin {
             command,
             buf_len: 128,
         });
-    }
-
-    fn refresh_pending_breakpoints(&mut self, buffers: &BufferCollection) {
-        self.pending_breakpoints.clear();
-        for buffer in buffers.iter() {
-            for &breakpoint in buffer.breakpoints() {
-                self.pending_breakpoints.push((buffer.handle(), breakpoint));
-            }
-        }
     }
 
     fn add_next_breakpoint(
@@ -382,8 +378,7 @@ fn on_process_spawned(
     match id {
         MAIN_PROCESS_ID => {
             remedybg.process_state = ProcessState::Running(process_handle);
-            remedybg.refresh_pending_breakpoints(&ctx.editor.buffers);
-            remedybg.add_next_breakpoint(&mut ctx.editor, &mut ctx.platform, plugin_handle)
+            remedybg.breakpoints_changed = true;
         }
         _ => (),
     }

@@ -558,14 +558,14 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 
     r("replace-with-output", &[], |ctx, io| {
-        let command = io.args.next()?;
+        let command_text = io.args.next()?;
         io.args.assert_empty()?;
 
         let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
         let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
 
         for cursor in buffer_view.cursors[..].iter().rev() {
-            let command = match parse_process_command(command) {
+            let command = match parse_process_command(command_text) {
                 Some(command) => command,
                 None => continue,
             };
@@ -592,6 +592,15 @@ pub fn register_commands(commands: &mut CommandManager) {
                 cursor.position,
                 stdin,
             );
+
+            let path = &ctx.editor.buffers.get(buffer_view.buffer_handle).path;
+            ctx.editor
+                .logger
+                .write(LogKind::Diagnostic)
+                .fmt(format_args!(
+                    "replace-with-output '{}' {:?} {}:{}",
+                    command_text, &path, cursor.anchor, cursor.position
+                ));
         }
 
         buffer_view.delete_text_in_cursor_ranges(
@@ -652,3 +661,4 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
+
