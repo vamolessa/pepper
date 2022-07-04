@@ -1,4 +1,3 @@
-config indent_with_tabs false
 lsp-start "rust-analyzer"
 
 map normal <space>b :<space>build<enter>

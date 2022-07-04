@@ -5,6 +5,7 @@
 - added diagnostic logging to `replace-with-output` command
 - fix pattern bad optimization outupt when nonascii codepoints
 - fix remedybg-plugin breakpoint sync on spawn
+- changed default value of `indent_with_tabs` to false
 
 # 0.28.0
 - added the concept of breakpoints for plugins to use

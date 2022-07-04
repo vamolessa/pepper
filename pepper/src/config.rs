@@ -67,7 +67,7 @@ macro_rules! config_values {
 
 config_values! {
     tab_size: NonZeroU8 = NonZeroU8::new(4).unwrap(),
-    indent_with_tabs: bool = true,
+    indent_with_tabs: bool = false,
 
     visual_empty: char = '~',
     visual_space: char = '.',
