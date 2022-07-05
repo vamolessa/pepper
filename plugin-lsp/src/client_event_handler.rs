@@ -410,12 +410,12 @@ pub(crate) fn on_response(
                 "" => ctx
                     .editor
                     .logger
-                    .write(LogKind::Info)
+                    .write(LogKind::Diagnostic)
                     .str("lsp server started"),
                 _ => ctx
                     .editor
                     .logger
-                    .write(LogKind::Info)
+                    .write(LogKind::Diagnostic)
                     .fmt(format_args!("lsp server '{}' started", server_name)),
             }
 
