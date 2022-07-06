@@ -263,7 +263,7 @@ fn draw_buffer_view(
     let mut current_breakpoint_index = breakpoints.len();
     let mut current_breakpoint_line_index = BufferPositionIndex::MAX;
     for (i, breakpoint) in breakpoints.iter().enumerate() {
-        if scroll_offset.line_index < breakpoint.line_index {
+        if scroll_offset.line_index <= breakpoint.line_index {
             current_breakpoint_index = i;
             current_breakpoint_line_index = breakpoint.line_index;
             break;

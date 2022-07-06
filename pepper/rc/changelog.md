@@ -10,6 +10,7 @@
 - added `buffer-list` command that lists all buffers in a new buffer
 - added `lint-list` command that lists all lints in a buffer
 - added `breakpoint-list` command that lists all lints in a buffer
+- fix breakpoint was not rendering if it was on the first line of the view
 
 # 0.28.0
 - added the concept of breakpoints for plugins to use

@@ -428,29 +428,53 @@ pub fn register_commands(commands: &mut CommandManager) {
                 true,
             )
             .map_err(CommandError::BufferReadError)?;
-
-        let mut content = ctx.editor.string_pool.acquire();
-        for buffer in ctx.editor.buffers.iter() {
-            use std::fmt::Write;
-
-            let buffer_path = match buffer.path.to_str() {
-                Some(path) => path,
-                None => continue,
-            };
-
-            let _ = write!(
-                content,
-                "{} {}\n",
-                buffer_path,
-                if buffer.needs_save() { "needs save" } else { "" },
-            );
-        }
-
         let buffer_handle = ctx
             .editor
             .buffer_views
             .get(buffer_view_handle)
             .buffer_handle;
+
+        let mut content = ctx.editor.string_pool.acquire();
+        for buffer in ctx.editor.buffers.iter() {
+            use std::fmt::Write;
+
+            if buffer.handle() == buffer_handle {
+                continue;
+            }
+            let buffer_path = match buffer.path.to_str() {
+                Some(path) => path,
+                None => continue,
+            };
+
+            content.push_str(buffer_path);
+
+            let props = &buffer.properties;
+            if !props.history_enabled || !props.saving_enabled || !props.is_file || !props.word_database_enabled {
+                content.push_str(" (");
+                if !props.history_enabled {
+                    content.push_str("history-disabled, ");
+                }
+                if !props.saving_enabled {
+                    content.push_str("saving-disabled, ");
+                }
+                if !props.is_file {
+                    content.push_str("not-a-file, ");
+                }
+                if !props.word_database_enabled {
+                    content.push_str("word-database-disabled, ");
+                }
+                content.truncate(content.len() - 2);
+                content.push(')');
+            }
+            if buffer.needs_save() {
+                content.push_str(" (needs save)");
+            }
+            if !buffer.lints.all().is_empty() {
+                let _ = write!(content, " ({} lints)", buffer.lints.all().len());
+            }
+            content.push('\n');
+        }
+
         let buffer = ctx.editor.buffers.get_mut(buffer_handle);
         let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
         buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
