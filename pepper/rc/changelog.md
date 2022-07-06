@@ -6,6 +6,10 @@
 - fix pattern bad optimization outupt when nonascii codepoints
 - fix remedybg-plugin breakpoint sync on spawn
 - changed default value of `indent_with_tabs` to false
+- removed `xa` binding that used to list all breakpoints in a buffer
+- added `buffer-list` command that lists all buffers in a new buffer
+- added `lint-list` command that lists all lints in a buffer
+- added `breakpoint-list` command that lists all lints in a buffer
 
 # 0.28.0
 - added the concept of breakpoints for plugins to use

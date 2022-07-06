@@ -27,7 +27,6 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `xX`, `XX` | remove breakpoints on all lines covered by cursors |
 | `xB`, `XB` | remove all breakpoints on current buffer |
 | `xA`, `XA` | remove all breakpoints on all buffers |
-| `xa` | list all breakpoints as references in a new buffer |
 | `]]<char>`, `[[<char>` | move cursors to next/previous `<char>` (inclusive) |
 | `][<char>`, `[]<char>` | move cursors to next/previous `<char>` (exclusive) |
 | `}`, `{` | repeat last find char in forward/backward mode |
