@@ -44,6 +44,7 @@ pub enum CommandError {
     InvalidTokenKind,
     PatternError(PatternError),
     InvalidEnvironmentVariable,
+    InvalidProcessCommand,
     InvalidIfOp,
     InvalidGlob(InvalidGlobError),
     OtherStatic(&'static str),
@@ -76,6 +77,7 @@ impl fmt::Display for CommandError {
             Self::InvalidTokenKind => f.write_str("invalid token kind"),
             Self::PatternError(error) => write!(f, "pattern error: {}", error),
             Self::InvalidEnvironmentVariable => f.write_str("invalid environment variable"),
+            Self::InvalidProcessCommand => f.write_str("invalid process command"),
             Self::InvalidIfOp => f.write_str("invalid if comparison operator"),
             Self::InvalidGlob(error) => write!(f, "glob error: {}", error),
             Self::OtherStatic(error) => f.write_str(error),
@@ -672,6 +674,7 @@ impl CommandManager {
             Err(error) => {
                 {
                     let mut write = ctx.editor.logger.write(LogKind::Error);
+                    write.str("trace:\n");
                     for eval_stack_entry in ctx.editor.commands.eval_stack.drain(..).rev() {
                         write.fmt(format_args!(
                             "\n{}:{}:",

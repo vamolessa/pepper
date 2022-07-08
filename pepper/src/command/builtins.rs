@@ -8,7 +8,10 @@ use crate::{
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
     editor::EditorFlow,
-    editor_utils::{parse_path_and_position, parse_process_command, LogKind, RegisterKey},
+    editor_utils::{
+        parse_path_and_position, parse_process_command, validate_process_command, LogKind,
+        RegisterKey,
+    },
     help,
     mode::{picker, read_line, ModeKind},
     platform::{PlatformRequest, ProcessTag},
@@ -35,31 +38,25 @@ pub fn register_commands(commands: &mut CommandManager) {
         let mut buffer_path = ctx.editor.string_pool.acquire();
         buffer_path.push_str(help::HELP_PREFIX);
         buffer_path.push_str(path);
-        match ctx.editor.buffer_view_handle_from_path(
+        let result = ctx.editor.buffer_view_handle_from_path(
             client_handle,
             Path::new(&buffer_path),
             BufferProperties::scratch(),
             true,
-        ) {
-            Ok(handle) => {
-                let client = ctx.clients.get_mut(client_handle);
-                client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
-                client.set_view_anchor(&ctx.editor, ViewAnchor::Center);
-
-                let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                cursors.clear();
-                cursors.add(Cursor {
-                    anchor: position,
-                    position,
-                });
-            }
-            Err(error) => ctx
-                .editor
-                .logger
-                .write(LogKind::Error)
-                .fmt(format_args!("{}", error)),
-        }
+        );
         ctx.editor.string_pool.release(buffer_path);
+        let handle = result.map_err(CommandError::BufferReadError)?;
+
+        let client = ctx.clients.get_mut(client_handle);
+        client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
+        client.set_view_anchor(&ctx.editor, ViewAnchor::Center);
+
+        let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+        cursors.clear();
+        cursors.add(Cursor {
+            anchor: position,
+            position,
+        });
 
         Ok(())
     });
@@ -156,30 +153,20 @@ pub fn register_commands(commands: &mut CommandManager) {
         let (path, position) = parse_path_and_position(path);
 
         let path = Path::new(&path);
-        match ctx.editor.buffer_view_handle_from_path(
-            client_handle,
-            Path::new(path),
-            properties,
-            true,
-        ) {
-            Ok(handle) => {
-                let client = ctx.clients.get_mut(client_handle);
-                client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
+        let handle = ctx
+            .editor
+            .buffer_view_handle_from_path(client_handle, Path::new(path), properties, true)
+            .map_err(CommandError::BufferReadError)?;
+        let client = ctx.clients.get_mut(client_handle);
+        client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
 
-                if let Some(position) = position {
-                    let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(Cursor {
-                        anchor: position,
-                        position,
-                    });
-                }
-            }
-            Err(error) => ctx
-                .editor
-                .logger
-                .write(LogKind::Error)
-                .fmt(format_args!("{}", error)),
+        if let Some(position) = position {
+            let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
+            cursors.clear();
+            cursors.add(Cursor {
+                anchor: position,
+                position,
+            });
         }
 
         Ok(())
@@ -449,7 +436,11 @@ pub fn register_commands(commands: &mut CommandManager) {
             content.push_str(buffer_path);
 
             let props = &buffer.properties;
-            if !props.history_enabled || !props.saving_enabled || !props.is_file || !props.word_database_enabled {
+            if !props.history_enabled
+                || !props.saving_enabled
+                || !props.is_file
+                || !props.word_database_enabled
+            {
                 content.push_str(" (");
                 if !props.history_enabled {
                     content.push_str("history-disabled, ");
@@ -707,27 +698,20 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         ctx.editor.picker.clear();
 
-        match parse_process_command(command) {
-            Some(mut command) => {
-                command.stdin(Stdio::null());
-                command.stdout(Stdio::piped());
-                command.stderr(Stdio::null());
+        let mut command =
+            parse_process_command(command).ok_or(CommandError::InvalidProcessCommand)?;
 
-                ctx.platform
-                    .requests
-                    .enqueue(PlatformRequest::SpawnProcess {
-                        tag: ProcessTag::PickerEntries,
-                        command,
-                        buf_len: 4 * 1024,
-                    });
-            }
-            None => {
-                ctx.editor
-                    .logger
-                    .write(LogKind::Error)
-                    .fmt(format_args!("invalid command '{}'", command));
-            }
-        }
+        command.stdin(Stdio::null());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::null());
+
+        ctx.platform
+            .requests
+            .enqueue(PlatformRequest::SpawnProcess {
+                tag: ProcessTag::PickerEntries,
+                command,
+                buf_len: 4 * 1024,
+            });
 
         Ok(())
     });
@@ -736,24 +720,25 @@ pub fn register_commands(commands: &mut CommandManager) {
         let command_text = io.args.next()?;
         io.args.assert_empty()?;
 
-        if let Some(mut command) = parse_process_command(command_text) {
-            command.stdin(Stdio::null());
-            command.stdout(Stdio::piped());
-            command.stderr(Stdio::null());
+        let mut command =
+            parse_process_command(command_text).ok_or(CommandError::InvalidProcessCommand)?;
 
-            ctx.platform
-                .requests
-                .enqueue(PlatformRequest::SpawnProcess {
-                    tag: ProcessTag::Ignored,
-                    command,
-                    buf_len: 4 * 1024,
-                });
+        command.stdin(Stdio::null());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::null());
 
-            ctx.editor
-                .logger
-                .write(LogKind::Diagnostic)
-                .fmt(format_args!("spawn '{}'", command_text));
-        }
+        ctx.platform
+            .requests
+            .enqueue(PlatformRequest::SpawnProcess {
+                tag: ProcessTag::Ignored,
+                command,
+                buf_len: 4 * 1024,
+            });
+
+        ctx.editor
+            .logger
+            .write(LogKind::Diagnostic)
+            .fmt(format_args!("spawn '{}'", command_text));
 
         Ok(())
     });
@@ -762,13 +747,17 @@ pub fn register_commands(commands: &mut CommandManager) {
         let command_text = io.args.next()?;
         io.args.assert_empty()?;
 
+        if !validate_process_command(command_text) {
+            return Err(CommandError::InvalidProcessCommand);
+        }
+
         let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
         let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
 
         for cursor in buffer_view.cursors[..].iter().rev() {
             let command = match parse_process_command(command_text) {
                 Some(command) => command,
-                None => continue,
+                None => unreachable!(),
             };
 
             let range = cursor.to_range();

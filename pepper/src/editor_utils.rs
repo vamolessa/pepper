@@ -786,6 +786,10 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     }
 }
 
+pub fn validate_process_command(command: &str) -> bool {
+    CommandTokenizer(command).next().is_some()
+}
+
 pub fn parse_process_command(command: &str) -> Option<Command> {
     let mut tokens = CommandTokenizer(command);
     let name = tokens.next()?.slice;

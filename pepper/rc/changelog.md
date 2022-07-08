@@ -11,6 +11,8 @@
 - added `lint-list` command that lists all lints in a buffer
 - added `breakpoint-list` command that lists all lints in a buffer
 - fix breakpoint was not rendering if it was on the first line of the view
+- added proper error flow handling in some builtin commands that either tried to open a file or parse process command
+- fixed undo on a buffer with `history-disabled` would move the cursor to the top
 
 # 0.28.0
 - added the concept of breakpoints for plugins to use
