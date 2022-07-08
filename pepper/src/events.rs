@@ -34,9 +34,6 @@ impl EditorEventCursors {
 
 pub enum EditorEvent {
     Idle,
-    BufferRead {
-        handle: BufferHandle,
-    },
     BufferInsertText {
         handle: BufferHandle,
         range: BufferRange,
@@ -45,6 +42,9 @@ pub enum EditorEvent {
     BufferDeleteText {
         handle: BufferHandle,
         range: BufferRange,
+    },
+    BufferRead {
+        handle: BufferHandle,
     },
     BufferWrite {
         handle: BufferHandle,

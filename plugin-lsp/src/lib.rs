@@ -319,19 +319,6 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 EditorEvent::Idle => {
                     util::send_pending_did_change(client, &mut ctx.editor, &mut ctx.platform);
                 }
-                EditorEvent::BufferRead { handle } => {
-                    let buffer = ctx.editor.buffers.get(handle);
-                    if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
-                        client.versioned_buffers.dispose(handle);
-                        util::send_did_open(
-                            client,
-                            &ctx.editor.buffers,
-                            &mut ctx.platform,
-                            handle,
-                            &mut ctx.editor.logger,
-                        );
-                    }
-                }
                 EditorEvent::BufferInsertText {
                     handle,
                     range,
@@ -349,6 +336,19 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                     let buffer = ctx.editor.buffers.get(handle);
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         client.versioned_buffers.add_edit(handle, range, "");
+                    }
+                }
+                EditorEvent::BufferRead { handle } => {
+                    let buffer = ctx.editor.buffers.get(handle);
+                    if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
+                        client.versioned_buffers.dispose(handle);
+                        util::send_did_open(
+                            client,
+                            &ctx.editor.buffers,
+                            &mut ctx.platform,
+                            handle,
+                            &mut ctx.editor.logger,
+                        );
                     }
                 }
                 EditorEvent::BufferWrite { handle, .. } => {
