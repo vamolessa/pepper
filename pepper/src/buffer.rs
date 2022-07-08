@@ -1515,10 +1515,20 @@ impl Buffer {
             clear_buffer(self, word_database);
             self.content.read(&mut reader)?;
         } else {
-            let file = File::open(&self.path)?;
-            clear_buffer(self, word_database);
-            let mut reader = io::BufReader::new(file);
-            self.content.read(&mut reader)?;
+            match File::open(&self.path) {
+                Ok(file) => {
+                    clear_buffer(self, word_database);
+                    let mut reader = io::BufReader::new(file);
+                    self.content.read(&mut reader)?;
+                }
+                Err(error) => {
+                    if self.properties.saving_enabled {
+                        return Err(error.into());
+                    } else {
+                        clear_buffer(self, word_database);
+                    }
+                }
+            }
         }
 
         self.highlighted.insert_range(BufferRange::between(
@@ -2296,3 +2306,4 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
+
