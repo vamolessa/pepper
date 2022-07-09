@@ -194,6 +194,16 @@ pub fn register_expansions(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("cwd", |_, io| {
+        io.assert_empty_args()?;
+        if let Ok(current_dir) = env::current_dir() {
+            if let Ok(current_dir) = current_dir.into_os_string().into_string() {
+                io.output.push_str(&current_dir);
+            }
+        }
+        Ok(())
+    });
+
     r("pid", |_, io| {
         io.assert_empty_args()?;
         let _ = write!(io.output, "{}", std::process::id());
