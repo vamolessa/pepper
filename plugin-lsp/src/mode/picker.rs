@@ -56,8 +56,8 @@ pub fn enter_definition_mode(
                             cursors.clear();
                             for range in ranges {
                                 cursors.add(Cursor {
-                                    anchor: buffer_content.saturate_position(range.from),
-                                    position: buffer_content.saturate_position(range.to),
+                                    anchor: buffer_content.saturate_position(range.0),
+                                    position: buffer_content.saturate_position(range.1),
                                 });
                             }
                         }

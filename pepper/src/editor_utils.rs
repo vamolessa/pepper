@@ -726,6 +726,7 @@ pub fn parse_path_and_ranges(text: &str) -> (&str, BufferRangesParser) {
     }
 }
 
+// TODO: change return to (&str, BufferRangesParser)
 pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<BufferPosition>) {
     fn split_prefix(path: &str) -> (&str, &str) {
         let mut chars = path.chars();
@@ -773,11 +774,14 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     match rest.find(':') {
         Some(i) => {
             let i = prefix.len() + i;
-            let position = path[i + 1..].parse().ok();
+            let position = BufferPosition::parse(&path[i + 1..]).map(|(p, _)| p);
             (&path[..i], position)
         }
         None => {
-            let position = text[to..].strip_prefix(':').and_then(|t| t.parse().ok());
+            let position = text[to..]
+                .strip_prefix(':')
+                .and_then(|t| BufferPosition::parse(t))
+                .map(|(p, _)| p);
             (path, position)
         }
     }
@@ -1065,3 +1069,4 @@ mod tests {
         );
     }
 }
+

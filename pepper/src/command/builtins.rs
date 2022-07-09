@@ -171,8 +171,8 @@ pub fn register_commands(commands: &mut CommandManager) {
                 cleared_cursors = true;
             }
             cursors.add(Cursor {
-                anchor: buffer_content.saturate_position(range.from),
-                position: buffer_content.saturate_position(range.to),
+                anchor: buffer_content.saturate_position(range.0),
+                position: buffer_content.saturate_position(range.1),
             });
         }
 

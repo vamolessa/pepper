@@ -727,7 +727,7 @@ impl State {
                             let (path, position) = if from < to {
                                 let (path, mut ranges) =
                                     parse_path_and_ranges(&line[from as usize..to as usize]);
-                                let position = ranges.next().map(|r| r.from);
+                                let position = ranges.next().map(|r| r.0);
                                 (path, position)
                             } else {
                                 find_path_and_position_at(line, from as _)
@@ -1638,10 +1638,11 @@ impl State {
                         let buffer_view = ctx.editor.buffer_views.get(handle);
                         let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                         if let Some(path) = buffer.path.to_str() {
-                            let position = buffer_view.cursors.main_cursor().position;
-                            let line = position.line_index + 1;
-                            let column = position.column_byte_index + 1;
-                            let _ = write!(register, "{}:{},{}", path, line, column);
+                            register.push_str(path);
+                            register.push(':');
+                            for cursor in &buffer_view.cursors[..] {
+                                let _ = write!(register, "{};", cursor);
+                            }
                         }
 
                         ctx.editor
@@ -1965,8 +1966,8 @@ impl ModeState for State {
                                         cursors.clear();
                                     }
                                     cursors.add(Cursor {
-                                        anchor: buffer_content.saturate_position(range.from),
-                                        position: buffer_content.saturate_position(range.to),
+                                        anchor: buffer_content.saturate_position(range.0),
+                                        position: buffer_content.saturate_position(range.1),
                                     });
                                 }
 
