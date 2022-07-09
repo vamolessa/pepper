@@ -2,11 +2,10 @@ use std::path::Path;
 
 use pepper::{
     buffer::BufferProperties,
-    buffer_position::BufferPosition,
     client::ClientHandle,
     cursor::Cursor,
     editor::{EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{parse_path_and_position, LogKind, ReadLinePoll},
+    editor_utils::{parse_path_and_ranges, LogKind, ReadLinePoll},
     mode::ModeKind,
     picker::EntrySource,
     plugin::PluginHandle,
@@ -31,16 +30,11 @@ pub fn enter_definition_mode(
             ReadLinePoll::Submitted => {
                 if let Some((_, entry)) = ctx.editor.picker.current_entry(&ctx.editor.word_database)
                 {
-                    let (path, position) = parse_path_and_position(entry);
-                    let position = match position {
-                        Some(position) => position,
-                        None => BufferPosition::zero(),
-                    };
-
-                    let path = ctx.editor.string_pool.acquire_with(path);
+                    let entry = ctx.editor.string_pool.acquire_with(entry);
+                    let (path, ranges) = parse_path_and_ranges(&entry);
                     match ctx.editor.buffer_view_handle_from_path(
                         client_handle,
-                        Path::new(&path),
+                        Path::new(path),
                         BufferProperties::text(),
                         false,
                     ) {
@@ -51,17 +45,21 @@ pub fn enter_definition_mode(
                                 &ctx.editor.buffer_views,
                             );
 
-                            let mut cursors = ctx
+                            let buffer_view = ctx
                                 .editor
                                 .buffer_views
-                                .get_mut(buffer_view_handle)
+                                .get_mut(buffer_view_handle);
+                            let buffer_content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
+                            let mut cursors = buffer_view
                                 .cursors
                                 .mut_guard();
                             cursors.clear();
-                            cursors.add(Cursor {
-                                anchor: position,
-                                position,
-                            });
+                            for range in ranges {
+                                cursors.add(Cursor {
+                                    anchor: buffer_content.saturate_position(range.from),
+                                    position: buffer_content.saturate_position(range.to),
+                                });
+                            }
                         }
                         Err(error) => ctx
                             .editor
@@ -69,7 +67,7 @@ pub fn enter_definition_mode(
                             .write(LogKind::Error)
                             .fmt(format_args!("{}", error)),
                     }
-                    ctx.editor.string_pool.release(path);
+                    ctx.editor.string_pool.release(entry);
                 }
                 ctx.editor.enter_mode(ModeKind::default());
                 Some(EditorFlow::Continue)

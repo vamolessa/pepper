@@ -75,6 +75,7 @@ impl BufferPosition {
     }
 }
 
+// TODO: can we remove this?
 impl fmt::Debug for BufferPosition {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -164,6 +165,7 @@ impl BufferRange {
     }
 }
 
+// TODO: can we remove this?
 impl fmt::Debug for BufferRange {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -174,6 +176,23 @@ impl fmt::Debug for BufferRange {
             self.to.line_index,
             self.to.column_byte_index
         )
+    }
+}
+
+impl fmt::Display for BufferRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}-{}", self.from, self.to)
+    }
+}
+
+pub struct BufferRangesParser<'a>(pub &'a str);
+impl<'a> Iterator for BufferRangesParser<'a> {
+    type Item = BufferRange;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.0.parse();
+        self.0 = "";
+        result.ok().map(|p| BufferRange::between(p, p))
     }
 }
 

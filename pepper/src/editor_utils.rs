@@ -2,7 +2,7 @@ use std::{fmt, fs, io, path::Path, process::Command};
 
 use crate::{
     buffer::char_display_len,
-    buffer_position::BufferPosition,
+    buffer_position::{BufferPosition, BufferRangesParser},
     command::CommandTokenizer,
     editor::{BufferedKeys, KeysIterator},
     events::{KeyParseAllError, KeyParser},
@@ -718,14 +718,11 @@ pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Opti
     None
 }
 
-pub fn parse_path_and_position(text: &str) -> (&str, Option<BufferPosition>) {
+pub fn parse_path_and_ranges(text: &str) -> (&str, BufferRangesParser) {
     let text = text.trim();
     match text.rfind(':') {
-        Some(i) => match text[i + 1..].parse() {
-            Ok(position) => (&text[..i], Some(position)),
-            Err(_) => (text, None),
-        },
-        None => (text, None),
+        Some(i) => (&text[..i], BufferRangesParser(&text[i + 1..])),
+        None => (text, BufferRangesParser("")),
     }
 }
 
