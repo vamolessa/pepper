@@ -4,6 +4,7 @@ use crate::{
     buffer::CharDisplayDistances,
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
+    cursor::Cursor,
     editor::Editor,
     editor_utils::LoggerStatusBarDisplay,
     mode::ModeKind,
@@ -383,10 +384,7 @@ fn draw_buffer_view(
                 TokenKind::Whitespace => ctx.editor.theme.token_whitespace,
             };
 
-            // TODO: experiment just replace these while with ifs
-            while current_cursor_index < cursors_end_index
-                && current_cursor_range.to < char_position
-            {
+            if current_cursor_index < cursors_end_index && current_cursor_range.to < char_position {
                 current_cursor_index += 1;
                 let cursor = cursors[current_cursor_index];
                 current_cursor_position = cursor.position;
@@ -395,7 +393,7 @@ fn draw_buffer_view(
             let inside_cursor_range = current_cursor_range.from <= char_position
                 && char_position < current_cursor_range.to;
 
-            while current_search_range.to <= char_position
+            if current_search_range.to <= char_position
                 && current_search_range_index < search_ranges_end_index
             {
                 current_search_range_index += 1;
@@ -404,7 +402,7 @@ fn draw_buffer_view(
             let inside_search_range = current_search_range.from <= char_position
                 && char_position < current_search_range.to;
 
-            while current_lint_range.to < char_position && current_lint_index < lints_end_index {
+            if current_lint_range.to < char_position && current_lint_index < lints_end_index {
                 current_lint_index += 1;
                 current_lint_range = lints[current_lint_index].range;
             }
@@ -583,7 +581,7 @@ fn draw_statusbar(
 ) {
     let view_name;
     let needs_save;
-    let main_cursor_position;
+    let main_cursor;
     let search_ranges;
 
     match buffer_view_handle {
@@ -593,13 +591,13 @@ fn draw_statusbar(
 
             view_name = buffer.path.to_str().unwrap_or("");
             needs_save = buffer.needs_save();
-            main_cursor_position = buffer_view.cursors.main_cursor().position;
+            main_cursor = *buffer_view.cursors.main_cursor();
             search_ranges = buffer.search_ranges();
         }
         None => {
             view_name = "";
             needs_save = false;
-            main_cursor_position = BufferPosition::zero();
+            main_cursor = Cursor::zero();
             search_ranges = &[];
         }
     }
@@ -732,9 +730,11 @@ fn draw_statusbar(
         buf.extend_from_slice(view_name.as_bytes());
 
         if !view_name.is_empty() {
-            let line_number = main_cursor_position.line_index + 1;
-            let column_number = main_cursor_position.column_byte_index + 1;
-            let _ = write!(buf, ":{},{}", line_number, column_number);
+            if main_cursor.anchor != main_cursor.position {
+                let _ = write!(buf, ":{}", main_cursor);
+            } else {
+                let _ = write!(buf, ":{}", main_cursor.position);
+            }
         }
         buf.push(b' ');
 

@@ -1,7 +1,6 @@
 use std::{
     cmp::{Ord, Ordering, PartialOrd},
     fmt,
-    str::FromStr,
 };
 
 pub type BufferPositionIndex = u32;
@@ -73,6 +72,34 @@ impl BufferPosition {
             range.from
         }
     }
+
+    pub fn parse(s: &str) -> Option<(Self, &str)> {
+        fn is_non_ascii_digit(c: char) -> bool {
+            !c.is_ascii_digit()
+        }
+
+        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
+        let (line_number, s) = s.split_at(i);
+        let line_index = match line_number.parse::<BufferPositionIndex>() {
+            Ok(n) => n.saturating_sub(1),
+            Err(_) => return None,
+        };
+
+        let mut chars = s.chars();
+        if !matches!(chars.next(), Some(',')) {
+            return Some((Self::line_col(line_index, 0), s));
+        }
+        let rest_after_line_index = s;
+        let s = chars.as_str();
+
+        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
+        let column_index = match s[..i].parse::<BufferPositionIndex>() {
+            Ok(n) => n.saturating_sub(1),
+            Err(_) => return Some((Self::line_col(line_index, 0), rest_after_line_index)),
+        };
+        let s = &s[i..];
+        Some((Self::line_col(line_index, column_index), s))
+    }
 }
 
 impl fmt::Debug for BufferPosition {
@@ -87,7 +114,7 @@ impl fmt::Debug for BufferPosition {
 
 impl fmt::Display for BufferPosition {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{},{}", self.line_index, self.column_byte_index)
+        write!(f, "{},{}", self.line_index + 1, self.column_byte_index + 1)
     }
 }
 
@@ -110,35 +137,6 @@ impl Ord for BufferPosition {
 impl PartialOrd for BufferPosition {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-impl FromStr for BufferPosition {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        fn is_non_ascii_digit(c: char) -> bool {
-            !c.is_ascii_digit()
-        }
-
-        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
-        let (line, s) = s.split_at(i);
-        let line = match line.parse::<BufferPositionIndex>() {
-            Ok(line) => line.saturating_sub(1),
-            Err(_) => return Err(()),
-        };
-
-        let mut chars = s.chars();
-        if !matches!(chars.next(), Some(',')) {
-            return Ok(BufferPosition::line_col(line, 0));
-        }
-        let s = chars.as_str();
-
-        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
-        let column = match s[..i].parse::<BufferPositionIndex>() {
-            Ok(n) => n.saturating_sub(1),
-            Err(_) => return Ok(BufferPosition::line_col(line, 0)),
-        };
-        Ok(BufferPosition::line_col(line, column))
     }
 }
 
@@ -174,6 +172,35 @@ impl fmt::Debug for BufferRange {
             self.to.line_index,
             self.to.column_byte_index
         )
+    }
+}
+
+pub struct BufferRangesParser<'a>(pub &'a str);
+impl<'a> Iterator for BufferRangesParser<'a> {
+    type Item = (BufferPosition, BufferPosition);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0.is_empty() {
+            return None;
+        }
+
+        let (from, rest) = BufferPosition::parse(self.0)?;
+        let mut rest_chars = rest.chars();
+        let (to, rest) = match rest_chars.next() {
+            Some('-') => match BufferPosition::parse(rest_chars.as_str()) {
+                Some(result) => result,
+                None => (from, rest),
+            },
+            _ => (from, rest),
+        };
+
+        let mut rest_chars = rest.chars();
+        match rest_chars.next() {
+            Some(';') => self.0 = rest_chars.as_str(),
+            _ => self.0 = "",
+        }
+
+        Some((from, to))
     }
 }
 
@@ -251,25 +278,113 @@ mod tests {
 
     #[test]
     fn buffer_position_parsing() {
-        assert_eq!(Err(()), "".parse::<BufferPosition>());
-        assert_eq!(Err(()), ",".parse::<BufferPosition>());
-        assert_eq!(Err(()), "a,".parse::<BufferPosition>());
-        assert_eq!(Err(()), ",b".parse::<BufferPosition>());
-        assert_eq!(Err(()), "a,b".parse::<BufferPosition>());
+        assert_eq!(None, BufferPosition::parse(""));
+        assert_eq!(None, BufferPosition::parse(","));
+        assert_eq!(None, BufferPosition::parse("a,"));
+        assert_eq!(None, BufferPosition::parse(",b"));
+        assert_eq!(None, BufferPosition::parse("a,b"));
 
-        assert_eq!(Ok(pos(0, 0)), "0".parse());
-        assert_eq!(Ok(pos(0, 0)), "1".parse());
-        assert_eq!(Ok(pos(1, 0)), "2".parse());
-        assert_eq!(Ok(pos(98, 0)), "99".parse());
+        assert_eq!(Some((pos(0, 0), "")), BufferPosition::parse("0"));
+        assert_eq!(Some((pos(0, 0), "")), BufferPosition::parse("1"));
+        assert_eq!(Some((pos(1, 0), "")), BufferPosition::parse("2"));
+        assert_eq!(Some((pos(98, 0), "")), BufferPosition::parse("99"));
 
-        assert_eq!(Ok(pos(0, 0)), "0,0".parse());
-        assert_eq!(Ok(pos(0, 0)), "1,1".parse());
-        assert_eq!(Ok(pos(3, 1)), "4,2".parse());
-        assert_eq!(Ok(pos(98, 98)), "99,99".parse());
+        assert_eq!(Some((pos(0, 0), "")), BufferPosition::parse("0,0"));
+        assert_eq!(Some((pos(0, 0), "")), BufferPosition::parse("1,1"));
+        assert_eq!(Some((pos(3, 1), "")), BufferPosition::parse("4,2"));
+        assert_eq!(Some((pos(98, 98), "")), BufferPosition::parse("99,99"));
 
-        assert_eq!(Ok(pos(3, 0)), "4,".parse());
-        assert_eq!(Ok(pos(3, 0)), "4,x".parse());
-        assert_eq!(Ok(pos(3, 8)), "4,9xx".parse());
-        assert_eq!(Ok(pos(3, 8)), "4,9,xx".parse());
+        assert_eq!(Some((pos(3, 0), ",")), BufferPosition::parse("4,"));
+        assert_eq!(Some((pos(3, 0), ",x")), BufferPosition::parse("4,x"));
+        assert_eq!(Some((pos(3, 8), "xx")), BufferPosition::parse("4,9xx"));
+        assert_eq!(Some((pos(3, 8), ",xx")), BufferPosition::parse("4,9,xx"));
+    }
+
+    #[test]
+    fn buffer_ranges_parsing() {
+        fn range(
+            from: (BufferPositionIndex, BufferPositionIndex),
+            to: (BufferPositionIndex, BufferPositionIndex),
+        ) -> (BufferPosition, BufferPosition) {
+            (pos(from.0, from.1), pos(to.0, to.1))
+        }
+
+        let mut ranges = BufferRangesParser("");
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3");
+        assert_eq!(Some(range((2, 0), (2, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3;");
+        assert_eq!(Some(range((2, 0), (2, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3-");
+        assert_eq!(Some(range((2, 0), (2, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3x");
+        assert_eq!(Some(range((2, 0), (2, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,2");
+        assert_eq!(Some(range((2, 1), (2, 1))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,2;");
+        assert_eq!(Some(range((2, 1), (2, 1))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,2-");
+        assert_eq!(Some(range((2, 1), (2, 1))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,2x");
+        assert_eq!(Some(range((2, 1), (2, 1))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,2-6,1");
+        assert_eq!(Some(range((2, 1), (5, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,2-6,1;");
+        assert_eq!(Some(range((2, 1), (5, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,2-6,1-");
+        assert_eq!(Some(range((2, 1), (5, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,2-6,1x");
+        assert_eq!(Some(range((2, 1), (5, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,2-6,1;99;3-6");
+        assert_eq!(Some(range((2, 1), (5, 0))), ranges.next());
+        assert_eq!(Some(range((98, 0), (98, 0))), ranges.next());
+        assert_eq!(Some(range((2, 0), (5, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3,4,5,6");
+        assert_eq!(Some(range((2, 3), (2, 3))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3-4-5-6");
+        assert_eq!(Some(range((2, 0), (3, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("3;4;5;6");
+        assert_eq!(Some(range((2, 0), (2, 0))), ranges.next());
+        assert_eq!(Some(range((3, 0), (3, 0))), ranges.next());
+        assert_eq!(Some(range((4, 0), (4, 0))), ranges.next());
+        assert_eq!(Some(range((5, 0), (5, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let mut ranges = BufferRangesParser("2,3-4,5;6,7-8,9;10,11-12,13");
+        assert_eq!(Some(range((1, 2), (3, 4))), ranges.next());
+        assert_eq!(Some(range((5, 6), (7, 8))), ranges.next());
+        assert_eq!(Some(range((9, 10), (11, 12))), ranges.next());
+        assert_eq!(None, ranges.next());
     }
 }

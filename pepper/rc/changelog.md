@@ -15,6 +15,11 @@
 - fixed undo on a buffer with `history-disabled` would move the cursor to the top
 - fixed would not open a buffer with `saving-disabled` and invalid chars in its path
 - fixed `gf` would not open file when it's relative to the root and the current buffer's path parent exists
+- added support for parsing multiple cursors when using (`m_`, `gf`, etc)
+- added main cursor range display in status bar when its anchor is different from its position
+- added `@cursor-anchor()` and `@cursor-position()` expansions which expand with the format `line,col`
+- added `@cwd()` expansion which expands into the current directory path
+- removed unnecessary conditionals on ui rendering code
 
 # 0.28.0
 - added the concept of breakpoints for plugins to use

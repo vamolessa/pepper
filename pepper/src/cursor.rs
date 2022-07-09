@@ -1,4 +1,7 @@
-use std::ops::{Drop, Index, IndexMut, RangeFrom, RangeFull};
+use std::{
+    fmt,
+    ops::{Drop, Index, IndexMut, RangeFrom, RangeFull},
+};
 
 use crate::{
     buffer::{BufferContent, CharDisplayDistances},
@@ -31,6 +34,12 @@ impl Cursor {
     pub fn delete(&mut self, range: BufferRange) {
         self.anchor = self.anchor.delete(range);
         self.position = self.position.delete(range);
+    }
+}
+
+impl fmt::Display for Cursor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}-{}", self.anchor, self.position)
     }
 }
 

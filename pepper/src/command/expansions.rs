@@ -83,6 +83,13 @@ pub fn register_expansions(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("cursor-anchor", |ctx, io| {
+        if let Some(cursor) = io.cursor(ctx)? {
+            let _ = write!(io.output, "{}", cursor.anchor);
+        }
+        Ok(())
+    });
+
     r("cursor-anchor-column", |ctx, io| {
         if let Some(cursor) = io.cursor(ctx)? {
             let _ = write!(io.output, "{}", cursor.anchor.column_byte_index + 1);
@@ -93,6 +100,13 @@ pub fn register_expansions(commands: &mut CommandManager) {
     r("cursor-anchor-line", |ctx, io| {
         if let Some(cursor) = io.cursor(ctx)? {
             let _ = write!(io.output, "{}", cursor.anchor.line_index + 1);
+        }
+        Ok(())
+    });
+
+    r("cursor-position", |ctx, io| {
+        if let Some(cursor) = io.cursor(ctx)? {
+            let _ = write!(io.output, "{}", cursor.position);
         }
         Ok(())
     });
@@ -177,6 +191,16 @@ pub fn register_expansions(commands: &mut CommandManager) {
             "unknown"
         };
         io.output.push_str(current_platform);
+        Ok(())
+    });
+
+    r("cwd", |_, io| {
+        io.assert_empty_args()?;
+        if let Ok(current_dir) = env::current_dir() {
+            if let Ok(current_dir) = current_dir.into_os_string().into_string() {
+                io.output.push_str(&current_dir);
+            }
+        }
         Ok(())
     });
 

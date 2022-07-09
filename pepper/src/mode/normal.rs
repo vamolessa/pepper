@@ -8,7 +8,7 @@ use crate::{
     cursor::Cursor,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{
-        find_path_and_position_at, hash_bytes, parse_path_and_position, LogKind, RegisterKey,
+        find_path_and_ranges_at, hash_bytes, parse_path_and_ranges, LogKind, RegisterKey,
         AUTO_MACRO_REGISTER, SEARCH_REGISTER,
     },
     help::HELP_PREFIX,
@@ -704,11 +704,11 @@ impl State {
                     } => {
                         let should_close_current_buffer = c == 'F';
 
-                        let mut jumped = false;
                         let mut path_buf = ctx.editor.string_pool.acquire();
                         let mut error_buf = ctx.editor.string_pool.acquire();
                         let fallback_line_index = state.count.saturating_sub(1) as _;
 
+                        let main_cursor_index = buffer_view.cursors.main_cursor_index();
                         for i in 0..buffer_view.cursors[..].len() {
                             let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                             let range = buffer_view.cursors[i].to_range();
@@ -720,18 +720,15 @@ impl State {
 
                             let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                             let line = buffer.content().lines()[line_index as usize].as_str();
+                            let line = ctx.editor.string_pool.acquire_with(line);
 
                             let from = range.from.column_byte_index;
                             let to = range.to.column_byte_index;
 
-                            let (path, position) = if from < to {
-                                parse_path_and_position(&line[from as usize..to as usize])
+                            let (path, ranges) = if from < to {
+                                parse_path_and_ranges(&line[from as usize..to as usize])
                             } else {
-                                find_path_and_position_at(line, from as _)
-                            };
-                            let position = match position {
-                                Some(position) => position,
-                                None => BufferPosition::line_col(fallback_line_index, 0),
+                                find_path_and_ranges_at(&line, from as _)
                             };
 
                             path_buf.clear();
@@ -741,7 +738,10 @@ impl State {
                                 } else if let Some(parent) =
                                     buffer.path.parent().and_then(Path::to_str)
                                 {
-                                    if !parent.is_empty() && Path::new(parent).exists() && !Path::new(path).exists() {
+                                    if !parent.is_empty()
+                                        && Path::new(parent).exists()
+                                        && !Path::new(path).exists()
+                                    {
                                         path_buf.push_str(parent);
                                         path_buf.push('/');
                                     }
@@ -756,45 +756,56 @@ impl State {
                                 false,
                             ) {
                                 Ok(buffer_view_handle) => {
-                                    if jumped {
-                                        continue;
-                                    }
-                                    jumped = true;
+                                    {
+                                        let buffer_view =
+                                            ctx.editor.buffer_views.get_mut(buffer_view_handle);
+                                        let buffer_content = ctx
+                                            .editor
+                                            .buffers
+                                            .get(buffer_view.buffer_handle)
+                                            .content();
 
-                                    ctx.editor.mode.normal_state.movement_kind =
-                                        CursorMovementKind::PositionAndAnchor;
-                                    let client = ctx.clients.get_mut(client_handle);
-                                    if should_close_current_buffer {
-                                        if let Some(buffer_view_handle) =
-                                            client.buffer_view_handle()
-                                        {
-                                            let buffer_view =
-                                                ctx.editor.buffer_views.get(buffer_view_handle);
-                                            ctx.editor.buffers.defer_remove(
-                                                buffer_view.buffer_handle,
-                                                &mut ctx.editor.events,
-                                            );
+                                        let mut cursors = buffer_view.cursors.mut_guard();
+                                        cursors.clear();
+
+                                        for range in ranges {
+                                            cursors.add(Cursor {
+                                                anchor: buffer_content.saturate_position(range.0),
+                                                position: buffer_content.saturate_position(range.1),
+                                            });
+                                        }
+
+                                        if cursors[..].is_empty() {
+                                            let position =
+                                                BufferPosition::line_col(fallback_line_index, 0);
+                                            cursors.add(Cursor {
+                                                anchor: position,
+                                                position,
+                                            });
                                         }
                                     }
-                                    client.set_buffer_view_handle(
-                                        Some(buffer_view_handle),
-                                        &ctx.editor.buffer_views,
-                                    );
 
-                                    let buffer_view =
-                                        ctx.editor.buffer_views.get_mut(buffer_view_handle);
-                                    let position = ctx
-                                        .editor
-                                        .buffers
-                                        .get(buffer_view.buffer_handle)
-                                        .content()
-                                        .saturate_position(position);
-                                    let mut cursors = buffer_view.cursors.mut_guard();
-                                    cursors.clear();
-                                    cursors.add(Cursor {
-                                        anchor: position,
-                                        position,
-                                    });
+                                    if i == main_cursor_index {
+                                        ctx.editor.mode.normal_state.movement_kind =
+                                            CursorMovementKind::PositionAndAnchor;
+                                        let client = ctx.clients.get_mut(client_handle);
+                                        if should_close_current_buffer {
+                                            if let Some(buffer_view_handle) =
+                                                client.buffer_view_handle()
+                                            {
+                                                let buffer_view =
+                                                    ctx.editor.buffer_views.get(buffer_view_handle);
+                                                ctx.editor.buffers.defer_remove(
+                                                    buffer_view.buffer_handle,
+                                                    &mut ctx.editor.events,
+                                                );
+                                            }
+                                        }
+                                        client.set_buffer_view_handle(
+                                            Some(buffer_view_handle),
+                                            &ctx.editor.buffer_views,
+                                        );
+                                    }
                                 }
                                 Err(error) => {
                                     if !error_buf.is_empty() {
@@ -803,6 +814,8 @@ impl State {
                                     let _ = write!(error_buf, "{}", error);
                                 }
                             }
+
+                            ctx.editor.string_pool.release(line);
                         }
 
                         if !error_buf.is_empty() {
@@ -1633,10 +1646,11 @@ impl State {
                         let buffer_view = ctx.editor.buffer_views.get(handle);
                         let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                         if let Some(path) = buffer.path.to_str() {
-                            let position = buffer_view.cursors.main_cursor().position;
-                            let line = position.line_index + 1;
-                            let column = position.column_byte_index + 1;
-                            let _ = write!(register, "{}:{},{}", path, line, column);
+                            register.push_str(path);
+                            register.push(':');
+                            for cursor in &buffer_view.cursors[..] {
+                                let _ = write!(register, "{};", cursor);
+                            }
                         }
 
                         ctx.editor
@@ -1935,11 +1949,11 @@ impl ModeState for State {
                     let c = c.to_ascii_lowercase();
                     if let Some(key) = RegisterKey::from_char(c) {
                         let register = ctx.editor.registers.get(key);
-                        let (path, position) = parse_path_and_position(register);
-                        let path = ctx.editor.string_pool.acquire_with(path);
+                        let register = ctx.editor.string_pool.acquire_with(register);
+                        let (path, ranges) = parse_path_and_ranges(&register);
                         match ctx.editor.buffer_view_handle_from_path(
                             client_handle,
-                            Path::new(&path),
+                            Path::new(path),
                             BufferProperties::text(),
                             false,
                         ) {
@@ -1948,16 +1962,20 @@ impl ModeState for State {
                                 client
                                     .set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
 
-                                if let Some(position) = position {
-                                    let buffer_view = ctx.editor.buffer_views.get_mut(handle);
-                                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
-                                    let position = buffer.content().saturate_position(position);
+                                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+                                let buffer_content =
+                                    ctx.editor.buffers.get(buffer_view.buffer_handle).content();
 
-                                    let mut cursors = buffer_view.cursors.mut_guard();
-                                    cursors.clear();
+                                let mut cursors = buffer_view.cursors.mut_guard();
+                                let mut cleared_cursors = false;
+                                for range in ranges {
+                                    if !cleared_cursors {
+                                        cleared_cursors = true;
+                                        cursors.clear();
+                                    }
                                     cursors.add(Cursor {
-                                        anchor: position,
-                                        position,
+                                        anchor: buffer_content.saturate_position(range.0),
+                                        position: buffer_content.saturate_position(range.1),
                                     });
                                 }
 
@@ -1970,7 +1988,7 @@ impl ModeState for State {
                                 .write(LogKind::Error)
                                 .fmt(format_args!("invalid marker '{}': {}", &path, error)),
                         }
-                        ctx.editor.string_pool.release(path);
+                        ctx.editor.string_pool.release(register);
                     }
                 }
                 _ => (),

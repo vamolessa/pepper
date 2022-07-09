@@ -9,7 +9,7 @@ use crate::{
     cursor::Cursor,
     editor::EditorFlow,
     editor_utils::{
-        parse_path_and_position, parse_process_command, validate_process_command, LogKind,
+        parse_path_and_ranges, parse_process_command, validate_process_command, LogKind,
         RegisterKey,
     },
     help,
@@ -150,7 +150,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
 
         let client_handle = io.client_handle()?;
-        let (path, position) = parse_path_and_position(path);
+        let (path, ranges) = parse_path_and_ranges(path);
 
         let path = Path::new(&path);
         let handle = ctx
@@ -160,12 +160,19 @@ pub fn register_commands(commands: &mut CommandManager) {
         let client = ctx.clients.get_mut(client_handle);
         client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
 
-        if let Some(position) = position {
-            let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
-            cursors.clear();
+        let buffer_view = ctx.editor.buffer_views.get_mut(handle);
+        let buffer_content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
+
+        let mut cursors = buffer_view.cursors.mut_guard();
+        let mut cleared_cursors = false;
+        for range in ranges {
+            if !cleared_cursors {
+                cursors.clear();
+                cleared_cursors = true;
+            }
             cursors.add(Cursor {
-                anchor: position,
-                position,
+                anchor: buffer_content.saturate_position(range.0),
+                position: buffer_content.saturate_position(range.1),
             });
         }
 
@@ -851,4 +858,3 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
-
