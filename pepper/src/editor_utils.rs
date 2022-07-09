@@ -718,37 +718,39 @@ pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Opti
     None
 }
 
-pub fn parse_path_and_ranges(text: &str) -> (&str, BufferRangesParser) {
-    let text = text.trim();
-    match text.rfind(':') {
-        Some(i) => (&text[..i], BufferRangesParser(&text[i + 1..])),
-        None => (text, BufferRangesParser("")),
-    }
-}
-
-pub fn find_path_and_ranges_at(text: &str, index: usize) -> (&str, BufferRangesParser) {
-    fn split_prefix(path: &str) -> (&str, &str) {
-        let mut chars = path.chars();
-        loop {
-            match chars.next() {
-                Some(':') => break,
-                None => return ("", path),
-                Some(c) => {
-                    if !c.is_ascii_alphabetic() {
-                        return ("", path);
-                    }
+fn split_prefix(path: &str) -> (&str, &str) {
+    let mut chars = path.chars();
+    loop {
+        match chars.next() {
+            Some(':') => break,
+            None => return ("", path),
+            Some(c) => {
+                if !c.is_ascii_alphabetic() {
+                    return ("", path);
                 }
             }
         }
-        match chars.next() {
-            Some('/' | '\\') => {
-                let rest = chars.as_str();
-                (&path[..path.len() - rest.len()], rest)
-            }
-            _ => ("", path),
-        }
     }
+    match chars.next() {
+        Some('/' | '\\') => {
+            let rest = chars.as_str();
+            (&path[..path.len() - rest.len()], rest)
+        }
+        _ => ("", path),
+    }
+}
 
+pub fn parse_path_and_ranges(text: &str) -> (&str, BufferRangesParser) {
+    let text = text.trim();
+    let (prefix, rest) = split_prefix(text);
+    let (i, ranges) = match rest.find(':') {
+        Some(i) => (i, BufferRangesParser(&rest[i + 1..])),
+        None => (rest.len(), BufferRangesParser("")),
+    };
+    (&text[..prefix.len() + i], ranges)
+}
+
+pub fn find_path_and_ranges_at(text: &str, index: usize) -> (&str, BufferRangesParser) {
     let (left, right) = text.split_at(index);
     let from = match left
         .rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')' | '"' | '\''))
@@ -895,6 +897,24 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_path() {
+        fn parse(text: &str) -> &str {
+            let (path, _) = parse_path_and_ranges(text);
+            path
+        }
+
+        assert_eq!("", parse(""));
+        assert_eq!("path", parse("path"));
+        assert_eq!("dir/path", parse("dir/path"));
+        assert_eq!("dir\\path", parse("dir\\path"));
+        assert_eq!("c:/dir/path", parse("c:/dir/path"));
+        assert_eq!("c:\\dir\\path", parse("c:\\dir\\path"));
+        assert_eq!("abcd:/dir/path", parse("abcd:/dir/path"));
+        assert_eq!("abcd:/dir/path", parse("abcd:/dir/path:23"));
+        assert_eq!("abcd:/dir/path", parse("abcd:/dir/path:23:45:67"));
+    }
+
+    #[test]
     fn test_find_path_at() {
         fn find_at(
             text: &str,
@@ -970,3 +990,4 @@ mod tests {
         assert_eq!((path, Some((3, 0))), find_at(text, 3),);
     }
 }
+
