@@ -83,6 +83,13 @@ pub fn register_expansions(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("cursor-anchor", |ctx, io| {
+        if let Some(cursor) = io.cursor(ctx)? {
+            let _ = write!(io.output, "{}", cursor.anchor);
+        }
+        Ok(())
+    });
+
     r("cursor-anchor-column", |ctx, io| {
         if let Some(cursor) = io.cursor(ctx)? {
             let _ = write!(io.output, "{}", cursor.anchor.column_byte_index + 1);
@@ -93,6 +100,13 @@ pub fn register_expansions(commands: &mut CommandManager) {
     r("cursor-anchor-line", |ctx, io| {
         if let Some(cursor) = io.cursor(ctx)? {
             let _ = write!(io.output, "{}", cursor.anchor.line_index + 1);
+        }
+        Ok(())
+    });
+
+    r("cursor-position", |ctx, io| {
+        if let Some(cursor) = io.cursor(ctx)? {
+            let _ = write!(io.output, "{}", cursor.position);
         }
         Ok(())
     });
