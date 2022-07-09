@@ -5,6 +5,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     editor::Editor,
+    cursor::Cursor,
     editor_utils::LoggerStatusBarDisplay,
     mode::ModeKind,
     syntax::{Token, TokenKind},
@@ -583,7 +584,7 @@ fn draw_statusbar(
 ) {
     let view_name;
     let needs_save;
-    let main_cursor_position;
+    let main_cursor;
     let search_ranges;
 
     match buffer_view_handle {
@@ -593,13 +594,13 @@ fn draw_statusbar(
 
             view_name = buffer.path.to_str().unwrap_or("");
             needs_save = buffer.needs_save();
-            main_cursor_position = buffer_view.cursors.main_cursor().position;
+            main_cursor = *buffer_view.cursors.main_cursor();
             search_ranges = buffer.search_ranges();
         }
         None => {
             view_name = "";
             needs_save = false;
-            main_cursor_position = BufferPosition::zero();
+            main_cursor = Cursor::zero();
             search_ranges = &[];
         }
     }
@@ -732,9 +733,11 @@ fn draw_statusbar(
         buf.extend_from_slice(view_name.as_bytes());
 
         if !view_name.is_empty() {
-            let line_number = main_cursor_position.line_index + 1;
-            let column_number = main_cursor_position.column_byte_index + 1;
-            let _ = write!(buf, ":{},{}", line_number, column_number);
+            if main_cursor.anchor != main_cursor.position {
+                let _ = write!(buf, ":{}", main_cursor);
+            } else {
+                let _ = write!(buf, ":{}", main_cursor.position);
+            }
         }
         buf.push(b' ');
 
