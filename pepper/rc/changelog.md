@@ -17,6 +17,7 @@
 - fixed `gf` would not open file when it's relative to the root and the current buffer's path parent exists
 - added support for parsing multiple cursors when using (`m_`, `gf`, etc)
 - added main cursor range display in status bar when its anchor is different from its position
+- removed unnecessary conditionals on ui rendering code
 
 # 0.28.0
 - added the concept of breakpoints for plugins to use

@@ -4,8 +4,8 @@ use crate::{
     buffer::CharDisplayDistances,
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
-    editor::Editor,
     cursor::Cursor,
+    editor::Editor,
     editor_utils::LoggerStatusBarDisplay,
     mode::ModeKind,
     syntax::{Token, TokenKind},
@@ -384,10 +384,7 @@ fn draw_buffer_view(
                 TokenKind::Whitespace => ctx.editor.theme.token_whitespace,
             };
 
-            // TODO: experiment just replace these while with ifs
-            while current_cursor_index < cursors_end_index
-                && current_cursor_range.to < char_position
-            {
+            if current_cursor_index < cursors_end_index && current_cursor_range.to < char_position {
                 current_cursor_index += 1;
                 let cursor = cursors[current_cursor_index];
                 current_cursor_position = cursor.position;
@@ -396,7 +393,7 @@ fn draw_buffer_view(
             let inside_cursor_range = current_cursor_range.from <= char_position
                 && char_position < current_cursor_range.to;
 
-            while current_search_range.to <= char_position
+            if current_search_range.to <= char_position
                 && current_search_range_index < search_ranges_end_index
             {
                 current_search_range_index += 1;
@@ -405,7 +402,7 @@ fn draw_buffer_view(
             let inside_search_range = current_search_range.from <= char_position
                 && char_position < current_search_range.to;
 
-            while current_lint_range.to < char_position && current_lint_index < lints_end_index {
+            if current_lint_range.to < char_position && current_lint_index < lints_end_index {
                 current_lint_index += 1;
                 current_lint_range = lints[current_lint_index].range;
             }
@@ -785,3 +782,4 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
+
