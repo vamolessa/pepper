@@ -741,7 +741,7 @@ impl State {
                                 } else if let Some(parent) =
                                     buffer.path.parent().and_then(Path::to_str)
                                 {
-                                    if !parent.is_empty() && Path::new(parent).exists() {
+                                    if !parent.is_empty() && Path::new(parent).exists() && !Path::new(path).exists() {
                                         path_buf.push_str(parent);
                                         path_buf.push('/');
                                     }

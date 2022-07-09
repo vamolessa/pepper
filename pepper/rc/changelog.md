@@ -14,6 +14,7 @@
 - added proper error flow handling in some builtin commands that either tried to open a file or parse process command
 - fixed undo on a buffer with `history-disabled` would move the cursor to the top
 - fixed would not open a buffer with `saving-disabled` and invalid chars in its path
+- fixed `gf` would not open file when it's relative to the root and the current buffer's path parent exists
 
 # 0.28.0
 - added the concept of breakpoints for plugins to use
