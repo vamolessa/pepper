@@ -8,7 +8,7 @@ use crate::{
     cursor::Cursor,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{
-        find_path_and_position_at, hash_bytes, parse_path_and_ranges, LogKind, RegisterKey,
+        find_path_and_ranges_at, hash_bytes, parse_path_and_ranges, LogKind, RegisterKey,
         AUTO_MACRO_REGISTER, SEARCH_REGISTER,
     },
     help::HELP_PREFIX,
@@ -720,21 +720,15 @@ impl State {
 
                             let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle);
                             let line = buffer.content().lines()[line_index as usize].as_str();
+                            let line = ctx.editor.string_pool.acquire_with(line);
 
                             let from = range.from.column_byte_index;
                             let to = range.to.column_byte_index;
 
-                            let (path, position) = if from < to {
-                                let (path, mut ranges) =
-                                    parse_path_and_ranges(&line[from as usize..to as usize]);
-                                let position = ranges.next().map(|r| r.0);
-                                (path, position)
+                            let (path, ranges) = if from < to {
+                                parse_path_and_ranges(&line[from as usize..to as usize])
                             } else {
-                                find_path_and_position_at(line, from as _)
-                            };
-                            let position = match position {
-                                Some(position) => position,
-                                None => BufferPosition::line_col(fallback_line_index, 0),
+                                find_path_and_ranges_at(&line, from as _)
                             };
 
                             path_buf.clear();
@@ -765,18 +759,30 @@ impl State {
                                     {
                                         let buffer_view =
                                             ctx.editor.buffer_views.get_mut(buffer_view_handle);
-                                        let position = ctx
+                                        let buffer_content = ctx
                                             .editor
                                             .buffers
                                             .get(buffer_view.buffer_handle)
-                                            .content()
-                                            .saturate_position(position);
+                                            .content();
+
                                         let mut cursors = buffer_view.cursors.mut_guard();
                                         cursors.clear();
-                                        cursors.add(Cursor {
-                                            anchor: position,
-                                            position,
-                                        });
+
+                                        for range in ranges {
+                                            cursors.add(Cursor {
+                                                anchor: buffer_content.saturate_position(range.0),
+                                                position: buffer_content.saturate_position(range.1),
+                                            });
+                                        }
+
+                                        if cursors[..].is_empty() {
+                                            let position =
+                                                BufferPosition::line_col(fallback_line_index, 0);
+                                            cursors.add(Cursor {
+                                                anchor: position,
+                                                position,
+                                            });
+                                        }
                                     }
 
                                     if i == main_cursor_index {
@@ -808,6 +814,8 @@ impl State {
                                     let _ = write!(error_buf, "{}", error);
                                 }
                             }
+
+                            ctx.editor.string_pool.release(line);
                         }
 
                         if !error_buf.is_empty() {
@@ -2470,4 +2478,3 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
-

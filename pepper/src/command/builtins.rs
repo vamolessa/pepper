@@ -858,4 +858,3 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
-

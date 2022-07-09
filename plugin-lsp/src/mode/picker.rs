@@ -45,14 +45,10 @@ pub fn enter_definition_mode(
                                 &ctx.editor.buffer_views,
                             );
 
-                            let buffer_view = ctx
-                                .editor
-                                .buffer_views
-                                .get_mut(buffer_view_handle);
-                            let buffer_content = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
-                            let mut cursors = buffer_view
-                                .cursors
-                                .mut_guard();
+                            let buffer_view = ctx.editor.buffer_views.get_mut(buffer_view_handle);
+                            let buffer_content =
+                                ctx.editor.buffers.get(buffer_view.buffer_handle).content();
+                            let mut cursors = buffer_view.cursors.mut_guard();
                             cursors.clear();
                             for range in ranges {
                                 cursors.add(Cursor {

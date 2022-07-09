@@ -1,4 +1,7 @@
-use std::{fmt, ops::{Drop, Index, IndexMut, RangeFrom, RangeFull}};
+use std::{
+    fmt,
+    ops::{Drop, Index, IndexMut, RangeFrom, RangeFull},
+};
 
 use crate::{
     buffer::{BufferContent, CharDisplayDistances},

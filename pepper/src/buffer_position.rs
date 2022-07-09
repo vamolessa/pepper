@@ -305,8 +305,8 @@ mod tests {
         fn range(
             from: (BufferPositionIndex, BufferPositionIndex),
             to: (BufferPositionIndex, BufferPositionIndex),
-        ) -> BufferRange {
-            BufferRange::between(pos(from.0, from.1), pos(to.0, to.1))
+        ) -> (BufferPosition, BufferPosition) {
+            (pos(from.0, from.1), pos(to.0, to.1))
         }
 
         let mut ranges = BufferRangesParser("");
@@ -388,4 +388,3 @@ mod tests {
         assert_eq!(None, ranges.next());
     }
 }
-
