@@ -1,8 +1,4 @@
-use std::{
-    env, fs, io, panic,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{env, fs, io, panic, path::Path, time::Duration};
 
 use crate::{
     client::ClientManager,
@@ -48,7 +44,7 @@ pub struct ServerApplication {
 }
 impl ServerApplication {
     pub fn new(config: ApplicationConfig) -> Option<Self> {
-        let current_dir = env::current_dir().unwrap_or(PathBuf::new());
+        let current_dir = env::current_dir().unwrap_or_default();
 
         let mut temp_dir = env::temp_dir();
         temp_dir.push(env!("CARGO_PKG_NAME"));
@@ -116,11 +112,11 @@ impl ServerApplication {
         })
     }
 
-    pub fn update<I>(&mut self, mut events: I)
+    pub fn update<I>(&mut self, events: I)
     where
         I: Iterator<Item = PlatformEvent>,
     {
-        while let Some(event) = events.next() {
+        for event in events {
             match event {
                 PlatformEvent::Idle => {
                     self.ctx.editor.on_idle();

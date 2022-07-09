@@ -249,10 +249,8 @@ fn parse_key(chars: &mut Chars) -> Result<Key, KeyParseError> {
 
     fn check_modifier(chars: &mut Chars, c: char) -> bool {
         let saved = chars.clone();
-        if chars.next() == Some(c) {
-            if chars.next() == Some('-') {
-                return true;
-            }
+        if chars.next() == Some(c) && chars.next() == Some('-') {
+            return true;
         }
 
         *chars = saved;

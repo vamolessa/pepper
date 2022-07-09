@@ -105,8 +105,7 @@ fn enqueue_client_bytes(events: &mut Vec<PlatformEvent>, mut buf: PooledBuf, byt
 fn process_requests(app: &mut Application) {
     while !app.events.is_empty() {
         app.server.update(app.events.drain(..));
-        let mut requests = app.server.ctx.platform.requests.drain();
-        while let Some(request) = requests.next() {
+        for request in app.server.ctx.platform.requests.drain() {
             match request {
                 PlatformRequest::Quit => (),
                 PlatformRequest::Redraw => (),
