@@ -907,11 +907,16 @@ mod tests {
         assert_eq!("path", parse("path"));
         assert_eq!("dir/path", parse("dir/path"));
         assert_eq!("dir\\path", parse("dir\\path"));
+        assert_eq!("dir/path.ext", parse("dir/path.ext"));
+        assert_eq!("dir/path.ex.ext", parse("dir/path.ex.ext"));
         assert_eq!("c:/dir/path", parse("c:/dir/path"));
         assert_eq!("c:\\dir\\path", parse("c:\\dir\\path"));
         assert_eq!("abcd:/dir/path", parse("abcd:/dir/path"));
         assert_eq!("abcd:/dir/path", parse("abcd:/dir/path:23"));
-        assert_eq!("abcd:/dir/path", parse("abcd:/dir/path:23:45:67"));
+        assert_eq!(
+            "abcd:/dir/path.ex.ext",
+            parse("abcd:/dir/path.ex.ext:23:45:67")
+        );
     }
 
     #[test]
@@ -990,4 +995,3 @@ mod tests {
         assert_eq!((path, Some((3, 0))), find_at(text, 3),);
     }
 }
-
