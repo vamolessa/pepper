@@ -20,6 +20,7 @@
 - added `@cursor-anchor()` and `@cursor-position()` expansions which expand with the format `line,col`
 - added `@cwd()` expansion which expands into the current directory path
 - removed unnecessary conditionals on ui rendering code
+- added the chars `[]{}` as path delimiters for `find_path_and_ranges_at` (`gf` on normal mode)
 
 # 0.28.0
 - added the concept of breakpoints for plugins to use

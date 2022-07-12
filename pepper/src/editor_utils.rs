@@ -753,13 +753,13 @@ pub fn parse_path_and_ranges(text: &str) -> (&str, BufferRangesParser) {
 pub fn find_path_and_ranges_at(text: &str, index: usize) -> (&str, BufferRangesParser) {
     let (left, right) = text.split_at(index);
     let from = match left
-        .rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')' | '"' | '\''))
+        .rfind(|c: char| c.is_ascii_whitespace() || matches!(c, '(' | ')' | '[' | ']' | '{' | '}' | '"' | '\''))
     {
         Some(i) => i + 1,
         None => 0,
     };
     let to = match right
-        .find(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '(' | ')' | '"' | '\''))
+        .find(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '(' | ')' | '[' | ']' | '{' | '}' | '"' | '\''))
     {
         Some(i) => {
             if index + i - from == 1 {
