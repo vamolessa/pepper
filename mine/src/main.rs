@@ -9,6 +9,7 @@ static ALTERNATE_FILE_PLUGIN: PluginDefinition = PluginDefinition {
             "goto-alternate-buffer",
             &[],
             |ctx, io| {
+                io.args.assert_empty()?;
                 let client = ctx.clients.get_mut(io.client_handle()?);
 
                 let buffer_view_handle = match client.buffer_view_handle() {

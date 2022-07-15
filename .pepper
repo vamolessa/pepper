@@ -14,12 +14,6 @@ if @platform() == windows @{
         enqueue-keys aad
         replace-with-output "cmd /c cargo test --workspace 2>&1"
     }
-
-    # remedybg
-    map normal <space>dd :<space>remedybg-debug<enter>
-    command remedybg-debug @{
-        spawn "remedybg target/debug/pepper.exe -s s --server"
-    }
 }
 
 if @platform() == linux @{
