@@ -4,7 +4,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
-    events::EditorEventQueue,
+    events::{EditorEventQueue, EditorEventTextInsert},
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -411,8 +411,9 @@ impl BufferView {
         events: &mut EditorEventQueue,
     ) {
         let buffer = buffers.get_mut(self.buffer_handle);
+        let mut events = events.buffer_text_inserts_mut_guard(self.buffer_handle);
         for cursor in self.cursors[..].iter().rev() {
-            buffer.insert_text(word_database, cursor.position, text, events);
+            buffer.insert_text(word_database, cursor.position, text, &mut events);
         }
     }
 
@@ -423,8 +424,9 @@ impl BufferView {
         events: &mut EditorEventQueue,
     ) {
         let buffer = buffers.get_mut(self.buffer_handle);
+        let mut events = events.buffer_range_deletes_mut_guard(self.buffer_handle);
         for cursor in self.cursors[..].iter().rev() {
-            buffer.delete_range(word_database, cursor.to_range(), events);
+            buffer.delete_range(word_database, cursor.to_range(), &mut events);
         }
     }
 
@@ -457,8 +459,17 @@ impl BufferView {
         let buffer = buffers.get_mut(self.buffer_handle);
         for (cursor, &position) in self.cursors[..].iter().zip(positions.iter()).rev() {
             let range = BufferRange::between(position, cursor.position);
-            buffer.delete_range(word_database, range, events);
-            buffer.insert_text(word_database, position, completion, events);
+            buffer.delete_range(
+                word_database,
+                range,
+                &mut events.buffer_range_deletes_mut_guard(self.buffer_handle),
+            );
+            buffer.insert_text(
+                word_database,
+                position,
+                completion,
+                &mut events.buffer_text_inserts_mut_guard(self.buffer_handle),
+            );
         }
     }
 
@@ -608,6 +619,41 @@ impl BufferViewCollection {
         }
     }
 
+    pub(crate) fn on_buffer_text_inserts(
+        &mut self,
+        buffer_handle: BufferHandle,
+        inserts: &[EditorEventTextInsert],
+    ) {
+        for view in self.iter_mut() {
+            if view.buffer_handle == buffer_handle {
+                let mut cursors = view.cursors.mut_guard();
+                for insert in inserts {
+                    let range = insert.range;
+                    for c in &mut cursors[..] {
+                        c.insert(range);
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn on_buffer_range_deletes(
+        &mut self,
+        buffer_handle: BufferHandle,
+        deletes: &[BufferRange],
+    ) {
+        for view in self.iter_mut() {
+            if view.buffer_handle == buffer_handle {
+                let mut cursors = view.cursors.mut_guard();
+                for &range in deletes {
+                    for c in &mut cursors[..] {
+                        c.delete(range);
+                    }
+                }
+            }
+        }
+    }
+
     pub(crate) fn on_buffer_read(&mut self, buffer: &Buffer) {
         let buffer_handle = buffer.handle();
         let buffer = buffer.content();
@@ -617,34 +663,6 @@ impl BufferViewCollection {
                 for c in &mut view.cursors.mut_guard()[..] {
                     c.anchor = buffer.saturate_position(c.anchor);
                     c.position = buffer.saturate_position(c.position);
-                }
-            }
-        }
-    }
-
-    pub(crate) fn on_buffer_insert_text(
-        &mut self,
-        buffer_handle: BufferHandle,
-        range: BufferRange,
-    ) {
-        for view in self.iter_mut() {
-            if view.buffer_handle == buffer_handle {
-                for c in &mut view.cursors.mut_guard()[..] {
-                    c.insert(range);
-                }
-            }
-        }
-    }
-
-    pub(crate) fn on_buffer_delete_text(
-        &mut self,
-        buffer_handle: BufferHandle,
-        range: BufferRange,
-    ) {
-        for view in self.iter_mut() {
-            if view.buffer_handle == buffer_handle {
-                for c in &mut view.cursors.mut_guard()[..] {
-                    c.delete(range);
                 }
             }
         }
@@ -677,7 +695,7 @@ mod tests {
                 &mut word_database,
                 BufferPosition::zero(),
                 text,
-                &mut events,
+                &mut events.buffer_text_inserts_mut_guard(buffer.handle()),
             );
 
             let mut buffer_views = BufferViewCollection::default();
@@ -777,3 +795,4 @@ mod tests {
         assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }
+

@@ -177,30 +177,32 @@ impl EditorContext {
             while let Some(event) = events.next(&self.editor.events) {
                 match *event {
                     EditorEvent::Idle => (),
+                    EditorEvent::BufferTextInserts {handle, inserts } => {
+                        let inserts = inserts.as_slice(&self.editor.events);
+                        self.editor.buffers.on_buffer_text_inserts(handle, inserts);
+                        self.editor
+                            .buffer_views
+                            .on_buffer_text_inserts(handle, inserts);
+                        self.editor
+                            .mode
+                            .insert_state
+                            .on_buffer_text_inserts(handle, inserts);
+                    }
+                    EditorEvent::BufferRangeDeletes {handle, deletes } => {
+                        let deletes = deletes.as_slice(&self.editor.events);
+                        self.editor.buffers.on_buffer_range_deletes(handle, deletes);
+                        self.editor
+                            .buffer_views
+                            .on_buffer_range_deletes(handle, deletes);
+                        self.editor
+                            .mode
+                            .insert_state
+                            .on_buffer_range_deletes(handle, deletes);
+                    }
                     EditorEvent::BufferRead { handle } => {
                         let buffer = self.editor.buffers.get_mut(handle);
                         buffer.refresh_syntax(&self.editor.syntaxes);
                         self.editor.buffer_views.on_buffer_read(buffer);
-                    }
-                    EditorEvent::BufferInsertText { handle, range, .. } => {
-                        self.editor.buffers.on_buffer_insert_text(handle, range);
-                        self.editor
-                            .buffer_views
-                            .on_buffer_insert_text(handle, range);
-                        self.editor
-                            .mode
-                            .insert_state
-                            .on_buffer_insert_text(handle, range);
-                    }
-                    EditorEvent::BufferDeleteText { handle, range } => {
-                        self.editor.buffers.on_buffer_delete_text(handle, range);
-                        self.editor
-                            .buffer_views
-                            .on_buffer_delete_text(handle, range);
-                        self.editor
-                            .mode
-                            .insert_state
-                            .on_buffer_delete_text(handle, range);
                     }
                     EditorEvent::BufferWrite { handle, new_path } => {
                         let buffer = self.editor.buffers.get_mut(handle);
@@ -246,7 +248,7 @@ impl EditorContext {
                         let buffer = self.editor.buffers.get(buffer_view.buffer_handle).content();
                         let mut view_cursors = buffer_view.cursors.mut_guard();
                         view_cursors.clear();
-                        for &cursor in cursors.as_cursors(&self.editor.events) {
+                        for &cursor in cursors.as_slice(&self.editor.events) {
                             let mut cursor = cursor;
                             cursor.anchor = buffer.saturate_position(cursor.anchor);
                             cursor.position = buffer.saturate_position(cursor.position);

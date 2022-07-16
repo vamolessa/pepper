@@ -10,14 +10,36 @@ use crate::{
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
+pub struct EditorEventTextInsert {
+    pub range: BufferRange,
+    text_from: u32,
+    text_to: u32,
+}
+impl EditorEventTextInsert {
+    pub fn text<'a>(&self, events: &'a EditorEventQueue) -> &'a str {
+        &events.read.texts[self.text_from as usize..self.text_to as usize]
+    }
+}
+
 #[derive(Clone, Copy)]
-pub struct EditorEventText {
+pub struct EditorEventTextInserts {
     from: u32,
     to: u32,
 }
-impl EditorEventText {
-    pub fn as_str<'a>(&self, events: &'a EditorEventQueue) -> &'a str {
-        &events.read.texts[self.from as usize..self.to as usize]
+impl EditorEventTextInserts {
+    pub fn as_slice<'a>(&self, events: &'a EditorEventQueue) -> &'a [EditorEventTextInsert] {
+        &events.read.text_inserts[self.from as usize..self.to as usize]
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct EditorEventRangeDeletes {
+    from: u32,
+    to: u32,
+}
+impl EditorEventRangeDeletes {
+    pub fn as_slice<'a>(&self, events: &'a EditorEventQueue) -> &'a [BufferRange] {
+        &events.read.range_deletes[self.from as usize..self.to as usize]
     }
 }
 
@@ -27,21 +49,20 @@ pub struct EditorEventCursors {
     to: u32,
 }
 impl EditorEventCursors {
-    pub fn as_cursors<'a>(&self, events: &'a EditorEventQueue) -> &'a [Cursor] {
+    pub fn as_slice<'a>(&self, events: &'a EditorEventQueue) -> &'a [Cursor] {
         &events.read.cursors[self.from as usize..self.to as usize]
     }
 }
 
 pub enum EditorEvent {
     Idle,
-    BufferInsertText {
+    BufferTextInserts {
         handle: BufferHandle,
-        range: BufferRange,
-        text: EditorEventText,
+        inserts: EditorEventTextInserts,
     },
-    BufferDeleteText {
+    BufferRangeDeletes {
         handle: BufferHandle,
-        range: BufferRange,
+        deletes: EditorEventRangeDeletes,
     },
     BufferRead {
         handle: BufferHandle,
@@ -66,6 +87,8 @@ pub enum EditorEvent {
 struct EventQueue {
     events: Vec<EditorEvent>,
     texts: String,
+    text_inserts: Vec<EditorEventTextInsert>,
+    range_deletes: Vec<BufferRange>,
     cursors: Vec<Cursor>,
 }
 
@@ -78,6 +101,9 @@ impl EditorEventQueue {
     pub(crate) fn flip(&mut self) {
         self.read.events.clear();
         self.read.texts.clear();
+        self.read.text_inserts.clear();
+        self.read.range_deletes.clear();
+        self.read.cursors.clear();
         std::mem::swap(&mut self.read, &mut self.write);
     }
 
@@ -85,23 +111,22 @@ impl EditorEventQueue {
         self.write.events.push(event);
     }
 
-    pub(crate) fn enqueue_buffer_insert(
-        &mut self,
-        handle: BufferHandle,
-        range: BufferRange,
-        text: &str,
-    ) {
-        let from = self.write.texts.len();
-        self.write.texts.push_str(text);
-        let text = EditorEventText {
-            from: from as _,
-            to: self.write.texts.len() as _,
-        };
-        self.write.events.push(EditorEvent::BufferInsertText {
+    pub fn buffer_text_inserts_mut_guard(&mut self, handle: BufferHandle) -> BufferTextInsertsMutGuard {
+        let previous_text_inserts_len = self.write.text_inserts.len() as _;
+        BufferTextInsertsMutGuard {
+            inner: &mut self.write,
             handle,
-            range,
-            text,
-        });
+            previous_text_inserts_len,
+        }
+    }
+
+    pub fn buffer_range_deletes_mut_guard(&mut self, handle: BufferHandle) -> BufferRangeDeletesMutGuard {
+        let previous_range_deletes_len = self.write.range_deletes.len() as _;
+        BufferRangeDeletesMutGuard {
+            inner: &mut self.write,
+            handle,
+            previous_range_deletes_len,
+        }
     }
 
     pub fn fix_cursors_mut_guard(&mut self, handle: BufferViewHandle) -> FixCursorMutGuard {
@@ -110,6 +135,64 @@ impl EditorEventQueue {
             inner: &mut self.write,
             handle,
             previous_cursors_len,
+        }
+    }
+}
+
+pub struct BufferTextInsertsMutGuard<'a> {
+    inner: &'a mut EventQueue,
+    handle: BufferHandle,
+    previous_text_inserts_len: u32,
+}
+impl<'a> BufferTextInsertsMutGuard<'a> {
+    pub(crate) fn add(&mut self, range: BufferRange, text: &str) {
+        let text_from = self.inner.texts.len() as _;
+        self.inner.texts.push_str(text);
+        let text_to = self.inner.texts.len() as _;
+
+        self.inner.text_inserts.push(EditorEventTextInsert {
+            range,
+            text_from,
+            text_to,
+        });
+    }
+}
+impl<'a> Drop for BufferTextInsertsMutGuard<'a> {
+    fn drop(&mut self) {
+        let inserts = EditorEventTextInserts {
+            from: self.previous_text_inserts_len,
+            to: self.inner.text_inserts.len() as _,
+        };
+        if inserts.from != inserts.to {
+            self.inner.events.push(EditorEvent::BufferTextInserts {
+                handle: self.handle,
+                inserts,
+            });
+        }
+    }
+}
+
+pub struct BufferRangeDeletesMutGuard<'a> {
+    inner: &'a mut EventQueue,
+    handle: BufferHandle,
+    previous_range_deletes_len: u32,
+}
+impl<'a> BufferRangeDeletesMutGuard<'a> {
+    pub(crate) fn add(&mut self, range: BufferRange) {
+        self.inner.range_deletes.push(range);
+    }
+}
+impl<'a> Drop for BufferRangeDeletesMutGuard<'a> {
+    fn drop(&mut self) {
+        let deletes = EditorEventRangeDeletes {
+            from: self.previous_range_deletes_len,
+            to: self.inner.text_inserts.len() as _,
+        };
+        if deletes.from != deletes.to {
+            self.inner.events.push(EditorEvent::BufferRangeDeletes {
+                handle: self.handle,
+                deletes,
+            });
         }
     }
 }
@@ -134,17 +217,15 @@ impl<'a> FixCursorMutGuard<'a> {
 }
 impl<'a> Drop for FixCursorMutGuard<'a> {
     fn drop(&mut self) {
-        if self.inner.cursors.len() > self.previous_cursors_len as _ {
-            let cursors = EditorEventCursors {
-                from: self.previous_cursors_len,
-                to: self.inner.cursors.len() as _,
-            };
+        let cursors = EditorEventCursors {
+            from: self.previous_cursors_len,
+            to: self.inner.cursors.len() as _,
+        };
+        if cursors.from != cursors.to {
             self.inner.events.push(EditorEvent::FixCursors {
                 handle: self.handle,
                 cursors,
             });
-        } else if self.inner.cursors.len() < self.previous_cursors_len as _ {
-            unreachable!();
         }
     }
 }
@@ -1007,3 +1088,4 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
+

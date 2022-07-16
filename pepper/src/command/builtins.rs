@@ -475,12 +475,22 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let buffer = ctx.editor.buffers.get_mut(buffer_handle);
         let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
-        buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
+        buffer.delete_range(
+            &mut ctx.editor.word_database,
+            range,
+            &mut ctx
+                .editor
+                .events
+                .buffer_range_deletes_mut_guard(buffer_handle),
+        );
         buffer.insert_text(
             &mut ctx.editor.word_database,
             BufferPosition::zero(),
             &content,
-            &mut ctx.editor.events,
+            &mut ctx
+                .editor
+                .events
+                .buffer_text_inserts_mut_guard(buffer_handle),
         );
 
         ctx.editor.string_pool.release(content);
@@ -537,12 +547,22 @@ pub fn register_commands(commands: &mut CommandManager) {
             .buffer_handle;
         let buffer = ctx.editor.buffers.get_mut(buffer_handle);
         let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
-        buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
+        buffer.delete_range(
+            &mut ctx.editor.word_database,
+            range,
+            &mut ctx
+                .editor
+                .events
+                .buffer_range_deletes_mut_guard(buffer_handle),
+        );
         buffer.insert_text(
             &mut ctx.editor.word_database,
             BufferPosition::zero(),
             &content,
-            &mut ctx.editor.events,
+            &mut ctx
+                .editor
+                .events
+                .buffer_text_inserts_mut_guard(buffer_handle),
         );
 
         ctx.editor.string_pool.release(content);
@@ -599,12 +619,22 @@ pub fn register_commands(commands: &mut CommandManager) {
             .buffer_handle;
         let buffer = ctx.editor.buffers.get_mut(buffer_handle);
         let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
-        buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
+        buffer.delete_range(
+            &mut ctx.editor.word_database,
+            range,
+            &mut ctx
+                .editor
+                .events
+                .buffer_range_deletes_mut_guard(buffer_handle),
+        );
         buffer.insert_text(
             &mut ctx.editor.word_database,
             BufferPosition::zero(),
             &content,
-            &mut ctx.editor.events,
+            &mut ctx
+                .editor
+                .events
+                .buffer_text_inserts_mut_guard(buffer_handle),
         );
 
         ctx.editor.string_pool.release(content);
@@ -858,3 +888,4 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
+

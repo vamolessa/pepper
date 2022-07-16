@@ -1264,6 +1264,10 @@ impl State {
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
                 let count = state.count.max(1);
 
+                let mut events = ctx
+                    .editor
+                    .events
+                    .buffer_range_deletes_mut_guard(buffer.handle());
                 for i in 0..cursor_count {
                     let range = ctx.editor.buffer_views.get(handle).cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
@@ -1291,13 +1295,10 @@ impl State {
                             BufferPosition::line_col(line_index, 0),
                             BufferPosition::line_col(line_index, indentation_column_index as _),
                         );
-                        buffer.delete_range(
-                            &mut ctx.editor.word_database,
-                            range,
-                            &mut ctx.editor.events,
-                        );
+                        buffer.delete_range(&mut ctx.editor.word_database, range, &mut events);
                     }
                 }
+                drop(events);
 
                 buffer.commit_edits();
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
@@ -1325,6 +1326,11 @@ impl State {
 
                 let mut buf = ctx.editor.string_pool.acquire();
                 buf.extend(extender);
+
+                let mut events = ctx
+                    .editor
+                    .events
+                    .buffer_text_inserts_mut_guard(buffer.handle());
                 for i in 0..cursor_count {
                     let range = ctx.editor.buffer_views.get(handle).cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
@@ -1332,10 +1338,11 @@ impl State {
                             &mut ctx.editor.word_database,
                             BufferPosition::line_col(line_index, 0),
                             &buf,
-                            &mut ctx.editor.events,
+                            &mut events,
                         );
                     }
                 }
+                drop(events);
                 ctx.editor.string_pool.release(buf);
 
                 buffer.commit_edits();
@@ -2207,13 +2214,17 @@ fn paste_text(ctx: &mut EditorContext, buffer_view_handle: BufferViewHandle, tex
     let cursors = &buffer_view.cursors[..];
     if hash == hash_bytes(text.as_bytes()) && ranges.len() == cursors.len() {
         let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
+        let mut events = ctx
+            .editor
+            .events
+            .buffer_text_inserts_mut_guard(buffer.handle());
         for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
             let text = &text[range.0 as usize..range.1 as usize];
             buffer.insert_text(
                 &mut ctx.editor.word_database,
                 cursor.position,
                 text,
-                &mut ctx.editor.events,
+                &mut events,
             );
         }
     } else {
@@ -2478,3 +2489,4 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
+

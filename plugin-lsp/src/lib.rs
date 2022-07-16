@@ -319,23 +319,25 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 EditorEvent::Idle => {
                     util::send_pending_did_change(client, &mut ctx.editor, &mut ctx.platform);
                 }
-                EditorEvent::BufferInsertText {
+                EditorEvent::BufferTextInserts {
                     handle,
-                    range,
-                    text,
-                    ..
+                    inserts,
                 } => {
                     let buffer = ctx.editor.buffers.get(handle);
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
-                        let text = text.as_str(&ctx.editor.events);
-                        let range = BufferRange::between(range.from, range.from);
-                        client.versioned_buffers.add_edit(handle, range, text);
+                        for insert in inserts.as_slice(&ctx.editor.events) {
+                            let text = insert.text(&ctx.editor.events);
+                            let range = BufferRange::between(insert.range.from, insert.range.from);
+                            client.versioned_buffers.add_edit(handle, range, text);
+                        }
                     }
                 }
-                EditorEvent::BufferDeleteText { handle, range, .. } => {
+                EditorEvent::BufferRangeDeletes { handle, deletes } => {
                     let buffer = ctx.editor.buffers.get(handle);
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
-                        client.versioned_buffers.add_edit(handle, range, "");
+                        for &range in deletes.as_slice(&ctx.editor.events) {
+                            client.versioned_buffers.add_edit(handle, range, "");
+                        }
                     }
                 }
                 EditorEvent::BufferRead { handle } => {

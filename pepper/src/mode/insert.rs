@@ -7,6 +7,7 @@ use crate::{
     client::ClientHandle,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::AUTO_MACRO_REGISTER,
+    events::EditorEventTextInsert,
     mode::{ModeKind, ModeState},
     platform::{Key, KeyCode},
     plugin::{CompletionContext, PluginHandle},
@@ -21,20 +22,35 @@ pub struct State {
 }
 
 impl State {
-    pub fn on_buffer_insert_text(&mut self, handle: BufferHandle, range: BufferRange) {
+    pub(crate) fn on_buffer_text_inserts(
+        &mut self,
+        handle: BufferHandle,
+        inserts: &[EditorEventTextInsert],
+    ) {
         if self.editing_buffer_handle == Some(handle) {
-            for position in &mut self.completion_positions {
-                if *position != range.from {
-                    *position = position.insert(range);
+            for insert in inserts {
+                let range = insert.range;
+                for position in &mut self.completion_positions {
+                    if *position != range.from {
+                        *position = position.insert(range);
+                    }
                 }
             }
         }
     }
 
-    pub fn on_buffer_delete_text(&mut self, handle: BufferHandle, range: BufferRange) {
+    pub(crate) fn on_buffer_range_deletes(
+        &mut self,
+        handle: BufferHandle,
+        deletes: &[BufferRange],
+    ) {
         if self.editing_buffer_handle == Some(handle) {
-            for position in &mut self.completion_positions {
-                *position = position.delete(range);
+            for &range in deletes {
+                for position in &mut self.completion_positions {
+                    if *position != range.from {
+                        *position = position.delete(range);
+                    }
+                }
             }
         }
     }
@@ -150,6 +166,7 @@ impl ModeState for State {
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
                 let mut buf = ctx.editor.string_pool.acquire();
+                let mut events = ctx.editor.events.buffer_text_inserts_mut_guard(buffer.handle());
                 for i in (0..cursor_count).rev() {
                     let position = buffer_view.cursors[i].position;
 
@@ -168,7 +185,7 @@ impl ModeState for State {
                         &mut ctx.editor.word_database,
                         position,
                         &buf,
-                        &mut ctx.editor.events,
+                        &mut events,
                     );
                     buf.clear();
                 }
@@ -424,3 +441,4 @@ fn apply_completion(
     );
     ctx.editor.string_pool.release(completion);
 }
+

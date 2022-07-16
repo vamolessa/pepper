@@ -160,6 +160,12 @@ impl BufferRange {
         let (from, to) = if from <= to { (from, to) } else { (to, from) };
         Self { from, to, __: () }
     }
+
+    pub fn between_with_direction(from: BufferPosition, to: BufferPosition) -> (Self, bool) {
+        let forward = from <= to;
+        let (from, to) = if forward { (from, to) } else { (to, from) };
+        (Self { from, to, __: () }, forward)
+    }
 }
 
 impl fmt::Debug for BufferRange {

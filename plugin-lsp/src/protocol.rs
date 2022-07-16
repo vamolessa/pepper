@@ -408,13 +408,19 @@ impl TextEdit {
                 delete_range.to = delete_range.to.insert(*i);
             }
 
-            buffer.delete_range(&mut editor.word_database, delete_range, &mut editor.events);
-            let insert_range = buffer.insert_text(
-                &mut editor.word_database,
-                delete_range.from,
-                text,
-                &mut editor.events,
-            );
+            {
+                let mut events = editor.events.buffer_range_deletes_mut_guard(buffer_handle);
+                buffer.delete_range(&mut editor.word_database, delete_range, &mut events);
+            }
+            let insert_range = {
+                let mut events = editor.events.buffer_text_inserts_mut_guard(buffer_handle);
+                buffer.insert_text(
+                    &mut editor.word_database,
+                    delete_range.from,
+                    text,
+                    &mut events,
+                )
+            };
 
             temp_edits.push((delete_range, insert_range));
         }
@@ -1188,3 +1194,4 @@ mod tests {
         }
     }
 }
+
