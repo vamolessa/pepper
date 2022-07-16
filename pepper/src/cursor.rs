@@ -86,22 +86,8 @@ impl CursorCollection {
         };
     }
 
-    fn merge_cursors(&mut self) {
-        let mut i = 0;
-        while i < self.cursors.len() {
-            let mut range = self.cursors[i as usize].to_range();
-            for j in ((i + 1)..self.cursors.len()).rev() {
-                let other_range = self.cursors[j as usize].to_range();
-                if range.from <= other_range.from && other_range.from <= range.to {
-                    range.to = range.to.max(other_range.to);
-                    self.cursors.remove(j);
-                    if j <= self.main_cursor_index as _ {
-                        self.main_cursor_index -= 1;
-                    }
-                }
-            }
-
-            let cursor = &mut self.cursors[i as usize];
+    fn merge_sorted_cursors(&mut self) {
+        fn set_cursor(cursor: &mut Cursor, range: BufferRange) {
             *cursor = if cursor.anchor <= cursor.position {
                 Cursor {
                     anchor: range.from,
@@ -113,9 +99,33 @@ impl CursorCollection {
                     position: range.from,
                 }
             };
-
-            i += 1;
         }
+
+        let cursors = &mut self.cursors[..];
+        let mut write_i = 0;
+        let mut read_i = 1;
+
+        let mut range = cursors[0].to_range();
+        while read_i < cursors.len() {
+            let other_range = cursors[read_i].to_range();
+            if other_range.from <= range.to {
+                if read_i <= self.main_cursor_index as _ {
+                    self.main_cursor_index -= 1;
+                }
+
+                range.to = range.to.max(other_range.to);
+            } else {
+                set_cursor(&mut cursors[write_i], range);
+
+                range = other_range;
+                write_i += 1;
+            }
+
+            read_i += 1;
+        }
+
+        set_cursor(&mut cursors[write_i], range);
+        self.cursors.truncate(write_i + 1);
     }
 }
 
@@ -243,7 +253,7 @@ impl<'a> Drop for CursorCollectionMutGuard<'a> {
             None => self.inner.cursors[self.inner.main_cursor_index as usize].position,
         };
         self.inner.sort_cursors(main_cursor_position);
-        self.inner.merge_cursors();
+        self.inner.merge_sorted_cursors();
 
         if self.clear_display_distances {
             self.inner.saved_display_distances.clear();
@@ -371,27 +381,40 @@ mod tests {
     #[test]
     fn move_and_merge_cursors() {
         let mut cursors = CursorCollection::new();
-        let mut cursors_mut = cursors.mut_guard();
-        cursors_mut[0].anchor = BufferPosition::line_col(0, 0);
-        cursors_mut[0].position = BufferPosition::line_col(0, 0);
-        drop(cursors_mut);
+
+        cursors.mut_guard()[0] = Cursor {
+            anchor: BufferPosition::line_col(0, 0),
+            position: BufferPosition::line_col(0, 0),
+        };
+        assert_eq!(1, cursors[..].len());
+        assert_eq!(0, cursors.main_cursor_index());
+
         cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(1, 0),
             position: BufferPosition::line_col(1, 0),
         });
+        assert_eq!(2, cursors[..].len());
+        assert_eq!(1, cursors.main_cursor_index());
+
         cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(2, 0),
             position: BufferPosition::line_col(2, 0),
         });
         assert_eq!(3, cursors[..].len());
-        let mut cursors_mut = cursors.mut_guard();
-        for c in &mut cursors_mut[..] {
-            if c.position.line_index > 0 {
-                c.position.line_index -= 1;
+        assert_eq!(2, cursors.main_cursor_index());
+
+        {
+            let mut cursors = cursors.mut_guard();
+            for c in &mut cursors[..] {
+                if c.position.line_index > 0 {
+                    c.position.line_index -= 1;
+                }
+                c.anchor = c.position;
             }
-            c.anchor = c.position;
         }
-        drop(cursors_mut);
+        assert_eq!(2, cursors[..].len());
+        assert_eq!(1, cursors.main_cursor_index());
+
         let cursor = cursors.main_cursor();
         assert_eq!(BufferPosition::line_col(1, 0), cursor.anchor);
         assert_eq!(BufferPosition::line_col(1, 0), cursor.position);
@@ -405,3 +428,4 @@ mod tests {
         assert!(cursors.next().is_none());
     }
 }
+
