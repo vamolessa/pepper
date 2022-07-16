@@ -136,16 +136,6 @@ pub struct EditorEventQueue {
     write: EditorEventWriter,
 }
 impl EditorEventQueue {
-    pub(crate) fn flip(&mut self) {
-        self.read.0.events.clear();
-        self.read.0.texts.clear();
-        self.read.0.text_inserts.clear();
-        self.read.0.range_deletes.clear();
-        self.read.0.cursors.clear();
-
-        std::mem::swap(&mut self.read.0, &mut self.write.0);
-    }
-
     pub fn reader(&self) -> &EditorEventReader {
         &self.read
     }
@@ -156,6 +146,20 @@ impl EditorEventQueue {
 
     pub(crate) fn get(&mut self) -> (&EditorEventReader, &mut EditorEventWriter) {
         (&self.read, &mut self.write)
+    }
+
+    pub(crate) fn flip(&mut self) {
+        self.read.0.events.clear();
+        self.read.0.texts.clear();
+        self.read.0.text_inserts.clear();
+        self.read.0.range_deletes.clear();
+        self.read.0.cursors.clear();
+
+        std::mem::swap(&mut self.read.0, &mut self.write.0);
+    }
+
+    pub(crate) fn assert_empty(&self) {
+        assert!(self.read.0.events.is_empty());
     }
 }
 

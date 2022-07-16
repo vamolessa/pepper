@@ -99,6 +99,7 @@ impl BufferHistory {
         self.edits.push(edit);
     }
 
+    #[inline(never)]
     fn try_merge_edit(&mut self, current_group_start: usize, edit: &Edit) -> bool {
         fn fix_other_edits(
             group_edits: &mut [EditInternal],

@@ -238,6 +238,7 @@ impl ServerApplication {
             }
         }
 
+        self.ctx.editor.events.assert_empty();
         self.ctx.render();
     }
 }

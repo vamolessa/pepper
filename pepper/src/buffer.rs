@@ -1390,7 +1390,7 @@ impl Buffer {
         let content = &mut self.content;
         let uses_word_database = self.properties.word_database_enabled;
 
-        // TODO: make this better
+        // TODO: make this better. maybe also make chunks of inserts and deletes?
         //let edit_events = events.buffer_edits_mut_guard(self.handle);
 
         let edits = selector(&mut self.history);
