@@ -4,7 +4,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
-    events::{EditorEventQueue, EditorEventTextInsert},
+    events::{EditorEventWriter, EditorEventTextInsert},
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -408,7 +408,7 @@ impl BufferView {
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
         text: &str,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         let buffer = buffers.get_mut(self.buffer_handle);
         let mut events = events.buffer_text_inserts_mut_guard(self.buffer_handle);
@@ -421,7 +421,7 @@ impl BufferView {
         &self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         let buffer = buffers.get_mut(self.buffer_handle);
         let mut events = events.buffer_range_deletes_mut_guard(self.buffer_handle);
@@ -454,7 +454,7 @@ impl BufferView {
         word_database: &mut WordDatabase,
         completion: &str,
         positions: &[BufferPosition],
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         let buffer = buffers.get_mut(self.buffer_handle);
         for (cursor, &position) in self.cursors[..].iter().zip(positions.iter()).rev() {
@@ -477,7 +477,7 @@ impl BufferView {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         let edits = buffers
             .get_mut(self.buffer_handle)
@@ -507,7 +507,7 @@ impl BufferView {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         let edits = buffers
             .get_mut(self.buffer_handle)
@@ -675,7 +675,7 @@ mod tests {
 
     use std::ops::Range;
 
-    use crate::{buffer::BufferProperties, buffer_position::BufferPosition};
+    use crate::{buffer::BufferProperties, buffer_position::BufferPosition, events::EditorEventQueue};
 
     struct TestContext {
         pub buffers: BufferCollection,
@@ -695,7 +695,7 @@ mod tests {
                 &mut word_database,
                 BufferPosition::zero(),
                 text,
-                &mut events.buffer_text_inserts_mut_guard(buffer.handle()),
+                &mut events.writer().buffer_text_inserts_mut_guard(buffer.handle()),
             );
 
             let mut buffer_views = BufferViewCollection::default();

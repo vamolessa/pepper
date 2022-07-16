@@ -16,8 +16,8 @@ pub struct EditorEventTextInsert {
     text_to: u32,
 }
 impl EditorEventTextInsert {
-    pub fn text<'a>(&self, events: &'a EditorEventQueue) -> &'a str {
-        &events.read.texts[self.text_from as usize..self.text_to as usize]
+    pub fn text<'a>(&self, reader: &'a EditorEventReader) -> &'a str {
+        &reader.0.texts[self.text_from as usize..self.text_to as usize]
     }
 }
 
@@ -27,8 +27,8 @@ pub struct EditorEventTextInserts {
     to: u32,
 }
 impl EditorEventTextInserts {
-    pub fn as_slice<'a>(&self, events: &'a EditorEventQueue) -> &'a [EditorEventTextInsert] {
-        &events.read.text_inserts[self.from as usize..self.to as usize]
+    pub fn as_slice<'a>(&self, reader: &'a EditorEventReader) -> &'a [EditorEventTextInsert] {
+        &reader.0.text_inserts[self.from as usize..self.to as usize]
     }
 }
 
@@ -38,8 +38,8 @@ pub struct EditorEventRangeDeletes {
     to: u32,
 }
 impl EditorEventRangeDeletes {
-    pub fn as_slice<'a>(&self, events: &'a EditorEventQueue) -> &'a [BufferRange] {
-        &events.read.range_deletes[self.from as usize..self.to as usize]
+    pub fn as_slice<'a>(&self, reader: &'a EditorEventReader) -> &'a [BufferRange] {
+        &reader.0.range_deletes[self.from as usize..self.to as usize]
     }
 }
 
@@ -49,8 +49,8 @@ pub struct EditorEventCursors {
     to: u32,
 }
 impl EditorEventCursors {
-    pub fn as_slice<'a>(&self, events: &'a EditorEventQueue) -> &'a [Cursor] {
-        &events.read.cursors[self.from as usize..self.to as usize]
+    pub fn as_slice<'a>(&self, reader: &'a EditorEventReader) -> &'a [Cursor] {
+        &reader.0.cursors[self.from as usize..self.to as usize]
     }
 }
 
@@ -93,49 +93,69 @@ struct EventQueue {
 }
 
 #[derive(Default)]
-pub struct EditorEventQueue {
-    read: EventQueue,
-    write: EventQueue,
-}
-impl EditorEventQueue {
-    pub(crate) fn flip(&mut self) {
-        self.read.events.clear();
-        self.read.texts.clear();
-        self.read.text_inserts.clear();
-        self.read.range_deletes.clear();
-        self.read.cursors.clear();
-        std::mem::swap(&mut self.read, &mut self.write);
-    }
+pub struct EditorEventReader(EventQueue);
 
+#[derive(Default)]
+pub struct EditorEventWriter(EventQueue);
+impl EditorEventWriter {
     pub(crate) fn enqueue(&mut self, event: EditorEvent) {
-        self.write.events.push(event);
+        self.0.events.push(event);
     }
 
     pub fn buffer_text_inserts_mut_guard(&mut self, handle: BufferHandle) -> BufferTextInsertsMutGuard {
-        let previous_text_inserts_len = self.write.text_inserts.len() as _;
+        let previous_text_inserts_len = self.0.text_inserts.len() as _;
         BufferTextInsertsMutGuard {
-            inner: &mut self.write,
+            inner: &mut self.0,
             handle,
             previous_text_inserts_len,
         }
     }
 
     pub fn buffer_range_deletes_mut_guard(&mut self, handle: BufferHandle) -> BufferRangeDeletesMutGuard {
-        let previous_range_deletes_len = self.write.range_deletes.len() as _;
+        let previous_range_deletes_len = self.0.range_deletes.len() as _;
         BufferRangeDeletesMutGuard {
-            inner: &mut self.write,
+            inner: &mut self.0,
             handle,
             previous_range_deletes_len,
         }
     }
 
     pub fn fix_cursors_mut_guard(&mut self, handle: BufferViewHandle) -> FixCursorMutGuard {
-        let previous_cursors_len = self.write.cursors.len() as _;
+        let previous_cursors_len = self.0.cursors.len() as _;
         FixCursorMutGuard {
-            inner: &mut self.write,
+            inner: &mut self.0,
             handle,
             previous_cursors_len,
         }
+    }
+}
+
+#[derive(Default)]
+pub struct EditorEventQueue {
+    read: EditorEventReader,
+    write: EditorEventWriter,
+}
+impl EditorEventQueue {
+    pub(crate) fn flip(&mut self) {
+        self.read.0.events.clear();
+        self.read.0.texts.clear();
+        self.read.0.text_inserts.clear();
+        self.read.0.range_deletes.clear();
+        self.read.0.cursors.clear();
+
+        std::mem::swap(&mut self.read.0, &mut self.write.0);
+    }
+
+    pub fn reader(&self) -> &EditorEventReader {
+        &self.read
+    }
+
+    pub fn writer(&mut self) -> &mut EditorEventWriter {
+        &mut self.write
+    }
+
+    pub(crate) fn get(&mut self) -> (&EditorEventReader, &mut EditorEventWriter) {
+        (&self.read, &mut self.write)
     }
 }
 
@@ -236,8 +256,8 @@ impl EditorEventIter {
         Self(0)
     }
 
-    pub fn next<'a>(&mut self, queue: &'a EditorEventQueue) -> Option<&'a EditorEvent> {
-        let event = queue.read.events.get(self.0)?;
+    pub fn next<'a>(&mut self, reader: &'a EditorEventReader) -> Option<&'a EditorEvent> {
+        let event = reader.0.events.get(self.0)?;
         self.0 += 1;
         Some(event)
     }

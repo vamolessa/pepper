@@ -187,7 +187,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         let buffer = ctx.editor.buffers.get_mut(buffer_handle);
 
         buffer
-            .write_to_file(path, &mut ctx.editor.events)
+            .write_to_file(path, ctx.editor.events.writer())
             .map_err(CommandError::BufferWriteError)?;
 
         ctx.editor
@@ -202,7 +202,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let mut count = 0;
         for buffer in ctx.editor.buffers.iter_mut() {
-            match buffer.write_to_file(None, &mut ctx.editor.events) {
+            match buffer.write_to_file(None, ctx.editor.events.writer()) {
                 Ok(()) => count += 1,
                 Err(BufferWriteError::SavingDisabled) => (),
                 Err(error) => return Err(CommandError::BufferWriteError(error)),
@@ -224,7 +224,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         let buffer = ctx.editor.buffers.get_mut(buffer_handle);
 
         buffer
-            .read_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
+            .read_from_file(&mut ctx.editor.word_database, ctx.editor.events.writer())
             .map_err(CommandError::BufferReadError)?;
 
         ctx.editor
@@ -241,7 +241,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         let mut count = 0;
         let mut all_files_found = true;
         for buffer in ctx.editor.buffers.iter_mut() {
-            match buffer.read_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events) {
+            match buffer.read_from_file(&mut ctx.editor.word_database, ctx.editor.events.writer()) {
                 Ok(()) => count += 1,
                 Err(BufferReadError::FileNotFound) => all_files_found = true,
                 Err(error) => return Err(CommandError::BufferReadError(error)),
@@ -266,7 +266,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         io.assert_can_discard_buffer(ctx, buffer_handle)?;
         ctx.editor
             .buffers
-            .defer_remove(buffer_handle, &mut ctx.editor.events);
+            .defer_remove(buffer_handle, ctx.editor.events.writer());
 
         ctx.editor
             .logger
@@ -284,7 +284,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         for buffer in ctx.editor.buffers.iter() {
             ctx.editor
                 .buffers
-                .defer_remove(buffer.handle(), &mut ctx.editor.events);
+                .defer_remove(buffer.handle(), ctx.editor.events.writer());
             count += 1;
         }
 
@@ -481,6 +481,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             &mut ctx
                 .editor
                 .events
+                .writer()
                 .buffer_range_deletes_mut_guard(buffer_handle),
         );
         buffer.insert_text(
@@ -490,6 +491,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             &mut ctx
                 .editor
                 .events
+                .writer()
                 .buffer_text_inserts_mut_guard(buffer_handle),
         );
 
@@ -553,6 +555,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             &mut ctx
                 .editor
                 .events
+                .writer()
                 .buffer_range_deletes_mut_guard(buffer_handle),
         );
         buffer.insert_text(
@@ -562,6 +565,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             &mut ctx
                 .editor
                 .events
+                .writer()
                 .buffer_text_inserts_mut_guard(buffer_handle),
         );
 
@@ -625,6 +629,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             &mut ctx
                 .editor
                 .events
+                .writer()
                 .buffer_range_deletes_mut_guard(buffer_handle),
         );
         buffer.insert_text(
@@ -634,6 +639,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             &mut ctx
                 .editor
                 .events
+                .writer()
                 .buffer_text_inserts_mut_guard(buffer_handle),
         );
 
@@ -833,7 +839,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         buffer_view.delete_text_in_cursor_ranges(
             &mut ctx.editor.buffers,
             &mut ctx.editor.word_database,
-            &mut ctx.editor.events,
+            ctx.editor.events.writer(),
         );
 
         Ok(())

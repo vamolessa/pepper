@@ -14,8 +14,8 @@ use crate::{
     cursor::Cursor,
     editor_utils::{find_delimiter_pair_at, ResidualStrBytes},
     events::{
-        BufferRangeDeletesMutGuard, BufferTextInsertsMutGuard, EditorEvent, EditorEventQueue,
-        EditorEventTextInsert,
+        BufferRangeDeletesMutGuard, BufferTextInsertsMutGuard, EditorEvent, EditorEventTextInsert,
+        EditorEventWriter,
     },
     help,
     pattern::Pattern,
@@ -304,7 +304,7 @@ pub struct BufferBreakpointMutCollection<'a> {
     buffer_handle: BufferHandle,
 }
 impl<'a> BufferBreakpointMutCollection<'a> {
-    pub fn clear(&mut self, events: &mut EditorEventQueue) {
+    pub fn clear(&mut self, events: &mut EditorEventWriter) {
         if self.inner.breakpoints.len() > 0 {
             events.enqueue(EditorEvent::BufferBreakpointsChanged {
                 handle: self.buffer_handle,
@@ -313,7 +313,7 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         self.inner.breakpoints.clear();
     }
 
-    pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventQueue) {
+    pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
         let previous_breakpoints_len = self.inner.breakpoints.len();
 
         let mut breakpoint_index = self.inner.breakpoints.len().saturating_sub(1);
@@ -348,7 +348,7 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         }
     }
 
-    pub fn toggle_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventQueue) {
+    pub fn toggle_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
         let mut last_line_index = BufferPositionIndex::MAX;
         for cursor in cursors {
             let range = cursor.to_range();
@@ -1361,7 +1361,7 @@ impl Buffer {
     pub fn undo(
         &mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) -> impl '_ + ExactSizeIterator<Item = Edit<'_>> + DoubleEndedIterator<Item = Edit<'_>> {
         self.apply_history_edits(word_database, events, BufferHistory::undo_edits)
     }
@@ -1369,7 +1369,7 @@ impl Buffer {
     pub fn redo(
         &mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) -> impl '_ + ExactSizeIterator<Item = Edit<'_>> + DoubleEndedIterator<Item = Edit<'_>> {
         self.apply_history_edits(word_database, events, BufferHistory::redo_edits)
     }
@@ -1377,7 +1377,7 @@ impl Buffer {
     fn apply_history_edits<'a, F, I>(
         &'a mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
         selector: F,
     ) -> I
     where
@@ -1440,7 +1440,7 @@ impl Buffer {
     pub fn read_from_file(
         &mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) -> Result<(), BufferReadError> {
         fn clear_buffer(buffer: &mut Buffer, word_database: &mut WordDatabase) {
             buffer.remove_all_words_from_database(word_database);
@@ -1501,7 +1501,7 @@ impl Buffer {
     pub fn write_to_file(
         &mut self,
         new_path: Option<&Path>,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) -> Result<(), BufferWriteError> {
         let new_path = match new_path {
             Some(path) => {
@@ -1627,7 +1627,7 @@ impl BufferCollection {
         self.buffers.iter_mut().filter(|b| b.alive)
     }
 
-    pub fn defer_remove(&self, handle: BufferHandle, events: &mut EditorEventQueue) {
+    pub fn defer_remove(&self, handle: BufferHandle, events: &mut EditorEventWriter) {
         let buffer = &self.buffers[handle.0 as usize];
         if buffer.alive {
             events.enqueue(EditorEvent::BufferClose { handle });
@@ -1662,7 +1662,7 @@ impl BufferCollection {
         &mut self,
         buffer_handle: BufferHandle,
         inserts: &[EditorEventTextInsert],
-        //events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         let buffer = self.get_mut(buffer_handle);
 
@@ -1677,12 +1677,9 @@ impl BufferCollection {
         }
 
         if breakpoints_changed {
-            // TODO: add
-            /*
-            events.enqueue(insert::BufferBreakpointsChanged {
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
                 handle: buffer_handle,
             });
-            */
         }
 
         for process in self.insert_processes.iter_mut() {
@@ -1700,7 +1697,7 @@ impl BufferCollection {
         &mut self,
         buffer_handle: BufferHandle,
         deletes: &[BufferRange],
-        //events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         let buffer = self.get_mut(buffer_handle);
 
@@ -1714,12 +1711,9 @@ impl BufferCollection {
         }
 
         if breakpoints_changed {
-            // TODO: add
-            /*
             events.enqueue(EditorEvent::BufferBreakpointsChanged {
                 handle: buffer_handle,
             });
-            */
         }
 
         for process in self.insert_processes.iter_mut() {
@@ -1812,7 +1806,7 @@ impl BufferCollection {
         word_database: &mut WordDatabase,
         index: u32,
         bytes: &[u8],
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         let process = &mut self.insert_processes[index as usize];
         if process.handle.is_none() {
@@ -1835,7 +1829,7 @@ impl BufferCollection {
         &mut self,
         word_database: &mut WordDatabase,
         index: u32,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         self.on_process_output(word_database, index, &[], events);
         let process = &mut self.insert_processes[index as usize];
@@ -1847,7 +1841,7 @@ impl BufferCollection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buffer_position::BufferPosition;
+    use crate::{buffer_position::BufferPosition, events::EditorEventQueue};
 
     #[test]
     fn display_distance() {
@@ -2026,7 +2020,9 @@ mod tests {
             &mut word_database,
             BufferPosition::zero(),
             "single line content",
-            &mut events.buffer_text_inserts_mut_guard(buffer.handle()),
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
         );
         let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
@@ -2035,18 +2031,20 @@ mod tests {
         buffer.delete_range(
             &mut word_database,
             range,
-            &mut events.buffer_range_deletes_mut_guard(buffer.handle()),
+            &mut events
+                .writer()
+                .buffer_range_deletes_mut_guard(buffer.handle()),
         );
 
         assert_eq!("single content", buffer.content.to_string());
         {
-            let mut ranges = buffer.undo(&mut word_database, &mut events);
+            let mut ranges = buffer.undo(&mut word_database, &mut events.writer());
             assert_eq!(range, ranges.next().unwrap().range);
             ranges.next().unwrap();
             assert!(ranges.next().is_none());
         }
         assert!(buffer.content.to_string().is_empty());
-        let mut redo_iter = buffer.redo(&mut word_database, &mut events);
+        let mut redo_iter = buffer.redo(&mut word_database, &mut events.writer());
         redo_iter.next().unwrap();
         redo_iter.next().unwrap();
         assert!(redo_iter.next().is_none());
@@ -2065,7 +2063,9 @@ mod tests {
             &mut word_database,
             BufferPosition::zero(),
             "multi\nline\ncontent",
-            &mut events.buffer_text_inserts_mut_guard(buffer.handle()),
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
         );
         assert_eq!("multi\nline\ncontent", buffer.content.to_string());
 
@@ -2076,12 +2076,14 @@ mod tests {
         buffer.delete_range(
             &mut word_database,
             delete_range,
-            &mut events.buffer_range_deletes_mut_guard(buffer.handle()),
+            &mut events
+                .writer()
+                .buffer_range_deletes_mut_guard(buffer.handle()),
         );
         assert_eq!("me\ncontent", buffer.content.to_string());
 
         {
-            let mut undo_edits = buffer.undo(&mut word_database, &mut events);
+            let mut undo_edits = buffer.undo(&mut word_database, &mut events.writer());
             assert_eq!(delete_range, undo_edits.next().unwrap().range);
             assert_eq!(insert_range, undo_edits.next().unwrap().range);
             assert!(undo_edits.next().is_none());
@@ -2089,7 +2091,7 @@ mod tests {
         assert_eq!("", buffer.content.to_string());
 
         {
-            let mut redo_edits = buffer.redo(&mut word_database, &mut events);
+            let mut redo_edits = buffer.redo(&mut word_database, &mut events.writer());
             redo_edits.next().unwrap();
             redo_edits.next().unwrap();
             assert!(redo_edits.next().is_none());
@@ -2108,7 +2110,9 @@ mod tests {
             &mut word_database,
             BufferPosition::zero(),
             "\n",
-            &mut events.buffer_text_inserts_mut_guard(buffer.handle()),
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
         );
         let assert_range = BufferRange::between(
             BufferPosition::line_col(0, 0),
@@ -2123,7 +2127,9 @@ mod tests {
             &mut word_database,
             BufferPosition::zero(),
             "a",
-            &mut events.buffer_text_inserts_mut_guard(buffer.handle()),
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
         );
         let assert_range = BufferRange::between(
             BufferPosition::line_col(0, 0),
@@ -2137,14 +2143,18 @@ mod tests {
                 BufferPosition::line_col(0, 1),
                 BufferPosition::line_col(1, 0),
             ),
-            &mut events.buffer_range_deletes_mut_guard(buffer.handle()),
+            &mut events
+                .writer()
+                .buffer_range_deletes_mut_guard(buffer.handle()),
         );
 
         let insert_range = buffer.insert_text(
             &mut word_database,
             BufferPosition::line_col(0, 1),
             "b",
-            &mut events.buffer_text_inserts_mut_guard(buffer.handle()),
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
         );
         let assert_range = BufferRange::between(
             BufferPosition::line_col(0, 1),
@@ -2152,7 +2162,7 @@ mod tests {
         );
         assert_eq!(assert_range, insert_range);
 
-        buffer.undo(&mut word_database, &mut events);
+        buffer.undo(&mut word_database, &mut events.writer());
     }
 
     #[test]

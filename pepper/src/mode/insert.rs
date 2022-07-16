@@ -156,7 +156,7 @@ impl ModeState for State {
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
                         text,
-                        &mut ctx.editor.events,
+                        ctx.editor.events.writer(),
                     );
             }
             Key { code: KeyCode::Char('\n'), control: false, alt: false, .. }
@@ -166,7 +166,7 @@ impl ModeState for State {
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
                 let mut buf = ctx.editor.string_pool.acquire();
-                let mut events = ctx.editor.events.buffer_text_inserts_mut_guard(buffer.handle());
+                let mut events = ctx.editor.events.writer().buffer_text_inserts_mut_guard(buffer.handle());
                 for i in (0..cursor_count).rev() {
                     let position = buffer_view.cursors[i].position;
 
@@ -199,7 +199,7 @@ impl ModeState for State {
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
                     s,
-                    &mut ctx.editor.events,
+                    ctx.editor.events.writer(),
                 );
             }
             Key { code: KeyCode::Backspace, shift: false, control: false, alt: false }
@@ -213,7 +213,7 @@ impl ModeState for State {
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    &mut ctx.editor.events,
+                    ctx.editor.events.writer(),
                 );
             }
             Key { code: KeyCode::Delete, shift: false, control: false, alt: false } => {
@@ -226,7 +226,7 @@ impl ModeState for State {
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    &mut ctx.editor.events,
+                    ctx.editor.events.writer(),
                 );
             }
             Key { code: KeyCode::Char('w'), shift: false, control: true, alt: false } => {
@@ -239,7 +239,7 @@ impl ModeState for State {
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    &mut ctx.editor.events,
+                    ctx.editor.events.writer(),
                 );
             }
             Key { code: KeyCode::Char('n'), shift: false, control: true, alt: false } => {
@@ -437,7 +437,7 @@ fn apply_completion(
         &mut ctx.editor.word_database,
         &completion,
         &ctx.editor.mode.insert_state.completion_positions,
-        &mut ctx.editor.events,
+        ctx.editor.events.writer(),
     );
     ctx.editor.string_pool.release(completion);
 }

@@ -605,6 +605,7 @@ pub(crate) fn on_response(
             let mut events = ctx
                 .editor
                 .events
+                .writer()
                 .buffer_range_deletes_mut_guard(buffer.handle());
             buffer.delete_range(&mut ctx.editor.word_database, range, &mut events);
             drop(events);
@@ -614,6 +615,7 @@ pub(crate) fn on_response(
             let mut events = ctx
                 .editor
                 .events
+                .writer()
                 .buffer_text_inserts_mut_guard(buffer.handle());
             let mut text = ctx.editor.string_pool.acquire();
             let mut last_path = "";
@@ -937,6 +939,7 @@ pub(crate) fn on_response(
                 let mut fix_cursor = ctx
                     .editor
                     .events
+                    .writer()
                     .fix_cursors_mut_guard(buffer_view.handle());
                 fix_cursor.add(Cursor {
                     anchor: position,

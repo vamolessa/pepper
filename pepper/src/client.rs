@@ -176,7 +176,7 @@ impl Client {
         };
 
         let buffer = editor.buffers.get_mut(buffer_handle);
-        let mut events = editor.events.buffer_text_inserts_mut_guard(buffer_handle);
+        let mut events = editor.events.writer().buffer_text_inserts_mut_guard(buffer_handle);
         for text in texts {
             let position = buffer.content().end();
             buffer.insert_text(&mut editor.word_database, position, text, &mut events);

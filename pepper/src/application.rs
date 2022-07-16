@@ -192,7 +192,7 @@ impl ServerApplication {
                             &mut self.ctx.editor.word_database,
                             index,
                             bytes,
-                            &mut self.ctx.editor.events,
+                            self.ctx.editor.events.writer(),
                         ),
                         ProcessTag::PickerEntries => self
                             .ctx
@@ -221,7 +221,7 @@ impl ServerApplication {
                         ProcessTag::Buffer(index) => self.ctx.editor.buffers.on_process_exit(
                             &mut self.ctx.editor.word_database,
                             index,
-                            &mut self.ctx.editor.events,
+                            self.ctx.editor.events.writer(),
                         ),
                         ProcessTag::PickerEntries => {
                             self.ctx.editor.picker_entries_process_buf.on_process_exit(

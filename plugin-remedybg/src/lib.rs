@@ -350,7 +350,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
 
     let mut events = EditorEventIter::new();
-    while let Some(event) = events.next(&ctx.editor.events) {
+    while let Some(event) = events.next(ctx.editor.events.reader()) {
         match event {
             EditorEvent::Idle => {
                 if remedybg.breakpoints_changed {
