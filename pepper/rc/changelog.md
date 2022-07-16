@@ -21,6 +21,7 @@
 - added `@cwd()` expansion which expands into the current directory path
 - removed unnecessary conditionals on ui rendering code
 - added the chars `[]{}` as path delimiters for `find_path_and_ranges_at` (`gf` on normal mode)
+- added cursor count to the status bar when there is more than one cursor
 
 # 0.28.0
 - added the concept of breakpoints for plugins to use

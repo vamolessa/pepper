@@ -582,6 +582,7 @@ fn draw_statusbar(
     let view_name;
     let needs_save;
     let main_cursor;
+    let cursor_count;
     let search_ranges;
 
     match buffer_view_handle {
@@ -592,12 +593,14 @@ fn draw_statusbar(
             view_name = buffer.path.to_str().unwrap_or("");
             needs_save = buffer.needs_save();
             main_cursor = *buffer_view.cursors.main_cursor();
+            cursor_count = buffer_view.cursors[..].len();
             search_ranges = buffer.search_ranges();
         }
         None => {
             view_name = "";
             needs_save = false;
             main_cursor = Cursor::zero();
+            cursor_count = 1;
             search_ranges = &[];
         }
     }
@@ -735,6 +738,9 @@ fn draw_statusbar(
             } else {
                 let _ = write!(buf, ":{}", main_cursor.position);
             }
+        }
+        if cursor_count > 1 {
+            let _ = write!(buf, " [{}]", cursor_count);
         }
         buf.push(b' ');
 

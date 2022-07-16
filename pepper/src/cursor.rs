@@ -75,7 +75,7 @@ impl CursorCollection {
         }
     }
 
-    fn sort_and_merge(&mut self, main_cursor_position: BufferPosition) {
+    fn sort_cursors(&mut self, main_cursor_position: BufferPosition) {
         self.cursors.sort_unstable_by_key(|c| c.to_range().from);
         self.main_cursor_index = match self
             .cursors
@@ -84,7 +84,9 @@ impl CursorCollection {
             Ok(i) => i as _,
             Err(i) => i.min(self.cursors.len() - 1) as _,
         };
+    }
 
+    fn merge_cursors(&mut self) {
         let mut i = 0;
         while i < self.cursors.len() {
             let mut range = self.cursors[i as usize].to_range();
@@ -240,7 +242,8 @@ impl<'a> Drop for CursorCollectionMutGuard<'a> {
             Some(position) => position,
             None => self.inner.cursors[self.inner.main_cursor_index as usize].position,
         };
-        self.inner.sort_and_merge(main_cursor_position);
+        self.inner.sort_cursors(main_cursor_position);
+        self.inner.merge_cursors();
 
         if self.clear_display_distances {
             self.inner.saved_display_distances.clear();
