@@ -409,11 +409,17 @@ impl TextEdit {
             }
 
             {
-                let mut events = editor.events.writer().buffer_range_deletes_mut_guard(buffer_handle);
+                let mut events = editor
+                    .events
+                    .writer()
+                    .buffer_range_deletes_mut_guard(buffer_handle);
                 buffer.delete_range(&mut editor.word_database, delete_range, &mut events);
             }
             let insert_range = {
-                let mut events = editor.events.writer().buffer_text_inserts_mut_guard(buffer_handle);
+                let mut events = editor
+                    .events
+                    .writer()
+                    .buffer_text_inserts_mut_guard(buffer_handle);
                 buffer.insert_text(
                     &mut editor.word_database,
                     delete_range.from,
@@ -629,7 +635,8 @@ impl WorkspaceEdit {
                     buffer.properties = BufferProperties::scratch();
                     buffer.properties.saving_enabled = true;
                     buffer.set_path(path);
-                    let _ = buffer.read_from_file(&mut editor.word_database, editor.events.writer());
+                    let _ =
+                        buffer.read_from_file(&mut editor.word_database, editor.events.writer());
                     (true, buffer.handle())
                 }
             };
@@ -1194,4 +1201,3 @@ mod tests {
         }
     }
 }
-

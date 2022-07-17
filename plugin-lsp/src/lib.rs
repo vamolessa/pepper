@@ -319,10 +319,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 EditorEvent::Idle => {
                     util::send_pending_did_change(client, &mut ctx.editor, &mut ctx.platform);
                 }
-                EditorEvent::BufferTextInserts {
-                    handle,
-                    inserts,
-                } => {
+                EditorEvent::BufferTextInserts { handle, inserts } => {
                     let buffer = ctx.editor.buffers.get(handle);
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
                         for insert in inserts.as_slice(ctx.editor.events.reader()) {

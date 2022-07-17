@@ -180,7 +180,9 @@ impl EditorContext {
                     EditorEvent::BufferTextInserts { handle, inserts } => {
                         let (event_reader, event_writer) = self.editor.events.get();
                         let inserts = inserts.as_slice(event_reader);
-                        self.editor.buffers.on_buffer_text_inserts(handle, inserts, event_writer);
+                        self.editor
+                            .buffers
+                            .on_buffer_text_inserts(handle, inserts, event_writer);
                         self.editor
                             .buffer_views
                             .on_buffer_text_inserts(handle, inserts);
@@ -192,7 +194,9 @@ impl EditorContext {
                     EditorEvent::BufferRangeDeletes { handle, deletes } => {
                         let (event_reader, event_writer) = self.editor.events.get();
                         let deletes = deletes.as_slice(event_reader);
-                        self.editor.buffers.on_buffer_range_deletes(handle, deletes, event_writer);
+                        self.editor
+                            .buffers
+                            .on_buffer_range_deletes(handle, deletes, event_writer);
                         self.editor
                             .buffer_views
                             .on_buffer_range_deletes(handle, deletes);
@@ -496,4 +500,3 @@ impl Editor {
         self.events.writer().enqueue(EditorEvent::Idle);
     }
 }
-

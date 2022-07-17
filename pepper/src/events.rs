@@ -102,7 +102,10 @@ impl EditorEventWriter {
         self.0.events.push(event);
     }
 
-    pub fn buffer_text_inserts_mut_guard(&mut self, handle: BufferHandle) -> BufferTextInsertsMutGuard {
+    pub fn buffer_text_inserts_mut_guard(
+        &mut self,
+        handle: BufferHandle,
+    ) -> BufferTextInsertsMutGuard {
         let previous_text_inserts_len = self.0.text_inserts.len() as _;
         BufferTextInsertsMutGuard {
             inner: &mut self.0,
@@ -111,7 +114,10 @@ impl EditorEventWriter {
         }
     }
 
-    pub fn buffer_range_deletes_mut_guard(&mut self, handle: BufferHandle) -> BufferRangeDeletesMutGuard {
+    pub fn buffer_range_deletes_mut_guard(
+        &mut self,
+        handle: BufferHandle,
+    ) -> BufferRangeDeletesMutGuard {
         let previous_range_deletes_len = self.0.range_deletes.len() as _;
         BufferRangeDeletesMutGuard {
             inner: &mut self.0,
@@ -1112,4 +1118,3 @@ mod tests {
         assert!(parser.next().is_none());
     }
 }
-

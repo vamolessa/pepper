@@ -4,7 +4,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
-    events::{EditorEventWriter, EditorEventTextInsert},
+    events::{EditorEventTextInsert, EditorEventWriter},
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -675,7 +675,9 @@ mod tests {
 
     use std::ops::Range;
 
-    use crate::{buffer::BufferProperties, buffer_position::BufferPosition, events::EditorEventQueue};
+    use crate::{
+        buffer::BufferProperties, buffer_position::BufferPosition, events::EditorEventQueue,
+    };
 
     struct TestContext {
         pub buffers: BufferCollection,
@@ -695,7 +697,9 @@ mod tests {
                 &mut word_database,
                 BufferPosition::zero(),
                 text,
-                &mut events.writer().buffer_text_inserts_mut_guard(buffer.handle()),
+                &mut events
+                    .writer()
+                    .buffer_text_inserts_mut_guard(buffer.handle()),
             );
 
             let mut buffer_views = BufferViewCollection::default();
@@ -795,4 +799,3 @@ mod tests {
         assert_movement(&mut ctx, 2..0, 1..9, CursorMovement::WordsBackward(1));
     }
 }
-
