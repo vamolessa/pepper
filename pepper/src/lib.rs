@@ -208,7 +208,7 @@ mod platform_impl {
     use super::*;
     pub mod sys {
         use super::*;
-        pub fn try_launching_debugger() {}
+        pub fn try_attach_debugger() {}
         pub fn main(_: application::ApplicationConfig) {}
     }
 }
@@ -234,7 +234,7 @@ pub fn init(config: &application::ApplicationConfig) {
         }
 
         if config.try_attaching_debugger {
-            platform_impl::sys::try_launching_debugger();
+            platform_impl::sys::try_attach_debugger();
         }
 
         let hook = ORIGINAL_PANIC_HOOK.assume_init_ref();

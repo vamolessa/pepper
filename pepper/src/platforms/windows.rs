@@ -11,7 +11,7 @@ use std::{
 use winapi::{
     ctypes::c_void,
     shared::{
-        minwindef::{BOOL, DWORD, FALSE, MAX_PATH, TRUE},
+        minwindef::{BOOL, DWORD, FALSE, TRUE},
         ntdef::NULL,
         winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
@@ -34,7 +34,6 @@ use winapi::{
         },
         stringapiset::{MultiByteToWideChar, WideCharToMultiByte},
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects, WaitForSingleObject},
-        sysinfoapi::GetSystemDirectoryW,
         winbase::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, CREATE_NEW_PROCESS_GROUP,
             CREATE_NO_WINDOW, FILE_FLAG_OVERLAPPED, FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE,
@@ -78,15 +77,14 @@ use crate::{
     Args,
 };
 
-const MAX_CLIENT_COUNT: usize = 10;
-const MAX_PROCESS_COUNT: usize = 43;
-const MAX_EVENT_COUNT: usize = 1 + 2 * MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
-const _: () = assert!(MAX_EVENT_COUNT == MAXIMUM_WAIT_OBJECTS as _);
+const MAX_EVENT_COUNT: usize = MAXIMUM_WAIT_OBJECTS as _;
+const EVENT_COUNT_PER_CLIENT: usize = 2;
+const EVENT_COUNT_PER_PROCESS: usize = 1;
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 
 #[inline(always)]
-pub fn try_launching_debugger() {
+pub fn try_attach_debugger() {
     fn ask_for_debugging() -> bool {
         let text = b"the editor crashed!\nwant to debug it?\0".map(|b| b as u16);
         let caption = b"debug crash?\0".map(|b| b as u16);
@@ -101,72 +99,68 @@ pub fn try_launching_debugger() {
         message_box_id == IDYES
     }
 
+    fn try_spawn_debugger(command_ascii: &[u8]) -> bool {
+        use io::Write;
+
+        let pid = unsafe { GetCurrentProcessId() };
+        let mut pid_buf = [0; 16];
+        let mut pid_cursor = io::Cursor::new(&mut pid_buf[..]);
+        if write!(pid_cursor, " {}", pid).is_err() {
+            return false;
+        }
+        let pid_len = pid_cursor.position() as usize;
+        let len = command_ascii.len() + pid_len + 1;
+
+        let mut buf = [0; 512];
+        if buf.len() < len {
+            return false;
+        }
+
+        let pid_bytes = &pid_buf[..pid_len];
+        for (i, &b) in command_ascii.iter().chain(pid_bytes.iter()).enumerate() {
+            buf[i] = b as _;
+        }
+        let command = &mut buf[..len];
+
+        let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
+        startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
+        let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
+
+        let result = unsafe {
+            CreateProcessW(
+                std::ptr::null(),
+                command.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                FALSE,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut startup_info,
+                &mut process_info,
+            )
+        };
+
+        let process_handle = Handle(process_info.hProcess);
+        let thread_handle = Handle(process_info.hThread);
+
+        unsafe { WaitForSingleObject(process_handle.0, INFINITE) };
+
+        drop(process_handle);
+        drop(thread_handle);
+
+        result != FALSE
+    }
+
     let is_debugger_present = unsafe { IsDebuggerPresent() != FALSE };
     if !is_debugger_present && !ask_for_debugging() {
         return;
     }
 
-    let mut buf = [0; MAX_PATH + 1];
-    let len = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as _) as usize };
-    if len == 0 || len > buf.len() {
-        return;
-    }
-
-    let debugger_command = b"\\vsjitdebugger.exe -p ".map(|b| b as u16);
-    let mut pid_buf = [0; 10];
-
-    if len + debugger_command.len() + pid_buf.len() + 1 > buf.len() {
-        return;
-    }
-
-    buf[len..len + debugger_command.len()].copy_from_slice(&debugger_command);
-    let len = len + debugger_command.len();
-
-    let pid = unsafe { GetCurrentProcessId() };
-
-    use io::Write;
-    let mut pid_cursor = io::Cursor::new(&mut pid_buf[..]);
-    let _ = write!(pid_cursor, "{}", pid);
-    let pid_len = pid_cursor.position() as usize;
-    let pid_buf = pid_buf.map(|b| b as u16);
-    let pid_buf = &pid_buf[..pid_len];
-
-    buf[len..len + pid_buf.len()].copy_from_slice(&pid_buf);
-    let len = len + pid_buf.len();
-
-    buf[len] = 0;
-    let len = len + 1;
-
-    let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
-    startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
-
-    let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
-
-    let result = unsafe {
-        CreateProcessW(
-            std::ptr::null(),
-            buf[..len].as_mut_ptr(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            FALSE,
-            0,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &mut startup_info,
-            &mut process_info,
-        )
-    };
-
-    let process_handle = Handle(process_info.hProcess);
-    let thread_handle = Handle(process_info.hThread);
-
-    unsafe { WaitForSingleObject(process_handle.0, INFINITE) };
-
-    drop(process_handle);
-    drop(thread_handle);
-
-    if result == FALSE {
-        return;
+    if !try_spawn_debugger(b"remedybg.exe attach-to-process-by-id") {
+        if !try_spawn_debugger(b"vsjitdebugger.exe -p") {
+            return;
+        }
     }
 
     unsafe { DebugBreak() };
@@ -1108,9 +1102,8 @@ impl EventListener {
 
     pub fn track(&mut self, event: &Event, source: EventSource) {
         let index = self.len as usize;
-        if index >= self.wait_handles.len() {
-            panic!("tried to track too many events");
-        }
+        assert!(index < self.wait_handles.len());
+
         self.wait_handles[index] = event.handle();
         self.sources[index] = source;
         self.len += 1;
@@ -1141,10 +1134,11 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
         .platform
         .set_clipboard_api(read_from_clipboard, write_to_clipboard);
 
-    let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
+    const NONE_CONNECTION_TO_CLIENT: Option<ConnectionToClient> = None;
+    let mut client_connections = [NONE_CONNECTION_TO_CLIENT; MAX_EVENT_COUNT];
 
     const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
-    let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
+    let mut processes = [NONE_ASYNC_PROCESS; MAX_EVENT_COUNT];
 
     let mut events = Vec::new();
     let mut timeout = None;
@@ -1152,21 +1146,26 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
     loop {
         event_listener.track(listener.event(), EventSource::ConnectionListener);
+        let mut client_count = 0;
         for (i, connection) in client_connections.iter().enumerate() {
             if let Some(connection) = connection {
+                client_count += 1;
                 event_listener.track(connection.read_event(), EventSource::ConnectionRead(i as _));
                 if let Some(event) = connection.write_event() {
                     event_listener.track(event, EventSource::ConnectionWrite(i as _));
                 }
             }
         }
+        let mut process_count = 0;
         for (i, process) in processes.iter().enumerate() {
             if let Some(process) = process {
+                process_count += 1;
                 if let Some(stdout) = &process.stdout {
                     event_listener.track(stdout.event(), EventSource::Process(i as _));
                 }
             }
         }
+        let event_count = 1 + client_count * EVENT_COUNT_PER_CLIENT + process_count * EVENT_COUNT_PER_PROCESS;
 
         let previous_timeout = timeout;
         let event = match event_listener.wait_next(timeout) {
@@ -1230,18 +1229,20 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                             buf_len,
                         } => {
                             let mut spawned = false;
-                            for (i, p) in processes.iter_mut().enumerate() {
-                                if p.is_some() {
-                                    continue;
-                                }
+                            if event_count + EVENT_COUNT_PER_PROCESS <= MAX_EVENT_COUNT {
+                                for (i, p) in processes.iter_mut().enumerate() {
+                                    if p.is_some() {
+                                        continue;
+                                    }
 
-                                if let Ok(child) = command.spawn() {
-                                    *p = Some(AsyncProcess::new(child, tag, buf_len));
-                                    let handle = PlatformProcessHandle(i as _);
-                                    events.push(PlatformEvent::ProcessSpawned { tag, handle });
-                                    spawned = true;
+                                    if let Ok(child) = command.spawn() {
+                                        *p = Some(AsyncProcess::new(child, tag, buf_len));
+                                        let handle = PlatformProcessHandle(i as _);
+                                        events.push(PlatformEvent::ProcessSpawned { tag, handle });
+                                        spawned = true;
+                                    }
+                                    break;
                                 }
-                                break;
                             }
                             if !spawned {
                                 events.push(PlatformEvent::ProcessExit { tag });
@@ -1287,12 +1288,14 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
         match event {
             EventSource::ConnectionListener => {
                 if let Some(connection) = listener.accept(pipe_path) {
-                    for (i, c) in client_connections.iter_mut().enumerate() {
-                        if c.is_none() {
-                            *c = Some(connection);
-                            let handle = ClientHandle(i as _);
-                            events.push(PlatformEvent::ConnectionOpen { handle });
-                            break;
+                    if event_count + EVENT_COUNT_PER_CLIENT <= MAX_EVENT_COUNT {
+                        for (i, c) in client_connections.iter_mut().enumerate() {
+                            if c.is_none() {
+                                *c = Some(connection);
+                                let handle = ClientHandle(i as _);
+                                events.push(PlatformEvent::ConnectionOpen { handle });
+                                break;
+                            }
                         }
                     }
                 }
@@ -1737,3 +1740,4 @@ fn parse_console_events(
         }
     }
 }
+

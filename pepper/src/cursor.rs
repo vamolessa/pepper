@@ -90,7 +90,6 @@ impl CursorCollection {
         };
     }
 
-    //cargo r --release -- -s s %home%\desktop\sqlite3.c:0,0-99999-99999
     fn merge_sorted_cursors(&mut self) {
         fn to_cursor(range: BufferRange, forward: bool) -> Cursor {
             if forward {
