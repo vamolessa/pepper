@@ -16,7 +16,7 @@ pub struct Edit<'a> {
 }
 
 #[derive(Debug)]
-pub struct EditInternal {
+pub(crate) struct EditInternal {
     pub kind: EditKind,
     pub buffer_range: BufferRange,
     pub text_range: Range<u32>,
@@ -41,7 +41,7 @@ enum HistoryState {
     InsertGroup { edit_index: usize },
 }
 
-pub struct BufferHistory {
+pub(crate) struct BufferHistory {
     texts: String,
     edits: Vec<EditInternal>,
     group_ranges: Vec<Range<usize>>,

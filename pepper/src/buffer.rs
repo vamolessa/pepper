@@ -1390,10 +1390,63 @@ impl Buffer {
         let content = &mut self.content;
         let uses_word_database = self.properties.word_database_enabled;
 
-        // TODO: make this better. maybe also make chunks of inserts and deletes?
-        //let edit_events = events.buffer_edits_mut_guard(self.handle);
-
         let edits = selector(&mut self.history);
+
+        let mut edits_iter = edits.clone();
+        let mut next_edit = edits_iter.next();
+        loop {
+            let mut edit = match next_edit.take() {
+                Some(edit) => edit,
+                None => break,
+            };
+            match edit.kind {
+                EditKind::Insert => {
+                    let mut events = events.buffer_text_inserts_mut_guard(self.handle);
+                    loop {
+                        Self::insert_text_no_history(
+                            content,
+                            uses_word_database,
+                            word_database,
+                            edit.range.from,
+                            edit.text,
+                        );
+                        events.add(edit.range, edit.text);
+
+                        edit = match edits_iter.next() {
+                            Some(edit) => edit,
+                            None => break,
+                        };
+                        if edit.kind != EditKind::Insert {
+                            next_edit = Some(edit);
+                            break;
+                        }
+                    }
+                }
+                EditKind::Delete => {
+                    let mut events = events.buffer_range_deletes_mut_guard(self.handle);
+                    loop {
+                        Self::delete_range_no_history(
+                            content,
+                            uses_word_database,
+                            word_database,
+                            edit.range,
+                        );
+                        events.add(edit.range);
+
+                        edit = match edits_iter.next() {
+                            Some(edit) => edit,
+                            None => break,
+                        };
+                        if edit.kind != EditKind::Delete {
+                            next_edit = Some(edit);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
         for edit in edits.clone() {
             match edit.kind {
                 EditKind::Insert => {
@@ -1423,6 +1476,7 @@ impl Buffer {
                 }
             }
         }
+        */
 
         edits
     }
