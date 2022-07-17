@@ -111,7 +111,7 @@ impl CursorCollection {
 
         let mut write_ptr = start_ptr;
         let mut read_ptr = unsafe { write_ptr.add(1) };
-        let mut read_i = 1;
+        let mut write_i = 0;
 
         let (mut range, mut forward) = unsafe { write_ptr.read() }.to_range_and_direction();
         while read_ptr != end_ptr {
@@ -119,7 +119,7 @@ impl CursorCollection {
             let (other_range, other_forward) = other_cursor.to_range_and_direction();
 
             if other_range.from <= range.to {
-                if read_i <= self.main_cursor_index as _ {
+                if write_i < self.main_cursor_index as _ {
                     self.main_cursor_index -= 1;
                 }
 
@@ -127,6 +127,7 @@ impl CursorCollection {
             } else {
                 let cursor = to_cursor(range, forward);
                 let store_ptr = write_ptr;
+                write_i += 1;
 
                 range = other_range;
                 forward = other_forward;
@@ -136,7 +137,6 @@ impl CursorCollection {
             }
 
             unsafe { read_ptr = read_ptr.add(1) };
-            read_i += 1;
         }
 
         let cursor = to_cursor(range, forward);

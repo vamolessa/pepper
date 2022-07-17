@@ -140,6 +140,9 @@ pub fn try_attach_debugger() {
                 &mut process_info,
             )
         };
+        if result == FALSE {
+            return false;
+        }
 
         let process_handle = Handle(process_info.hProcess);
         let thread_handle = Handle(process_info.hThread);
@@ -149,17 +152,18 @@ pub fn try_attach_debugger() {
         drop(process_handle);
         drop(thread_handle);
 
-        result != FALSE
+        true
     }
 
-    let is_debugger_present = unsafe { IsDebuggerPresent() != FALSE };
-    if !is_debugger_present && !ask_for_debugging() {
-        return;
-    }
-
-    if !try_spawn_debugger(b"remedybg.exe attach-to-process-by-id") {
-        if !try_spawn_debugger(b"vsjitdebugger.exe -p") {
+    if unsafe { IsDebuggerPresent() == FALSE } {
+        if !ask_for_debugging() {
             return;
+        }
+
+        if !try_spawn_debugger(b"remedybg.exe attach-to-process-by-id") {
+            if !try_spawn_debugger(b"vsjitdebugger.exe -p") {
+                return;
+            }
         }
     }
 
@@ -1165,7 +1169,8 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                 }
             }
         }
-        let event_count = 1 + client_count * EVENT_COUNT_PER_CLIENT + process_count * EVENT_COUNT_PER_PROCESS;
+        let event_count =
+            1 + client_count * EVENT_COUNT_PER_CLIENT + process_count * EVENT_COUNT_PER_PROCESS;
 
         let previous_timeout = timeout;
         let event = match event_listener.wait_next(timeout) {
