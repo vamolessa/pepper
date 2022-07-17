@@ -56,9 +56,10 @@ use winapi::{
             MAXIMUM_WAIT_OBJECTS,
         },
         winuser::{
-            CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
-            CF_UNICODETEXT, VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME,
-            VK_LEFT, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SPACE, VK_TAB, VK_UP,
+            CloseClipboard, EmptyClipboard, GetClipboardData, MessageBoxW, OpenClipboard,
+            SetClipboardData, CF_UNICODETEXT, IDYES, MB_ICONEXCLAMATION, MB_YESNO, VK_BACK,
+            VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME, VK_LEFT, VK_NEXT,
+            VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SPACE, VK_TAB, VK_UP,
         },
     },
 };
@@ -86,73 +87,86 @@ const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 
 #[inline(always)]
 pub fn try_launching_debugger() {
-    fn is_debugger_present() -> bool {
-        unsafe { IsDebuggerPresent() != FALSE }
-    }
-
-    if !is_debugger_present() {
-        let mut buf = [0; MAX_PATH + 1];
-        let len = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as _) as usize };
-        if len == 0 || len > buf.len() {
-            return;
-        }
-
-        let debugger_command = b"\\vsjitdebugger.exe -p ".map(|b| b as u16);
-        let mut pid_buf = [0; 10];
-
-        if len + debugger_command.len() + pid_buf.len() + 1 > buf.len() {
-            return;
-        }
-
-        buf[len..len + debugger_command.len()].copy_from_slice(&debugger_command);
-        let len = len + debugger_command.len();
-
-        let pid = unsafe { GetCurrentProcessId() };
-
-        use io::Write;
-        let mut pid_cursor = io::Cursor::new(&mut pid_buf[..]);
-        let _ = write!(pid_cursor, "{}", pid);
-        let pid_len = pid_cursor.position() as usize;
-        let pid_buf = pid_buf.map(|b| b as u16);
-        let pid_buf = &pid_buf[..pid_len];
-
-        buf[len..len + pid_buf.len()].copy_from_slice(&pid_buf);
-        let len = len + pid_buf.len();
-
-        buf[len] = 0;
-        let len = len + 1;
-
-        let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
-        startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
-
-        let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
-
-        let result = unsafe {
-            CreateProcessW(
-                std::ptr::null(),
-                buf[..len].as_mut_ptr(),
+    fn ask_for_debugging() -> bool {
+        let text = b"the editor crashed!\nwant to debug it?\0".map(|b| b as u16);
+        let caption = b"debug crash?\0".map(|b| b as u16);
+        let message_box_id = unsafe {
+            MessageBoxW(
                 std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                FALSE,
-                0,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                &mut startup_info,
-                &mut process_info,
+                &text as _,
+                &caption as _,
+                MB_ICONEXCLAMATION | MB_YESNO,
             )
         };
+        message_box_id == IDYES
+    }
 
-        let process_handle = Handle(process_info.hProcess);
-        let thread_handle = Handle(process_info.hThread);
+    let is_debugger_present = unsafe { IsDebuggerPresent() != FALSE };
+    if !is_debugger_present && !ask_for_debugging() {
+        return;
+    }
 
-        unsafe { WaitForSingleObject(process_handle.0, INFINITE) };
+    let mut buf = [0; MAX_PATH + 1];
+    let len = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as _) as usize };
+    if len == 0 || len > buf.len() {
+        return;
+    }
 
-        drop(process_handle);
-        drop(thread_handle);
+    let debugger_command = b"\\vsjitdebugger.exe -p ".map(|b| b as u16);
+    let mut pid_buf = [0; 10];
 
-        if result == FALSE {
-            return;
-        }
+    if len + debugger_command.len() + pid_buf.len() + 1 > buf.len() {
+        return;
+    }
+
+    buf[len..len + debugger_command.len()].copy_from_slice(&debugger_command);
+    let len = len + debugger_command.len();
+
+    let pid = unsafe { GetCurrentProcessId() };
+
+    use io::Write;
+    let mut pid_cursor = io::Cursor::new(&mut pid_buf[..]);
+    let _ = write!(pid_cursor, "{}", pid);
+    let pid_len = pid_cursor.position() as usize;
+    let pid_buf = pid_buf.map(|b| b as u16);
+    let pid_buf = &pid_buf[..pid_len];
+
+    buf[len..len + pid_buf.len()].copy_from_slice(&pid_buf);
+    let len = len + pid_buf.len();
+
+    buf[len] = 0;
+    let len = len + 1;
+
+    let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
+    startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
+
+    let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
+
+    let result = unsafe {
+        CreateProcessW(
+            std::ptr::null(),
+            buf[..len].as_mut_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            FALSE,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut startup_info,
+            &mut process_info,
+        )
+    };
+
+    let process_handle = Handle(process_info.hProcess);
+    let thread_handle = Handle(process_info.hThread);
+
+    unsafe { WaitForSingleObject(process_handle.0, INFINITE) };
+
+    drop(process_handle);
+    drop(thread_handle);
+
+    if result == FALSE {
+        return;
     }
 
     unsafe { DebugBreak() };
@@ -1723,3 +1737,4 @@ fn parse_console_events(
         }
     }
 }
+
