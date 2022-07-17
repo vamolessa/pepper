@@ -210,7 +210,7 @@ impl<'a> Drop for BufferRangeDeletesMutGuard<'a> {
     fn drop(&mut self) {
         let deletes = EditorEventRangeDeletes {
             from: self.previous_range_deletes_len,
-            to: self.inner.text_inserts.len() as _,
+            to: self.inner.range_deletes.len() as _,
         };
         if deletes.from != deletes.to {
             self.inner.events.push(EditorEvent::BufferRangeDeletes {
