@@ -251,4 +251,3 @@ pub fn run(config: application::ApplicationConfig) {
     init(&config);
     platform_impl::sys::main(config);
 }
-
