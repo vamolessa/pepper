@@ -223,18 +223,23 @@ pub fn init(config: &application::ApplicationConfig) {
     static mut ON_PANIC_CONFIG: MaybeUninit<application::OnPanicConfig> = MaybeUninit::uninit();
     unsafe { ON_PANIC_CONFIG = MaybeUninit::new(config.on_panic_config) };
 
+    static HANDLED_PANIC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
     panic::set_hook(Box::new(|info| unsafe {
         let config = ON_PANIC_CONFIG.assume_init_ref();
 
-        if let Some(path) = config.write_info_to_file {
-            if let Ok(mut file) = fs::File::create(path) {
-                use io::Write;
-                let _ = writeln!(file, "{}", info);
+        let handled_panic = HANDLED_PANIC.swap(true, std::sync::atomic::Ordering::Relaxed);
+        if !handled_panic {
+            if let Some(path) = config.write_info_to_file {
+                if let Ok(mut file) = fs::File::create(path) {
+                    use io::Write;
+                    let _ = writeln!(file, "{}", info);
+                }
             }
-        }
 
-        if config.try_attaching_debugger {
-            platform_impl::sys::try_attach_debugger();
+            if config.try_attaching_debugger {
+                platform_impl::sys::try_attach_debugger();
+            }
         }
 
         let hook = ORIGINAL_PANIC_HOOK.assume_init_ref();
@@ -246,3 +251,4 @@ pub fn run(config: application::ApplicationConfig) {
     init(&config);
     platform_impl::sys::main(config);
 }
+
