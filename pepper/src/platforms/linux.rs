@@ -230,8 +230,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                     events.push(PlatformEvent::ConnectionOutput { handle, buf });
                                 }
                                 Err(()) => {
+                                    event_sources.remove_index(source_index);
                                     epoll.remove(connection.as_raw_fd());
-                                    event_sources.remove(source_index);
                                     client_connections[index] = None;
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
@@ -246,8 +246,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                 &mut client_write_queue[index],
                             );
                             if result.is_err() {
+                                event_sources.remove_index(source_index);
                                 epoll.remove(connection.as_raw_fd());
-                                event_sources.remove(source_index);
                                 client_connections[index] = None;
                                 events.push(PlatformEvent::ConnectionClose { handle });
                             }
@@ -267,8 +267,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                             Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
                             Err(()) => {
                                 if let Some(fd) = process.try_as_raw_fd() {
+                                    event_sources.remove_index(source_index);
                                     epoll.remove(fd);
-                                    event_sources.remove(source_index);
                                 }
                                 process.kill();
                                 processes[index] = None;
@@ -322,6 +322,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                 write_queue,
                             );
                             if result.is_err() {
+                                event_sources.remove_source(EventSource::Client(handle.0));
                                 epoll.remove(connection.as_raw_fd());
                                 client_connections[index] = None;
                                 events.push(PlatformEvent::ConnectionClose { handle });
@@ -333,6 +334,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 PlatformRequest::CloseClient { handle } => {
                     let index = handle.0 as usize;
                     if let Some(connection) = client_connections[index].take() {
+                        event_sources.remove_source(EventSource::Client(handle.0));
                         epoll.remove(connection.as_raw_fd());
                     }
                     events.push(PlatformEvent::ConnectionClose { handle });
@@ -364,6 +366,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     if let Some(ref mut process) = processes[index] {
                         if !process.write(buf.as_bytes()) {
                             if let Some(fd) = process.try_as_raw_fd() {
+                                event_sources.remove_source(EventSource::Process(handle.0));
                                 epoll.remove(fd);
                             }
                             let tag = process.tag();
@@ -383,6 +386,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     let index = handle.0 as usize;
                     if let Some(ref mut process) = processes[index] {
                         if let Some(fd) = process.try_as_raw_fd() {
+                            event_sources.remove_source(EventSource::Process(handle.0));
                             epoll.remove(fd);
                         }
                         let tag = process.tag();

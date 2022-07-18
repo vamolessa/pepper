@@ -529,7 +529,7 @@ impl io::Write for ClientOutput {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EventSource {
     None,
     Listener,
@@ -545,7 +545,7 @@ impl EventSources {
     }
 
     pub fn add(&mut self, source: EventSource) -> u64 {
-        assert!(!matches!(source, EventSource::None));
+        assert!(source != EventSource::None);
         for (i, s) in self.0.iter_mut().enumerate() {
             if let EventSource::None = s {
                 *s = source;
@@ -557,8 +557,19 @@ impl EventSources {
         index as _
     }
 
-    pub fn remove(&mut self, index: usize) {
+    pub fn remove_index(&mut self, index: usize) {
+        assert!(self.0[index] != EventSource::None);
         self.0[index] = EventSource::None;
+    }
+
+    pub fn remove_source(&mut self, source: EventSource) {
+        for s in &mut self.0 {
+            if *s == source {
+                *s = EventSource::None;
+                return;
+            }
+        }
+        unreachable!();
     }
 }
 

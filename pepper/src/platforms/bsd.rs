@@ -50,7 +50,7 @@ enum Event {
     FdWrite(RawFd),
 }
 impl Event {
-    pub fn into_kevent(self, flags: u16, index: usize) -> libc::kevent {
+    pub fn into_kevent(self, flags: u16, index: u64) -> libc::kevent {
         match self {
             Self::Resize => libc::kevent {
                 ident: libc::SIGWINCH as _,
@@ -115,7 +115,7 @@ impl Kqueue {
         Self(fd)
     }
 
-    pub fn add(&self, event: Event, source_index: usize, extra_flags: u16) {
+    pub fn add(&self, event: Event, source_index: u64, extra_flags: u16) {
         let event = event.into_kevent(libc::EV_ADD | extra_flags, source_index);
         if !modify_kqueue(self.0, &event) {
             panic!("could not add event, errno: {}", errno());
@@ -236,8 +236,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         }
 
         for event in kqueue_events {
-            let (event_source_index, event_data, event_kind) = match event {
-                Ok(event) => (event.index, event.data, event.kind),
+            let (source_index, event_data, event_kind) = match event {
+                Ok(event) => (event.source_index, event.data, event.kind),
                 Err(()) => {
                     for queue in &mut client_write_queue {
                         for buf in queue.drain(..) {
@@ -247,7 +247,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     return;
                 }
             };
-            let source = epoll_sources.get(source_index);
+            let source = event_sources.get(source_index);
             match source {
                 EventSource::None => unreachable!(),
                 EventSource::Listener => {
@@ -262,7 +262,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                         event_sources.add(EventSource::Client(i as _));
                                     kqueue.add(
                                         Event::FdRead(connection.as_raw_fd()),
-                                        source_index,
+                                        source_index as _,
                                         libc::EV_CLEAR,
                                     );
                                     kqueue.add(
@@ -297,6 +297,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                             .push(PlatformEvent::ConnectionOutput { handle, buf });
                                     }
                                     Err(()) => {
+                                        event_sources.remove_index(source_index);
                                         kqueue.remove(Event::FdRead(connection.as_raw_fd()));
                                         kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
                                         client_connections[index] = None;
@@ -313,6 +314,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                     &mut client_write_queue[index],
                                 );
                                 if result.is_err() {
+                                    event_sources.remove_index(source_index);
                                     kqueue.remove(Event::FdRead(connection.as_raw_fd()));
                                     kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
                                     client_connections[index] = None;
@@ -331,6 +333,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                             Ok(Some(buf)) => events.push(PlatformEvent::ProcessOutput { tag, buf }),
                             Err(()) => {
                                 if let Some(fd) = process.try_as_raw_fd() {
+                                    event_sources.remove_index(source_index);
                                     kqueue.remove(Event::FdRead(fd));
                                 }
                                 process.kill();
@@ -380,6 +383,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                 write_queue,
                             );
                             if result.is_err() {
+                                event_sources.remove_source(EventSource::Client(handle.0));
                                 kqueue.remove(Event::FdRead(connection.as_raw_fd()));
                                 kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
                                 client_connections[index] = None;
@@ -392,6 +396,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 PlatformRequest::CloseClient { handle } => {
                     let index = handle.0 as usize;
                     if let Some(connection) = client_connections[index].take() {
+                        event_sources.remove_source(EventSource::Client(handle.0));
                         kqueue.remove(Event::FdRead(connection.as_raw_fd()));
                         kqueue.remove(Event::FdWrite(connection.as_raw_fd()));
                     }
@@ -428,6 +433,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     if let Some(ref mut process) = processes[index] {
                         if !process.write(buf.as_bytes()) {
                             if let Some(fd) = process.try_as_raw_fd() {
+                                event_sources.remove_source(EventSource::Process(handle.0));
                                 kqueue.remove(Event::FdRead(fd));
                             }
                             let tag = process.tag();
@@ -447,6 +453,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     let index = handle.0 as usize;
                     if let Some(ref mut process) = processes[index] {
                         if let Some(fd) = process.try_as_raw_fd() {
+                            event_sources.remove_source(EventSource::Process(handle.0));
                             kqueue.remove(Event::FdRead(fd));
                         }
                         let tag = process.tag();
