@@ -22,13 +22,12 @@ use crate::{
 
 mod unix_utils;
 use unix_utils::{
-    is_pipped, read, read_from_connection, run, suspend_process, write_all_bytes,
-    write_to_connection, Process, Terminal,
+    acquire, is_pipped, read, read_from_connection, run, suspend_process, write_all_bytes,
+    write_to_connection, EventSource, EventSources, Process, Terminal,
 };
 
-const MAX_CLIENT_COUNT: usize = 20;
-const MAX_PROCESS_COUNT: usize = 43;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
+const _: usize = SERVER_CONNECTION_BUFFER_LEN;
 
 pub fn try_attach_debugger() {}
 
@@ -82,7 +81,7 @@ impl Event {
 }
 
 struct TriggeredEvent {
-    pub index: usize,
+    pub source_index: usize,
     pub data: isize,
     pub kind: EventKind,
 }
@@ -116,8 +115,8 @@ impl Kqueue {
         Self(fd)
     }
 
-    pub fn add(&self, event: Event, index: usize, extra_flags: u16) {
-        let event = event.into_kevent(libc::EV_ADD | extra_flags, index);
+    pub fn add(&self, event: Event, source_index: usize, extra_flags: u16) {
+        let event = event.into_kevent(libc::EV_ADD | extra_flags, source_index);
         if !modify_kqueue(self.0, &event) {
             panic!("could not add event, errno: {}", errno());
         }
@@ -177,7 +176,7 @@ impl Kqueue {
                 };
 
                 Ok(TriggeredEvent {
-                    index: e.udata as _,
+                    source_index: e.udata as _,
                     data: e.data as _,
                     kind,
                 })
@@ -197,31 +196,28 @@ impl Drop for Kqueue {
 }
 
 fn run_server(config: ApplicationConfig, listener: UnixListener) {
-    const NONE_PROCESS: Option<Process> = None;
-
     let mut application = match ServerApplication::new(config) {
         Some(application) => application,
         None => return,
     };
 
-    let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
-    let mut client_write_queue: [VecDeque<PooledBuf>; MAX_CLIENT_COUNT] = Default::default();
-    let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];
+    let mut client_connections: Vec<Option<UnixStream>> = Vec::new();
+    let mut client_write_queue: Vec<VecDeque<PooledBuf>> = Vec::new();
+    let mut processes: Vec<Option<Process>> = Vec::new();
 
     let mut events = Vec::new();
     let mut timeout = None;
     let mut need_redraw = false;
 
-    const CLIENTS_START_INDEX: usize = 1;
-    const CLIENTS_LAST_INDEX: usize = CLIENTS_START_INDEX + MAX_CLIENT_COUNT - 1;
-    const PROCESSES_START_INDEX: usize = CLIENTS_LAST_INDEX + 1;
-    const PROCESSES_LAST_INDEX: usize = PROCESSES_START_INDEX + MAX_PROCESS_COUNT - 1;
-
     let kqueue = Kqueue::new();
-    kqueue.add(Event::FdRead(listener.as_raw_fd()), 0, 0);
-    let mut kqueue_events = KqueueEvents::new();
+    let mut event_sources = EventSources::default();
 
-    let _ignore_server_connection_buffer_len = SERVER_CONNECTION_BUFFER_LEN;
+    kqueue.add(
+        Event::FdRead(listener.as_raw_fd()),
+        event_sources.add(EventSource::Listener),
+        0,
+    );
+    let mut kqueue_events = KqueueEvents::new();
 
     loop {
         let previous_timeout = timeout;
@@ -240,7 +236,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         }
 
         for event in kqueue_events {
-            let (event_index, event_data, event_kind) = match event {
+            let (event_source_index, event_data, event_kind) = match event {
                 Ok(event) => (event.index, event.data, event.kind),
                 Err(()) => {
                     for queue in &mut client_write_queue {
@@ -251,42 +247,43 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     return;
                 }
             };
-
-            match event_index {
-                0 => {
+            let source = epoll_sources.get(source_index);
+            match source {
+                EventSource::None => unreachable!(),
+                EventSource::Listener => {
                     for _ in 0..event_data {
                         match listener.accept() {
                             Ok((connection, _)) => {
                                 if let Err(error) = connection.set_nonblocking(true) {
                                     panic!("could not set connection to nonblocking {}", error);
                                 }
-
-                                for (i, c) in client_connections.iter_mut().enumerate() {
-                                    if c.is_none() {
-                                        kqueue.add(
-                                            Event::FdRead(connection.as_raw_fd()),
-                                            CLIENTS_START_INDEX + i,
-                                            libc::EV_CLEAR,
-                                        );
-                                        kqueue.add(
-                                            Event::FdWrite(connection.as_raw_fd()),
-                                            CLIENTS_START_INDEX + i,
-                                            libc::EV_CLEAR,
-                                        );
-                                        *c = Some(connection);
-                                        let handle = ClientHandle(i as _);
-                                        events.push(PlatformEvent::ConnectionOpen { handle });
-                                        break;
-                                    }
+                                if let Some((i, c)) = acquire(&mut client_connections) {
+                                    let source_index =
+                                        event_sources.add(EventSource::Client(i as _));
+                                    kqueue.add(
+                                        Event::FdRead(connection.as_raw_fd()),
+                                        source_index,
+                                        libc::EV_CLEAR,
+                                    );
+                                    kqueue.add(
+                                        Event::FdWrite(connection.as_raw_fd()),
+                                        source_index,
+                                        libc::EV_CLEAR,
+                                    );
+                                    *c = Some(connection);
+                                    let handle = ClientHandle(i as _);
+                                    events.push(PlatformEvent::ConnectionOpen { handle });
                                 }
+                                client_write_queue
+                                    .resize_with(client_connections.len(), Default::default);
                             }
                             Err(error) => panic!("could not accept connection {}", error),
                         }
                     }
                 }
-                CLIENTS_START_INDEX..=CLIENTS_LAST_INDEX => {
-                    let index = event_index - CLIENTS_START_INDEX;
-                    let handle = ClientHandle(index as _);
+                EventSource::Client(index) => {
+                    let handle = ClientHandle(index);
+                    let index = index as usize;
                     if let Some(ref mut connection) = client_connections[index] {
                         match event_kind {
                             EventKind::Read => {
@@ -325,8 +322,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         }
                     }
                 }
-                PROCESSES_START_INDEX..=PROCESSES_LAST_INDEX => {
-                    let index = event_index - PROCESSES_START_INDEX;
+                EventSource::Process(index) => {
+                    let index = index as usize;
                     if let Some(ref mut process) = processes[index] {
                         let tag = process.tag();
                         match process.read(&mut application.ctx.platform.buf_pool) {
@@ -343,7 +340,6 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         }
                     }
                 }
-                _ => unreachable!(),
             }
         }
 
@@ -407,22 +403,21 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     buf_len,
                 } => {
                     let mut spawned = false;
-                    for (i, p) in processes.iter_mut().enumerate() {
-                        if p.is_some() {
-                            continue;
-                        }
-
+                    if let Some((i, p)) = acquire(&mut processes) {
                         let handle = PlatformProcessHandle(i as _);
                         if let Ok(child) = command.spawn() {
                             let process = Process::new(child, tag, buf_len);
                             if let Some(fd) = process.try_as_raw_fd() {
-                                kqueue.add(Event::FdRead(fd), PROCESSES_START_INDEX + i, 0);
+                                kqueue.add(
+                                    Event::FdRead(fd),
+                                    event_sources.add(EventSource::Process(i as _)),
+                                    0,
+                                );
                             }
                             *p = Some(process);
                             events.push(PlatformEvent::ProcessSpawned { tag, handle });
                             spawned = true;
                         }
-                        break;
                     }
                     if !spawned {
                         events.push(PlatformEvent::ProcessExit { tag });
@@ -567,17 +562,27 @@ fn run_client(args: Args, mut connection: UnixStream) {
             let mut server_bytes = &[][..];
 
             match event {
-                Ok(TriggeredEvent { index: 1, data, .. }) => {
+                Ok(TriggeredEvent {
+                    source_index: 1,
+                    data,
+                    ..
+                }) => {
                     buf.resize(data as _, 0);
                     match connection.read(&mut buf) {
                         Ok(0) | Err(_) => break 'main_loop,
                         Ok(len) => server_bytes = &buf[..len],
                     }
                 }
-                Ok(TriggeredEvent { index: 2, .. }) => {
+                Ok(TriggeredEvent {
+                    source_index: 2, ..
+                }) => {
                     resize = terminal.as_ref().map(Terminal::get_size);
                 }
-                Ok(TriggeredEvent { index: 3, data, .. }) => {
+                Ok(TriggeredEvent {
+                    source_index: 3,
+                    data,
+                    ..
+                }) => {
                     buf.resize(data as _, 0);
                     match read(libc::STDIN_FILENO, &mut buf) {
                         Ok(0) | Err(()) => {

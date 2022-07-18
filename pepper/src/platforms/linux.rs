@@ -22,8 +22,8 @@ use crate::{
 
 mod unix_utils;
 use unix_utils::{
-    is_pipped, read, read_from_connection, run, suspend_process, write_all_bytes,
-    write_to_connection, Process, Terminal,
+    acquire, is_pipped, read, read_from_connection, run, suspend_process, write_all_bytes,
+    write_to_connection, EventSource, EventSources, Process, Terminal,
 };
 
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
@@ -89,39 +89,6 @@ impl EpollEvents {
     }
 }
 
-#[derive(Clone, Copy)]
-enum EventSource {
-    None,
-    Listener,
-    Client(u8),
-    Process(u8),
-}
-
-#[derive(Default)]
-struct EpollSources(Vec<EventSource>);
-impl EpollSources {
-    pub fn get(&self, source_index: usize) -> EventSource {
-        self.0[source_index]
-    }
-
-    pub fn add(&mut self, source: EventSource) -> u64 {
-        assert!(!matches!(source, EventSource::None));
-        for (i, s) in self.0.iter_mut().enumerate() {
-            if let EventSource::None = s {
-                *s = source;
-                return i as _;
-            }
-        }
-        let index = self.0.len();
-        self.0.push(source);
-        index as _
-    }
-
-    pub fn remove(&mut self, index: usize) {
-        self.0[index] = EventSource::None;
-    }
-}
-
 struct Epoll(RawFd);
 impl Epoll {
     pub fn new() -> Self {
@@ -184,30 +151,6 @@ impl Drop for Epoll {
 }
 
 fn run_server(config: ApplicationConfig, listener: UnixListener) {
-    fn acquire<T>(vec: &mut Vec<Option<T>>) -> Option<(u8, &mut Option<T>)> {
-        let mut slot_index = None;
-        for (i, e) in vec.iter().enumerate() {
-            if e.is_none() {
-                slot_index = Some(i);
-                break;
-            }
-        }
-
-        match slot_index {
-            Some(i) => Some((i as _, &mut vec[i])),
-            None => {
-                let index = vec.len();
-                if index > u8::MAX as _ {
-                    return None;
-                }
-
-                vec.push(None);
-                let e = &mut vec[index];
-                Some((index as _, e))
-            }
-        }
-    }
-
     let mut application = match ServerApplication::new(config) {
         Some(application) => application,
         None => return,
@@ -222,10 +165,11 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
     let mut need_redraw = false;
 
     let epoll = Epoll::new();
-    let mut epoll_sources = EpollSources::default();
+    let mut event_sources = EventSources::default();
+
     epoll.add(
         listener.as_raw_fd(),
-        epoll_sources.add(EventSource::Listener),
+        event_sources.add(EventSource::Listener),
         0,
     );
     let mut epoll_events = EpollEvents::new();
@@ -250,7 +194,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         let mut empty_write_event_count = 0;
 
         for (event_read, event_write, source_index) in epoll_events {
-            let source = epoll_sources.get(source_index);
+            let source = event_sources.get(source_index);
             match source {
                 EventSource::None => unreachable!(),
                 EventSource::Listener => match listener.accept() {
@@ -261,7 +205,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         if let Some((i, c)) = acquire(&mut client_connections) {
                             epoll.add(
                                 connection.as_raw_fd(),
-                                epoll_sources.add(EventSource::Client(i as _)),
+                                event_sources.add(EventSource::Client(i as _)),
                                 (libc::EPOLLOUT | libc::EPOLLET) as _,
                             );
                             *c = Some(connection);
@@ -273,8 +217,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     Err(error) => panic!("could not accept connection {}", error),
                 },
                 EventSource::Client(index) => {
+                    let handle = ClientHandle(index);
                     let index = index as usize;
-                    let handle = ClientHandle(index as _);
                     if let Some(ref mut connection) = client_connections[index] {
                         if event_read {
                             match read_from_connection(
@@ -287,7 +231,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                                 }
                                 Err(()) => {
                                     epoll.remove(connection.as_raw_fd());
-                                    epoll_sources.remove(source_index);
+                                    event_sources.remove(source_index);
                                     client_connections[index] = None;
                                     events.push(PlatformEvent::ConnectionClose { handle });
                                 }
@@ -303,7 +247,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                             );
                             if result.is_err() {
                                 epoll.remove(connection.as_raw_fd());
-                                epoll_sources.remove(source_index);
+                                event_sources.remove(source_index);
                                 client_connections[index] = None;
                                 events.push(PlatformEvent::ConnectionClose { handle });
                             }
@@ -324,7 +268,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                             Err(()) => {
                                 if let Some(fd) = process.try_as_raw_fd() {
                                     epoll.remove(fd);
-                                    epoll_sources.remove(source_index);
+                                    event_sources.remove(source_index);
                                 }
                                 process.kill();
                                 processes[index] = None;
@@ -404,7 +348,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         if let Ok(child) = command.spawn() {
                             let process = Process::new(child, tag, buf_len);
                             if let Some(fd) = process.try_as_raw_fd() {
-                                epoll.add(fd, epoll_sources.add(EventSource::Process(i)), 0);
+                                epoll.add(fd, event_sources.add(EventSource::Process(i)), 0);
                             }
                             *p = Some(process);
                             events.push(PlatformEvent::ProcessSpawned { tag, handle });
@@ -570,4 +514,3 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
-

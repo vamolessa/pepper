@@ -528,3 +528,60 @@ impl io::Write for ClientOutput {
         Ok(())
     }
 }
+
+#[derive(Clone, Copy)]
+pub enum EventSource {
+    None,
+    Listener,
+    Client(u8),
+    Process(u8),
+}
+
+#[derive(Default)]
+pub struct EventSources(Vec<EventSource>);
+impl EventSources {
+    pub fn get(&self, source_index: usize) -> EventSource {
+        self.0[source_index]
+    }
+
+    pub fn add(&mut self, source: EventSource) -> u64 {
+        assert!(!matches!(source, EventSource::None));
+        for (i, s) in self.0.iter_mut().enumerate() {
+            if let EventSource::None = s {
+                *s = source;
+                return i as _;
+            }
+        }
+        let index = self.0.len();
+        self.0.push(source);
+        index as _
+    }
+
+    pub fn remove(&mut self, index: usize) {
+        self.0[index] = EventSource::None;
+    }
+}
+
+pub fn acquire<T>(vec: &mut Vec<Option<T>>) -> Option<(u8, &mut Option<T>)> {
+    let mut slot_index = None;
+    for (i, e) in vec.iter().enumerate() {
+        if e.is_none() {
+            slot_index = Some(i);
+            break;
+        }
+    }
+
+    match slot_index {
+        Some(i) => Some((i as _, &mut vec[i])),
+        None => {
+            let index = vec.len();
+            if index > u8::MAX as _ {
+                return None;
+            }
+
+            vec.push(None);
+            let e = &mut vec[index];
+            Some((index as _, e))
+        }
+    }
+}
