@@ -185,19 +185,27 @@ impl Drop for Epoll {
 
 fn run_server(config: ApplicationConfig, listener: UnixListener) {
     fn acquire<T>(vec: &mut Vec<Option<T>>) -> Option<(u8, &mut Option<T>)> {
-        for (i, e) in vec.iter_mut().enumerate() {
+        let mut slot_index = None;
+        for (i, e) in vec.iter().enumerate() {
             if e.is_none() {
-                return Some((i as _, e));
+                slot_index = Some(i);
+                break;
             }
         }
 
-        let index = vec.len();
-        if index > u8::MAX as _ {
-            return None;
+        match slot_index {
+            Some(i) => Some((i as _, &mut vec[i])),
+            None => {
+                let index = vec.len();
+                if index > u8::MAX as _ {
+                    return None;
+                }
+
+                vec.push(None);
+                let e = &mut vec[index];
+                Some((index as _, e))
+            }
         }
-        vec.push(None);
-        let e = &mut vec[index];
-        Some((index as _, e))
     }
 
     let mut application = match ServerApplication::new(config) {
@@ -215,7 +223,11 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
 
     let epoll = Epoll::new();
     let mut epoll_sources = EpollSources::default();
-    epoll.add(listener.as_raw_fd(), epoll_sources.add(EventSource::Listener), 0);
+    epoll.add(
+        listener.as_raw_fd(),
+        epoll_sources.add(EventSource::Listener),
+        0,
+    );
     let mut epoll_events = EpollEvents::new();
 
     loop {
@@ -256,6 +268,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                             let handle = ClientHandle(i as _);
                             events.push(PlatformEvent::ConnectionOpen { handle });
                         }
+                        client_write_queue.resize_with(client_connections.len(), Default::default);
                     }
                     Err(error) => panic!("could not accept connection {}", error),
                 },
@@ -557,3 +570,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
     drop(terminal);
     drop(application);
 }
+
