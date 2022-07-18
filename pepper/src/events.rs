@@ -166,6 +166,7 @@ impl EditorEventQueue {
 
     pub(crate) fn assert_empty(&self) {
         assert!(self.read.0.events.is_empty());
+        assert!(self.write.0.events.is_empty());
     }
 }
 

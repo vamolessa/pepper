@@ -160,9 +160,13 @@ pub fn try_attach_debugger() {
             return;
         }
 
-        if !try_spawn_debugger(b"remedybg.exe attach-to-process-by-id") {
-            if !try_spawn_debugger(b"vsjitdebugger.exe -p") {
-                return;
+        let debuggers = [
+            //b"remedybg.exe attach-to-process-by-id",
+            b"vsjitdebugger.exe -p"
+        ];
+        for debugger in debuggers {
+            if try_spawn_debugger(debugger) {
+                break;
             }
         }
     }

@@ -177,6 +177,10 @@ impl BufferLintCollection {
         &self.lints
     }
 
+    fn clear(&mut self) {
+        self.lints.clear();
+    }
+
     fn insert_range(&mut self, range: BufferRange) {
         for lint in &mut self.lints {
             lint.range.from = lint.range.from.insert(range);
@@ -192,10 +196,9 @@ impl BufferLintCollection {
     }
 
     pub fn mut_guard(&mut self, plugin_handle: PluginHandle) -> BufferLintCollectionMutGuard {
-        let min_messages_per_plugin_len = plugin_handle.0 as usize + 1;
-        if self.plugin_messages.len() < min_messages_per_plugin_len {
-            self.plugin_messages
-                .resize(min_messages_per_plugin_len, String::new());
+        let min_messages_len = plugin_handle.0 as usize + 1;
+        if self.plugin_messages.len() < min_messages_len {
+            self.plugin_messages.resize(min_messages_len, String::new());
         }
         BufferLintCollectionMutGuard {
             inner: self,
@@ -247,6 +250,10 @@ pub struct BufferBreakpointCollection {
     breakpoints: Vec<BufferBreakpoint>,
 }
 impl BufferBreakpointCollection {
+    fn clear(&mut self) {
+        self.breakpoints.clear();
+    }
+
     fn insert_range(&mut self, range: BufferRange) -> bool {
         let line_count = range.to.line_index - range.from.line_index;
         if line_count == 0 {
@@ -1110,12 +1117,14 @@ impl Buffer {
     fn dispose(&mut self, word_database: &mut WordDatabase) {
         self.remove_all_words_from_database(word_database);
         self.content.clear();
+        self.highlighted.clear();
 
         self.alive = false;
         self.path.clear();
         self.syntax_handle = SyntaxHandle::default();
-        self.highlighted.clear();
         self.history.clear();
+        self.lints.clear();
+        self.breakpoints.clear();
         self.search_ranges.clear();
         self.needs_save = false;
         self.properties = BufferProperties::default();
@@ -1169,10 +1178,6 @@ impl Buffer {
         if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
             self.highlighted.clear();
-            self.highlighted.insert_range(BufferRange::between(
-                BufferPosition::zero(),
-                BufferPosition::line_col((self.content.lines.len() - 1) as _, 0),
-            ));
         }
     }
 
@@ -1535,11 +1540,6 @@ impl Buffer {
                 }
             }
         }
-
-        self.highlighted.insert_range(BufferRange::between(
-            BufferPosition::zero(),
-            BufferPosition::line_col((self.content.lines.len() - 1) as _, 0),
-        ));
 
         if self.properties.word_database_enabled {
             for line in &self.content.lines {
@@ -2385,3 +2385,4 @@ mod tests {
         assert_eq!(3, len(&buffer, 2));
     }
 }
+
