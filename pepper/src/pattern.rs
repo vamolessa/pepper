@@ -252,10 +252,10 @@ impl Pattern {
         }
     }
 
-    pub fn matches(&self, text: &str, index: usize) -> MatchResult {
+    pub fn matches(&self, text: &str, start_index: usize) -> MatchResult {
         self.matches_with_state(
             text,
-            index,
+            start_index,
             PatternState {
                 op_jump: self.start_jump,
             },
@@ -576,7 +576,7 @@ impl<'a> PatternCompiler<'a> {
     pub fn compile(mut self) -> Result<Jump, PatternError> {
         self.ops.push(Op::Error);
         self.ops.push(Op::Ok);
-        self.parse_subpatterns()?;
+        self.compile_subpatterns()?;
         self.optimize();
         Ok(self.start_jump)
     }
@@ -606,7 +606,7 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    fn parse_subpatterns(&mut self) -> Result<(), PatternError> {
+    fn compile_subpatterns(&mut self) -> Result<(), PatternError> {
         fn add_reset_jump(compiler: &mut PatternCompiler) -> Result<Jump, PatternError> {
             let jump = Jump((compiler.ops.len() + 2).try_into()?);
             compiler.ops.push(Op::Unwind(jump, Length(0)));
@@ -614,6 +614,7 @@ impl<'a> PatternCompiler<'a> {
             compiler.ops.push(Op::Reset(jump));
             Ok(jump)
         }
+
         fn patch_reset_jump(
             compiler: &mut PatternCompiler,
             reset_jump: Jump,
@@ -1424,6 +1425,22 @@ mod tests {
             },
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn beginning_and_ending_anchors() {
+        let p = new_pattern("^a$");
+        assert_eq!(MatchResult::Ok(1), p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("", 0));
+        assert_eq!(MatchResult::Err, p.matches("_a", 1));
+        assert_eq!(MatchResult::Err, p.matches("aa", 0));
+        assert_eq!(MatchResult::Err, p.matches("_aa", 1));
+
+        let p = new_pattern("^$");
+        assert_eq!(MatchResult::Ok(0), p.matches("", 0));
+        assert_eq!(MatchResult::Err, p.matches("_", 1));
+        assert_eq!(MatchResult::Err, p.matches("a", 0));
+        assert_eq!(MatchResult::Err, p.matches("_a", 1));
     }
 
     #[test]
