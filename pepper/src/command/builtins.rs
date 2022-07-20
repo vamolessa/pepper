@@ -441,6 +441,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             };
 
             content.push_str(buffer_path);
+            content.push(':');
 
             let props = &buffer.properties;
             if !props.history_enabled
