@@ -20,12 +20,12 @@ if @platform() == linux @{
     command build @{
         open scratch "build.log"
         enqueue-keys aad
-        replace-with-output "sh -c 'cargo build 2<greater>&1'"
+        replace-with-output "sh -c 'cargo build 2>&1'"
     }
     command test @{
         open scratch "test.log"
         enqueue-keys aad
-        replace-with-output "sh -c 'cargo test --workspace 2<greater>&1'"
+        replace-with-output "sh -c 'cargo test --workspace 2>&1'"
     }
 }
 
