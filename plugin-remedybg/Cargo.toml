@@ -1,6 +1,6 @@
 [package]
 name = "pepper-plugin-remedybg"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Matheus Lessa"]
 edition = "2021"
 description = "RemedyBG plugin for Pepper editor"
@@ -17,5 +17,5 @@ name = "pepper_plugin_remedybg"
 path = "src/lib.rs"
 
 [dependencies]
-pepper = { path = "../pepper", version = "0.29" }
+pepper = { path = "../pepper", version = "0.30" }
 

@@ -180,9 +180,18 @@ By default, this is set per platform:
 Enqueue keys as if they were typed in the current client.
 - usage: `enqueue-keys <keys>`
 
+## `insert-text`
+Deletes text inside all cursor ranges. Then inserts `<text>` at each cursor.
+Equivalent to `enqueue-keys i<text><enter>` however more performant since the text insertion happens at once instead of char by char.
+- usage: `insert-text <text>`
+
 ## `set-register`
 Set the content of register `<key>` to `<value>`.
 - usage: `set-register <key> <value>`
+
+## `set-clipboard`
+Sets the contents of the system clipboard to `<text>`.
+- usage: `set-clipboard <text>`
 
 ## `set-env`
 Set the value of the environment variable `<key>` to `<value>`

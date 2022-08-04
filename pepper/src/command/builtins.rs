@@ -678,6 +678,31 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("insert-text", &[], |ctx, io| {
+        let text = io.args.next()?;
+        io.args.assert_empty()?;
+
+        let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
+        let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+        buffer_view.delete_text_in_cursor_ranges(
+            &mut ctx.editor.buffers,
+            &mut ctx.editor.word_database,
+            ctx.editor.events.writer(),
+        );
+
+        ctx.trigger_event_handlers();
+
+        let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+        buffer_view.insert_text_at_cursor_positions(
+            &mut ctx.editor.buffers,
+            &mut ctx.editor.word_database,
+            text,
+            ctx.editor.events.writer(),
+        );
+
+        Ok(())
+    });
+
     r("set-register", &[], |ctx, io| {
         let key = io.args.next()?;
         let value = io.args.next()?;
@@ -687,6 +712,14 @@ pub fn register_commands(commands: &mut CommandManager) {
         let register = ctx.editor.registers.get_mut(key);
         register.clear();
         register.push_str(value);
+        Ok(())
+    });
+
+    r("set-clipboard", &[], |ctx, io| {
+        let text = io.args.next()?;
+        io.args.assert_empty()?;
+
+        ctx.platform.write_to_clipboard(text);
         Ok(())
     });
 

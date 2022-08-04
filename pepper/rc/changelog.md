@@ -1,5 +1,9 @@
 # changelog
 
+# 0.30.0 (preview)
+- added `insert-text` command
+- added `set-clipboard` command
+
 # 0.29.0
 - added diagnostic logging to `spawn` command
 - added diagnostic logging to `replace-with-output` command
