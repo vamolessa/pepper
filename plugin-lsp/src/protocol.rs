@@ -408,13 +408,25 @@ impl TextEdit {
                 delete_range.to = delete_range.to.insert(*i);
             }
 
-            buffer.delete_range(&mut editor.word_database, delete_range, &mut editor.events);
-            let insert_range = buffer.insert_text(
-                &mut editor.word_database,
-                delete_range.from,
-                text,
-                &mut editor.events,
-            );
+            {
+                let mut events = editor
+                    .events
+                    .writer()
+                    .buffer_range_deletes_mut_guard(buffer_handle);
+                buffer.delete_range(&mut editor.word_database, delete_range, &mut events);
+            }
+            let insert_range = {
+                let mut events = editor
+                    .events
+                    .writer()
+                    .buffer_text_inserts_mut_guard(buffer_handle);
+                buffer.insert_text(
+                    &mut editor.word_database,
+                    delete_range.from,
+                    text,
+                    &mut events,
+                )
+            };
 
             temp_edits.push((delete_range, insert_range));
         }
@@ -623,7 +635,8 @@ impl WorkspaceEdit {
                     buffer.properties = BufferProperties::scratch();
                     buffer.properties.saving_enabled = true;
                     buffer.set_path(path);
-                    let _ = buffer.read_from_file(&mut editor.word_database, &mut editor.events);
+                    let _ =
+                        buffer.read_from_file(&mut editor.word_database, editor.events.writer());
                     (true, buffer.handle())
                 }
             };
@@ -638,11 +651,11 @@ impl WorkspaceEdit {
                 let _ = editor
                     .buffers
                     .get_mut(buffer_handle)
-                    .write_to_file(None, &mut editor.events);
+                    .write_to_file(None, editor.events.writer());
 
                 editor
                     .buffers
-                    .defer_remove(buffer_handle, &mut editor.events);
+                    .defer_remove(buffer_handle, editor.events.writer());
             }
         }
 
@@ -669,7 +682,7 @@ impl WorkspaceEdit {
                             buffer.properties.saving_enabled = true;
                             buffer.set_path(path);
                             let _ = buffer
-                                .read_from_file(&mut editor.word_database, &mut editor.events);
+                                .read_from_file(&mut editor.word_database, editor.events.writer());
                             (true, buffer.handle())
                         }
                     };
@@ -680,11 +693,11 @@ impl WorkspaceEdit {
                         let _ = editor
                             .buffers
                             .get_mut(buffer_handle)
-                            .write_to_file(None, &mut editor.events);
+                            .write_to_file(None, editor.events.writer());
 
                         editor
                             .buffers
-                            .defer_remove(buffer_handle, &mut editor.events);
+                            .defer_remove(buffer_handle, editor.events.writer());
                     }
                 }
                 WorkspaceEditChange::CreateFile(op) => {

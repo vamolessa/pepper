@@ -13,7 +13,10 @@ use crate::{
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     cursor::Cursor,
     editor_utils::{find_delimiter_pair_at, ResidualStrBytes},
-    events::{EditorEvent, EditorEventQueue},
+    events::{
+        BufferRangeDeletesMutGuard, BufferTextInsertsMutGuard, EditorEvent, EditorEventTextInsert,
+        EditorEventWriter,
+    },
     help,
     pattern::Pattern,
     platform::{Platform, PlatformProcessHandle, PlatformRequest, PooledBuf, ProcessTag},
@@ -174,6 +177,10 @@ impl BufferLintCollection {
         &self.lints
     }
 
+    fn clear(&mut self) {
+        self.lints.clear();
+    }
+
     fn insert_range(&mut self, range: BufferRange) {
         for lint in &mut self.lints {
             lint.range.from = lint.range.from.insert(range);
@@ -189,10 +196,9 @@ impl BufferLintCollection {
     }
 
     pub fn mut_guard(&mut self, plugin_handle: PluginHandle) -> BufferLintCollectionMutGuard {
-        let min_messages_per_plugin_len = plugin_handle.0 as usize + 1;
-        if self.plugin_messages.len() < min_messages_per_plugin_len {
-            self.plugin_messages
-                .resize(min_messages_per_plugin_len, String::new());
+        let min_messages_len = plugin_handle.0 as usize + 1;
+        if self.plugin_messages.len() < min_messages_len {
+            self.plugin_messages.resize(min_messages_len, String::new());
         }
         BufferLintCollectionMutGuard {
             inner: self,
@@ -244,6 +250,10 @@ pub struct BufferBreakpointCollection {
     breakpoints: Vec<BufferBreakpoint>,
 }
 impl BufferBreakpointCollection {
+    fn clear(&mut self) {
+        self.breakpoints.clear();
+    }
+
     fn insert_range(&mut self, range: BufferRange) -> bool {
         let line_count = range.to.line_index - range.from.line_index;
         if line_count == 0 {
@@ -301,7 +311,7 @@ pub struct BufferBreakpointMutCollection<'a> {
     buffer_handle: BufferHandle,
 }
 impl<'a> BufferBreakpointMutCollection<'a> {
-    pub fn clear(&mut self, events: &mut EditorEventQueue) {
+    pub fn clear(&mut self, events: &mut EditorEventWriter) {
         if self.inner.breakpoints.len() > 0 {
             events.enqueue(EditorEvent::BufferBreakpointsChanged {
                 handle: self.buffer_handle,
@@ -310,7 +320,7 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         self.inner.breakpoints.clear();
     }
 
-    pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventQueue) {
+    pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
         let previous_breakpoints_len = self.inner.breakpoints.len();
 
         let mut breakpoint_index = self.inner.breakpoints.len().saturating_sub(1);
@@ -345,7 +355,7 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         }
     }
 
-    pub fn toggle_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventQueue) {
+    pub fn toggle_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
         let mut last_line_index = BufferPositionIndex::MAX;
         for cursor in cursors {
             let range = cursor.to_range();
@@ -1107,12 +1117,14 @@ impl Buffer {
     fn dispose(&mut self, word_database: &mut WordDatabase) {
         self.remove_all_words_from_database(word_database);
         self.content.clear();
+        self.highlighted.clear();
 
         self.alive = false;
         self.path.clear();
         self.syntax_handle = SyntaxHandle::default();
-        self.highlighted.clear();
         self.history.clear();
+        self.lints.clear();
+        self.breakpoints.clear();
         self.search_ranges.clear();
         self.needs_save = false;
         self.properties = BufferProperties::default();
@@ -1166,10 +1178,6 @@ impl Buffer {
         if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
             self.highlighted.clear();
-            self.highlighted.insert_range(BufferRange::between(
-                BufferPosition::zero(),
-                BufferPosition::line_col((self.content.lines.len() - 1) as _, 0),
-            ));
         }
     }
 
@@ -1193,7 +1201,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         position: BufferPosition,
         text: &str,
-        events: &mut EditorEventQueue,
+        events: &mut BufferTextInsertsMutGuard,
     ) -> BufferRange {
         self.search_ranges.clear();
         let position = self.content.saturate_position(position);
@@ -1203,25 +1211,15 @@ impl Buffer {
         }
         self.needs_save = true;
 
-        let mut breakpoints_changed = false;
         let range = Self::insert_text_no_history(
             &mut self.content,
-            &mut self.highlighted,
-            &mut self.lints,
-            &mut self.breakpoints,
             self.properties.word_database_enabled,
             word_database,
             position,
             text,
-            &mut breakpoints_changed,
         );
-        if breakpoints_changed {
-            events.enqueue(EditorEvent::BufferBreakpointsChanged {
-                handle: self.handle,
-            });
-        }
 
-        events.enqueue_buffer_insert(self.handle, range, text);
+        events.add(range, text);
 
         if self.properties.history_enabled {
             self.history.add_edit(Edit {
@@ -1236,14 +1234,10 @@ impl Buffer {
 
     fn insert_text_no_history(
         content: &mut BufferContent,
-        highlighted: &mut HighlightedBuffer,
-        lints: &mut BufferLintCollection,
-        breakpoints: &mut BufferBreakpointCollection,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         position: BufferPosition,
         text: &str,
-        breakpoints_changed: &mut bool,
     ) -> BufferRange {
         if uses_word_database {
             for word in WordIter(content.lines()[position.line_index as usize].as_str())
@@ -1254,9 +1248,6 @@ impl Buffer {
         }
 
         let range = content.insert_text(position, text);
-        highlighted.insert_range(range);
-        lints.insert_range(range);
-        *breakpoints_changed = breakpoints.insert_range(range);
 
         if uses_word_database {
             for line in
@@ -1275,7 +1266,7 @@ impl Buffer {
         &mut self,
         word_database: &mut WordDatabase,
         mut range: BufferRange,
-        events: &mut EditorEventQueue,
+        events: &mut BufferRangeDeletesMutGuard,
     ) {
         self.search_ranges.clear();
         range.from = self.content.saturate_position(range.from);
@@ -1286,10 +1277,7 @@ impl Buffer {
         }
         self.needs_save = true;
 
-        events.enqueue(EditorEvent::BufferDeleteText {
-            handle: self.handle,
-            range,
-        });
+        events.add(range);
 
         let from = range.from;
         let to = range.to;
@@ -1336,33 +1324,19 @@ impl Buffer {
             }
         }
 
-        let mut breakpoints_changed = false;
         Self::delete_range_no_history(
             &mut self.content,
-            &mut self.highlighted,
-            &mut self.lints,
-            &mut self.breakpoints,
             self.properties.word_database_enabled,
             word_database,
             range,
-            &mut breakpoints_changed,
         );
-        if breakpoints_changed {
-            events.enqueue(EditorEvent::BufferBreakpointsChanged {
-                handle: self.handle,
-            });
-        }
     }
 
     fn delete_range_no_history(
         content: &mut BufferContent,
-        highlighted: &mut HighlightedBuffer,
-        lints: &mut BufferLintCollection,
-        breakpoints: &mut BufferBreakpointCollection,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         range: BufferRange,
-        breakpoints_changed: &mut bool,
     ) {
         if uses_word_database {
             for line in
@@ -1383,10 +1357,6 @@ impl Buffer {
         } else {
             content.delete_range(range);
         }
-
-        highlighted.delete_range(range);
-        lints.delete_range(range);
-        *breakpoints_changed = breakpoints.delete_range(range);
     }
 
     pub fn commit_edits(&mut self) {
@@ -1396,7 +1366,7 @@ impl Buffer {
     pub fn undo(
         &mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) -> impl '_ + ExactSizeIterator<Item = Edit<'_>> + DoubleEndedIterator<Item = Edit<'_>> {
         self.apply_history_edits(word_database, events, BufferHistory::undo_edits)
     }
@@ -1404,7 +1374,7 @@ impl Buffer {
     pub fn redo(
         &mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) -> impl '_ + ExactSizeIterator<Item = Edit<'_>> + DoubleEndedIterator<Item = Edit<'_>> {
         self.apply_history_edits(word_database, events, BufferHistory::redo_edits)
     }
@@ -1412,7 +1382,7 @@ impl Buffer {
     fn apply_history_edits<'a, F, I>(
         &'a mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
         selector: F,
     ) -> I
     where
@@ -1423,55 +1393,95 @@ impl Buffer {
         self.needs_save = true;
 
         let content = &mut self.content;
-        let highlighted = &mut self.highlighted;
-        let lints = &mut self.lints;
-        let breakpoints = &mut self.breakpoints;
         let uses_word_database = self.properties.word_database_enabled;
 
-        let mut breakpoints_changed = false;
         let edits = selector(&mut self.history);
+
+        let mut edits_iter = edits.clone();
+        let mut next_edit = edits_iter.next();
+        loop {
+            let mut edit = match next_edit.take() {
+                Some(edit) => edit,
+                None => break,
+            };
+            match edit.kind {
+                EditKind::Insert => {
+                    let mut events = events.buffer_text_inserts_mut_guard(self.handle);
+                    loop {
+                        Self::insert_text_no_history(
+                            content,
+                            uses_word_database,
+                            word_database,
+                            edit.range.from,
+                            edit.text,
+                        );
+                        events.add(edit.range, edit.text);
+
+                        edit = match edits_iter.next() {
+                            Some(edit) => edit,
+                            None => break,
+                        };
+                        if edit.kind != EditKind::Insert {
+                            next_edit = Some(edit);
+                            break;
+                        }
+                    }
+                }
+                EditKind::Delete => {
+                    let mut events = events.buffer_range_deletes_mut_guard(self.handle);
+                    loop {
+                        Self::delete_range_no_history(
+                            content,
+                            uses_word_database,
+                            word_database,
+                            edit.range,
+                        );
+                        events.add(edit.range);
+
+                        edit = match edits_iter.next() {
+                            Some(edit) => edit,
+                            None => break,
+                        };
+                        if edit.kind != EditKind::Delete {
+                            next_edit = Some(edit);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
         for edit in edits.clone() {
-            let mut breakpoints_changed_here = false;
             match edit.kind {
                 EditKind::Insert => {
                     Self::insert_text_no_history(
                         content,
-                        highlighted,
-                        lints,
-                        breakpoints,
                         uses_word_database,
                         word_database,
                         edit.range.from,
                         edit.text,
-                        &mut breakpoints_changed_here,
                     );
-                    events.enqueue_buffer_insert(self.handle, edit.range, edit.text);
+                    events
+                        .buffer_text_inserts_mut_guard(self.handle)
+                        .add(edit.range, edit.text);
+                    //edit_events.add_insert(edit.range, edit.text);
                 }
                 EditKind::Delete => {
                     Self::delete_range_no_history(
                         content,
-                        highlighted,
-                        lints,
-                        breakpoints,
                         uses_word_database,
                         word_database,
                         edit.range,
-                        &mut breakpoints_changed_here,
                     );
-                    events.enqueue(EditorEvent::BufferDeleteText {
-                        handle: self.handle,
-                        range: edit.range,
-                    });
+                    events
+                        .buffer_range_deletes_mut_guard(self.handle)
+                        .add(edit.range);
+                    //edit_events.add_delete(edit.range);
                 }
             }
-            breakpoints_changed = breakpoints_changed || breakpoints_changed_here;
         }
-
-        if breakpoints_changed {
-            events.enqueue(EditorEvent::BufferBreakpointsChanged {
-                handle: self.handle,
-            });
-        }
+        */
 
         edits
     }
@@ -1489,7 +1499,7 @@ impl Buffer {
     pub fn read_from_file(
         &mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) -> Result<(), BufferReadError> {
         fn clear_buffer(buffer: &mut Buffer, word_database: &mut WordDatabase) {
             buffer.remove_all_words_from_database(word_database);
@@ -1531,11 +1541,6 @@ impl Buffer {
             }
         }
 
-        self.highlighted.insert_range(BufferRange::between(
-            BufferPosition::zero(),
-            BufferPosition::line_col((self.content.lines.len() - 1) as _, 0),
-        ));
-
         if self.properties.word_database_enabled {
             for line in &self.content.lines {
                 for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
@@ -1550,7 +1555,7 @@ impl Buffer {
     pub fn write_to_file(
         &mut self,
         new_path: Option<&Path>,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) -> Result<(), BufferWriteError> {
         let new_path = match new_path {
             Some(path) => {
@@ -1676,7 +1681,7 @@ impl BufferCollection {
         self.buffers.iter_mut().filter(|b| b.alive)
     }
 
-    pub fn defer_remove(&self, handle: BufferHandle, events: &mut EditorEventQueue) {
+    pub fn defer_remove(&self, handle: BufferHandle, events: &mut EditorEventWriter) {
         let buffer = &self.buffers[handle.0 as usize];
         if buffer.alive {
             events.enqueue(EditorEvent::BufferClose { handle });
@@ -1707,26 +1712,71 @@ impl BufferCollection {
         }
     }
 
-    pub(crate) fn on_buffer_insert_text(
+    pub(crate) fn on_buffer_text_inserts(
         &mut self,
         buffer_handle: BufferHandle,
-        range: BufferRange,
+        inserts: &[EditorEventTextInsert],
+        events: &mut EditorEventWriter,
     ) {
+        let buffer = self.get_mut(buffer_handle);
+
+        let mut breakpoints_changed = false;
+        for insert in inserts {
+            let range = insert.range;
+            buffer.highlighted.insert_range(range);
+            buffer.lints.insert_range(range);
+            if buffer.breakpoints.insert_range(range) {
+                breakpoints_changed = true;
+            }
+        }
+
+        if breakpoints_changed {
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
+                handle: buffer_handle,
+            });
+        }
+
         for process in self.insert_processes.iter_mut() {
             if process.alive && process.buffer_handle == buffer_handle {
-                process.position = process.position.insert(range);
+                let mut position = process.position;
+                for insert in inserts {
+                    position = position.insert(insert.range);
+                }
+                process.position = position;
             }
         }
     }
 
-    pub(crate) fn on_buffer_delete_text(
+    pub(crate) fn on_buffer_range_deletes(
         &mut self,
         buffer_handle: BufferHandle,
-        range: BufferRange,
+        deletes: &[BufferRange],
+        events: &mut EditorEventWriter,
     ) {
+        let buffer = self.get_mut(buffer_handle);
+
+        let mut breakpoints_changed = false;
+        for &range in deletes {
+            buffer.highlighted.delete_range(range);
+            buffer.lints.delete_range(range);
+            if buffer.breakpoints.delete_range(range) {
+                breakpoints_changed = true;
+            }
+        }
+
+        if breakpoints_changed {
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
+                handle: buffer_handle,
+            });
+        }
+
         for process in self.insert_processes.iter_mut() {
             if process.alive && process.buffer_handle == buffer_handle {
-                process.position = process.position.delete(range);
+                let mut position = process.position;
+                for &range in deletes {
+                    position = position.delete(range);
+                }
+                process.position = position;
             }
         }
     }
@@ -1810,7 +1860,7 @@ impl BufferCollection {
         word_database: &mut WordDatabase,
         index: u32,
         bytes: &[u8],
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         let process = &mut self.insert_processes[index as usize];
         if process.handle.is_none() {
@@ -1821,9 +1871,10 @@ impl BufferCollection {
         let texts = process.output_residual_bytes.receive_bytes(&mut buf, bytes);
 
         let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
+        let mut events = events.buffer_text_inserts_mut_guard(buffer.handle());
         let mut position = process.position;
         for text in texts {
-            let insert_range = buffer.insert_text(word_database, position, text, events);
+            let insert_range = buffer.insert_text(word_database, position, text, &mut events);
             position = position.insert(insert_range);
         }
     }
@@ -1832,7 +1883,7 @@ impl BufferCollection {
         &mut self,
         word_database: &mut WordDatabase,
         index: u32,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventWriter,
     ) {
         self.on_process_output(word_database, index, &[], events);
         let process = &mut self.insert_processes[index as usize];
@@ -1844,7 +1895,7 @@ impl BufferCollection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buffer_position::BufferPosition;
+    use crate::{buffer_position::BufferPosition, events::EditorEventQueue};
 
     #[test]
     fn display_distance() {
@@ -2023,23 +2074,31 @@ mod tests {
             &mut word_database,
             BufferPosition::zero(),
             "single line content",
-            &mut events,
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
         );
         let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
         );
-        buffer.delete_range(&mut word_database, range, &mut events);
+        buffer.delete_range(
+            &mut word_database,
+            range,
+            &mut events
+                .writer()
+                .buffer_range_deletes_mut_guard(buffer.handle()),
+        );
 
         assert_eq!("single content", buffer.content.to_string());
         {
-            let mut ranges = buffer.undo(&mut word_database, &mut events);
+            let mut ranges = buffer.undo(&mut word_database, &mut events.writer());
             assert_eq!(range, ranges.next().unwrap().range);
             ranges.next().unwrap();
             assert!(ranges.next().is_none());
         }
         assert!(buffer.content.to_string().is_empty());
-        let mut redo_iter = buffer.redo(&mut word_database, &mut events);
+        let mut redo_iter = buffer.redo(&mut word_database, &mut events.writer());
         redo_iter.next().unwrap();
         redo_iter.next().unwrap();
         assert!(redo_iter.next().is_none());
@@ -2058,7 +2117,9 @@ mod tests {
             &mut word_database,
             BufferPosition::zero(),
             "multi\nline\ncontent",
-            &mut events,
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
         );
         assert_eq!("multi\nline\ncontent", buffer.content.to_string());
 
@@ -2066,11 +2127,17 @@ mod tests {
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        buffer.delete_range(&mut word_database, delete_range, &mut events);
+        buffer.delete_range(
+            &mut word_database,
+            delete_range,
+            &mut events
+                .writer()
+                .buffer_range_deletes_mut_guard(buffer.handle()),
+        );
         assert_eq!("me\ncontent", buffer.content.to_string());
 
         {
-            let mut undo_edits = buffer.undo(&mut word_database, &mut events);
+            let mut undo_edits = buffer.undo(&mut word_database, &mut events.writer());
             assert_eq!(delete_range, undo_edits.next().unwrap().range);
             assert_eq!(insert_range, undo_edits.next().unwrap().range);
             assert!(undo_edits.next().is_none());
@@ -2078,7 +2145,7 @@ mod tests {
         assert_eq!("", buffer.content.to_string());
 
         {
-            let mut redo_edits = buffer.redo(&mut word_database, &mut events);
+            let mut redo_edits = buffer.redo(&mut word_database, &mut events.writer());
             redo_edits.next().unwrap();
             redo_edits.next().unwrap();
             assert!(redo_edits.next().is_none());
@@ -2097,7 +2164,9 @@ mod tests {
             &mut word_database,
             BufferPosition::zero(),
             "\n",
-            &mut events,
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
         );
         let assert_range = BufferRange::between(
             BufferPosition::line_col(0, 0),
@@ -2108,8 +2177,14 @@ mod tests {
         buffer.commit_edits();
         assert_eq!("\n", buffer.content.to_string());
 
-        let insert_range =
-            buffer.insert_text(&mut word_database, BufferPosition::zero(), "a", &mut events);
+        let insert_range = buffer.insert_text(
+            &mut word_database,
+            BufferPosition::zero(),
+            "a",
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
+        );
         let assert_range = BufferRange::between(
             BufferPosition::line_col(0, 0),
             BufferPosition::line_col(0, 1),
@@ -2122,14 +2197,18 @@ mod tests {
                 BufferPosition::line_col(0, 1),
                 BufferPosition::line_col(1, 0),
             ),
-            &mut events,
+            &mut events
+                .writer()
+                .buffer_range_deletes_mut_guard(buffer.handle()),
         );
 
         let insert_range = buffer.insert_text(
             &mut word_database,
             BufferPosition::line_col(0, 1),
             "b",
-            &mut events,
+            &mut events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle()),
         );
         let assert_range = BufferRange::between(
             BufferPosition::line_col(0, 1),
@@ -2137,7 +2216,7 @@ mod tests {
         );
         assert_eq!(assert_range, insert_range);
 
-        buffer.undo(&mut word_database, &mut events);
+        buffer.undo(&mut word_database, &mut events.writer());
     }
 
     #[test]

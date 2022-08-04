@@ -22,8 +22,12 @@ impl Cursor {
         }
     }
 
-    pub fn to_range(&self) -> BufferRange {
+    pub fn to_range(self) -> BufferRange {
         BufferRange::between(self.anchor, self.position)
+    }
+
+    pub fn to_range_and_direction(self) -> (BufferRange, bool) {
+        BufferRange::between_with_direction(self.anchor, self.position)
     }
 
     pub fn insert(&mut self, range: BufferRange) {
@@ -87,8 +91,8 @@ impl CursorCollection {
     }
 
     fn merge_sorted_cursors(&mut self) {
-        fn set_cursor(cursor: &mut Cursor, range: BufferRange) {
-            *cursor = if cursor.anchor <= cursor.position {
+        fn to_cursor(range: BufferRange, forward: bool) -> Cursor {
+            if forward {
                 Cursor {
                     anchor: range.from,
                     position: range.to,
@@ -98,34 +102,48 @@ impl CursorCollection {
                     anchor: range.to,
                     position: range.from,
                 }
-            };
+            }
         }
 
-        let cursors = &mut self.cursors[..];
-        let mut write_i = 0;
-        let mut read_i = 1;
+        let ptr_range = self.cursors.as_mut_ptr_range();
+        let start_ptr = ptr_range.start;
+        let end_ptr = ptr_range.end;
 
-        let mut range = cursors[0].to_range();
-        while read_i < cursors.len() {
-            let other_range = cursors[read_i].to_range();
+        let mut write_ptr = start_ptr;
+        let mut read_ptr = unsafe { write_ptr.add(1) };
+        let mut write_i = 0;
+
+        let (mut range, mut forward) = unsafe { write_ptr.read() }.to_range_and_direction();
+        while read_ptr != end_ptr {
+            let other_cursor = unsafe { read_ptr.read() };
+            let (other_range, other_forward) = other_cursor.to_range_and_direction();
+
             if other_range.from <= range.to {
-                if read_i <= self.main_cursor_index as _ {
+                if write_i < self.main_cursor_index as _ {
                     self.main_cursor_index -= 1;
                 }
 
                 range.to = range.to.max(other_range.to);
             } else {
-                set_cursor(&mut cursors[write_i], range);
+                let cursor = to_cursor(range, forward);
+                let store_ptr = write_ptr;
+                write_i += 1;
 
                 range = other_range;
-                write_i += 1;
+                forward = other_forward;
+
+                unsafe { write_ptr = write_ptr.add(1) };
+                unsafe { store_ptr.write(cursor) };
             }
 
-            read_i += 1;
+            unsafe { read_ptr = read_ptr.add(1) };
         }
 
-        set_cursor(&mut cursors[write_i], range);
-        self.cursors.truncate(write_i + 1);
+        let cursor = to_cursor(range, forward);
+        unsafe { write_ptr.write(cursor) };
+
+        let len = unsafe { write_ptr.add(1).offset_from(start_ptr) as _ };
+        self.cursors.truncate(len);
     }
 }
 
@@ -428,4 +446,3 @@ mod tests {
         assert!(cursors.next().is_none());
     }
 }
-

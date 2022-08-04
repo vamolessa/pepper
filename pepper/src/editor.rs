@@ -167,40 +167,48 @@ impl EditorContext {
         loop {
             self.editor.events.flip();
             let mut events = EditorEventIter::new();
-            if events.next(&self.editor.events).is_none() {
+            if events.next(self.editor.events.reader()).is_none() {
                 return;
             }
 
             PluginCollection::on_editor_events(self);
 
             let mut events = EditorEventIter::new();
-            while let Some(event) = events.next(&self.editor.events) {
+            while let Some(event) = events.next(self.editor.events.reader()) {
                 match *event {
                     EditorEvent::Idle => (),
+                    EditorEvent::BufferTextInserts { handle, inserts } => {
+                        let (event_reader, event_writer) = self.editor.events.get();
+                        let inserts = inserts.as_slice(event_reader);
+                        self.editor
+                            .buffers
+                            .on_buffer_text_inserts(handle, inserts, event_writer);
+                        self.editor
+                            .buffer_views
+                            .on_buffer_text_inserts(handle, inserts);
+                        self.editor
+                            .mode
+                            .insert_state
+                            .on_buffer_text_inserts(handle, inserts);
+                    }
+                    EditorEvent::BufferRangeDeletes { handle, deletes } => {
+                        let (event_reader, event_writer) = self.editor.events.get();
+                        let deletes = deletes.as_slice(event_reader);
+                        self.editor
+                            .buffers
+                            .on_buffer_range_deletes(handle, deletes, event_writer);
+                        self.editor
+                            .buffer_views
+                            .on_buffer_range_deletes(handle, deletes);
+                        self.editor
+                            .mode
+                            .insert_state
+                            .on_buffer_range_deletes(handle, deletes);
+                    }
                     EditorEvent::BufferRead { handle } => {
                         let buffer = self.editor.buffers.get_mut(handle);
                         buffer.refresh_syntax(&self.editor.syntaxes);
                         self.editor.buffer_views.on_buffer_read(buffer);
-                    }
-                    EditorEvent::BufferInsertText { handle, range, .. } => {
-                        self.editor.buffers.on_buffer_insert_text(handle, range);
-                        self.editor
-                            .buffer_views
-                            .on_buffer_insert_text(handle, range);
-                        self.editor
-                            .mode
-                            .insert_state
-                            .on_buffer_insert_text(handle, range);
-                    }
-                    EditorEvent::BufferDeleteText { handle, range } => {
-                        self.editor.buffers.on_buffer_delete_text(handle, range);
-                        self.editor
-                            .buffer_views
-                            .on_buffer_delete_text(handle, range);
-                        self.editor
-                            .mode
-                            .insert_state
-                            .on_buffer_delete_text(handle, range);
                     }
                     EditorEvent::BufferWrite { handle, new_path } => {
                         let buffer = self.editor.buffers.get_mut(handle);
@@ -242,11 +250,12 @@ impl EditorContext {
                         self.editor.buffer_views.remove_buffer_views(handle);
                     }
                     EditorEvent::FixCursors { handle, cursors } => {
+                        let event_reader = self.editor.events.reader();
                         let buffer_view = self.editor.buffer_views.get_mut(handle);
                         let buffer = self.editor.buffers.get(buffer_view.buffer_handle).content();
                         let mut view_cursors = buffer_view.cursors.mut_guard();
                         view_cursors.clear();
-                        for &cursor in cursors.as_cursors(&self.editor.events) {
+                        for &cursor in cursors.as_slice(event_reader) {
                             let mut cursor = cursor;
                             cursor.anchor = buffer.saturate_position(cursor.anchor);
                             cursor.position = buffer.saturate_position(cursor.position);
@@ -346,7 +355,7 @@ impl Editor {
             buffer.set_path(path);
             buffer.properties = properties;
 
-            match buffer.read_from_file(&mut self.word_database, &mut self.events) {
+            match buffer.read_from_file(&mut self.word_database, self.events.writer()) {
                 Ok(()) => {
                     let handle = self.buffer_views.add_new(client_handle, buffer.handle());
                     Ok(handle)
@@ -357,7 +366,7 @@ impl Editor {
                 }
                 Err(error) => {
                     let handle = buffer.handle();
-                    self.buffers.defer_remove(handle, &mut self.events);
+                    self.buffers.defer_remove(handle, self.events.writer());
                     Err(error)
                 }
             }
@@ -467,7 +476,9 @@ impl Editor {
 
                 let result =
                     CommandManager::eval(ctx, Some(client_handle), "client-commands", commands);
-                CommandManager::unwrap_eval_result(ctx, result)
+                let result = CommandManager::unwrap_eval_result(ctx, result);
+                ctx.trigger_event_handlers();
+                result
             }
             ClientEvent::StdinInput(target, bytes) => {
                 let client_handle = match target {
@@ -488,6 +499,6 @@ impl Editor {
     }
 
     pub(crate) fn on_idle(&mut self) {
-        self.events.enqueue(EditorEvent::Idle);
+        self.events.writer().enqueue(EditorEvent::Idle);
     }
 }

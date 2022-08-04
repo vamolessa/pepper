@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::{
     buffer::BufferContent,
-    buffer_position::{BufferPositionIndex, BufferRange},
+    buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     editor_utils::hash_bytes,
     glob::{Glob, InvalidGlobError},
     pattern::{MatchResult, Pattern, PatternError, PatternState},
@@ -363,6 +363,14 @@ impl HighlightedBuffer {
         syntax: &Syntax,
         buffer: &BufferContent,
     ) -> HighlightResult {
+        let buffer_lines = buffer.lines();
+        if self.highlighted_len < buffer_lines.len() {
+            self.insert_range(BufferRange::between(
+                BufferPosition::line_col((self.highlighted_len - 1) as _, 0),
+                BufferPosition::line_col((buffer_lines.len() - 1) as _, 0),
+            ));
+        }
+
         if self.dirty_line_indexes.is_empty() {
             return HighlightResult::Complete;
         }
@@ -377,9 +385,8 @@ impl HighlightedBuffer {
             None => LineParseState::Finished,
         };
 
-        let mut highlighted_byte_count = 0;
-
         let mut i = 0;
+        let mut highlighted_byte_count = 0;
         while i < self.dirty_line_indexes.len() {
             let dirty_index = self.dirty_line_indexes[i];
             i += 1;
@@ -392,7 +399,7 @@ impl HighlightedBuffer {
             last_dirty_index = dirty_index;
 
             while index < self.highlighted_len as _ {
-                let bline = buffer.lines()[index as usize].as_str();
+                let bline = buffer_lines[index as usize].as_str();
                 let hline = &mut self.lines[index as usize];
 
                 let previous_state = hline.parse_state;

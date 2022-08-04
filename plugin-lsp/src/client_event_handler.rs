@@ -602,10 +602,21 @@ pub(crate) fn on_response(
             let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
             let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
-            buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
+            let mut events = ctx
+                .editor
+                .events
+                .writer()
+                .buffer_range_deletes_mut_guard(buffer.handle());
+            buffer.delete_range(&mut ctx.editor.word_database, range, &mut events);
+            drop(events);
 
             buffer.properties = BufferProperties::scratch();
 
+            let mut events = ctx
+                .editor
+                .events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle());
             let mut text = ctx.editor.string_pool.acquire();
             let mut last_path = "";
             for location in locations.elements(&client.json) {
@@ -659,12 +670,7 @@ pub(crate) fn on_response(
                 }
 
                 let position = buffer.content().end();
-                buffer.insert_text(
-                    &mut ctx.editor.word_database,
-                    position,
-                    &text,
-                    &mut ctx.editor.events,
-                );
+                buffer.insert_text(&mut ctx.editor.word_database, position, &text, &mut events);
                 text.clear();
 
                 count += 1;
@@ -682,9 +688,10 @@ pub(crate) fn on_response(
                 &mut ctx.editor.word_database,
                 BufferPosition::zero(),
                 &text,
-                &mut ctx.editor.events,
+                &mut events,
             );
             ctx.editor.string_pool.release(text);
+            drop(events);
 
             let client = ctx.clients.get_mut(client_handle);
             client.set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
@@ -932,6 +939,7 @@ pub(crate) fn on_response(
                 let mut fix_cursor = ctx
                     .editor
                     .events
+                    .writer()
                     .fix_cursors_mut_guard(buffer_view.handle());
                 fix_cursor.add(Cursor {
                     anchor: position,

@@ -262,7 +262,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
     let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
 
     let mut events = EditorEventIter::new();
-    while let Some(event) = events.next(&ctx.editor.events) {
+    while let Some(event) = events.next(ctx.editor.events.reader()) {
         if let EditorEvent::BufferRead { handle } = *event {
             let buffer_path = match ctx.editor.buffers.get(handle).path.to_str() {
                 Some(path) => path,
@@ -312,30 +312,29 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
         }
 
         let mut events = EditorEventIter::new();
-        while let Some(event) = events.next(&ctx.editor.events) {
+        while let Some(event) = events.next(ctx.editor.events.reader()) {
             client.json.clear();
 
             match *event {
                 EditorEvent::Idle => {
                     util::send_pending_did_change(client, &mut ctx.editor, &mut ctx.platform);
                 }
-                EditorEvent::BufferInsertText {
-                    handle,
-                    range,
-                    text,
-                    ..
-                } => {
+                EditorEvent::BufferTextInserts { handle, inserts } => {
                     let buffer = ctx.editor.buffers.get(handle);
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
-                        let text = text.as_str(&ctx.editor.events);
-                        let range = BufferRange::between(range.from, range.from);
-                        client.versioned_buffers.add_edit(handle, range, text);
+                        for insert in inserts.as_slice(ctx.editor.events.reader()) {
+                            let text = insert.text(ctx.editor.events.reader());
+                            let range = BufferRange::between(insert.range.from, insert.range.from);
+                            client.versioned_buffers.add_edit(handle, range, text);
+                        }
                     }
                 }
-                EditorEvent::BufferDeleteText { handle, range, .. } => {
+                EditorEvent::BufferRangeDeletes { handle, deletes } => {
                     let buffer = ctx.editor.buffers.get(handle);
                     if buffer.path.to_str() != ctx.editor.logger.log_file_path() {
-                        client.versioned_buffers.add_edit(handle, range, "");
+                        for &range in deletes.as_slice(ctx.editor.events.reader()) {
+                            client.versioned_buffers.add_edit(handle, range, "");
+                        }
                     }
                 }
                 EditorEvent::BufferRead { handle } => {
