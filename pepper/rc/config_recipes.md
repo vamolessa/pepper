@@ -47,6 +47,12 @@ map normal <c-s> :<space>save<enter>
 If you wish to see all the keybindings that are created by default, you can see the builtin
 [default bindings](default_bindings.pepper).
 
+## reload config
+While editing your global or per-project config, you can invoke the command `eval @buffer-content()`.
+It will interpret the current buffer as commands effectively reloading the config file being edited.
+
+This can also be used to evaluate arbitrary commands in a buffer.
+
 ## `save-quit` and `save-quit-all` commands
 You can have a 'save and quit' command and a 'save all and quit' command by adding these lines to your pepper config:
 
