@@ -161,11 +161,11 @@ pub fn try_attach_debugger() {
         }
 
         let debuggers = [
-            //b"remedybg.exe attach-to-process-by-id",
-            b"vsjitdebugger.exe -p",
+            "remedybg.exe attach-to-process-by-id",
+            "vsjitdebugger.exe -p",
         ];
         for debugger in debuggers {
-            if try_spawn_debugger(debugger) {
+            if try_spawn_debugger(debugger.as_bytes()) {
                 break;
             }
         }

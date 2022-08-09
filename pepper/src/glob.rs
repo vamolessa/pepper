@@ -13,7 +13,7 @@ impl From<TryFromIntError> for InvalidGlobError {
     }
 }
 
-pub enum Op {
+enum Op {
     Slice { from: u16, to: u16 },
     Separator,
     Skip { count: u16 },
@@ -27,8 +27,8 @@ pub enum Op {
 
 #[derive(Default)]
 pub struct Glob {
-    pub texts: String,
-    pub ops: Vec<Op>,
+    texts: String,
+    ops: Vec<Op>,
 }
 
 impl Glob {
