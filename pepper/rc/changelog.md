@@ -4,6 +4,7 @@
 - added `insert-text` command
 - added `set-clipboard` command
 - fix `>` (indent command) will no longer insert indentation to empty lines
+- changed search string will *also* be compiled into a pattern if it contains `^` or `$`
 
 # 0.29.0
 - added diagnostic logging to `spawn` command

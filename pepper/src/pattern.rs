@@ -158,7 +158,7 @@ impl Pattern {
             [b'p', b'/', ..] => (false, true, &pattern[2..]),
             [b'P', b'/', ..] => (false, false, &pattern[2..]),
             _ => (
-                !pattern.chars().any(|c| c == '%'),
+                !pattern.chars().any(|c| matches!(c, '%' | '^' | '$')),
                 !pattern.chars().any(|c| c.is_ascii_uppercase()),
                 pattern,
             ),
