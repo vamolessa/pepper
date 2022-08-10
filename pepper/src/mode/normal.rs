@@ -1275,7 +1275,10 @@ impl State {
                 for i in 0..cursor_count {
                     let range = ctx.editor.buffer_views.get(handle).cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        if !buffer.content().lines()[line_index as usize].as_str().is_empty() {
+                        if !buffer.content().lines()[line_index as usize]
+                            .as_str()
+                            .is_empty()
+                        {
                             buffer.insert_text(
                                 &mut ctx.editor.word_database,
                                 BufferPosition::line_col(line_index, 0),
@@ -2433,4 +2436,3 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
-
