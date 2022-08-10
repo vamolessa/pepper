@@ -220,35 +220,79 @@ impl State {
                 });
             }
             Key {
-                code: KeyCode::Char('a'),
+                code: KeyCode::Char(c @ ('a' | 'A')),
                 control: false,
                 alt: false,
                 ..
             } => {
-                fn balanced_brackets(
+                fn select_balanced_brackets(
                     buffer: &BufferContent,
                     cursors: &mut [Cursor],
                     left: char,
                     right: char,
+                    select_exclusive: bool,
                 ) {
-                    for cursor in cursors {
-                        let range = buffer.find_balanced_chars_at(cursor.position, left, right);
-                        if let Some(range) = range {
-                            cursor.anchor = range.from;
-                            cursor.position = range.to;
+                    if select_exclusive {
+                        for cursor in cursors {
+                            let range = buffer.find_balanced_chars_at(cursor.position, left, right);
+                            if let Some(range) = range {
+                                cursor.anchor = range.from;
+                                cursor.position = range.to;
+                            }
+                        }
+                    } else {
+                        for cursor in cursors {
+                            let range = buffer.find_balanced_chars_at(cursor.position, left, right);
+                            if let Some(range) = range {
+                                cursor.anchor = BufferPosition::line_col(
+                                    range.from.line_index,
+                                    range.from.column_byte_index
+                                        - left.len_utf8() as BufferPositionIndex,
+                                );
+                                cursor.position = BufferPosition::line_col(
+                                    range.to.line_index,
+                                    range.to.column_byte_index
+                                        + right.len_utf8() as BufferPositionIndex,
+                                );
+                            }
                         }
                     }
                 }
 
-                fn delimiter_pair(buffer: &BufferContent, cursors: &mut [Cursor], delimiter: char) {
-                    for cursor in cursors {
-                        let range = buffer.find_delimiter_pair_at(cursor.position, delimiter);
-                        if let Some(range) = range {
-                            cursor.anchor = range.from;
-                            cursor.position = range.to;
+                fn select_delimiter_pair(
+                    buffer: &BufferContent,
+                    cursors: &mut [Cursor],
+                    delimiter: char,
+                    select_exclusive: bool,
+                ) {
+                    if select_exclusive {
+                        for cursor in cursors {
+                            let range = buffer.find_delimiter_pair_at(cursor.position, delimiter);
+                            if let Some(range) = range {
+                                cursor.anchor = range.from;
+                                cursor.position = range.to;
+                            }
+                        }
+                    } else {
+                        for cursor in cursors {
+                            let range = buffer.find_delimiter_pair_at(cursor.position, delimiter);
+                            if let Some(range) = range {
+                                cursor.anchor = BufferPosition::line_col(
+                                    range.from.line_index,
+                                    range.from.column_byte_index
+                                        - delimiter.len_utf8() as BufferPositionIndex,
+                                );
+                                cursor.position = BufferPosition::line_col(
+                                    range.to.line_index,
+                                    range.to.column_byte_index
+                                        + delimiter.len_utf8() as BufferPositionIndex,
+                                );
+                            }
                         }
                     }
                 }
+
+                let select_exclusive = c == 'a';
 
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle);
                 let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
@@ -265,10 +309,29 @@ impl State {
                         alt: false,
                         ..
                     } => {
-                        for cursor in &mut cursors[..] {
-                            let word = buffer.word_at(cursor.position);
-                            cursor.anchor = word.position;
-                            cursor.position = word.end_position();
+                        if select_exclusive {
+                            for cursor in &mut cursors[..] {
+                                let word = buffer.word_at(cursor.position);
+                                cursor.anchor = word.position;
+                                cursor.position = word.end_position();
+                            }
+                        } else {
+                            for cursor in &mut cursors[..] {
+                                let (word, mut left_words, mut right_words) =
+                                    buffer.words_from(cursor.position);
+                                cursor.anchor = match left_words.next() {
+                                    Some(word) if word.kind == WordKind::Whitespace => {
+                                        word.position
+                                    }
+                                    _ => word.position,
+                                };
+                                cursor.position = match right_words.next() {
+                                    Some(word) if word.kind == WordKind::Whitespace => {
+                                        word.end_position()
+                                    }
+                                    _ => word.end_position(),
+                                };
+                            }
                         }
                     }
                     Key {
@@ -294,239 +357,115 @@ impl State {
                         control: false,
                         alt: false,
                         ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
+                    } => select_balanced_brackets(
+                        buffer,
+                        &mut cursors[..],
+                        '(',
+                        ')',
+                        select_exclusive,
+                    ),
                     Key {
                         code: KeyCode::Char(')'),
                         control: false,
                         alt: false,
                         ..
-                    } => balanced_brackets(buffer, &mut cursors[..], ')', '('),
+                    } => select_balanced_brackets(
+                        buffer,
+                        &mut cursors[..],
+                        ')',
+                        '(',
+                        select_exclusive,
+                    ),
                     Key {
                         code: KeyCode::Char('['),
                         control: false,
                         alt: false,
                         ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
+                    } => select_balanced_brackets(
+                        buffer,
+                        &mut cursors[..],
+                        '[',
+                        ']',
+                        select_exclusive,
+                    ),
                     Key {
                         code: KeyCode::Char(']'),
                         control: false,
                         alt: false,
                         ..
-                    } => balanced_brackets(buffer, &mut cursors[..], ']', '['),
+                    } => select_balanced_brackets(
+                        buffer,
+                        &mut cursors[..],
+                        ']',
+                        '[',
+                        select_exclusive,
+                    ),
                     Key {
                         code: KeyCode::Char('{'),
                         control: false,
                         alt: false,
                         ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
+                    } => select_balanced_brackets(
+                        buffer,
+                        &mut cursors[..],
+                        '{',
+                        '}',
+                        select_exclusive,
+                    ),
                     Key {
                         code: KeyCode::Char('}'),
                         control: false,
                         alt: false,
                         ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '}', '{'),
+                    } => select_balanced_brackets(
+                        buffer,
+                        &mut cursors[..],
+                        '}',
+                        '{',
+                        select_exclusive,
+                    ),
                     Key {
                         code: KeyCode::Char('<'),
                         control: false,
                         alt: false,
                         ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
+                    } => select_balanced_brackets(
+                        buffer,
+                        &mut cursors[..],
+                        '<',
+                        '>',
+                        select_exclusive,
+                    ),
                     Key {
                         code: KeyCode::Char('>'),
                         control: false,
                         alt: false,
                         ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '>', '<'),
+                    } => select_balanced_brackets(
+                        buffer,
+                        &mut cursors[..],
+                        '>',
+                        '<',
+                        select_exclusive,
+                    ),
                     Key {
                         code: KeyCode::Char('|'),
                         control: false,
                         alt: false,
                         ..
-                    } => delimiter_pair(buffer, &mut cursors[..], '|'),
+                    } => select_delimiter_pair(buffer, &mut cursors[..], '|', select_exclusive),
                     Key {
                         code: KeyCode::Char('"'),
                         control: false,
                         alt: false,
                         ..
-                    } => delimiter_pair(buffer, &mut cursors[..], '"'),
+                    } => select_delimiter_pair(buffer, &mut cursors[..], '"', select_exclusive),
                     Key {
                         code: KeyCode::Char('\''),
                         control: false,
                         alt: false,
                         ..
-                    } => delimiter_pair(buffer, &mut cursors[..], '\''),
-                    Key {
-                        code: KeyCode::Char('`'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => delimiter_pair(buffer, &mut cursors[..], '`'),
-                    _ => (),
-                }
-
-                state.movement_kind = CursorMovementKind::PositionOnly;
-            }
-            Key {
-                code: KeyCode::Char('A'),
-                control: false,
-                alt: false,
-                ..
-            } => {
-                fn balanced_brackets(
-                    buffer: &BufferContent,
-                    cursors: &mut [Cursor],
-                    left: char,
-                    right: char,
-                ) {
-                    for cursor in cursors {
-                        let range = buffer.find_balanced_chars_at(cursor.position, left, right);
-                        if let Some(range) = range {
-                            cursor.anchor = BufferPosition::line_col(
-                                range.from.line_index,
-                                range.from.column_byte_index
-                                    - left.len_utf8() as BufferPositionIndex,
-                            );
-                            cursor.position = BufferPosition::line_col(
-                                range.to.line_index,
-                                range.to.column_byte_index
-                                    + right.len_utf8() as BufferPositionIndex,
-                            );
-                        }
-                    }
-                }
-
-                fn delimiter_pair(buffer: &BufferContent, cursors: &mut [Cursor], delimiter: char) {
-                    for cursor in cursors {
-                        let range = buffer.find_delimiter_pair_at(cursor.position, delimiter);
-                        if let Some(range) = range {
-                            cursor.anchor = BufferPosition::line_col(
-                                range.from.line_index,
-                                range.from.column_byte_index
-                                    - delimiter.len_utf8() as BufferPositionIndex,
-                            );
-                            cursor.position = BufferPosition::line_col(
-                                range.to.line_index,
-                                range.to.column_byte_index
-                                    + delimiter.len_utf8() as BufferPositionIndex,
-                            );
-                        }
-                    }
-                }
-
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle);
-                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle).content();
-                let mut cursors = buffer_view.cursors.mut_guard();
-
-                match keys.next(&ctx.editor.buffered_keys) {
-                    Key {
-                        code: KeyCode::None,
-                        ..
-                    } => return None,
-                    Key {
-                        code: KeyCode::Char('w' | 'W'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => {
-                        for cursor in &mut cursors[..] {
-                            let (word, mut left_words, mut right_words) =
-                                buffer.words_from(cursor.position);
-                            cursor.anchor = match left_words.next() {
-                                Some(word) if word.kind == WordKind::Whitespace => word.position,
-                                _ => word.position,
-                            };
-                            cursor.position = match right_words.next() {
-                                Some(word) if word.kind == WordKind::Whitespace => {
-                                    word.end_position()
-                                }
-                                _ => word.end_position(),
-                            };
-                        }
-                    }
-                    Key {
-                        code: KeyCode::Char('a' | 'A'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => {
-                        let last_line_index = buffer.lines().len() - 1;
-                        let last_line_len = buffer.lines()[last_line_index].as_str().len();
-
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: BufferPosition::zero(),
-                            position: BufferPosition::line_col(
-                                last_line_index as _,
-                                last_line_len as _,
-                            ),
-                        });
-                    }
-                    Key {
-                        code: KeyCode::Char('('),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
-                    Key {
-                        code: KeyCode::Char(')'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => balanced_brackets(buffer, &mut cursors[..], ')', '('),
-                    Key {
-                        code: KeyCode::Char('['),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
-                    Key {
-                        code: KeyCode::Char(']'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => balanced_brackets(buffer, &mut cursors[..], ']', '['),
-                    Key {
-                        code: KeyCode::Char('{'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
-                    Key {
-                        code: KeyCode::Char('}'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '}', '{'),
-                    Key {
-                        code: KeyCode::Char('<'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '<', '>'),
-                    Key {
-                        code: KeyCode::Char('>'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => balanced_brackets(buffer, &mut cursors[..], '>', '<'),
-                    Key {
-                        code: KeyCode::Char('|'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => delimiter_pair(buffer, &mut cursors[..], '|'),
-                    Key {
-                        code: KeyCode::Char('"'),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => delimiter_pair(buffer, &mut cursors[..], '"'),
-                    Key {
-                        code: KeyCode::Char('\''),
-                        control: false,
-                        alt: false,
-                        ..
-                    } => delimiter_pair(buffer, &mut cursors[..], '\''),
+                    } => select_delimiter_pair(buffer, &mut cursors[..], '\'', select_exclusive),
                     _ => (),
                 }
 
@@ -1336,12 +1275,14 @@ impl State {
                 for i in 0..cursor_count {
                     let range = ctx.editor.buffer_views.get(handle).cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        buffer.insert_text(
-                            &mut ctx.editor.word_database,
-                            BufferPosition::line_col(line_index, 0),
-                            &buf,
-                            &mut events,
-                        );
+                        if !buffer.content().lines()[line_index as usize].as_str().is_empty() {
+                            buffer.insert_text(
+                                &mut ctx.editor.word_database,
+                                BufferPosition::line_col(line_index, 0),
+                                &buf,
+                                &mut events,
+                            );
+                        }
                     }
                 }
                 drop(events);
@@ -2492,3 +2433,4 @@ fn move_to_lint(ctx: &mut EditorContext, client_handle: ClientHandle, forward: b
         position,
     });
 }
+

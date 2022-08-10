@@ -3,6 +3,7 @@
 # 0.30.0 (preview)
 - added `insert-text` command
 - added `set-clipboard` command
+- fix `>` (indent command) will no longer insert indentation to empty lines
 
 # 0.29.0
 - added diagnostic logging to `spawn` command
