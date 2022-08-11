@@ -14,12 +14,10 @@ map normal J djgivkgli<space><esc>
 map normal ! :<space>-spawn<enter>
 map normal | :<space>-replace-with-output<enter>
 
-map normal <space>c ": toggle-comment @register(c)<enter>"
+map normal <space>c :<space>-toggle-comment<enter>
 
 map normal <space>o :<space>-find-file<enter>
 map normal <space>f :<space>-find-pattern<enter>
-
-set-register c "//"
 
 command h @{ help @arg(*) }
 command q @{ quit@arg(!) }
@@ -31,6 +29,11 @@ command r @{ reopen@arg(!) }
 command ra @{ reopen-all@arg(!) }
 command c @{ close@arg(!) }
 command ca @{ close-all@arg(!) }
+
+set-register c "//"
+command -toggle-comment @{
+    toggle-comment @register(c)
+}
 
 command -spawn @{
     set-register p "spawn:"

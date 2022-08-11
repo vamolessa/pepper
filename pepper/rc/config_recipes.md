@@ -59,7 +59,11 @@ it's possible to toggle comment in lines with a single binding.
 
 ```
 set-register c "//" # this works for c++ style comments. change this when working on different languages
-map normal <space>c ": toggle-comment @register(c)<enter>" # will toggle `//` comments when pressing <space>c`
+command -toggle-comment @{
+    # a proxy is needed for correctly expanding the register's content
+    toggle-comment @register(c)
+}
+map normal <space>c :<space>-toggle-comment<enter>" # will toggle `//` comments when pressing <space>c`
 ```
 
 ## `save-quit` and `save-quit-all` commands
