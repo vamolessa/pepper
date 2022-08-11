@@ -14,6 +14,8 @@ map normal J djgivkgli<space><esc>
 map normal ! :<space>-spawn<enter>
 map normal | :<space>-replace-with-output<enter>
 
+map normal <space>c ": toggle-comment @register(c)<enter>"
+
 map normal <space>o :<space>-find-file<enter>
 map normal <space>f :<space>-find-pattern<enter>
 
