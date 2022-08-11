@@ -150,6 +150,18 @@ or sets the pattern for tokens of kind `<token-kind>` for the previously defined
 
 Read more about [language syntax definitions](language_syntax_definitions.md).
 
+## `list-buffer`
+Lists all buffers together with their properties in a `buffers.refs` buffer.
+- usage: `list-buffers`
+
+## `list-lints`
+Lists all lints together with their locations in a `lints.refs` buffer.
+- usage: `list-lints`
+
+## `list-breakpoints`
+Lists all breakpoints together with their locations in a `breakpoints.refs` buffer.
+- usage: `list-breakpoints`
+
 ## `copy-command`
 Sets the command to be used when copying text to clipboard.
 The copied text is written to stdin utf8 encoded.
@@ -184,6 +196,11 @@ Enqueue keys as if they were typed in the current client.
 Deletes text inside all cursor ranges. Then inserts `<text>` at each cursor.
 Equivalent to `enqueue-keys i<text><enter>` however more performant since the text insertion happens at once instead of char by char.
 - usage: `insert-text <text>`
+
+## `toggle-comment`
+For each line, toggles its `<comment-prefix>` starting text.
+For example, in a C++ like language, it would be used like `toggle-comment //`.
+- usage: `toggle-comment <comment-prefix>`
 
 ## `set-register`
 Set the content of register `<key>` to `<value>`.

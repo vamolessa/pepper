@@ -53,6 +53,15 @@ It will interpret the current buffer as commands effectively reloading the confi
 
 This can also be used to evaluate arbitrary commands in a buffer.
 
+## toggle comment
+By combining the `@register(c)` expansion with the `toggle-comment` command,
+it's possible to toggle comment in lines with a single binding.
+
+```
+set-register c "//" # this works for c++ style comments. change this when working on different languages
+map normal <space>c ": toggle-comment @register(c)<enter>" # will toggle `//` comments when pressing <space>c`
+```
+
 ## `save-quit` and `save-quit-all` commands
 You can have a 'save and quit' command and a 'save all and quit' command by adding these lines to your pepper config:
 

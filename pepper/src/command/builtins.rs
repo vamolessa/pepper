@@ -2,7 +2,7 @@ use std::{env, path::Path, process::Stdio};
 
 use crate::{
     buffer::{BufferProperties, BufferReadError, BufferWriteError},
-    buffer_position::{BufferPosition, BufferRange},
+    buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ViewAnchor,
     command::{CommandError, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
@@ -17,7 +17,7 @@ use crate::{
     platform::{PlatformRequest, ProcessTag},
     syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
-    word_database::WordIndicesIter,
+    word_database::{WordIndicesIter, WordKind},
 };
 
 pub fn register_commands(commands: &mut CommandManager) {
@@ -409,7 +409,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 
-    r("buffer-list", &[], |ctx, io| {
+    r("list-buffer", &[], |ctx, io| {
         io.args.assert_empty()?;
 
         let client_handle = io.client_handle()?;
@@ -503,7 +503,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("lint-list", &[], |ctx, io| {
+    r("list-lints", &[], |ctx, io| {
         io.args.assert_empty()?;
 
         let client_handle = io.client_handle()?;
@@ -577,7 +577,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("breakpoint-list", &[], |ctx, io| {
+    r("list-breakpoints", &[], |ctx, io| {
         io.args.assert_empty()?;
 
         let client_handle = io.client_handle()?;
@@ -699,6 +699,66 @@ pub fn register_commands(commands: &mut CommandManager) {
             text,
             ctx.editor.events.writer(),
         );
+
+        Ok(())
+    });
+
+    r("toggle-comment", &[], |ctx, io| {
+        let comment_prefix = io.args.next()?;
+        io.args.assert_empty()?;
+
+        let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
+        let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+        let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
+
+        let mut last_toggle_line_index = BufferPositionIndex::MAX;
+
+        for cursor in buffer_view.cursors[..].iter().rev() {
+            let range = cursor.to_range();
+            let from_line_index = range.from.line_index;
+            let mut to_line_index = range.to.line_index;
+            if to_line_index == last_toggle_line_index {
+                to_line_index = to_line_index.saturating_sub(1);
+            }
+            last_toggle_line_index = from_line_index;
+
+            for line_index in (from_line_index..=to_line_index).rev() {
+                let line = &buffer.content().lines()[line_index as usize];
+                let mut position = BufferPosition::line_col(line_index, 0);
+                let word = line.word_at(0);
+                if word.kind == WordKind::Whitespace {
+                    position.column_byte_index += word.text.len() as BufferPositionIndex;
+                }
+
+                if line.as_str()[position.column_byte_index as usize..].starts_with(comment_prefix)
+                {
+                    let mut events = ctx
+                        .editor
+                        .events
+                        .writer()
+                        .buffer_range_deletes_mut_guard(buffer.handle());
+                    let to_column_byte_index =
+                        position.column_byte_index + comment_prefix.len() as BufferPositionIndex;
+                    let range = BufferRange::between(
+                        position,
+                        BufferPosition::line_col(line_index, to_column_byte_index),
+                    );
+                    buffer.delete_range(&mut ctx.editor.word_database, range, &mut events);
+                } else {
+                    let mut events = ctx
+                        .editor
+                        .events
+                        .writer()
+                        .buffer_text_inserts_mut_guard(buffer.handle());
+                    buffer.insert_text(
+                        &mut ctx.editor.word_database,
+                        position,
+                        comment_prefix,
+                        &mut events,
+                    );
+                }
+            }
+        }
 
         Ok(())
     });
@@ -921,3 +981,4 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
+

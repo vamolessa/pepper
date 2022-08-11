@@ -17,6 +17,8 @@ map normal | :<space>-replace-with-output<enter>
 map normal <space>o :<space>-find-file<enter>
 map normal <space>f :<space>-find-pattern<enter>
 
+set-register c "//"
+
 command h @{ help @arg(*) }
 command q @{ quit@arg(!) }
 command qa @{ quit-all@arg(!) }
