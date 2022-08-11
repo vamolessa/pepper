@@ -19,7 +19,7 @@ use crate::{
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
     },
-    mode::{picker, read_line},
+    mode::{picker, readline},
     protocol::{
         DocumentCodeAction, DocumentCompletionItem, DocumentDiagnostic, DocumentLocation,
         DocumentPosition, DocumentRange, DocumentSymbolInformation, ProtocolError,
@@ -764,7 +764,7 @@ pub(crate) fn on_response(
                 }
             }
 
-            read_line::enter_rename_mode(ctx, plugin_handle, &input, client);
+            readline::enter_rename_mode(ctx, plugin_handle, &input, client);
 
             ctx.editor.string_pool.release(input);
 

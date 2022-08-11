@@ -12,7 +12,7 @@ use pepper::{
     client,
     cursor::Cursor,
     editor::{Editor, EditorContext},
-    editor_utils::{LogKind, Logger},
+    editor_utils::{LogKind, Logger, REGISTER_INPUT},
     glob::Glob,
     navigation_history::NavigationHistory,
     platform::Platform,
@@ -22,7 +22,7 @@ use pepper::{
 use crate::{
     capabilities,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonValue},
-    mode::read_line,
+    mode::readline,
     protocol::{
         self, DocumentCodeAction, DocumentDiagnostic, DocumentPosition, DocumentRange,
         DocumentSymbolInformation, PendingRequestColection, Protocol, ResponseError, Uri,
@@ -721,7 +721,7 @@ impl Client {
                 buffer_position,
             };
 
-            read_line::enter_rename_mode(ctx, plugin_handle, "", self);
+            readline::enter_rename_mode(ctx, plugin_handle, "", self);
         }
     }
 
@@ -743,7 +743,8 @@ impl Client {
         let buffer = editor.buffers.get(buffer_handle);
         let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
         let position = DocumentPosition::from_buffer_position(buffer_position);
-        let new_name = self.json.create_string(editor.read_line.input());
+        let readline_input = editor.registers.get(REGISTER_INPUT);
+        let new_name = self.json.create_string(readline_input);
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);

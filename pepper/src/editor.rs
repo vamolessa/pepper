@@ -13,7 +13,7 @@ use crate::{
     config::Config,
     editor_utils::{
         KeyMapCollection, Logger, LoggerStatusBarDisplay, MatchResult, PickerEntriesProcessBuf,
-        ReadLine, RegisterCollection, RegisterKey, StringPool,
+        RegisterCollection, RegisterKey, StringPool,
     },
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
@@ -286,7 +286,6 @@ pub struct Editor {
     pub buffered_keys: BufferedKeys,
     pub recording_macro: Option<RegisterKey>,
     pub registers: RegisterCollection,
-    pub read_line: ReadLine,
     pub picker: Picker,
     pub string_pool: StringPool,
 
@@ -323,7 +322,6 @@ impl Editor {
             buffered_keys: BufferedKeys::default(),
             recording_macro: None,
             registers: RegisterCollection::new(),
-            read_line: ReadLine::default(),
             picker: Picker::default(),
             string_pool: StringPool::default(),
 

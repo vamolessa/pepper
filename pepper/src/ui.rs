@@ -6,7 +6,7 @@ use crate::{
     buffer_view::{BufferViewHandle, CursorMovementKind},
     cursor::Cursor,
     editor::Editor,
-    editor_utils::LoggerStatusBarDisplay,
+    editor_utils::{LoggerStatusBarDisplay, REGISTER_INPUT, REGISTER_PROMPT},
     mode::ModeKind,
     syntax::{Token, TokenKind},
     theme::Color,
@@ -646,14 +646,15 @@ fn draw_statusbar(
                 Some(text.len())
             }
             ModeKind::Command | ModeKind::Picker | ModeKind::ReadLine => {
-                let read_line = &ctx.editor.read_line;
+                let readline_prompt = ctx.editor.registers.get(REGISTER_PROMPT);
+                let readline_input = ctx.editor.registers.get(REGISTER_INPUT);
 
                 set_background_color(buf, background_innactive_color);
                 set_foreground_color(buf, foreground_color);
-                buf.extend_from_slice(read_line.prompt().as_bytes());
+                buf.extend_from_slice(readline_prompt.as_bytes());
                 set_background_color(buf, background_active_color);
                 set_foreground_color(buf, foreground_color);
-                buf.extend_from_slice(read_line.input().as_bytes());
+                buf.extend_from_slice(readline_input.as_bytes());
                 set_background_color(buf, cursor_color);
                 buf.push(b' ');
                 set_background_color(buf, background_active_color);
@@ -788,3 +789,4 @@ fn draw_statusbar(
 
     clear_until_new_line(buf);
 }
+

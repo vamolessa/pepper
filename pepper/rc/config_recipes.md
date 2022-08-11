@@ -119,9 +119,9 @@ For example, if you wish to use [`ripgrep`](https://github.com/BurntSushi/ripgre
 ```
 command -find-pattern @{
     readline "find:" @{
-        open scratch "@readline-input().refs"
+        open scratch "@register(i).refs"
         enqueue-keys aad
-        replace-with-output 'rg --no-ignore-global --line-number "@readline-input()"'
+        replace-with-output 'rg --no-ignore-global --line-number "@register(i)"'
     }
 }
 ```

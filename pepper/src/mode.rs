@@ -8,7 +8,7 @@ mod command;
 mod insert;
 mod normal;
 pub(crate) mod picker;
-pub(crate) mod read_line;
+pub(crate) mod readline;
 
 pub(crate) trait ModeState {
     fn on_enter(editor: &mut Editor);
@@ -43,7 +43,7 @@ pub struct Mode {
     pub normal_state: normal::State,
     pub insert_state: insert::State,
     pub command_state: command::State,
-    pub read_line_state: read_line::State,
+    pub readline_state: readline::State,
     pub picker_state: picker::State,
     pub plugin_handle: Option<PluginHandle>,
 }
@@ -62,7 +62,7 @@ impl Mode {
             ModeKind::Normal => normal::State::on_exit(editor),
             ModeKind::Insert => insert::State::on_exit(editor),
             ModeKind::Command => command::State::on_exit(editor),
-            ModeKind::ReadLine => read_line::State::on_exit(editor),
+            ModeKind::ReadLine => readline::State::on_exit(editor),
             ModeKind::Picker => picker::State::on_exit(editor),
             ModeKind::Plugin => editor.mode.plugin_handle = None,
         }
@@ -73,7 +73,7 @@ impl Mode {
             ModeKind::Normal => normal::State::on_enter(editor),
             ModeKind::Insert => insert::State::on_enter(editor),
             ModeKind::Command => command::State::on_enter(editor),
-            ModeKind::ReadLine => read_line::State::on_enter(editor),
+            ModeKind::ReadLine => readline::State::on_enter(editor),
             ModeKind::Picker => picker::State::on_enter(editor),
             ModeKind::Plugin => (),
         }
@@ -88,7 +88,7 @@ impl Mode {
             ModeKind::Normal => normal::State::on_keys(ctx, client_handle, keys),
             ModeKind::Insert => insert::State::on_keys(ctx, client_handle, keys),
             ModeKind::Command => command::State::on_keys(ctx, client_handle, keys),
-            ModeKind::ReadLine => read_line::State::on_keys(ctx, client_handle, keys),
+            ModeKind::ReadLine => readline::State::on_keys(ctx, client_handle, keys),
             ModeKind::Picker => picker::State::on_keys(ctx, client_handle, keys),
             ModeKind::Plugin => match ctx.editor.mode.plugin_handle {
                 Some(plugin_handle) => {

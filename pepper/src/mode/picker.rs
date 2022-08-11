@@ -3,7 +3,7 @@ use crate::{
     client::ClientHandle,
     command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{LogKind, ReadLinePoll},
+    editor_utils::{LogKind, ReadLinePoll, REGISTER_INPUT, readline_poll, REGISTER_PROMPT},
     mode::{ModeKind, ModeState},
     platform::{Key, KeyCode},
     word_database::WordIndicesIter,
@@ -30,12 +30,12 @@ impl Default for State {
 
 impl ModeState for State {
     fn on_enter(editor: &mut Editor) {
-        editor.read_line.input_mut().clear();
+        editor.registers.get_mut(REGISTER_INPUT).clear();
     }
 
     fn on_exit(editor: &mut Editor) {
         editor.mode.plugin_handle = None;
-        editor.read_line.input_mut().clear();
+        editor.registers.get_mut(REGISTER_INPUT).clear();
         editor.picker.clear();
     }
 
@@ -45,7 +45,8 @@ impl ModeState for State {
         keys: &mut KeysIterator,
     ) -> Option<EditorFlow> {
         let this = &mut ctx.editor.mode.picker_state;
-        let poll = ctx.editor.read_line.poll(
+        let poll = readline_poll(
+            ctx.editor.registers.get_mut(REGISTER_INPUT),
             &mut ctx.platform,
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
@@ -154,9 +155,10 @@ impl ModeState for State {
                     ctx.editor.picker.move_cursor(entry_count - cursor - 1);
                 }
                 _ => {
+                    let readline_input = ctx.editor.registers.get(REGISTER_INPUT);
                     ctx.editor
                         .picker
-                        .filter(WordIndicesIter::empty(), ctx.editor.read_line.input());
+                        .filter(WordIndicesIter::empty(), readline_input);
                     ctx.editor.picker.move_cursor(0);
                 }
             }
@@ -212,7 +214,7 @@ pub mod opened_buffers {
             Some(EditorFlow::Continue)
         }
 
-        ctx.editor.read_line.set_prompt("buffer:");
+        ctx.editor.registers.set(REGISTER_PROMPT, "buffer:");
         ctx.editor.picker.clear();
 
         for path in ctx.editor.buffers.iter().filter_map(|b| b.path.to_str()) {
@@ -237,7 +239,7 @@ pub mod opened_buffers {
 pub mod custom {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut EditorContext, continuation: &str, prompt: &str) {
+    pub fn enter_mode(ctx: &mut EditorContext, continuation: &str) {
         fn on_client_keys(
             ctx: &mut EditorContext,
             client_handle: ClientHandle,
@@ -270,7 +272,6 @@ pub mod custom {
             Some(EditorFlow::Continue)
         }
 
-        ctx.editor.read_line.set_prompt(prompt);
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;
         state.continuation.clear();

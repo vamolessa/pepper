@@ -29,28 +29,32 @@ command c @{ close@arg(!) }
 command ca @{ close-all@arg(!) }
 
 command -spawn @{
-    readline "spawn:" @{
-        spawn "@readline-input()"
+    set-register p "spawn:"
+    readline @{
+        spawn "@register(i)"
     }
 }
 command -replace-with-output @{
-    readline "replace-with-output:" @{
-        replace-with-output "@readline-input()"
+    set-register p "replace-with-output:"
+    readline @{
+        replace-with-output "@register(i)"
     }
 }
 
 if @platform() == windows @{
     command -find-file @{
         picker-entries-from-lines "cmd /c dir /a-d /s /b"
-        pick "open:" @{
+        set-register p "open:"
+        pick @{
             open "@picker-entry()"
         }
     }
     command -find-pattern @{
-        readline "find:" @{
-            open scratch "@readline-input().refs"
+        set-register p "find:"
+        readline @{
+            open scratch "@register(i).refs"
             enqueue-keys aad
-            replace-with-output 'findstr /s /r /p /n "/c:@readline-input()" *'
+            replace-with-output 'findstr /s /r /p /n "/c:@register(i)" *'
         }
     }
 }
@@ -61,15 +65,17 @@ if @platform() == linux @{
 
     command -find-file @{
         picker-entries-from-lines "find . -type f -printf '%P\\n'"
-        pick "open:" @{
+        set-register p "open:"
+        pick @{
             open "@picker-entry()"
         }
     }
     command -find-pattern @{
-        readline "find:" @{
-            open scratch "@readline-input().refs"
+        set-register p "find:"
+        readline @{
+            open scratch "@register(i).refs"
             enqueue-keys aad
-            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
+            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@register(i)"'
         }
     }
 }
@@ -80,15 +86,17 @@ if @platform() == bsd @{
 
     command -find-file @{
         picker-entries-from-lines "find . -type f -printf '%P\\n'"
-        pick "open:" @{
+        set-register p "open:"
+        pick @{
             open "@picker-entry()"
         }
     }
     command -find-pattern @{
-        readline "find:" @{
-            open scratch "@readline-input().refs"
+        set-register p "find:"
+        readline @{
+            open scratch "@register(i).refs"
             enqueue-keys aad
-            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
+            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@register(i)"'
         }
     }
 }
@@ -99,15 +107,17 @@ if @platform() == macos @{
 
     command -find-file @{
         picker-entries-from-lines "find . -type f -print"
-        pick "open:" @{
+        set-register p "open:"
+        pick @{
             open "@picker-entry()"
         }
     }
     command -find-pattern @{
-        readline "find:" @{
-            open scratch "@readline-input().refs"
+        set-register p "find:"
+        readline @{
+            open scratch "@register(i).refs"
             enqueue-keys aad
-            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@readline-input()"'
+            replace-with-output 'grep --recursive --binary-files=without-match --with-filename --line-number "@register(i)"'
         }
     }
 }

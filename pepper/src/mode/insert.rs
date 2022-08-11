@@ -6,7 +6,7 @@ use crate::{
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::ClientHandle,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::AUTO_MACRO_REGISTER,
+    editor_utils::REGISTER_AUTO_MACRO,
     events::EditorEventTextInsert,
     mode::{ModeKind, ModeState},
     platform::{Key, KeyCode},
@@ -83,7 +83,7 @@ impl ModeState for State {
             Some(ctx.editor.buffer_views.get(handle).buffer_handle);
 
         let key = keys.next(&ctx.editor.buffered_keys);
-        let register = ctx.editor.registers.get_mut(AUTO_MACRO_REGISTER);
+        let register = ctx.editor.registers.get_mut(REGISTER_AUTO_MACRO);
         let _ = write!(register, "{}", key);
 
         #[rustfmt::skip]

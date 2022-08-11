@@ -115,139 +115,115 @@ pub enum ReadLinePoll {
     Canceled,
 }
 
-#[derive(Default)]
-pub struct ReadLine {
-    prompt: String,
-    input: String,
-}
-impl ReadLine {
-    pub fn prompt(&self) -> &str {
-        &self.prompt
-    }
-
-    pub fn set_prompt(&mut self, prompt: &str) {
-        self.prompt.clear();
-        self.prompt.push_str(prompt);
-    }
-
-    pub fn input(&self) -> &str {
-        &self.input
-    }
-
-    pub fn input_mut(&mut self) -> &mut String {
-        &mut self.input
-    }
-
-    pub fn poll(
-        &mut self,
-        platform: &mut Platform,
-        string_pool: &mut StringPool,
-        buffered_keys: &BufferedKeys,
-        keys_iter: &mut KeysIterator,
-    ) -> ReadLinePoll {
-        match keys_iter.next(buffered_keys) {
-            Key {
-                code: KeyCode::Esc,
-                control: false,
-                alt: false,
-                ..
-            }
-            | Key {
-                code: KeyCode::Char('c'),
-                shift: false,
-                control: true,
-                alt: false,
-            } => ReadLinePoll::Canceled,
-            Key {
-                code: KeyCode::Char('\n'),
-                control: false,
-                alt: false,
-                ..
-            }
-            | Key {
-                code: KeyCode::Char('m'),
-                shift: false,
-                control: true,
-                alt: false,
-            } => ReadLinePoll::Submitted,
-            Key {
-                code: KeyCode::Home,
-                shift: false,
-                control: false,
-                alt: false,
-            }
-            | Key {
-                code: KeyCode::Char('u'),
-                shift: false,
-                control: true,
-                alt: false,
-            } => {
-                self.input.clear();
-                ReadLinePoll::Pending
-            }
-            Key {
-                code: KeyCode::Char('w'),
-                shift: false,
-                control: true,
-                alt: false,
-            } => {
-                let mut words = WordIter(&self.input);
-                (&mut words)
-                    .filter(|w| w.kind == WordKind::Identifier)
-                    .next_back();
-                let len = words.0.len();
-                self.input.truncate(len);
-                ReadLinePoll::Pending
-            }
-            Key {
-                code: KeyCode::Backspace,
-                shift: false,
-                control: false,
-                alt: false,
-            }
-            | Key {
-                code: KeyCode::Char('h'),
-                shift: false,
-                control: true,
-                alt: false,
-            } => {
-                if let Some((last_char_index, _)) = self.input.char_indices().next_back() {
-                    self.input.truncate(last_char_index);
-                }
-                ReadLinePoll::Pending
-            }
-            Key {
-                code: KeyCode::Char('y'),
-                shift: false,
-                control: true,
-                alt: false,
-            } => {
-                let mut text = string_pool.acquire();
-                platform.read_from_clipboard(&mut text);
-                self.input.push_str(&text);
-                string_pool.release(text);
-                ReadLinePoll::Pending
-            }
-            Key {
-                code: KeyCode::Char('\t'),
-                control: false,
-                alt: false,
-                ..
-            } => {
-                self.input.push(' ');
-                ReadLinePoll::Pending
-            }
-            Key {
-                code: KeyCode::Char(c),
-                control: false,
-                alt: false,
-                ..
-            } => {
-                self.input.push(c);
-                ReadLinePoll::Pending
-            }
-            _ => ReadLinePoll::Pending,
+pub fn readline_poll(
+    input: &mut String,
+    platform: &mut Platform,
+    string_pool: &mut StringPool,
+    buffered_keys: &BufferedKeys,
+    keys_iter: &mut KeysIterator,
+) -> ReadLinePoll {
+    match keys_iter.next(buffered_keys) {
+        Key {
+            code: KeyCode::Esc,
+            control: false,
+            alt: false,
+            ..
         }
+        | Key {
+            code: KeyCode::Char('c'),
+            shift: false,
+            control: true,
+            alt: false,
+        } => ReadLinePoll::Canceled,
+        Key {
+            code: KeyCode::Char('\n'),
+            control: false,
+            alt: false,
+            ..
+        }
+        | Key {
+            code: KeyCode::Char('m'),
+            shift: false,
+            control: true,
+            alt: false,
+        } => ReadLinePoll::Submitted,
+        Key {
+            code: KeyCode::Home,
+            shift: false,
+            control: false,
+            alt: false,
+        }
+        | Key {
+            code: KeyCode::Char('u'),
+            shift: false,
+            control: true,
+            alt: false,
+        } => {
+            input.clear();
+            ReadLinePoll::Pending
+        }
+        Key {
+            code: KeyCode::Char('w'),
+            shift: false,
+            control: true,
+            alt: false,
+        } => {
+            let mut words = WordIter(&input);
+            (&mut words)
+                .filter(|w| w.kind == WordKind::Identifier)
+                .next_back();
+            let len = words.0.len();
+            input.truncate(len);
+            ReadLinePoll::Pending
+        }
+        Key {
+            code: KeyCode::Backspace,
+            shift: false,
+            control: false,
+            alt: false,
+        }
+        | Key {
+            code: KeyCode::Char('h'),
+            shift: false,
+            control: true,
+            alt: false,
+        } => {
+            if let Some((last_char_index, _)) = input.char_indices().next_back() {
+                input.truncate(last_char_index);
+            }
+            ReadLinePoll::Pending
+        }
+        Key {
+            code: KeyCode::Char('y'),
+            shift: false,
+            control: true,
+            alt: false,
+        } => {
+            let mut text = string_pool.acquire();
+            platform.read_from_clipboard(&mut text);
+            input.push_str(&text);
+            string_pool.release(text);
+            ReadLinePoll::Pending
+        }
+        Key {
+            code: KeyCode::Char('\t'),
+            control: false,
+            alt: false,
+            ..
+        } => {
+            input.push(' ');
+            ReadLinePoll::Pending
+        }
+        Key {
+            code: KeyCode::Char(c),
+            control: false,
+            alt: false,
+            ..
+        } => {
+            input.push(c);
+            ReadLinePoll::Pending
+        }
+        _ => ReadLinePoll::Pending,
     }
 }
 
@@ -479,8 +455,11 @@ impl StringPool {
     }
 }
 
-pub static SEARCH_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('s');
-pub static AUTO_MACRO_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('a');
+pub static REGISTER_AUTO_MACRO: RegisterKey = RegisterKey::from_char_unchecked('a');
+pub static REGISTER_SEARCH: RegisterKey = RegisterKey::from_char_unchecked('s');
+pub static REGISTER_PROMPT: RegisterKey = RegisterKey::from_char_unchecked('p');
+pub static REGISTER_INPUT: RegisterKey = RegisterKey::from_char_unchecked('i');
+pub static REGISTER_COMMENT: RegisterKey = RegisterKey::from_char_unchecked('c');
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct RegisterKey(u8);
@@ -535,6 +514,12 @@ impl RegisterCollection {
     pub fn get_mut(&mut self, key: RegisterKey) -> &mut String {
         &mut self.registers[key.0 as usize]
     }
+
+    pub fn set(&mut self, key: RegisterKey, value: &str) {
+        let register = self.get_mut(key);
+        register.clear();
+        register.push_str(value);
+    }
 }
 
 #[derive(Default)]
@@ -550,7 +535,7 @@ impl PickerEntriesProcessBuf {
     pub(crate) fn on_process_output(
         &mut self,
         picker: &mut Picker,
-        read_line: &ReadLine,
+        readline_input: &str,
         bytes: &[u8],
     ) {
         if !self.waiting_for_process {
@@ -560,7 +545,7 @@ impl PickerEntriesProcessBuf {
         self.buf.extend_from_slice(bytes);
 
         {
-            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            let mut entry_adder = picker.add_custom_filtered_entries(readline_input);
             if let Some(i) = self.buf.iter().rposition(|&b| b == b'\n') {
                 for line in self
                     .buf
@@ -581,7 +566,7 @@ impl PickerEntriesProcessBuf {
         picker.move_cursor(0);
     }
 
-    pub(crate) fn on_process_exit(&mut self, picker: &mut Picker, read_line: &ReadLine) {
+    pub(crate) fn on_process_exit(&mut self, picker: &mut Picker, readline_input: &str) {
         if !self.waiting_for_process {
             return;
         }
@@ -589,7 +574,7 @@ impl PickerEntriesProcessBuf {
         self.waiting_for_process = false;
 
         {
-            let mut entry_adder = picker.add_custom_filtered_entries(read_line.input());
+            let mut entry_adder = picker.add_custom_filtered_entries(readline_input);
             for line in self.buf.split(|&b| b == b'\n') {
                 if line.is_empty() {
                     continue;
@@ -995,3 +980,4 @@ mod tests {
         assert_eq!((path, Some((3, 0))), find_at(text, 3),);
     }
 }
+

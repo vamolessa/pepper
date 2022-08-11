@@ -10,10 +10,10 @@ use crate::{
     editor::EditorFlow,
     editor_utils::{
         parse_path_and_ranges, parse_process_command, validate_process_command, LogKind,
-        RegisterKey,
+        RegisterKey, REGISTER_INPUT,
     },
     help,
-    mode::{picker, read_line, ModeKind},
+    mode::{picker, readline, ModeKind},
     platform::{PlatformRequest, ProcessTag},
     syntax::TokenKind,
     theme::{Color, THEME_COLOR_NAMES},
@@ -737,24 +737,16 @@ pub fn register_commands(commands: &mut CommandManager) {
     });
 
     r("readline", &[], |ctx, io| {
-        let arg = io.args.next()?;
-        let (prompt, continuation) = match io.args.try_next() {
-            Some(continuation) => (arg, continuation),
-            None => ("readline:", arg),
-        };
+        let continuation = io.args.next()?;
         io.args.assert_empty()?;
-        read_line::custom::enter_mode(ctx, continuation, prompt);
+        readline::custom::enter_mode(ctx, continuation);
         Ok(())
     });
 
     r("pick", &[], |ctx, io| {
-        let arg = io.args.next()?;
-        let (prompt, continuation) = match io.args.try_next() {
-            Some(continuation) => (arg, continuation),
-            None => ("pick:", arg),
-        };
+        let continuation = io.args.next()?;
         io.args.assert_empty()?;
-        picker::custom::enter_mode(ctx, continuation, prompt);
+        picker::custom::enter_mode(ctx, continuation);
         Ok(())
     });
 
@@ -763,9 +755,10 @@ pub fn register_commands(commands: &mut CommandManager) {
         while let Some(arg) = io.args.try_next() {
             ctx.editor.picker.add_custom_entry(arg);
         }
+        let readline_input = ctx.editor.registers.get(REGISTER_INPUT);
         ctx.editor
             .picker
-            .filter(WordIndicesIter::empty(), ctx.editor.read_line.input());
+            .filter(WordIndicesIter::empty(), readline_input);
         Ok(())
     });
 

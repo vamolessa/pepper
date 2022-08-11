@@ -1,7 +1,7 @@
 use pepper::{
     client::ClientHandle,
     editor::{EditorContext, EditorFlow, KeysIterator},
-    editor_utils::ReadLinePoll,
+    editor_utils::{ReadLinePoll, REGISTER_PROMPT, REGISTER_INPUT},
     mode::ModeKind,
     plugin::PluginHandle,
 };
@@ -55,12 +55,12 @@ pub fn enter_rename_mode(
         }
     }
 
-    ctx.editor.read_line.set_prompt("rename:");
+    ctx.editor.registers.set(REGISTER_PROMPT, "rename:");
+    ctx.editor.registers.set(REGISTER_INPUT, placeholder);
 
     ctx.editor.mode.plugin_handle = Some(plugin_handle);
-    ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
+    ctx.editor.mode.readline_state.on_client_keys = on_client_keys;
     ctx.editor.enter_mode(ModeKind::ReadLine);
-    ctx.editor.read_line.input_mut().push_str(placeholder);
 
     let lsp = ctx.plugins.get_as::<LspPlugin>(plugin_handle);
     lsp.current_client_handle = Some(client.handle());

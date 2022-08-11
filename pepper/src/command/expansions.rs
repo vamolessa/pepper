@@ -137,12 +137,6 @@ pub fn register_expansions(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("readline-input", |ctx, io| {
-        io.assert_empty_args()?;
-        io.output.push_str(ctx.editor.read_line.input());
-        Ok(())
-    });
-
     r("picker-entry", |ctx, io| {
         io.assert_empty_args()?;
         let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {

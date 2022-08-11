@@ -199,15 +199,13 @@ Set the value of the environment variable `<key>` to `<value>`
 
 ## `readline`
 Enters readline mode and once a line is read, executes the commands in `<continuation>`.
-Optionally pass a `<prompt>` which displays while waiting for user input.
-It's possible to access the line input through `@readline-input()` when `<continuation>` executes.
-- usage: `readline [<prompt>] <continuation>`
+It's possible to access the line input through `@register(i)` when `<continuation>` executes.
+- usage: `readline <continuation>`
 
 ## `pick`
 Enters picker mode and once an entry is selected, executes the commands in `<continuation>`.
-Optionally pass a `<prompt>` which displays while waiting for user input.
 It's possible to access the selected entry input through `@picker-entry()` when `<continuation>` executes.
-- usage: `pick [<prompt>] <continuation>`
+- usage: `pick <continuation>`
 
 ## `picker-entries`
 Clears and then adds all `<entries...>` to be selected with the `pick` command.

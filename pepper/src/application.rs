@@ -4,7 +4,7 @@ use crate::{
     client::ClientManager,
     command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow},
-    editor_utils::LogKind,
+    editor_utils::{LogKind, REGISTER_INPUT},
     events::{ClientEvent, ClientEventReceiver, ServerEvent, TargetClient},
     platform::{Key, Platform, PlatformEvent, PlatformRequest, ProcessTag},
     plugin::{PluginCollection, PluginDefinition},
@@ -200,7 +200,7 @@ impl ServerApplication {
                             .picker_entries_process_buf
                             .on_process_output(
                                 &mut self.ctx.editor.picker,
-                                &self.ctx.editor.read_line,
+                                self.ctx.editor.registers.get(REGISTER_INPUT),
                                 bytes,
                             ),
                         ProcessTag::Plugin { plugin_handle, id } => {
@@ -226,7 +226,7 @@ impl ServerApplication {
                         ProcessTag::PickerEntries => {
                             self.ctx.editor.picker_entries_process_buf.on_process_exit(
                                 &mut self.ctx.editor.picker,
-                                &self.ctx.editor.read_line,
+                                self.ctx.editor.registers.get(REGISTER_INPUT),
                             )
                         }
                         ProcessTag::Plugin { plugin_handle, id } => {

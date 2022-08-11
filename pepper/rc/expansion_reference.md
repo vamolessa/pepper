@@ -74,16 +74,19 @@ The text selected by the current cursor or of the cursor of index `<index>`.
 If there is no such cursor, it results in an empty expansion.
 - usage: `@cursor-selection()` `@cursor-selection(<index>)`
 
-## `readline-input`
-The text input by the user when prompted by the `readline` command.
-- usage: `@readline-input()`
-
 ## `picker-entry`
 The selected entry by the user when prompted by the `pick` command.
 - usage: `@picker-entry()`
 
 ## `register`
 The text inside the register under the key `<key>`.
+Note that there are some registers that contain internal state:
+- `a` auto macro register: the keys from the last edit action
+- `s` search register: the current search pattern
+- `p` prompt register: the current readline and picker prompt text
+- `i` input register: the current readline and picker input text
+- `c` comment register: the text used to to comment/uncomment lines
+
 - usage: `@register(<key>)`
 
 ## `env`

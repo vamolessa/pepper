@@ -4,7 +4,7 @@ use crate::{
     client::ClientHandle,
     command::{CommandManager, CommandTokenizer, CompletionSource},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{hash_bytes, ReadLinePoll},
+    editor_utils::{hash_bytes, ReadLinePoll, REGISTER_INPUT, REGISTER_PROMPT, readline_poll},
     mode::{ModeKind, ModeState},
     picker::Picker,
     platform::{Key, KeyCode},
@@ -42,13 +42,13 @@ impl ModeState for State {
         state.completion_source = CompletionSource::Custom(&[]);
         state.completion_path_hash = None;
 
-        editor.read_line.set_prompt(":");
-        editor.read_line.input_mut().clear();
+        editor.registers.set(REGISTER_PROMPT, ":");
+        editor.registers.get_mut(REGISTER_INPUT).clear();
         editor.picker.clear();
     }
 
     fn on_exit(editor: &mut Editor) {
-        editor.read_line.input_mut().clear();
+        editor.registers.get_mut(REGISTER_INPUT).clear();
         editor.picker.clear();
     }
 
@@ -58,7 +58,8 @@ impl ModeState for State {
         keys: &mut KeysIterator,
     ) -> Option<EditorFlow> {
         let state = &mut ctx.editor.mode.command_state;
-        match ctx.editor.read_line.poll(
+        match readline_poll(
+            ctx.editor.registers.get_mut(REGISTER_INPUT),
             &mut ctx.platform,
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
@@ -87,9 +88,7 @@ impl ModeState for State {
                                 .saturating_sub(1)
                                 .min(*i + 1);
                             let entry = ctx.editor.commands.history_entry(*i);
-                            let input = ctx.editor.read_line.input_mut();
-                            input.clear();
-                            input.push_str(entry);
+                            ctx.editor.registers.set(REGISTER_INPUT, entry);
                         }
                         ReadCommandState::TypingCommand => apply_completion(ctx, 1),
                     },
@@ -108,9 +107,7 @@ impl ModeState for State {
                         ReadCommandState::NavigatingHistory(ref mut i) => {
                             *i = i.saturating_sub(1);
                             let entry = ctx.editor.commands.history_entry(*i);
-                            let input = ctx.editor.read_line.input_mut();
-                            input.clear();
-                            input.push_str(entry);
+                            ctx.editor.registers.set(REGISTER_INPUT, entry);
                         }
                         ReadCommandState::TypingCommand => apply_completion(ctx, -1),
                     },
@@ -119,7 +116,7 @@ impl ModeState for State {
             }
             ReadLinePoll::Canceled => ctx.editor.enter_mode(ModeKind::default()),
             ReadLinePoll::Submitted => {
-                let input = ctx.editor.read_line.input();
+                let input = ctx.editor.registers.get(REGISTER_INPUT);
                 ctx.editor.commands.add_to_history(input);
 
                 let command = ctx.editor.string_pool.acquire_with(input);
@@ -141,7 +138,7 @@ impl ModeState for State {
 fn apply_completion(ctx: &mut EditorContext, cursor_movement: isize) {
     ctx.editor.picker.move_cursor(cursor_movement);
     if let Some((_, entry)) = ctx.editor.picker.current_entry(&ctx.editor.word_database) {
-        let input = ctx.editor.read_line.input_mut();
+        let input = ctx.editor.registers.get_mut(REGISTER_INPUT);
         input.truncate(ctx.editor.mode.command_state.completion_index);
         input.push_str(entry);
     }
@@ -150,7 +147,7 @@ fn apply_completion(ctx: &mut EditorContext, cursor_movement: isize) {
 fn update_autocomplete_entries(ctx: &mut EditorContext) {
     let state = &mut ctx.editor.mode.command_state;
 
-    let input = ctx.editor.read_line.input();
+    let input = ctx.editor.registers.get(REGISTER_INPUT);
     let mut tokens = CommandTokenizer(input);
 
     let mut last_token = match tokens.next() {

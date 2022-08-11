@@ -9,10 +9,10 @@ use crate::{
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
     editor_utils::{
         find_path_and_ranges_at, hash_bytes, parse_path_and_ranges, LogKind, RegisterKey,
-        AUTO_MACRO_REGISTER, SEARCH_REGISTER,
+        REGISTER_AUTO_MACRO, REGISTER_SEARCH,
     },
     help::HELP_PREFIX,
-    mode::{picker, read_line, ModeKind, ModeState},
+    mode::{picker, readline, ModeKind, ModeState},
     navigation_history::{NavigationHistory, NavigationMovement},
     pattern::PatternEscaper,
     platform::{Key, KeyCode},
@@ -41,7 +41,7 @@ impl State {
         match state.movement_kind {
             CursorMovementKind::PositionAndAnchor => state.is_recording_auto_macro = false,
             CursorMovementKind::PositionOnly => {
-                let auto_macro_register = editor.registers.get_mut(AUTO_MACRO_REGISTER);
+                let auto_macro_register = editor.registers.get_mut(REGISTER_AUTO_MACRO);
 
                 if !state.is_recording_auto_macro {
                     auto_macro_register.clear();
@@ -60,7 +60,7 @@ impl State {
     }
 
     fn on_edit_keys(editor: &mut Editor, keys: &KeysIterator, from_index: usize) {
-        let auto_macro_register = editor.registers.get_mut(AUTO_MACRO_REGISTER);
+        let auto_macro_register = editor.registers.get_mut(REGISTER_AUTO_MACRO);
         let state = &mut editor.mode.normal_state;
         if !state.is_recording_auto_macro {
             auto_macro_register.clear();
@@ -512,7 +512,7 @@ impl State {
                                 position,
                             });
                         } else {
-                            read_line::goto::enter_mode(ctx, client_handle);
+                            readline::goto::enter_mode(ctx, client_handle);
                         }
                     }
                     Key {
@@ -1531,25 +1531,25 @@ impl State {
                     control: false,
                     alt: false,
                     ..
-                } => read_line::filter_cursors::enter_filter_mode(ctx),
+                } => readline::filter_cursors::enter_filter_mode(ctx),
                 Key {
                     code: KeyCode::Char('F'),
                     control: false,
                     alt: false,
                     ..
-                } => read_line::filter_cursors::enter_except_mode(ctx),
+                } => readline::filter_cursors::enter_except_mode(ctx),
                 Key {
                     code: KeyCode::Char('s'),
                     control: false,
                     alt: false,
                     ..
-                } => read_line::split_cursors::enter_by_pattern_mode(ctx),
+                } => readline::split_cursors::enter_by_pattern_mode(ctx),
                 Key {
                     code: KeyCode::Char('S'),
                     control: false,
                     alt: false,
                     ..
-                } => read_line::split_cursors::enter_by_separators_mode(ctx),
+                } => readline::split_cursors::enter_by_separators_mode(ctx),
                 _ => (),
             },
             Key {
@@ -1621,7 +1621,7 @@ impl State {
                 ..
             } => {
                 let movement_kind = state.movement_kind;
-                read_line::search::enter_mode(ctx, client_handle, movement_kind);
+                readline::search::enter_mode(ctx, client_handle, movement_kind);
             }
             Key {
                 code: KeyCode::Char('y'),
@@ -2262,7 +2262,7 @@ where
 
     let mut search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
-        let search = ctx.editor.registers.get(SEARCH_REGISTER);
+        let search = ctx.editor.registers.get(REGISTER_SEARCH);
         if !search.is_empty() {
             match ctx.editor.aux_pattern.compile_searcher(search) {
                 Ok(()) => {
@@ -2344,7 +2344,7 @@ fn search_word_or_move_to_it(
             position,
         });
 
-        let register = ctx.editor.registers.get_mut(SEARCH_REGISTER);
+        let register = ctx.editor.registers.get_mut(REGISTER_SEARCH);
         register.clear();
         if valid_range {
             register.push_str("F/");
