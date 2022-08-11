@@ -3,7 +3,9 @@ use crate::{
     client::ClientHandle,
     command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{readline_poll, LogKind, ReadLinePoll, REGISTER_INPUT, REGISTER_PROMPT},
+    editor_utils::{
+        readline_poll, LogKind, ReadLinePoll, REGISTER_READLINE_INPUT, REGISTER_READLINE_PROMPT,
+    },
     mode::{ModeKind, ModeState},
     platform::{Key, KeyCode},
     word_database::WordIndicesIter,
@@ -30,12 +32,12 @@ impl Default for State {
 
 impl ModeState for State {
     fn on_enter(editor: &mut Editor) {
-        editor.registers.get_mut(REGISTER_INPUT).clear();
+        editor.registers.get_mut(REGISTER_READLINE_INPUT).clear();
     }
 
     fn on_exit(editor: &mut Editor) {
         editor.mode.plugin_handle = None;
-        editor.registers.get_mut(REGISTER_INPUT).clear();
+        editor.registers.get_mut(REGISTER_READLINE_INPUT).clear();
         editor.picker.clear();
     }
 
@@ -46,7 +48,7 @@ impl ModeState for State {
     ) -> Option<EditorFlow> {
         let this = &mut ctx.editor.mode.picker_state;
         let poll = readline_poll(
-            ctx.editor.registers.get_mut(REGISTER_INPUT),
+            ctx.editor.registers.get_mut(REGISTER_READLINE_INPUT),
             &mut ctx.platform,
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
@@ -155,7 +157,7 @@ impl ModeState for State {
                     ctx.editor.picker.move_cursor(entry_count - cursor - 1);
                 }
                 _ => {
-                    let readline_input = ctx.editor.registers.get(REGISTER_INPUT);
+                    let readline_input = ctx.editor.registers.get(REGISTER_READLINE_INPUT);
                     ctx.editor
                         .picker
                         .filter(WordIndicesIter::empty(), readline_input);
@@ -214,7 +216,9 @@ pub mod opened_buffers {
             Some(EditorFlow::Continue)
         }
 
-        ctx.editor.registers.set(REGISTER_PROMPT, "buffer:");
+        ctx.editor
+            .registers
+            .set(REGISTER_READLINE_PROMPT, "buffer:");
         ctx.editor.picker.clear();
 
         for path in ctx.editor.buffers.iter().filter_map(|b| b.path.to_str()) {

@@ -1,7 +1,7 @@
 use pepper::{
     client::ClientHandle,
     editor::{EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{ReadLinePoll, REGISTER_INPUT, REGISTER_PROMPT},
+    editor_utils::{ReadLinePoll, REGISTER_READLINE_INPUT, REGISTER_READLINE_PROMPT},
     mode::ModeKind,
     plugin::PluginHandle,
 };
@@ -55,8 +55,13 @@ pub fn enter_rename_mode(
         }
     }
 
-    ctx.editor.registers.set(REGISTER_PROMPT, "rename:");
-    ctx.editor.registers.set(REGISTER_INPUT, placeholder);
+    ctx.editor
+        .registers
+        .set(REGISTER_READLINE_PROMPT, "rename:");
+    ctx.editor
+        .registers
+        .get_mut(REGISTER_READLINE_INPUT)
+        .push_str(placeholder);
 
     ctx.editor.mode.plugin_handle = Some(plugin_handle);
     ctx.editor.mode.readline_state.on_client_keys = on_client_keys;

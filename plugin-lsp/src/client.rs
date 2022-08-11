@@ -12,7 +12,7 @@ use pepper::{
     client,
     cursor::Cursor,
     editor::{Editor, EditorContext},
-    editor_utils::{LogKind, Logger, REGISTER_INPUT},
+    editor_utils::{LogKind, Logger, REGISTER_READLINE_INPUT},
     glob::Glob,
     navigation_history::NavigationHistory,
     platform::Platform,
@@ -743,7 +743,7 @@ impl Client {
         let buffer = editor.buffers.get(buffer_handle);
         let text_document = util::text_document_with_id(&self.root, &buffer.path, &mut self.json);
         let position = DocumentPosition::from_buffer_position(buffer_position);
-        let readline_input = editor.registers.get(REGISTER_INPUT);
+        let readline_input = editor.registers.get(REGISTER_READLINE_INPUT);
         let new_name = self.json.create_string(readline_input);
 
         let mut params = JsonObject::default();

@@ -10,7 +10,7 @@ use crate::{
     editor::EditorFlow,
     editor_utils::{
         parse_path_and_ranges, parse_process_command, validate_process_command, LogKind,
-        RegisterKey, REGISTER_INPUT,
+        RegisterKey, REGISTER_READLINE_INPUT,
     },
     help,
     mode::{picker, readline, ModeKind},
@@ -755,7 +755,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         while let Some(arg) = io.args.try_next() {
             ctx.editor.picker.add_custom_entry(arg);
         }
-        let readline_input = ctx.editor.registers.get(REGISTER_INPUT);
+        let readline_input = ctx.editor.registers.get(REGISTER_READLINE_INPUT);
         ctx.editor
             .picker
             .filter(WordIndicesIter::empty(), readline_input);

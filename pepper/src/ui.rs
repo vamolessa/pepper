@@ -6,7 +6,7 @@ use crate::{
     buffer_view::{BufferViewHandle, CursorMovementKind},
     cursor::Cursor,
     editor::Editor,
-    editor_utils::{LoggerStatusBarDisplay, REGISTER_INPUT, REGISTER_PROMPT},
+    editor_utils::{LoggerStatusBarDisplay, REGISTER_READLINE_INPUT, REGISTER_READLINE_PROMPT},
     mode::ModeKind,
     syntax::{Token, TokenKind},
     theme::Color,
@@ -646,8 +646,8 @@ fn draw_statusbar(
                 Some(text.len())
             }
             ModeKind::Command | ModeKind::Picker | ModeKind::ReadLine => {
-                let readline_prompt = ctx.editor.registers.get(REGISTER_PROMPT);
-                let readline_input = ctx.editor.registers.get(REGISTER_INPUT);
+                let readline_prompt = ctx.editor.registers.get(REGISTER_READLINE_PROMPT);
+                let readline_input = ctx.editor.registers.get(REGISTER_READLINE_INPUT);
 
                 set_background_color(buf, background_innactive_color);
                 set_foreground_color(buf, foreground_color);

@@ -457,8 +457,8 @@ impl StringPool {
 
 pub static REGISTER_AUTO_MACRO: RegisterKey = RegisterKey::from_char_unchecked('a');
 pub static REGISTER_SEARCH: RegisterKey = RegisterKey::from_char_unchecked('s');
-pub static REGISTER_PROMPT: RegisterKey = RegisterKey::from_char_unchecked('p');
-pub static REGISTER_INPUT: RegisterKey = RegisterKey::from_char_unchecked('i');
+pub static REGISTER_READLINE_PROMPT: RegisterKey = RegisterKey::from_char_unchecked('p');
+pub static REGISTER_READLINE_INPUT: RegisterKey = RegisterKey::from_char_unchecked('i');
 pub static REGISTER_COMMENT: RegisterKey = RegisterKey::from_char_unchecked('c');
 
 #[derive(Clone, Copy, PartialEq, Eq)]

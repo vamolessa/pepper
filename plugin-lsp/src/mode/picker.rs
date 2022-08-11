@@ -5,7 +5,7 @@ use pepper::{
     client::ClientHandle,
     cursor::Cursor,
     editor::{EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{parse_path_and_ranges, LogKind, ReadLinePoll, REGISTER_PROMPT},
+    editor_utils::{parse_path_and_ranges, LogKind, ReadLinePoll, REGISTER_READLINE_PROMPT},
     mode::ModeKind,
     picker::EntrySource,
     plugin::PluginHandle,
@@ -75,7 +75,9 @@ pub fn enter_definition_mode(
         }
     }
 
-    ctx.editor.registers.set(REGISTER_PROMPT, "definition:");
+    ctx.editor
+        .registers
+        .set(REGISTER_READLINE_PROMPT, "definition:");
     ctx.editor.picker.filter(WordIndicesIter::empty(), "");
     ctx.editor.picker.move_cursor(0);
 
@@ -140,7 +142,9 @@ pub fn enter_code_action_mode(
         }
     }
 
-    ctx.editor.registers.set(REGISTER_PROMPT, "code action:");
+    ctx.editor
+        .registers
+        .set(REGISTER_READLINE_PROMPT, "code action:");
     ctx.editor.picker.filter(WordIndicesIter::empty(), "");
     ctx.editor.picker.move_cursor(0);
 
@@ -214,7 +218,7 @@ pub fn enter_document_symbol_mode(
 
     ctx.editor
         .registers
-        .set(REGISTER_PROMPT, "document symbol:");
+        .set(REGISTER_READLINE_PROMPT, "document symbol:");
     ctx.editor.picker.filter(WordIndicesIter::empty(), "");
     ctx.editor.picker.move_cursor(0);
 
@@ -288,7 +292,7 @@ pub fn enter_workspace_symbol_mode(
 
     ctx.editor
         .registers
-        .set(REGISTER_PROMPT, "workspace symbol:");
+        .set(REGISTER_READLINE_PROMPT, "workspace symbol:");
     ctx.editor.picker.filter(WordIndicesIter::empty(), "");
     ctx.editor.picker.move_cursor(0);
 

@@ -5,7 +5,9 @@ use crate::{
     command::CommandManager,
     cursor::{Cursor, CursorCollectionMutGuard},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{readline_poll, LogKind, ReadLinePoll, REGISTER_INPUT, REGISTER_PROMPT},
+    editor_utils::{
+        readline_poll, LogKind, ReadLinePoll, REGISTER_READLINE_INPUT, REGISTER_READLINE_PROMPT,
+    },
     mode::{ModeKind, ModeState},
     navigation_history::NavigationHistory,
     pattern::Pattern,
@@ -34,12 +36,12 @@ impl Default for State {
 
 impl ModeState for State {
     fn on_enter(editor: &mut Editor) {
-        editor.registers.get_mut(REGISTER_INPUT).clear();
+        editor.registers.get_mut(REGISTER_READLINE_INPUT).clear();
     }
 
     fn on_exit(editor: &mut Editor) {
         editor.mode.plugin_handle = None;
-        editor.registers.get_mut(REGISTER_INPUT).clear();
+        editor.registers.get_mut(REGISTER_READLINE_INPUT).clear();
     }
 
     fn on_keys(
@@ -48,7 +50,7 @@ impl ModeState for State {
         keys: &mut KeysIterator,
     ) -> Option<EditorFlow> {
         let poll = readline_poll(
-            ctx.editor.registers.get_mut(REGISTER_INPUT),
+            ctx.editor.registers.get_mut(REGISTER_READLINE_INPUT),
             &mut ctx.platform,
             &mut ctx.editor.string_pool,
             &ctx.editor.buffered_keys,
@@ -62,7 +64,7 @@ impl ModeState for State {
 pub mod search {
     use super::*;
 
-    use crate::editor_utils::{REGISTER_INPUT, REGISTER_SEARCH};
+    use crate::editor_utils::{REGISTER_READLINE_INPUT, REGISTER_SEARCH};
 
     pub fn enter_mode(
         ctx: &mut EditorContext,
@@ -131,7 +133,7 @@ pub mod search {
                     let input = ctx
                         .editor
                         .string_pool
-                        .acquire_with(ctx.editor.registers.get(REGISTER_INPUT));
+                        .acquire_with(ctx.editor.registers.get(REGISTER_READLINE_INPUT));
                     ctx.editor.registers.set(REGISTER_SEARCH, &input);
                     ctx.editor.string_pool.release(input);
 
@@ -147,7 +149,9 @@ pub mod search {
         }
 
         save_current_position(ctx, client_handle);
-        ctx.editor.registers.set(REGISTER_PROMPT, "search:");
+        ctx.editor
+            .registers
+            .set(REGISTER_READLINE_PROMPT, "search:");
         update_search(ctx, client_handle);
 
         ctx.editor.mode.readline_state.movement_kind = movement_kind;
@@ -166,7 +170,7 @@ pub mod search {
         let _ = ctx
             .editor
             .aux_pattern
-            .compile_searcher(ctx.editor.registers.get(REGISTER_INPUT));
+            .compile_searcher(ctx.editor.registers.get(REGISTER_READLINE_INPUT));
         buffer.set_search(&ctx.editor.aux_pattern);
         let search_ranges = buffer.search_ranges();
 
@@ -227,7 +231,9 @@ pub mod filter_cursors {
     };
 
     pub fn enter_filter_mode(ctx: &mut EditorContext) {
-        ctx.editor.registers.set(REGISTER_PROMPT, "filter:");
+        ctx.editor
+            .registers
+            .set(REGISTER_READLINE_PROMPT, "filter:");
         ctx.editor.mode.readline_state.on_client_keys = |ctx, client_handle, _, poll| {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
                 on_event_impl(ctx, client_handle, true);
@@ -238,7 +244,9 @@ pub mod filter_cursors {
     }
 
     pub fn enter_except_mode(ctx: &mut EditorContext) {
-        ctx.editor.registers.set(REGISTER_PROMPT, "except:");
+        ctx.editor
+            .registers
+            .set(REGISTER_READLINE_PROMPT, "except:");
         ctx.editor.mode.readline_state.on_client_keys = |ctx, client_handle, _, poll| {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
                 on_event_impl(ctx, client_handle, false);
@@ -287,7 +295,7 @@ pub mod filter_cursors {
             }
         }
 
-        let pattern = ctx.editor.registers.get(REGISTER_INPUT);
+        let pattern = ctx.editor.registers.get(REGISTER_READLINE_INPUT);
         let pattern = if pattern.is_empty() {
             ctx.editor.registers.get(REGISTER_SEARCH)
         } else {
@@ -342,7 +350,7 @@ pub mod split_cursors {
     use crate::{
         buffer_position::BufferPosition,
         cursor::Cursor,
-        editor_utils::{REGISTER_INPUT, REGISTER_SEARCH},
+        editor_utils::{REGISTER_READLINE_INPUT, REGISTER_SEARCH},
     };
 
     pub fn enter_by_pattern_mode(ctx: &mut EditorContext) {
@@ -363,7 +371,9 @@ pub mod split_cursors {
             }
         }
 
-        ctx.editor.registers.set(REGISTER_PROMPT, "split-by:");
+        ctx.editor
+            .registers
+            .set(REGISTER_READLINE_PROMPT, "split-by:");
         ctx.editor.mode.readline_state.on_client_keys = |ctx, client_handle, _, poll| {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
                 on_event_impl(ctx, client_handle, add_matches);
@@ -409,7 +419,9 @@ pub mod split_cursors {
             }
         }
 
-        ctx.editor.registers.set(REGISTER_PROMPT, "split-on:");
+        ctx.editor
+            .registers
+            .set(REGISTER_READLINE_PROMPT, "split-on:");
         ctx.editor.mode.readline_state.on_client_keys = |ctx, client_handle, _, poll| {
             on_submitted(ctx, client_handle, poll, |ctx, client_handle| {
                 on_event_impl(ctx, client_handle, add_matches);
@@ -424,7 +436,7 @@ pub mod split_cursors {
         client_handle: ClientHandle,
         add_matches: fn(&mut CursorCollectionMutGuard, &str, &Pattern, BufferPosition),
     ) {
-        let pattern = ctx.editor.registers.get(REGISTER_INPUT);
+        let pattern = ctx.editor.registers.get(REGISTER_READLINE_INPUT);
         let pattern = if pattern.is_empty() {
             ctx.editor.registers.get(REGISTER_SEARCH)
         } else {
@@ -532,11 +544,11 @@ pub mod goto {
         ) -> Option<EditorFlow> {
             match poll {
                 ReadLinePoll::Pending => {
-                    let line_number: usize = match ctx.editor.registers.get(REGISTER_INPUT).parse()
-                    {
-                        Ok(number) => number,
-                        Err(_) => return Some(EditorFlow::Continue),
-                    };
+                    let line_number: usize =
+                        match ctx.editor.registers.get(REGISTER_READLINE_INPUT).parse() {
+                            Ok(number) => number,
+                            Err(_) => return Some(EditorFlow::Continue),
+                        };
                     let line_index = line_number.saturating_sub(1);
 
                     let handle = ctx.clients.get(client_handle).buffer_view_handle()?;
@@ -568,7 +580,9 @@ pub mod goto {
         }
 
         save_current_position(ctx, client_handle);
-        ctx.editor.registers.set(REGISTER_PROMPT, "goto-line:");
+        ctx.editor
+            .registers
+            .set(REGISTER_READLINE_PROMPT, "goto-line:");
         ctx.editor.mode.readline_state.on_client_keys = on_client_keys;
         ctx.editor.enter_mode(ModeKind::ReadLine);
     }
