@@ -1,7 +1,7 @@
 use pepper::{
     client::ClientHandle,
     editor::{EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{ReadLinePoll, REGISTER_PROMPT, REGISTER_INPUT},
+    editor_utils::{ReadLinePoll, REGISTER_INPUT, REGISTER_PROMPT},
     mode::ModeKind,
     plugin::PluginHandle,
 };

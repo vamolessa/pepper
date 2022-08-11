@@ -339,7 +339,11 @@ pub mod filter_cursors {
 pub mod split_cursors {
     use super::*;
 
-    use crate::{buffer_position::BufferPosition, cursor::Cursor, editor_utils::{REGISTER_SEARCH, REGISTER_INPUT}};
+    use crate::{
+        buffer_position::BufferPosition,
+        cursor::Cursor,
+        editor_utils::{REGISTER_INPUT, REGISTER_SEARCH},
+    };
 
     pub fn enter_by_pattern_mode(ctx: &mut EditorContext) {
         fn add_matches(
@@ -528,7 +532,8 @@ pub mod goto {
         ) -> Option<EditorFlow> {
             match poll {
                 ReadLinePoll::Pending => {
-                    let line_number: usize = match ctx.editor.registers.get(REGISTER_INPUT).parse() {
+                    let line_number: usize = match ctx.editor.registers.get(REGISTER_INPUT).parse()
+                    {
                         Ok(number) => number,
                         Err(_) => return Some(EditorFlow::Continue),
                     };
@@ -637,4 +642,3 @@ fn restore_saved_position(ctx: &mut EditorContext, client_handle: ClientHandle) 
     }
     cursors.set_main_cursor_index(state.previous_main_cursor_index);
 }
-

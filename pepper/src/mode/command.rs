@@ -4,7 +4,7 @@ use crate::{
     client::ClientHandle,
     command::{CommandManager, CommandTokenizer, CompletionSource},
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{hash_bytes, ReadLinePoll, REGISTER_INPUT, REGISTER_PROMPT, readline_poll},
+    editor_utils::{hash_bytes, readline_poll, ReadLinePoll, REGISTER_INPUT, REGISTER_PROMPT},
     mode::{ModeKind, ModeState},
     picker::Picker,
     platform::{Key, KeyCode},

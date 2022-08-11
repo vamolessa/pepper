@@ -980,4 +980,3 @@ mod tests {
         assert_eq!((path, Some((3, 0))), find_at(text, 3),);
     }
 }
-

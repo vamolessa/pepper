@@ -3,7 +3,7 @@ use crate::{
     client::ClientHandle,
     command::CommandManager,
     editor::{Editor, EditorContext, EditorFlow, KeysIterator},
-    editor_utils::{LogKind, ReadLinePoll, REGISTER_INPUT, readline_poll, REGISTER_PROMPT},
+    editor_utils::{readline_poll, LogKind, ReadLinePoll, REGISTER_INPUT, REGISTER_PROMPT},
     mode::{ModeKind, ModeState},
     platform::{Key, KeyCode},
     word_database::WordIndicesIter,

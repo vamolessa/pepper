@@ -212,7 +212,9 @@ pub fn enter_document_symbol_mode(
         }
     }
 
-    ctx.editor.registers.set(REGISTER_PROMPT, "document symbol:");
+    ctx.editor
+        .registers
+        .set(REGISTER_PROMPT, "document symbol:");
     ctx.editor.picker.filter(WordIndicesIter::empty(), "");
     ctx.editor.picker.move_cursor(0);
 
@@ -284,7 +286,9 @@ pub fn enter_workspace_symbol_mode(
         }
     }
 
-    ctx.editor.registers.set(REGISTER_PROMPT, "workspace symbol:");
+    ctx.editor
+        .registers
+        .set(REGISTER_PROMPT, "workspace symbol:");
     ctx.editor.picker.filter(WordIndicesIter::empty(), "");
     ctx.editor.picker.move_cursor(0);
 
