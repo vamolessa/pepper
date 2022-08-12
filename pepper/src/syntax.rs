@@ -306,6 +306,10 @@ impl HighlightedBuffer {
     }
 
     pub fn insert_range(&mut self, range: BufferRange) {
+        if self.lines.len() <= range.to.line_index as _ {
+            return;
+        }
+
         let insert_line_count = range.to.line_index - range.from.line_index;
         if insert_line_count > 0 {
             let previous_highlighted_len = self.highlighted_len;
@@ -338,6 +342,10 @@ impl HighlightedBuffer {
     }
 
     pub fn delete_range(&mut self, range: BufferRange) {
+        if self.lines.len() <= range.to.line_index as _ {
+            return;
+        }
+
         self.lines[range.from.line_index as usize].parse_state = LineParseState::Dirty;
 
         let delete_line_count = range.to.line_index - range.from.line_index;
