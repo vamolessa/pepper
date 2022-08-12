@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
-    buffer::{BufferContent, BufferHandle, BufferProperties},
+    buffer::{BufferContent, BufferHandle, BufferIndentationConfig, BufferProperties},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{ClientHandle, ViewAnchor},
@@ -1292,6 +1292,29 @@ impl State {
                 ctx.editor.string_pool.release(buf);
 
                 buffer.commit_edits();
+                Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
+                return Some(EditorFlow::Continue);
+            }
+            Key {
+                code: KeyCode::Char('='),
+                control: false,
+                alt: false,
+                ..
+            } => {
+                let buffer_view = ctx.editor.buffer_views.get(handle);
+                let indentation_config = BufferIndentationConfig {
+                    indent_with_tabs: ctx.editor.config.indent_with_tabs,
+                    tab_size: ctx.editor.config.tab_size,
+                };
+                buffer_view.fix_indentation_in_cursor_ranges(
+                    indentation_config,
+                    &mut ctx.editor.buffers,
+                    ctx.editor.events.writer(),
+                );
+                ctx.editor
+                    .buffers
+                    .get_mut(buffer_view.buffer_handle)
+                    .commit_edits();
                 Self::on_edit_keys(&mut ctx.editor, keys, keys_from_index);
                 return Some(EditorFlow::Continue);
             }

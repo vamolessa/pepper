@@ -2,6 +2,7 @@ use std::{
     fmt,
     fs::File,
     io,
+    num::NonZeroU8,
     ops::{Add, Range, RangeBounds, Sub},
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
@@ -1081,6 +1082,12 @@ impl BufferProperties {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct BufferIndentationConfig {
+    pub indent_with_tabs: bool,
+    pub tab_size: NonZeroU8,
+}
+
 pub struct Buffer {
     alive: bool,
     handle: BufferHandle,
@@ -1213,8 +1220,9 @@ impl Buffer {
 
         let range = Self::insert_text_no_history(
             &mut self.content,
-            self.properties.word_database_enabled,
-            word_database,
+            self.properties
+                .word_database_enabled
+                .then_some(word_database),
             position,
             text,
         );
@@ -1234,12 +1242,11 @@ impl Buffer {
 
     fn insert_text_no_history(
         content: &mut BufferContent,
-        uses_word_database: bool,
-        word_database: &mut WordDatabase,
+        mut word_database: Option<&mut WordDatabase>,
         position: BufferPosition,
         text: &str,
     ) -> BufferRange {
-        if uses_word_database {
+        if let Some(word_database) = &mut word_database {
             for word in WordIter(content.lines()[position.line_index as usize].as_str())
                 .of_kind(WordKind::Identifier)
             {
@@ -1249,7 +1256,7 @@ impl Buffer {
 
         let range = content.insert_text(position, text);
 
-        if uses_word_database {
+        if let Some(word_database) = &mut word_database {
             for line in
                 &content.lines()[range.from.line_index as usize..=range.to.line_index as usize]
             {
@@ -1326,19 +1333,19 @@ impl Buffer {
 
         Self::delete_range_no_history(
             &mut self.content,
-            self.properties.word_database_enabled,
-            word_database,
+            self.properties
+                .word_database_enabled
+                .then_some(word_database),
             range,
         );
     }
 
     fn delete_range_no_history(
         content: &mut BufferContent,
-        uses_word_database: bool,
-        word_database: &mut WordDatabase,
+        mut word_database: Option<&mut WordDatabase>,
         range: BufferRange,
     ) {
-        if uses_word_database {
+        if let Some(word_database) = &mut word_database {
             for line in
                 &content.lines()[range.from.line_index as usize..=range.to.line_index as usize]
             {
@@ -1346,16 +1353,169 @@ impl Buffer {
                     word_database.remove(word);
                 }
             }
+        }
 
-            content.delete_range(range);
+        content.delete_range(range);
 
+        if let Some(word_database) = &mut word_database {
             for word in WordIter(content.lines()[range.from.line_index as usize].as_str())
                 .of_kind(WordKind::Identifier)
             {
                 word_database.add(word);
             }
+        }
+    }
+
+    pub fn fix_line_indentation(
+        &mut self,
+        indentation_config: BufferIndentationConfig,
+        line_index: BufferPositionIndex,
+        events: &mut BufferEditMutGuard,
+    ) {
+        let mut previous_line_text = "";
+        for line in self.content.lines[..line_index as usize].iter().rev() {
+            previous_line_text = line.as_str();
+            if !previous_line_text.is_empty() {
+                break;
+            }
+        }
+
+        let mut indentation: usize = 0;
+        let mut pending_spaces = 0;
+        let mut chars = previous_line_text.chars();
+        let last_char_len = loop {
+            match chars.next() {
+                Some('\t') => {
+                    indentation += 1;
+                    pending_spaces = 0;
+                }
+                Some(' ') => {
+                    if pending_spaces > 0 {
+                        pending_spaces -= 1;
+                    } else {
+                        indentation += 1;
+                        pending_spaces = indentation_config.tab_size.get() - 1;
+                    }
+                }
+                Some(c) => break c.len_utf8(),
+                None => break 0,
+            }
+        };
+
+        let indentation_len = previous_line_text.len() - chars.as_str().len() - last_char_len;
+
+        let mut balance: usize = 0;
+        let mut open_brace = '\0';
+        let mut close_brace = '\0';
+        for c in previous_line_text[indentation_len..].chars() {
+            if c == close_brace {
+                balance = balance.saturating_sub(1);
+                if balance == 0 {
+                    open_brace = '\0';
+                    close_brace = '\0';
+                }
+            } else if c == open_brace {
+                balance += 1;
+            } else if balance == 0 {
+                let (open_c, close_c) = match c {
+                    '(' => ('(', ')'),
+                    '[' => ('[', ']'),
+                    '{' => ('{', '}'),
+                    '<' => ('<', '>'),
+                    _ => continue,
+                };
+                balance = 1;
+                open_brace = open_c;
+                close_brace = close_c;
+            }
+        }
+
+        if balance > 0 {
+            indentation += 1;
+        }
+
+        let line = &mut self.content.lines[line_index as usize];
+        let display_lens = &mut self.content.line_display_lens[line_index as usize];
+        let first_word = line.word_at(0);
+        let delete_len = match first_word.kind {
+            WordKind::Whitespace => first_word.text.len(),
+            _ => 0,
+        };
+
+        let delete_range = BufferRange::between(
+            BufferPosition::line_col(line_index, 0),
+            BufferPosition::line_col(line_index, delete_len as _),
+        );
+        let delete_text = &line.as_str()[..delete_len];
+
+        events.to_range_deletes().add(delete_range);
+        if self.properties.history_enabled {
+            self.history.add_edit(Edit {
+                kind: EditKind::Delete,
+                range: delete_range,
+                text: delete_text,
+            });
+        }
+
+        line.delete_range(display_lens, ..delete_len);
+
+        for c in line.0.chars() {
+            match c {
+                '(' | '[' | '{' | '<' => break,
+                ')' | ']' | '}' | '>' => {
+                    indentation = indentation.saturating_sub(1);
+                    break;
+                }
+                _ => (),
+            }
+        }
+
+        let insert_len = if line.0.is_empty() {
+            0
         } else {
-            content.delete_range(range);
+            let (insert_byte, insert_len) = if indentation_config.indent_with_tabs {
+                (b'\t', indentation)
+            } else {
+                let tab_size = indentation_config.tab_size.get() as usize;
+                (b' ', indentation * tab_size)
+            };
+
+            let line_vec = unsafe { line.0.as_mut_vec() };
+            line_vec.splice(..0, std::iter::repeat(insert_byte).take(insert_len));
+
+            let insert_display_len = if indentation_config.indent_with_tabs {
+                DisplayLen {
+                    len: 0,
+                    tab_count: insert_len as _,
+                }
+            } else {
+                DisplayLen {
+                    len: insert_len as _,
+                    tab_count: 0,
+                }
+            };
+
+            let line_display_len = &mut self.content.line_display_lens[line_index as usize];
+            *line_display_len = *line_display_len + insert_display_len;
+
+            insert_len
+        };
+
+        let insert_range = BufferRange::between(
+            BufferPosition::line_col(line_index, 0),
+            BufferPosition::line_col(line_index, insert_len as _),
+        );
+
+        let insert_text =
+            &self.content.lines()[line_index as usize].as_str()[..insert_len];
+
+        events.to_text_inserts().add(insert_range, insert_text);
+        if self.properties.history_enabled {
+            self.history.add_edit(Edit {
+                kind: EditKind::Insert,
+                range: insert_range,
+                text: insert_text,
+            });
         }
     }
 
@@ -1403,8 +1563,7 @@ impl Buffer {
                 EditKind::Insert => {
                     Self::insert_text_no_history(
                         content,
-                        uses_word_database,
-                        word_database,
+                        uses_word_database.then_some(word_database),
                         edit.range.from,
                         edit.text,
                     );
@@ -1413,8 +1572,7 @@ impl Buffer {
                 EditKind::Delete => {
                     Self::delete_range_no_history(
                         content,
-                        uses_word_database,
-                        word_database,
+                        uses_word_database.then_some(word_database),
                         edit.range,
                     );
                     events.to_range_deletes().add(edit.range);
@@ -2322,5 +2480,127 @@ mod tests {
         assert_eq!(0, len(&buffer, 0));
         assert_eq!(6, len(&buffer, 1));
         assert_eq!(3, len(&buffer, 2));
+    }
+
+    #[test]
+    fn buffer_fix_line_indentation() {
+        fn new_buffer(text: &str) -> Buffer {
+            let handle = BufferHandle(0);
+            let mut buffer = Buffer::new(handle);
+            let mut word_database = WordDatabase::new();
+            let mut events = EditorEventQueue::default();
+            let mut events = events.writer().buffer_text_inserts_mut_guard(handle);
+            buffer.insert_text(&mut word_database, BufferPosition::zero(), text, &mut events);
+            buffer
+        }
+
+        let mut events = EditorEventQueue::default();
+        let mut events = BufferEditMutGuard::new(events.writer(), BufferHandle(0));
+
+        let indentation_config = BufferIndentationConfig {
+            tab_size: NonZeroU8::new(4).unwrap(),
+            indent_with_tabs: true,
+        };
+
+        let mut buffer = new_buffer("");
+        buffer.fix_line_indentation(indentation_config, 0, &mut events);
+        assert_eq!("", buffer.content().lines()[0].as_str());
+
+        let mut buffer = new_buffer("first\nsecond");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("second", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\tfirst\nsecond");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\tfirst\n    second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\tfirst\n \tsecond");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\t\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\tfirst\n\t second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\t\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\tfirst }\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\t\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\tfirst } {}\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\t\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\tfirst {}\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\t\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\tfirst { ( }\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\t\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\tfirst {\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\t\t\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\t{\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\t\t\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("{\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("{}()[\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("\tsecond", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("{}()[]>\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("second", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\n\t");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t\n    ");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("{\n}");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("}", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\t{}\n}");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("}", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("first\n}");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("}", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("{{\n}");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("}", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("\tfirst\n\nsecond");
+        buffer.fix_line_indentation(indentation_config, 2, &mut events);
+        assert_eq!("\tsecond", buffer.content().lines()[2].as_str());
+
+        let indentation_config = BufferIndentationConfig {
+            tab_size: NonZeroU8::new(4).unwrap(),
+            indent_with_tabs: false,
+        };
+
+        let mut buffer = new_buffer("\tfirst\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("    second", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("    first\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("    second", buffer.content().lines()[1].as_str());
     }
 }

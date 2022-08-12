@@ -1,10 +1,12 @@
 use crate::{
-    buffer::{Buffer, BufferCollection, BufferHandle, CharDisplayDistances},
+    buffer::{
+        Buffer, BufferCollection, BufferHandle, BufferIndentationConfig, CharDisplayDistances,
+    },
     buffer_history::EditKind,
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
-    events::{EditorEventTextInsert, EditorEventWriter},
+    events::{BufferEditMutGuard, EditorEventTextInsert, EditorEventWriter},
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -427,6 +429,30 @@ impl BufferView {
         let mut events = events.buffer_range_deletes_mut_guard(self.buffer_handle);
         for cursor in self.cursors[..].iter().rev() {
             buffer.delete_range(word_database, cursor.to_range(), &mut events);
+        }
+    }
+
+    pub fn fix_indentation_in_cursor_ranges(
+        &self,
+        indentation_config: BufferIndentationConfig,
+        buffers: &mut BufferCollection,
+        events: &mut EditorEventWriter,
+    ) {
+        let buffer = buffers.get_mut(self.buffer_handle);
+        let mut events = BufferEditMutGuard::new(events, self.buffer_handle);
+
+        let mut last_fix_line_index = BufferPositionIndex::MAX;
+        for cursor in self.cursors[..].iter().rev() {
+            let range = cursor.to_range();
+            let from_line_index = range.from.line_index as BufferPositionIndex;
+            let to_line_index = range.to.line_index as BufferPositionIndex;
+            let from_line_index =
+                from_line_index + (from_line_index == last_fix_line_index) as BufferPositionIndex;
+            last_fix_line_index = to_line_index;
+
+            for line_index in from_line_index..=to_line_index {
+                buffer.fix_line_indentation(indentation_config, line_index as _, &mut events);
+            }
         }
     }
 

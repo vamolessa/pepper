@@ -719,10 +719,9 @@ pub fn register_commands(commands: &mut CommandManager) {
         for cursor in buffer_view.cursors[..].iter().rev() {
             let range = cursor.to_range();
             let from_line_index = range.from.line_index;
-            let mut to_line_index = range.to.line_index;
-            if to_line_index == last_toggle_line_index {
-                to_line_index = to_line_index.saturating_sub(1);
-            }
+            let to_line_index = range.to.line_index;
+            let to_line_index =
+                to_line_index.saturating_sub((to_line_index == last_toggle_line_index) as _);
             last_toggle_line_index = from_line_index;
 
             for line_index in (from_line_index..=to_line_index).rev() {

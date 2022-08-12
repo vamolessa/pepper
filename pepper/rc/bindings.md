@@ -95,6 +95,7 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `d` | delete selected text |
 | `i` | delete selected text and enter insert mode |
 | `<`, `>` | indent/dedent selected lines |
+| `=` | fix indent on selected lines |
 | `y` | copy selected text to clipboard |
 | `Y` | delete selected text and paste from clipboard |
 | `<c-y><lowercase-char>` | copy selected text to register `<char>` |
