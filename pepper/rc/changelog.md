@@ -8,6 +8,7 @@
 - changed readline input and prompt are now registers `i` and `p` respectively
 - removed `@readline-input()` as the input can now be accessed by `register(i)`
 - added `toggle-comment` which will toggle a prefix comment for each line reached by a cursor
+- fix lsp rename crash when editing files that are not opened in a buffer
 
 # 0.29.0
 - added diagnostic logging to `spawn` command
