@@ -12,6 +12,7 @@ use crate::{
         parse_path_and_ranges, parse_process_command, validate_process_command, LogKind,
         RegisterKey, REGISTER_READLINE_INPUT,
     },
+    events::BufferEditMutGuard,
     help,
     mode::{picker, readline, ModeKind},
     platform::{PlatformRequest, ProcessTag},
@@ -713,6 +714,10 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let mut last_toggle_line_index = BufferPositionIndex::MAX;
 
+        let events = ctx.editor.events.writer();
+        let mut edits =
+            BufferEditMutGuard::TextInserts(events.buffer_text_inserts_mut_guard(buffer.handle()));
+
         for cursor in buffer_view.cursors[..].iter().rev() {
             let range = cursor.to_range();
             let from_line_index = range.from.line_index;
@@ -732,29 +737,23 @@ pub fn register_commands(commands: &mut CommandManager) {
 
                 if line.as_str()[position.column_byte_index as usize..].starts_with(comment_prefix)
                 {
-                    let mut events = ctx
-                        .editor
-                        .events
-                        .writer()
-                        .buffer_range_deletes_mut_guard(buffer.handle());
                     let to_column_byte_index =
                         position.column_byte_index + comment_prefix.len() as BufferPositionIndex;
                     let range = BufferRange::between(
                         position,
                         BufferPosition::line_col(line_index, to_column_byte_index),
                     );
-                    buffer.delete_range(&mut ctx.editor.word_database, range, &mut events);
+                    buffer.delete_range(
+                        &mut ctx.editor.word_database,
+                        range,
+                        edits.to_range_deletes(),
+                    );
                 } else {
-                    let mut events = ctx
-                        .editor
-                        .events
-                        .writer()
-                        .buffer_text_inserts_mut_guard(buffer.handle());
                     buffer.insert_text(
                         &mut ctx.editor.word_database,
                         position,
                         comment_prefix,
-                        &mut events,
+                        edits.to_text_inserts(),
                     );
                 }
             }
@@ -981,4 +980,3 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
-

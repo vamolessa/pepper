@@ -1451,38 +1451,6 @@ impl Buffer {
             }
         }
 
-        /*
-        for edit in edits.clone() {
-            match edit.kind {
-                EditKind::Insert => {
-                    Self::insert_text_no_history(
-                        content,
-                        uses_word_database,
-                        word_database,
-                        edit.range.from,
-                        edit.text,
-                    );
-                    events
-                        .buffer_text_inserts_mut_guard(self.handle)
-                        .add(edit.range, edit.text);
-                    //edit_events.add_insert(edit.range, edit.text);
-                }
-                EditKind::Delete => {
-                    Self::delete_range_no_history(
-                        content,
-                        uses_word_database,
-                        word_database,
-                        edit.range,
-                    );
-                    events
-                        .buffer_range_deletes_mut_guard(self.handle)
-                        .add(edit.range);
-                    //edit_events.add_delete(edit.range);
-                }
-            }
-        }
-        */
-
         edits
     }
 

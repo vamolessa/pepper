@@ -91,6 +91,28 @@ struct EventQueue {
     range_deletes: Vec<BufferRange>,
     cursors: Vec<Cursor>,
 }
+impl EventQueue {
+    fn buffer_text_inserts_mut_guard(&mut self, handle: BufferHandle) -> BufferTextInsertsMutGuard {
+        let previous_text_inserts_len = self.text_inserts.len() as _;
+        BufferTextInsertsMutGuard {
+            inner: self,
+            handle,
+            previous_text_inserts_len,
+        }
+    }
+
+    fn buffer_range_deletes_mut_guard(
+        &mut self,
+        handle: BufferHandle,
+    ) -> BufferRangeDeletesMutGuard {
+        let previous_range_deletes_len = self.range_deletes.len() as _;
+        BufferRangeDeletesMutGuard {
+            inner: self,
+            handle,
+            previous_range_deletes_len,
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct EditorEventReader(EventQueue);
@@ -106,24 +128,14 @@ impl EditorEventWriter {
         &mut self,
         handle: BufferHandle,
     ) -> BufferTextInsertsMutGuard {
-        let previous_text_inserts_len = self.0.text_inserts.len() as _;
-        BufferTextInsertsMutGuard {
-            inner: &mut self.0,
-            handle,
-            previous_text_inserts_len,
-        }
+        self.0.buffer_text_inserts_mut_guard(handle)
     }
 
     pub fn buffer_range_deletes_mut_guard(
         &mut self,
         handle: BufferHandle,
     ) -> BufferRangeDeletesMutGuard {
-        let previous_range_deletes_len = self.0.range_deletes.len() as _;
-        BufferRangeDeletesMutGuard {
-            inner: &mut self.0,
-            handle,
-            previous_range_deletes_len,
-        }
+        self.0.buffer_range_deletes_mut_guard(handle)
     }
 
     pub fn fix_cursors_mut_guard(&mut self, handle: BufferViewHandle) -> FixCursorMutGuard {
@@ -167,6 +179,62 @@ impl EditorEventQueue {
     pub(crate) fn assert_empty(&self) {
         assert!(self.read.0.events.is_empty());
         assert!(self.write.0.events.is_empty());
+    }
+}
+
+pub enum BufferEditMutGuard<'a> {
+    TextInserts(BufferTextInsertsMutGuard<'a>),
+    RangeDeletes(BufferRangeDeletesMutGuard<'a>),
+}
+impl<'a> BufferEditMutGuard<'a> {
+    pub fn to_text_inserts(&mut self) -> &mut BufferTextInsertsMutGuard<'a> {
+        match self {
+            Self::TextInserts(text_inserts) => text_inserts,
+            Self::RangeDeletes(range_deletes) => {
+                let event_queue = range_deletes.inner as *mut EventQueue;
+                let buffer_handle = range_deletes.handle;
+
+                std::mem::drop(range_deletes);
+                let event_queue = unsafe { &mut *event_queue };
+
+                let text_inserts = event_queue.buffer_text_inserts_mut_guard(buffer_handle);
+                *self = Self::TextInserts(text_inserts);
+                match self {
+                    Self::TextInserts(text_inserts) => text_inserts,
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+
+    pub fn to_range_deletes(&mut self) -> &mut BufferRangeDeletesMutGuard<'a> {
+        match self {
+            Self::TextInserts(text_inserts) => {
+                let event_queue = text_inserts.inner as *mut EventQueue;
+                let buffer_handle = text_inserts.handle;
+
+                std::mem::drop(text_inserts);
+                let event_queue = unsafe { &mut *event_queue };
+
+                let range_deletes = event_queue.buffer_range_deletes_mut_guard(buffer_handle);
+                *self = Self::RangeDeletes(range_deletes);
+                match self {
+                    Self::RangeDeletes(range_deletes) => range_deletes,
+                    _ => unreachable!(),
+                }
+            }
+            Self::RangeDeletes(range_deletes) => range_deletes,
+        }
+    }
+}
+impl<'a> From<BufferTextInsertsMutGuard<'a>> for BufferEditMutGuard<'a> {
+    fn from(other: BufferTextInsertsMutGuard<'a>) -> Self {
+        Self::TextInserts(other)
+    }
+}
+impl<'a> From<BufferRangeDeletesMutGuard<'a>> for BufferEditMutGuard<'a> {
+    fn from(other: BufferRangeDeletesMutGuard<'a>) -> Self {
+        Self::RangeDeletes(other)
     }
 }
 
