@@ -14,8 +14,8 @@ use crate::{
     cursor::Cursor,
     editor_utils::{find_delimiter_pair_at, ResidualStrBytes},
     events::{
-        BufferRangeDeletesMutGuard, BufferTextInsertsMutGuard, EditorEvent, EditorEventTextInsert,
-        EditorEventWriter, BufferEditMutGuard,
+        BufferEditMutGuard, BufferRangeDeletesMutGuard, BufferTextInsertsMutGuard, EditorEvent,
+        EditorEventTextInsert, EditorEventWriter,
     },
     help,
     pattern::Pattern,
@@ -29,8 +29,6 @@ use crate::{
 pub fn char_display_len(_: char) -> u8 {
     1
 }
-
-pub const TEST: usize = 0;
 
 #[derive(Clone, Copy)]
 pub struct DisplayLen {
