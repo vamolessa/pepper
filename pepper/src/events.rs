@@ -187,6 +187,10 @@ pub enum BufferEditMutGuard<'a> {
     RangeDeletes(BufferRangeDeletesMutGuard<'a>),
 }
 impl<'a> BufferEditMutGuard<'a> {
+    pub fn new(events: &'a mut EditorEventWriter, handle: BufferHandle) -> Self {
+        Self::TextInserts(events.buffer_text_inserts_mut_guard(handle))
+    }
+
     pub fn to_text_inserts(&mut self) -> &mut BufferTextInsertsMutGuard<'a> {
         match self {
             Self::TextInserts(text_inserts) => text_inserts,

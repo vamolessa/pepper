@@ -15,7 +15,7 @@ use crate::{
     editor_utils::{find_delimiter_pair_at, ResidualStrBytes},
     events::{
         BufferRangeDeletesMutGuard, BufferTextInsertsMutGuard, EditorEvent, EditorEventTextInsert,
-        EditorEventWriter,
+        EditorEventWriter, BufferEditMutGuard,
     },
     help,
     pattern::Pattern,
@@ -1397,58 +1397,27 @@ impl Buffer {
 
         let edits = selector(&mut self.history);
 
-        // TODO: use BufferEditMutGuard instead of nested manual loops
-
-        let mut edits_iter = edits.clone();
-        let mut next_edit = edits_iter.next();
-        loop {
-            let mut edit = match next_edit.take() {
-                Some(edit) => edit,
-                None => break,
-            };
+        let mut events = BufferEditMutGuard::new(events, self.handle);
+        for edit in edits.clone() {
             match edit.kind {
                 EditKind::Insert => {
-                    let mut events = events.buffer_text_inserts_mut_guard(self.handle);
-                    loop {
-                        Self::insert_text_no_history(
-                            content,
-                            uses_word_database,
-                            word_database,
-                            edit.range.from,
-                            edit.text,
-                        );
-                        events.add(edit.range, edit.text);
-
-                        edit = match edits_iter.next() {
-                            Some(edit) => edit,
-                            None => break,
-                        };
-                        if edit.kind != EditKind::Insert {
-                            next_edit = Some(edit);
-                            break;
-                        }
-                    }
+                    Self::insert_text_no_history(
+                        content,
+                        uses_word_database,
+                        word_database,
+                        edit.range.from,
+                        edit.text,
+                    );
+                    events.to_text_inserts().add(edit.range, edit.text);
                 }
                 EditKind::Delete => {
-                    let mut events = events.buffer_range_deletes_mut_guard(self.handle);
-                    loop {
-                        Self::delete_range_no_history(
-                            content,
-                            uses_word_database,
-                            word_database,
-                            edit.range,
-                        );
-                        events.add(edit.range);
-
-                        edit = match edits_iter.next() {
-                            Some(edit) => edit,
-                            None => break,
-                        };
-                        if edit.kind != EditKind::Delete {
-                            next_edit = Some(edit);
-                            break;
-                        }
-                    }
+                    Self::delete_range_no_history(
+                        content,
+                        uses_word_database,
+                        word_database,
+                        edit.range,
+                    );
+                    events.to_range_deletes().add(edit.range);
                 }
             }
         }

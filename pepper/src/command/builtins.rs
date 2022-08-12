@@ -714,9 +714,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let mut last_toggle_line_index = BufferPositionIndex::MAX;
 
-        let events = ctx.editor.events.writer();
-        let mut edits =
-            BufferEditMutGuard::TextInserts(events.buffer_text_inserts_mut_guard(buffer.handle()));
+        let mut events = BufferEditMutGuard::new(ctx.editor.events.writer(), buffer.handle());
 
         for cursor in buffer_view.cursors[..].iter().rev() {
             let range = cursor.to_range();
@@ -746,14 +744,14 @@ pub fn register_commands(commands: &mut CommandManager) {
                     buffer.delete_range(
                         &mut ctx.editor.word_database,
                         range,
-                        edits.to_range_deletes(),
+                        events.to_range_deletes(),
                     );
                 } else {
                     buffer.insert_text(
                         &mut ctx.editor.word_database,
                         position,
                         comment_prefix,
-                        edits.to_text_inserts(),
+                        events.to_text_inserts(),
                     );
                 }
             }
