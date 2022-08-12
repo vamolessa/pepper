@@ -30,6 +30,8 @@ use crate::{
     word_database::WordDatabase,
 };
 
+const _USEIT: usize = crate::buffer::TEST;
+
 #[derive(Clone, Copy)]
 pub enum EditorFlow {
     Continue,

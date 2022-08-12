@@ -30,6 +30,8 @@ pub fn char_display_len(_: char) -> u8 {
     1
 }
 
+pub const TEST: usize = 0;
+
 #[derive(Clone, Copy)]
 pub struct DisplayLen {
     pub len: u32,
