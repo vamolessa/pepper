@@ -415,6 +415,7 @@ impl TextEdit {
                     .buffer_range_deletes_mut_guard(buffer_handle);
                 buffer.delete_range(&mut editor.word_database, delete_range, &mut events);
             }
+
             let insert_range = {
                 let mut events = editor
                     .events
