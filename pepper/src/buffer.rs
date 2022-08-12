@@ -1397,6 +1397,8 @@ impl Buffer {
 
         let edits = selector(&mut self.history);
 
+        // TODO: use BufferEditMutGuard instead of nested manual loops
+
         let mut edits_iter = edits.clone();
         let mut next_edit = edits_iter.next();
         loop {
