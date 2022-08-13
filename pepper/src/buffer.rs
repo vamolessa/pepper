@@ -1419,7 +1419,6 @@ impl Buffer {
                     '(' => ('(', ')'),
                     '[' => ('[', ']'),
                     '{' => ('{', '}'),
-                    '<' => ('<', '>'),
                     _ => continue,
                 };
                 balance = 1;
@@ -1459,8 +1458,8 @@ impl Buffer {
 
         for c in line.0.chars() {
             match c {
-                '(' | '[' | '{' | '<' => break,
-                ')' | ']' | '}' | '>' => {
+                '(' | '[' | '{' => break,
+                ')' | ']' | '}' => {
                     indentation = indentation.saturating_sub(1);
                     break;
                 }
@@ -2604,5 +2603,13 @@ mod tests {
         let mut buffer = new_buffer("    first\n second");
         buffer.fix_line_indentation(indentation_config, 1, &mut events);
         assert_eq!("    second", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("        first\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("        second", buffer.content().lines()[1].as_str());
+
+        let mut buffer = new_buffer("     first\n second");
+        buffer.fix_line_indentation(indentation_config, 1, &mut events);
+        assert_eq!("        second", buffer.content().lines()[1].as_str());
     }
 }
