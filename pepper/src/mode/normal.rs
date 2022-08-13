@@ -1199,7 +1199,6 @@ impl State {
                 ..
             } => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
-                let cursor_count = buffer_view.cursors[..].len();
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
                 let count = state.count.max(1);
 
@@ -1208,9 +1207,15 @@ impl State {
                     .events
                     .writer()
                     .buffer_range_deletes_mut_guard(buffer.handle());
-                for i in 0..cursor_count {
-                    let range = ctx.editor.buffer_views.get(handle).cursors[i].to_range();
-                    for line_index in range.from.line_index..=range.to.line_index {
+
+                let mut previous_line_index = BufferPositionIndex::MAX;
+                for cursor in &buffer_view.cursors[..] {
+                    let range = cursor.to_range();
+                    let from_line_index = previous_line_index.wrapping_add(1).max(range.from.line_index);
+                    let to_line_index = range.to.line_index;
+                    previous_line_index = to_line_index;
+
+                    for line_index in from_line_index..=to_line_index {
                         let line = buffer.content().lines()[line_index as usize].as_str();
                         let mut indentation_column_index = 0;
 
@@ -1272,15 +1277,29 @@ impl State {
                     .buffer_text_inserts_mut_guard(buffer.handle());
 
                 let cursors = &buffer_view.cursors[..];
-                let cursor_count = cursors.len();
-                for cursor in cursors {
+
+                let mut all_empty_lines = true;
+                let lines = buffer.content().lines();
+                'cursors_loop: for cursor in cursors {
                     let range = cursor.to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        if cursor_count > 1
-                            && !buffer.content().lines()[line_index as usize]
-                                .as_str()
-                                .is_empty()
-                        {
+                        if !lines[line_index as usize].as_str().is_empty() {
+                            all_empty_lines = false;
+                            break 'cursors_loop;
+                        }
+                    }
+                }
+
+                let mut previous_line_index = BufferPositionIndex::MAX;
+                for cursor in cursors {
+                    let range = cursor.to_range();
+                    let from_line_index = previous_line_index.wrapping_add(1).max(range.from.line_index);
+                    let to_line_index = range.to.line_index;
+                    previous_line_index = to_line_index;
+
+                    for line_index in from_line_index..=to_line_index {
+                        let lines = buffer.content().lines();
+                        if all_empty_lines || !lines[line_index as usize].as_str().is_empty() {
                             buffer.insert_text(
                                 &mut ctx.editor.word_database,
                                 BufferPosition::line_col(line_index, 0),

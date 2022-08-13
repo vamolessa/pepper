@@ -386,7 +386,7 @@ impl HighlightedBuffer {
         self.dirty_line_indexes.sort_unstable();
 
         let mut index = self.dirty_line_indexes[0];
-        let mut last_dirty_index = BufferPositionIndex::MAX;
+        let mut previous_dirty_index = BufferPositionIndex::MAX;
 
         let mut previous_parse_state = match index.checked_sub(1) {
             Some(i) => self.lines[i as usize].parse_state,
@@ -399,12 +399,12 @@ impl HighlightedBuffer {
             let dirty_index = self.dirty_line_indexes[i];
             i += 1;
 
-            if dirty_index < index || dirty_index == last_dirty_index {
+            if dirty_index < index || dirty_index == previous_dirty_index {
                 continue;
             }
 
             index = dirty_index;
-            last_dirty_index = dirty_index;
+            previous_dirty_index = dirty_index;
 
             while index < self.highlighted_len as _ {
                 let bline = buffer_lines[index as usize].as_str();

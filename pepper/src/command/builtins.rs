@@ -712,17 +712,14 @@ pub fn register_commands(commands: &mut CommandManager) {
         let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
         let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
 
-        let mut last_toggle_line_index = BufferPositionIndex::MAX;
-
         let mut events = BufferEditMutGuard::new(ctx.editor.events.writer(), buffer.handle());
 
-        for cursor in buffer_view.cursors[..].iter().rev() {
+        let mut previous_toggle_line_index = BufferPositionIndex::MAX;
+        for cursor in &buffer_view.cursors[..] {
             let range = cursor.to_range();
-            let from_line_index = range.from.line_index;
+            let from_line_index = previous_toggle_line_index.wrapping_add(1).max(range.from.line_index);
             let to_line_index = range.to.line_index;
-            let to_line_index =
-                to_line_index.saturating_sub((to_line_index == last_toggle_line_index) as _);
-            last_toggle_line_index = from_line_index;
+            previous_toggle_line_index = to_line_index;
 
             for line_index in (from_line_index..=to_line_index).rev() {
                 let line = &buffer.content().lines()[line_index as usize];

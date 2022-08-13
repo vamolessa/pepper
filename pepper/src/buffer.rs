@@ -357,19 +357,17 @@ impl<'a> BufferBreakpointMutCollection<'a> {
     }
 
     pub fn toggle_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
-        let mut last_line_index = BufferPositionIndex::MAX;
+        let mut previous_line_index = BufferPositionIndex::MAX;
         for cursor in cursors {
             let range = cursor.to_range();
 
-            let mut from_line_index = range.from.line_index;
-            from_line_index += (from_line_index == last_line_index) as BufferPositionIndex;
+            let from_line_index = previous_line_index.wrapping_add(1).max(range.from.line_index);
             let to_line_index = range.to.line_index;
+            previous_line_index = to_line_index;
 
             for line_index in from_line_index..=to_line_index {
                 self.inner.breakpoints.push(BufferBreakpoint { line_index });
             }
-
-            last_line_index = to_line_index;
         }
 
         self.inner
