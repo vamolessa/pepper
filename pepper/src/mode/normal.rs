@@ -1250,8 +1250,6 @@ impl State {
                 alt: false,
                 ..
             } => {
-                let cursor_count = ctx.editor.buffer_views.get(handle).cursors[..].len();
-
                 let extender = if ctx.editor.config.indent_with_tabs {
                     let count = state.count.max(1) as _;
                     std::iter::repeat('\t').take(count)
@@ -1272,12 +1270,16 @@ impl State {
                     .events
                     .writer()
                     .buffer_text_inserts_mut_guard(buffer.handle());
-                for i in 0..cursor_count {
-                    let range = ctx.editor.buffer_views.get(handle).cursors[i].to_range();
+
+                let cursors = &buffer_view.cursors[..];
+                let cursor_count = cursors.len();
+                for cursor in cursors {
+                    let range = cursor.to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        if !buffer.content().lines()[line_index as usize]
-                            .as_str()
-                            .is_empty()
+                        if cursor_count > 1
+                            && !buffer.content().lines()[line_index as usize]
+                                .as_str()
+                                .is_empty()
                         {
                             buffer.insert_text(
                                 &mut ctx.editor.word_database,

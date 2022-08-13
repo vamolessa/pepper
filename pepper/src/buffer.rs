@@ -1506,8 +1506,7 @@ impl Buffer {
             BufferPosition::line_col(line_index, insert_len as _),
         );
 
-        let insert_text =
-            &self.content.lines()[line_index as usize].as_str()[..insert_len];
+        let insert_text = &self.content.lines()[line_index as usize].as_str()[..insert_len];
 
         events.to_text_inserts().add(insert_range, insert_text);
         if self.properties.history_enabled {
@@ -2490,7 +2489,12 @@ mod tests {
             let mut word_database = WordDatabase::new();
             let mut events = EditorEventQueue::default();
             let mut events = events.writer().buffer_text_inserts_mut_guard(handle);
-            buffer.insert_text(&mut word_database, BufferPosition::zero(), text, &mut events);
+            buffer.insert_text(
+                &mut word_database,
+                BufferPosition::zero(),
+                text,
+                &mut events,
+            );
             buffer
         }
 
