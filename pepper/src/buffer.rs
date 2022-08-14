@@ -1381,7 +1381,7 @@ impl Buffer {
         let mut indentation: usize = 0;
         let mut pending_spaces = 0;
         let mut chars = previous_line_text.chars();
-        let last_char_len = loop {
+        loop {
             match chars.next() {
                 Some('\t') => {
                     indentation += 1;
@@ -1395,39 +1395,11 @@ impl Buffer {
                         pending_spaces = indentation_config.tab_size.get() - 1;
                     }
                 }
-                Some(c) => break c.len_utf8(),
-                None => break 0,
-            }
-        };
-
-        let indentation_len = previous_line_text.len() - chars.as_str().len() - last_char_len;
-
-        let mut balance: usize = 0;
-        let mut open_brace = '\0';
-        let mut close_brace = '\0';
-        for c in previous_line_text[indentation_len..].chars() {
-            if c == close_brace {
-                balance = balance.saturating_sub(1);
-                if balance == 0 {
-                    open_brace = '\0';
-                    close_brace = '\0';
-                }
-            } else if c == open_brace {
-                balance += 1;
-            } else if balance == 0 {
-                let (open_c, close_c) = match c {
-                    '(' => ('(', ')'),
-                    '[' => ('[', ']'),
-                    '{' => ('{', '}'),
-                    _ => continue,
-                };
-                balance = 1;
-                open_brace = open_c;
-                close_brace = close_c;
+                _ => break,
             }
         }
 
-        if balance > 0 {
+        if previous_line_text.ends_with(&['(', '[', '{', '<']) {
             indentation += 1;
         }
 
@@ -1456,15 +1428,8 @@ impl Buffer {
 
         line.delete_range(display_lens, ..delete_len);
 
-        for c in line.0.chars() {
-            match c {
-                '(' | '[' | '{' => break,
-                ')' | ']' | '}' => {
-                    indentation = indentation.saturating_sub(1);
-                    break;
-                }
-                _ => (),
-            }
+        if line.0.trim_start().starts_with(&[')', ']', '}', '>']) {
+            indentation = indentation.saturating_sub(1);
         }
 
         let insert_len = if line.0.is_empty() {
