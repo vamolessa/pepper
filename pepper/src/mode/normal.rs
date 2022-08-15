@@ -1211,7 +1211,9 @@ impl State {
                 let mut previous_line_index = BufferPositionIndex::MAX;
                 for cursor in &buffer_view.cursors[..] {
                     let range = cursor.to_range();
-                    let from_line_index = previous_line_index.wrapping_add(1).max(range.from.line_index);
+                    let from_line_index = previous_line_index
+                        .wrapping_add(1)
+                        .max(range.from.line_index);
                     let to_line_index = range.to.line_index;
                     previous_line_index = to_line_index;
 
@@ -1293,7 +1295,9 @@ impl State {
                 let mut previous_line_index = BufferPositionIndex::MAX;
                 for cursor in cursors {
                     let range = cursor.to_range();
-                    let from_line_index = previous_line_index.wrapping_add(1).max(range.from.line_index);
+                    let from_line_index = previous_line_index
+                        .wrapping_add(1)
+                        .max(range.from.line_index);
                     let to_line_index = range.to.line_index;
                     previous_line_index = to_line_index;
 

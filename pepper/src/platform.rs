@@ -66,6 +66,22 @@ pub enum PlatformEvent {
     ProcessExit {
         tag: ProcessTag,
     },
+    IpcConnected {
+        tag: IpcTag,
+        handle: PlatformIpcHandle,
+    },
+    IpcOutput {
+        tag: IpcTag,
+        buf: PooledBuf,
+    },
+    IpcClosed {
+        tag: IpcTag,
+    },
+}
+
+pub enum IpcReadMode {
+    ByteStream,
+    MessageStream,
 }
 
 pub enum PlatformRequest {
@@ -93,6 +109,19 @@ pub enum PlatformRequest {
     KillProcess {
         handle: PlatformProcessHandle,
     },
+    ConnectToIpc {
+        tag: IpcTag,
+        read: bool,
+        write: bool,
+        read_mode: IpcReadMode,
+    },
+    WriteToIpc {
+        handle: PlatformIpcHandle,
+        buf: PooledBuf,
+    },
+    CloseIpc {
+        handle: PlatformIpcHandle,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -107,7 +136,16 @@ pub enum ProcessTag {
 }
 
 #[derive(Clone, Copy)]
+pub struct IpcTag {
+    pub plugin_handle: PluginHandle,
+    pub id: u32,
+}
+
+#[derive(Clone, Copy)]
 pub struct PlatformProcessHandle(pub u8);
+
+#[derive(Clone, Copy)]
+pub struct PlatformIpcHandle(pub u8);
 
 #[derive(Default)]
 pub struct PlatformRequestCollection {
@@ -232,7 +270,8 @@ impl BufPool {
 pub fn drop_request(buf_pool: &mut BufPool, request: PlatformRequest) {
     match request {
         PlatformRequest::WriteToClient { buf, .. }
-        | PlatformRequest::WriteToProcess { buf, .. } => {
+        | PlatformRequest::WriteToProcess { buf, .. }
+        | PlatformRequest::WriteToIpc { buf, .. } => {
             buf_pool.release(buf);
         }
         PlatformRequest::Quit
@@ -240,6 +279,8 @@ pub fn drop_request(buf_pool: &mut BufPool, request: PlatformRequest) {
         | PlatformRequest::CloseClient { .. }
         | PlatformRequest::SpawnProcess { .. }
         | PlatformRequest::CloseProcessInput { .. }
-        | PlatformRequest::KillProcess { .. } => (),
+        | PlatformRequest::KillProcess { .. }
+        | PlatformRequest::ConnectToIpc { .. }
+        | PlatformRequest::CloseIpc { .. } => (),
     }
 }

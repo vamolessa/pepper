@@ -462,6 +462,24 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                         events.push(PlatformEvent::ProcessExit { tag });
                     }
                 }
+                PlatformRequest::ConnectToIpc {
+                    tag,
+                    read,
+                    write,
+                    read_mode,
+                } => {
+                    let _ = tag;
+                    let _ = read;
+                    let _ = write;
+                    let _ = read_mode;
+                }
+                PlatformRequest::WriteToIpc { handle, buf } => {
+                    let _ = handle;
+                    application.ctx.platform.buf_pool.release(buf);
+                }
+                PlatformRequest::CloseIpc { handle } => {
+                    let _ = handle;
+                }
             }
         }
 

@@ -235,6 +235,20 @@ impl ServerApplication {
                     }
                     self.ctx.trigger_event_handlers();
                 }
+                PlatformEvent::IpcConnected { tag, handle } => {
+                    let _ = tag;
+                    let _ = handle;
+                    self.ctx.trigger_event_handlers();
+                }
+                PlatformEvent::IpcOutput { tag, buf } => {
+                    let _ = tag;
+                    self.ctx.trigger_event_handlers();
+                    self.ctx.platform.buf_pool.release(buf);
+                }
+                PlatformEvent::IpcClosed { tag } => {
+                    let _ = tag;
+                    self.ctx.trigger_event_handlers();
+                }
             }
         }
 
