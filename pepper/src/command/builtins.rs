@@ -714,14 +714,36 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let mut events = BufferEditMutGuard::new(ctx.editor.events.writer(), buffer.handle());
 
+        let mut all_lines_commented = true;
+
         let mut previous_toggle_line_index = BufferPositionIndex::MAX;
-        for cursor in &buffer_view.cursors[..] {
+        'cursor_loop: for cursor in &buffer_view.cursors[..] {
             let range = cursor.to_range();
-            let from_line_index = previous_toggle_line_index.wrapping_add(1).max(range.from.line_index);
+            let from_line_index = previous_toggle_line_index
+                .wrapping_add(1)
+                .max(range.from.line_index);
             let to_line_index = range.to.line_index;
             previous_toggle_line_index = to_line_index;
 
-            for line_index in (from_line_index..=to_line_index).rev() {
+            for line_index in from_line_index..=to_line_index {
+                let line = buffer.content().lines()[line_index as usize].as_str();
+                if !line.trim_start().starts_with(comment_prefix) {
+                    all_lines_commented = false;
+                    break 'cursor_loop;
+                }
+            }
+        }
+
+        let mut previous_toggle_line_index = BufferPositionIndex::MAX;
+        for cursor in &buffer_view.cursors[..] {
+            let range = cursor.to_range();
+            let from_line_index = previous_toggle_line_index
+                .wrapping_add(1)
+                .max(range.from.line_index);
+            let to_line_index = range.to.line_index;
+            previous_toggle_line_index = to_line_index;
+
+            for line_index in from_line_index..=to_line_index {
                 let line = &buffer.content().lines()[line_index as usize];
                 let mut position = BufferPosition::line_col(line_index, 0);
                 let word = line.word_at(0);
@@ -729,8 +751,16 @@ pub fn register_commands(commands: &mut CommandManager) {
                     position.column_byte_index += word.text.len() as BufferPositionIndex;
                 }
 
-                if line.as_str()[position.column_byte_index as usize..].starts_with(comment_prefix)
-                {
+                let is_line_commented = line.as_str()[position.column_byte_index as usize..]
+                    .starts_with(comment_prefix);
+                if !is_line_commented {
+                    buffer.insert_text(
+                        &mut ctx.editor.word_database,
+                        position,
+                        comment_prefix,
+                        events.to_text_inserts(),
+                    );
+                } else if all_lines_commented {
                     let to_column_byte_index =
                         position.column_byte_index + comment_prefix.len() as BufferPositionIndex;
                     let range = BufferRange::between(
@@ -742,16 +772,11 @@ pub fn register_commands(commands: &mut CommandManager) {
                         range,
                         events.to_range_deletes(),
                     );
-                } else {
-                    buffer.insert_text(
-                        &mut ctx.editor.word_database,
-                        position,
-                        comment_prefix,
-                        events.to_text_inserts(),
-                    );
                 }
             }
         }
+
+        buffer.commit_edits();
 
         Ok(())
     });
@@ -974,3 +999,4 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
+
