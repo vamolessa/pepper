@@ -726,8 +726,10 @@ pub fn register_commands(commands: &mut CommandManager) {
             previous_toggle_line_index = to_line_index;
 
             for line_index in from_line_index..=to_line_index {
-                let line = buffer.content().lines()[line_index as usize].as_str();
-                if !line.trim_start().starts_with(comment_prefix) {
+                let line = buffer.content().lines()[line_index as usize]
+                    .as_str()
+                    .trim_start();
+                if !line.is_empty() && !line.starts_with(comment_prefix) {
                     all_lines_commented = false;
                     break 'cursor_loop;
                 }
@@ -751,15 +753,16 @@ pub fn register_commands(commands: &mut CommandManager) {
                     position.column_byte_index += word.text.len() as BufferPositionIndex;
                 }
 
-                let is_line_commented = line.as_str()[position.column_byte_index as usize..]
-                    .starts_with(comment_prefix);
-                if !is_line_commented {
-                    buffer.insert_text(
-                        &mut ctx.editor.word_database,
-                        position,
-                        comment_prefix,
-                        events.to_text_inserts(),
-                    );
+                let line = &line.as_str()[position.column_byte_index as usize..];
+                if !line.starts_with(comment_prefix) {
+                    if !line.is_empty() {
+                        buffer.insert_text(
+                            &mut ctx.editor.word_database,
+                            position,
+                            comment_prefix,
+                            events.to_text_inserts(),
+                        );
+                    }
                 } else if all_lines_commented {
                     let to_column_byte_index =
                         position.column_byte_index + comment_prefix.len() as BufferPositionIndex;
