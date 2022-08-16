@@ -1311,6 +1311,8 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
     let mut timeout = None;
     let mut need_redraw = false;
 
+    let mut ipc_path_u16 = Vec::new();
+
     loop {
         event_listener.track(listener.event(), EventSource::ConnectionListener);
         let mut event_count = 1;
@@ -1471,19 +1473,23 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                                         continue;
                                     }
 
-                                    // TODO: convert path
-                                    *ipc = AsyncIpc::connect(
-                                        tag,
-                                        &[],
-                                        read,
-                                        write,
-                                        read_mode,
-                                        buf_len,
-                                    );
-                                    if ipc.is_some() {
-                                        let handle = PlatformIpcHandle(i as _);
-                                        events.push(PlatformEvent::IpcConnected { tag, handle });
-                                        connected = true;
+                                    if let Ok(path) = std::str::from_utf8(path.as_bytes()) {
+                                        ipc_path_u16.clear();
+                                        ipc_path_u16.extend(path.encode_utf16());
+                                        *ipc = AsyncIpc::connect(
+                                            tag,
+                                            &ipc_path_u16,
+                                            read,
+                                            write,
+                                            read_mode,
+                                            buf_len,
+                                        );
+                                        if ipc.is_some() {
+                                            let handle = PlatformIpcHandle(i as _);
+                                            events
+                                                .push(PlatformEvent::IpcConnected { tag, handle });
+                                            connected = true;
+                                        }
                                     }
                                     break;
                                 }
