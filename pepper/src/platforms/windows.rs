@@ -1471,7 +1471,7 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                                         continue;
                                     }
 
-                                    let _ = path;
+                                    // TODO: convert path
                                     *ipc = AsyncIpc::connect(
                                         tag,
                                         &[],
@@ -1491,6 +1491,8 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                             if !connected {
                                 events.push(PlatformEvent::IpcClose { tag });
                             }
+
+                            application.ctx.platform.buf_pool.release(path);
                         }
                         PlatformRequest::WriteToIpc { handle, buf } => {
                             let index = handle.0 as usize;

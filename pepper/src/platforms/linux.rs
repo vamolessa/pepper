@@ -397,6 +397,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 }
                 PlatformRequest::ConnectToIpc {
                     tag,
+                    path,
                     read,
                     write,
                     read_mode,
@@ -407,6 +408,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     let _ = write;
                     let _ = read_mode;
                     let _ = buf_len;
+
+                    application.ctx.platform.buf_pool.release(path);
                 }
                 PlatformRequest::WriteToIpc { handle, buf } => {
                     let _ = handle;
