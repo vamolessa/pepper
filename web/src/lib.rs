@@ -122,6 +122,13 @@ fn process_requests(app: &mut Application) {
                 }
                 PlatformRequest::CloseProcessInput { .. } => (),
                 PlatformRequest::KillProcess { .. } => (),
+                PlatformRequest::ConnectToIpc { path, .. } => {
+                    app.server.ctx.platform.buf_pool.release(path);
+                }
+                PlatformRequest::WriteToIpc { buf, .. } => {
+                    app.server.ctx.platform.buf_pool.release(buf);
+                }
+                PlatformRequest::CloseIpc { .. } => (),
             }
         }
     }
