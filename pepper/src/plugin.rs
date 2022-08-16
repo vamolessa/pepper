@@ -6,7 +6,7 @@ use crate::{
     client::ClientHandle,
     editor::{EditorContext, EditorFlow, KeysIterator},
     help,
-    platform::PlatformProcessHandle,
+    platform::{PlatformIpcHandle, PlatformProcessHandle},
     ResourceFile,
 };
 
@@ -28,6 +28,10 @@ pub struct Plugin {
     pub on_process_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
     pub on_process_exit: fn(PluginHandle, &mut EditorContext, u32),
 
+    pub on_ipc_spawned: fn(PluginHandle, &mut EditorContext, u32, PlatformIpcHandle),
+    pub on_ipc_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
+    pub on_ipc_exit: fn(PluginHandle, &mut EditorContext, u32),
+
     pub on_keys: fn(
         PluginHandle,
         &mut EditorContext,
@@ -46,6 +50,10 @@ impl Default for Plugin {
             on_process_spawned: |_, _, _, _| (),
             on_process_output: |_, _, _, _| (),
             on_process_exit: |_, _, _| (),
+
+            on_ipc_spawned: |_, _, _, _| (),
+            on_ipc_output: |_, _, _, _| (),
+            on_ipc_exit: |_, _, _| (),
 
             on_keys: |_, _, _, _| Some(EditorFlow::Continue),
             on_completion: |_, _, _| false,
@@ -135,5 +143,30 @@ impl PluginCollection {
     ) {
         let f = ctx.plugins.plugins[plugin_handle.0 as usize].on_process_exit;
         f(plugin_handle, ctx, process_id);
+    }
+
+    pub(crate) fn on_ipc_connected(
+        ctx: &mut EditorContext,
+        plugin_handle: PluginHandle,
+        ipc_id: u32,
+        ipc_handle: PlatformIpcHandle,
+    ) {
+        let f = ctx.plugins.plugins[plugin_handle.0 as usize].on_ipc_spawned;
+        f(plugin_handle, ctx, ipc_id, ipc_handle);
+    }
+
+    pub(crate) fn on_ipc_output(
+        ctx: &mut EditorContext,
+        plugin_handle: PluginHandle,
+        ipc_id: u32,
+        bytes: &[u8],
+    ) {
+        let f = ctx.plugins.plugins[plugin_handle.0 as usize].on_ipc_output;
+        f(plugin_handle, ctx, ipc_id, bytes);
+    }
+
+    pub(crate) fn on_ipc_close(ctx: &mut EditorContext, plugin_handle: PluginHandle, ipc_id: u32) {
+        let f = ctx.plugins.plugins[plugin_handle.0 as usize].on_ipc_exit;
+        f(plugin_handle, ctx, ipc_id);
     }
 }

@@ -236,17 +236,26 @@ impl ServerApplication {
                     self.ctx.trigger_event_handlers();
                 }
                 PlatformEvent::IpcConnected { tag, handle } => {
-                    let _ = tag;
-                    let _ = handle;
+                    PluginCollection::on_ipc_connected(
+                        &mut self.ctx,
+                        tag.plugin_handle,
+                        tag.id,
+                        handle,
+                    );
                     self.ctx.trigger_event_handlers();
                 }
                 PlatformEvent::IpcOutput { tag, buf } => {
-                    let _ = tag;
+                    PluginCollection::on_ipc_output(
+                        &mut self.ctx,
+                        tag.plugin_handle,
+                        tag.id,
+                        buf.as_bytes(),
+                    );
                     self.ctx.trigger_event_handlers();
                     self.ctx.platform.buf_pool.release(buf);
                 }
-                PlatformEvent::IpcClosed { tag } => {
-                    let _ = tag;
+                PlatformEvent::IpcClose { tag } => {
+                    PluginCollection::on_ipc_close(&mut self.ctx, tag.plugin_handle, tag.id);
                     self.ctx.trigger_event_handlers();
                 }
             }

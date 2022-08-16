@@ -446,8 +446,8 @@ impl Process {
 
     pub fn read(&mut self, buf_pool: &mut BufPool) -> Result<Option<PooledBuf>, ()> {
         use io::Read;
-        match self.child.stdout {
-            Some(ref mut stdout) => {
+        match &mut self.child.stdout {
+            Some(stdout) => {
                 let mut buf = buf_pool.acquire();
                 let write = buf.write_with_len(self.buf_len);
                 match stdout.read(write) {
@@ -467,8 +467,8 @@ impl Process {
 
     pub fn write(&mut self, buf: &[u8]) -> bool {
         use io::Write;
-        match self.child.stdin {
-            Some(ref mut stdin) => stdin.write_all(buf).is_ok(),
+        match &mut self.child.stdin {
+            Some(stdin) => stdin.write_all(buf).is_ok(),
             None => true,
         }
     }

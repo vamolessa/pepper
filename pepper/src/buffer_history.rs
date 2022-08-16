@@ -378,10 +378,8 @@ impl BufferHistory {
     ) -> impl Clone + ExactSizeIterator<Item = Edit> + DoubleEndedIterator<Item = Edit> {
         self.commit_edits();
 
-        let range = match self.state {
-            HistoryState::IterIndex {
-                ref mut group_index,
-            } => {
+        let range = match &mut self.state {
+            HistoryState::IterIndex { group_index } => {
                 if *group_index > 0 {
                     *group_index -= 1;
                     self.group_ranges[*group_index].clone()
@@ -408,10 +406,8 @@ impl BufferHistory {
     ) -> impl Clone + ExactSizeIterator<Item = Edit> + DoubleEndedIterator<Item = Edit> {
         self.commit_edits();
 
-        let range = match self.state {
-            HistoryState::IterIndex {
-                ref mut group_index,
-            } => {
+        let range = match &mut self.state {
+            HistoryState::IterIndex { group_index } => {
                 if *group_index < self.group_ranges.len() {
                     let range = self.group_ranges[*group_index].clone();
                     *group_index += 1;

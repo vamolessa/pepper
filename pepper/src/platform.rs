@@ -74,7 +74,7 @@ pub enum PlatformEvent {
         tag: IpcTag,
         buf: PooledBuf,
     },
-    IpcClosed {
+    IpcClose {
         tag: IpcTag,
     },
 }
@@ -111,9 +111,11 @@ pub enum PlatformRequest {
     },
     ConnectToIpc {
         tag: IpcTag,
+        path: PooledBuf,
         read: bool,
         write: bool,
         read_mode: IpcReadMode,
+        buf_len: usize,
     },
     WriteToIpc {
         handle: PlatformIpcHandle,

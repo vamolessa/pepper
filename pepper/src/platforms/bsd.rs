@@ -284,7 +284,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 EventSource::Client(index) => {
                     let handle = ClientHandle(index);
                     let index = index as usize;
-                    if let Some(ref mut connection) = client_connections[index] {
+                    if let Some(connection) = &mut client_connections[index] {
                         match event_kind {
                             EventKind::Read => {
                                 match read_from_connection(
@@ -326,7 +326,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 }
                 EventSource::Process(index) => {
                     let index = index as usize;
-                    if let Some(ref mut process) = processes[index] {
+                    if let Some(process) = &mut processes[index] {
                         let tag = process.tag();
                         match process.read(&mut application.ctx.platform.buf_pool) {
                             Ok(None) => (),
@@ -372,8 +372,8 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 }
                 PlatformRequest::WriteToClient { handle, buf } => {
                     let index = handle.0 as usize;
-                    match client_connections[index] {
-                        Some(ref mut connection) => {
+                    match &mut client_connections[index] {
+                        Some(connection) => {
                             let write_queue = &mut client_write_queue[index];
                             write_queue.push_back(buf);
 
@@ -430,7 +430,7 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                 }
                 PlatformRequest::WriteToProcess { handle, buf } => {
                     let index = handle.0 as usize;
-                    if let Some(ref mut process) = processes[index] {
+                    if let Some(process) = &mut processes[index] {
                         if !process.write(buf.as_bytes()) {
                             if let Some(fd) = process.try_as_raw_fd() {
                                 event_sources.remove_source(EventSource::Process(handle.0));
@@ -445,20 +445,20 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     application.ctx.platform.buf_pool.release(buf);
                 }
                 PlatformRequest::CloseProcessInput { handle } => {
-                    if let Some(ref mut process) = processes[handle.0 as usize] {
+                    let index = handle.0 as usize;
+                    if let Some(process) = &mut processes[index] {
                         process.close_input();
                     }
                 }
                 PlatformRequest::KillProcess { handle } => {
                     let index = handle.0 as usize;
-                    if let Some(ref mut process) = processes[index] {
+                    if let Some(mut process) = processes[index].take() {
                         if let Some(fd) = process.try_as_raw_fd() {
                             event_sources.remove_source(EventSource::Process(handle.0));
                             kqueue.remove(Event::FdRead(fd));
                         }
                         let tag = process.tag();
                         process.kill();
-                        processes[index] = None;
                         events.push(PlatformEvent::ProcessExit { tag });
                     }
                 }
@@ -467,11 +467,13 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
                     read,
                     write,
                     read_mode,
+                    buf_len,
                 } => {
                     let _ = tag;
                     let _ = read;
                     let _ = write;
                     let _ = read_mode;
+                    let _ = buf_len;
                 }
                 PlatformRequest::WriteToIpc { handle, buf } => {
                     let _ = handle;

@@ -37,9 +37,9 @@ use winapi::{
         winbase::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, CREATE_NEW_PROCESS_GROUP,
             CREATE_NO_WINDOW, FILE_FLAG_OVERLAPPED, FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE,
-            NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
-            PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
-            STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
+            NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_READMODE_MESSAGE,
+            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_ERROR_HANDLE,
+            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
             GetConsoleScreenBufferInfo, CTRL_C_EVENT, ENABLE_PROCESSED_OUTPUT,
@@ -71,8 +71,8 @@ use crate::{
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
-        drop_request, BufPool, Key, KeyCode, PlatformEvent, PlatformProcessHandle, PlatformRequest,
-        PooledBuf, ProcessTag,
+        drop_request, BufPool, IpcReadMode, IpcTag, Key, KeyCode, PlatformEvent, PlatformIpcHandle,
+        PlatformProcessHandle, PlatformRequest, PooledBuf, ProcessTag,
     },
     Args,
 };
@@ -419,11 +419,16 @@ fn is_pipped(handle: &Handle) -> bool {
     result != FILE_TYPE_CHAR
 }
 
-fn create_file(path: &[u16], share_mode: DWORD, flags: DWORD) -> Option<Handle> {
+fn create_file(
+    path: &[u16],
+    access_mode: DWORD,
+    share_mode: DWORD,
+    flags: DWORD,
+) -> Option<Handle> {
     let handle = unsafe {
         CreateFileW(
             path.as_ptr(),
-            GENERIC_READ | GENERIC_WRITE,
+            access_mode,
             share_mode,
             std::ptr::null_mut(),
             OPEN_EXISTING,
@@ -1087,11 +1092,162 @@ impl Drop for AsyncProcess {
     }
 }
 
+struct AsyncIpc {
+    tag: IpcTag,
+    _handle: Handle,
+    buf_len: usize,
+
+    reader: Option<AsyncIO>,
+    read_buf: Option<PooledBuf>,
+
+    writer: Option<AsyncIO>,
+    write_buf_queue: VecDeque<PooledBuf>,
+}
+impl AsyncIpc {
+    pub fn connect(
+        tag: IpcTag,
+        path: &[u16],
+        read: bool,
+        write: bool,
+        read_mode: IpcReadMode,
+        buf_len: usize,
+    ) -> Option<Self> {
+        if !read && !write {
+            return None;
+        }
+
+        let mut access_mode = 0;
+        if read {
+            access_mode |= GENERIC_READ;
+        }
+        if write {
+            access_mode |= GENERIC_WRITE;
+        }
+        let mut mode = match read_mode {
+            IpcReadMode::ByteStream => PIPE_READMODE_BYTE,
+            IpcReadMode::MessageStream => PIPE_READMODE_MESSAGE,
+        };
+
+        let handle = create_file(path, access_mode, 0, FILE_FLAG_OVERLAPPED)?;
+        let result = unsafe {
+            SetNamedPipeHandleState(
+                handle.0,
+                &mut mode,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+
+        if result == FALSE {
+            return None;
+        }
+
+        let raw_handle = handle.0;
+        Some(Self {
+            tag,
+            _handle: handle,
+            buf_len,
+
+            reader: read.then(|| AsyncIO::new(raw_handle)),
+            read_buf: None,
+
+            writer: write.then(|| AsyncIO::new(raw_handle)),
+            write_buf_queue: VecDeque::new(),
+        })
+    }
+
+    pub fn event_count(&self) -> usize {
+        self.reader.is_some() as usize + self.writer.is_some() as usize
+    }
+
+    pub fn read_event(&self) -> Option<&Event> {
+        self.reader.as_ref().map(AsyncIO::event)
+    }
+
+    pub fn write_event(&self) -> Option<&Event> {
+        if self.write_buf_queue.is_empty() {
+            None
+        } else {
+            self.writer.as_ref().map(AsyncIO::event)
+        }
+    }
+
+    pub fn read_async(&mut self, buf_pool: &mut BufPool) -> Result<Option<PooledBuf>, ()> {
+        match &mut self.reader {
+            Some(reader) => {
+                let mut buf = match self.read_buf.take() {
+                    Some(buf) => buf,
+                    None => buf_pool.acquire(),
+                };
+                let write = buf.write_with_len(self.buf_len);
+
+                match reader.read_async(write) {
+                    IoResult::Waiting => {
+                        self.read_buf = Some(buf);
+                        Ok(None)
+                    }
+                    IoResult::Ok(len) => {
+                        write.truncate(len);
+                        Ok(Some(buf))
+                    }
+                    IoResult::Err => {
+                        buf_pool.release(buf);
+                        Err(())
+                    }
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn enqueue_write(&mut self, buf: PooledBuf) {
+        if self.writer.is_some() {
+            self.write_buf_queue.push_back(buf);
+        }
+    }
+
+    pub fn write_pending_async(&mut self) -> Result<Option<PooledBuf>, VecDeque<PooledBuf>> {
+        match &mut self.writer {
+            Some(writer) => match self.write_buf_queue.get_mut(0) {
+                Some(buf) => match writer.write_async(buf.as_bytes()) {
+                    IoResult::Waiting => Ok(None),
+                    IoResult::Ok(len) => {
+                        buf.drain_start(len);
+                        if buf.as_bytes().is_empty() {
+                            Ok(self.write_buf_queue.pop_front())
+                        } else {
+                            Ok(None)
+                        }
+                    }
+                    IoResult::Err => {
+                        let mut bufs = VecDeque::new();
+                        std::mem::swap(&mut bufs, &mut self.write_buf_queue);
+                        Err(bufs)
+                    }
+                },
+                None => unreachable!(),
+            },
+            None => Ok(None),
+        }
+    }
+
+    pub fn dispose(&mut self, buf_pool: &mut BufPool) {
+        if let Some(buf) = self.read_buf.take() {
+            buf_pool.release(buf);
+        }
+        for buf in self.write_buf_queue.drain(..) {
+            buf_pool.release(buf);
+        }
+    }
+}
+
 enum EventSource {
     ConnectionListener,
     ConnectionRead(u8),
     ConnectionWrite(u8),
     Process(u8),
+    IpcRead(u8),
+    IpcWrite(u8),
 }
 struct EventListener {
     wait_handles: [HANDLE; MAX_EVENT_COUNT],
@@ -1148,33 +1304,44 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
     const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
     let mut processes = [NONE_ASYNC_PROCESS; MAX_EVENT_COUNT];
 
+    const NONE_ASYNC_IPC: Option<AsyncIpc> = None;
+    let mut ipcs = [NONE_ASYNC_IPC; MAX_EVENT_COUNT];
+
     let mut events = Vec::new();
     let mut timeout = None;
     let mut need_redraw = false;
 
     loop {
         event_listener.track(listener.event(), EventSource::ConnectionListener);
-        let mut client_count = 0;
+        let mut event_count = 1;
         for (i, connection) in client_connections.iter().enumerate() {
             if let Some(connection) = connection {
-                client_count += 1;
+                event_count += EVENT_COUNT_PER_CLIENT;
                 event_listener.track(connection.read_event(), EventSource::ConnectionRead(i as _));
                 if let Some(event) = connection.write_event() {
                     event_listener.track(event, EventSource::ConnectionWrite(i as _));
                 }
             }
         }
-        let mut process_count = 0;
         for (i, process) in processes.iter().enumerate() {
             if let Some(process) = process {
-                process_count += 1;
+                event_count += EVENT_COUNT_PER_PROCESS;
                 if let Some(stdout) = &process.stdout {
                     event_listener.track(stdout.event(), EventSource::Process(i as _));
                 }
             }
         }
-        let event_count =
-            1 + client_count * EVENT_COUNT_PER_CLIENT + process_count * EVENT_COUNT_PER_PROCESS;
+        for (i, ipc) in ipcs.iter().enumerate() {
+            if let Some(ipc) = ipc {
+                event_count += ipc.event_count();
+                if let Some(event) = ipc.read_event() {
+                    event_listener.track(event, EventSource::IpcRead(i as _));
+                }
+                if let Some(event) = ipc.write_event() {
+                    event_listener.track(event, EventSource::IpcWrite(i as _));
+                }
+            }
+        }
 
         let previous_timeout = timeout;
         let event = match event_listener.wait_next(timeout) {
@@ -1208,6 +1375,9 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                             for process in processes.iter_mut().flatten() {
                                 process.dispose(&mut application.ctx.platform.buf_pool);
                                 process.kill();
+                            }
+                            for ipc in ipcs.iter_mut().flatten() {
+                                ipc.dispose(&mut application.ctx.platform.buf_pool);
                             }
                             for request in requests {
                                 drop_request(&mut application.ctx.platform.buf_pool, request);
@@ -1258,48 +1428,84 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                             }
                         }
                         PlatformRequest::WriteToProcess { handle, buf } => {
-                            if let Some(process) = &mut processes[handle.0 as usize] {
+                            let index = handle.0 as usize;
+                            if let Some(process) = &mut processes[index] {
                                 if !process.write(buf.as_bytes()) {
                                     let tag = process.tag;
                                     process.dispose(&mut application.ctx.platform.buf_pool);
                                     process.kill();
-                                    processes[handle.0 as usize] = None;
+                                    processes[index] = None;
                                     events.push(PlatformEvent::ProcessExit { tag });
                                 }
                             }
                             application.ctx.platform.buf_pool.release(buf);
                         }
                         PlatformRequest::CloseProcessInput { handle } => {
-                            if let Some(process) = &mut processes[handle.0 as usize] {
+                            let index = handle.0 as usize;
+                            if let Some(process) = &mut processes[index] {
                                 process.close_input();
                             }
                         }
                         PlatformRequest::KillProcess { handle } => {
-                            if let Some(process) = &mut processes[handle.0 as usize] {
+                            let index = handle.0 as usize;
+                            if let Some(mut process) = processes[index].take() {
                                 let tag = process.tag;
                                 process.dispose(&mut application.ctx.platform.buf_pool);
                                 process.kill();
-                                processes[handle.0 as usize] = None;
                                 events.push(PlatformEvent::ProcessExit { tag });
                             }
                         }
                         PlatformRequest::ConnectToIpc {
                             tag,
+                            path,
                             read,
                             write,
                             read_mode,
+                            buf_len,
                         } => {
-                            let _ = tag;
-                            let _ = read;
-                            let _ = write;
-                            let _ = read_mode;
+                            let ipc_event_count = read as usize + write as usize;
+                            let mut connected = false;
+                            if event_count + ipc_event_count <= MAX_EVENT_COUNT {
+                                for (i, ipc) in ipcs.iter_mut().enumerate() {
+                                    if ipc.is_some() {
+                                        continue;
+                                    }
+
+                                    let _ = path;
+                                    *ipc = AsyncIpc::connect(
+                                        tag,
+                                        &[],
+                                        read,
+                                        write,
+                                        read_mode,
+                                        buf_len,
+                                    );
+                                    if ipc.is_some() {
+                                        let handle = PlatformIpcHandle(i as _);
+                                        events.push(PlatformEvent::IpcConnected { tag, handle });
+                                        connected = true;
+                                    }
+                                    break;
+                                }
+                            }
+                            if !connected {
+                                events.push(PlatformEvent::IpcClose { tag });
+                            }
                         }
                         PlatformRequest::WriteToIpc { handle, buf } => {
-                            let _ = handle;
-                            application.ctx.platform.buf_pool.release(buf);
+                            let index = handle.0 as usize;
+                            match &mut ipcs[index] {
+                                Some(ipc) => ipc.enqueue_write(buf),
+                                None => application.ctx.platform.buf_pool.release(buf),
+                            }
                         }
                         PlatformRequest::CloseIpc { handle } => {
-                            let _ = handle;
+                            let index = handle.0 as usize;
+                            if let Some(mut ipc) = ipcs[index].take() {
+                                let tag = ipc.tag;
+                                ipc.dispose(&mut application.ctx.platform.buf_pool);
+                                events.push(PlatformEvent::IpcClose { tag });
+                            }
                         }
                     }
                 }
@@ -1379,6 +1585,36 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
                     }
                 }
             }
+            EventSource::IpcRead(i) => {
+                if let Some(ipc) = &mut ipcs[i as usize] {
+                    let tag = ipc.tag;
+                    match ipc.read_async(&mut application.ctx.platform.buf_pool) {
+                        Ok(None) => (),
+                        Ok(Some(buf)) => {
+                            events.push(PlatformEvent::IpcOutput { tag, buf });
+                        }
+                        Err(()) => {
+                            ipc.dispose(&mut application.ctx.platform.buf_pool);
+                            ipcs[i as usize] = None;
+                            events.push(PlatformEvent::IpcClose { tag });
+                        }
+                    }
+                }
+            }
+            EventSource::IpcWrite(i) => {
+                if let Some(ipc) = &mut ipcs[i as usize] {
+                    match ipc.write_pending_async() {
+                        Ok(None) => (),
+                        Ok(Some(buf)) => application.ctx.platform.buf_pool.release(buf),
+                        Err(bufs) => {
+                            for buf in bufs {
+                                application.ctx.platform.buf_pool.release(buf);
+                            }
+                            ipcs[i as usize] = None;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1433,7 +1669,8 @@ struct ConnectionToServer {
 }
 impl ConnectionToServer {
     pub fn connect(path: &[u16]) -> Self {
-        let handle = match create_file(path, 0, FILE_FLAG_OVERLAPPED) {
+        let handle = match create_file(path, GENERIC_READ | GENERIC_WRITE, 0, FILE_FLAG_OVERLAPPED)
+        {
             Some(handle) => handle,
             None => panic!("could not establish a connection {}", get_last_error()),
         };
@@ -1518,7 +1755,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
     } else {
         console_input_handle = {
             let path = b"CONIN$\0".map(|b| b as _);
-            let handle = create_file(&path, FILE_SHARE_READ, 0);
+            let handle = create_file(&path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, 0);
             if handle.is_none() {
                 panic!("could not open console input");
             }
@@ -1526,7 +1763,7 @@ fn run_client(args: Args, pipe_path: &[u16]) {
         };
         console_output_handle = {
             let path = b"CONOUT$\0".map(|b| b as _);
-            let handle = create_file(&path, FILE_SHARE_WRITE, 0);
+            let handle = create_file(&path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, 0);
             if handle.is_none() {
                 panic!("could not open console output");
             }

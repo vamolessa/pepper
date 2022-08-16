@@ -81,8 +81,8 @@ impl ModeState for State {
                         shift: false,
                         control: false,
                         alt: false,
-                    } => match state.read_state {
-                        ReadCommandState::NavigatingHistory(ref mut i) => {
+                    } => match &mut state.read_state {
+                        ReadCommandState::NavigatingHistory(i) => {
                             *i = ctx
                                 .editor
                                 .commands
@@ -105,8 +105,8 @@ impl ModeState for State {
                         shift: false,
                         control: false,
                         alt: false,
-                    } => match state.read_state {
-                        ReadCommandState::NavigatingHistory(ref mut i) => {
+                    } => match &mut state.read_state {
+                        ReadCommandState::NavigatingHistory(i) => {
                             *i = i.saturating_sub(1);
                             let entry = ctx.editor.commands.history_entry(*i);
                             ctx.editor.registers.set(REGISTER_READLINE_INPUT, entry);
