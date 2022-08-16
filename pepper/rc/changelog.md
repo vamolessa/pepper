@@ -10,6 +10,7 @@
 - added `toggle-comment` which will toggle a prefix comment for each line reached by a cursor
 - fix lsp rename crash when editing files that are not opened in a buffer
 - added a simple indentation fixer on the `=` binding while in normal mode
+- added batch file syntax
 
 # 0.29.0
 - added diagnostic logging to `spawn` command
