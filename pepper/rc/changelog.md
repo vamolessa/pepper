@@ -11,6 +11,8 @@
 - fix lsp rename crash when editing files that are not opened in a buffer
 - added a simple indentation fixer on the `=` binding while in normal mode
 - added batch file syntax
+- fixed string syntax for some languages (lua, js, html, css, py)
+- added ruby syntax
 
 # 0.29.0
 - added diagnostic logging to `spawn` command

@@ -7,7 +7,7 @@ syntax texts "{%w_-}"
 syntax "**/*.pepper"
 syntax keywords "command|config|eval|if|map|syntax"
 syntax symbols "%(|%)|%{|%}|=|%!|<|>|@"
-syntax strings {"{(\\\\)(\\")!".}|'{(\\\\)(\\')!'.}}
+syntax strings {"{(\\)(\")!".}|'{(\\)(\')!'.}}
 syntax comments "#{.}"
 
 # https://doc.rust-lang.org/reference/keywords.html
@@ -49,17 +49,28 @@ syntax comments "//{.}|/*{!(*/).$}"
 # https://www.lua.org/manual/5.1/manual.html#2
 syntax "**/*.lua"
 syntax keywords and|break|do|elseif|else|end|for|function|if|in|local|not|or|repeat|return|then|until|while
+syntax types "%u{%w_}"
 syntax symbols "+|-|*|/|%%|%^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%.|%.%.|%.%.%."
 syntax literals "nil|false|true|_G|_ENV|%d{%d_}%.%w{%w_}|%d{%w_}"
-syntax strings {'{(\\\\)(\\')!'.}|"{(\\\\)(\\")!".}|%[%[{!(%]%]).}}
+syntax strings {'{(\\)(\')!'.}|"{(\\)(\")!".}|%[%[{!(%]%]).}}
 syntax comments "--{.}|--%[%[{!(%]%]).$}"
 
 # https://docs.python.org/3/reference/lexical_analysis.html#keywords
 syntax "**/*.py"
 syntax keywords and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield
+syntax types "%u{%w_}"
 syntax symbols "+|-|*|/|%%|<|>|=|~|%(|%)|%{|%}|%[|%]|;|%.|:|,|%."
 syntax literals "None|False|True|%d{%d_}%.%w{%w_}|%d{%w_}"
-syntax strings {'{(\\\\)(\\')!'.}|"{(\\\\)(\\")!".}}
+syntax strings {'{(\\)(\')!'.}|"{(\\)(\")!".}}
+syntax comments "#{.}"
+
+# https://docs.ruby-lang.org/en/2.2.0/keywords_rdoc.html
+syntax "**/*.rb"
+syntax keywords __ENCODING__|__LINE__|__FILE__|BEGIN|END|alias|and|begin|break|case|class|def|defined?|do|else|elsif|end|ensure|false|for|if|in|module|next|nil|not|or|redo|rescue|retry|return|self|super|then|true|undef|unless|until|when|while|yield
+syntax types "%u{%w_}"
+syntax symbols "%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@"
+syntax literals "nil|false|true|:%w{%w_}|%d{%d_}%.%w{%w_}|%d{%w_}"
+syntax strings {'{(\\)(\')!'.}|"{(\\)(\")!".}|/{(\\)(\/)!/.}}
 syntax comments "#{.}"
 
 # https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#keywords
@@ -68,7 +79,7 @@ syntax keywords break|case|catch|class|const|continue|debugger|default|delete|do
 syntax types "%u{%w_}"
 syntax symbols "%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@"
 syntax literals "null|undefined|this|true|false|%d{%d_}%.%w{%w_}|%d{%w_}"
-syntax strings {'{(\\\\)(\\')!'.}|"{(\\\\)(\\")!".}|`{(\\\\)(\\`)!`.}}
+syntax strings {'{(\\)(\')!'.}|"{(\\)(\")!".}|`{(\\)(\`)!`.}}
 syntax comments "//{.}|/*{!(*/).$}"
 
 syntax "**/*.css"
@@ -76,7 +87,7 @@ syntax keywords ""
 syntax types "@{%w_-}"
 syntax symbols "%(|%)|%{|%}|%[|%]|<|>|*|:|;|,"
 syntax literals "%d{%d_}%.%w{%w%%_}|%d{%w%%_}"
-syntax strings {"{(\\\\)(\\")!".}}
+syntax strings {"{(\\)(\")!".}}
 syntax comments "/*{!(*/).$}"
 syntax texts "{%w_-}"
 
@@ -90,7 +101,7 @@ syntax texts "{%w_-}"
 syntax "**/*.html"
 syntax keywords "</{%w_-}|<{%w_-}|>|/>"
 syntax symbols "="
-syntax strings {'{(\\\\)(\\')!'.}|"{(\\\\)(\\")!".}}
+syntax strings {'{(\\)(\')!'.}|"{(\\)(\")!".}}
 syntax comments "<%!--{!(-->).$}"
 syntax texts "{%w_-}"
 
@@ -99,7 +110,7 @@ syntax keywords "call|defined|do|echo%.|echo|else|exit|for|if|not|setlocal|set"
 syntax types "%%%u{!%%%u%d_}|%%%u{!:%u%d_}{!%%.}"
 syntax symbols "%(|%)|<|>|=|~|*|&|%%|%!|%||@"
 syntax literals "-%w{%w_-}|/%w{%w_-}|%d{%w}"
-syntax strings {'{(\\\\)(\\')!'.}|"{(\\\\)(\\")!".}}
+syntax strings {'{(\\)(\')!'.}|"{(\\)(\")!".}}
 syntax comments "rem{.}"
 syntax texts "{%w_-%.}"
 
