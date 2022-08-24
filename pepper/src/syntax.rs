@@ -306,7 +306,7 @@ impl HighlightedBuffer {
     }
 
     pub fn insert_range(&mut self, range: BufferRange) {
-        if self.lines.len() <= range.from.line_index as _ {
+        if self.highlighted_len <= range.from.line_index as _ {
             return;
         }
 
