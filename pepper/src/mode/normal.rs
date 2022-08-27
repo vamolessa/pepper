@@ -466,6 +466,12 @@ impl State {
                         alt: false,
                         ..
                     } => select_delimiter_pair(buffer, &mut cursors[..], '\'', select_exclusive),
+                    Key {
+                        code: KeyCode::Char('`'),
+                        control: false,
+                        alt: false,
+                        ..
+                    } => select_delimiter_pair(buffer, &mut cursors[..], '`', select_exclusive),
                     _ => (),
                 }
 
