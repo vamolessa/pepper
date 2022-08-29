@@ -10,4 +10,11 @@ default-members = ["mine"]
 
 [profile.release]
 debug = true
+incremental = true
+lto = "off"
+
+[profile.dev]
+debug = true
+incremental = true
+lto = "off"
 
