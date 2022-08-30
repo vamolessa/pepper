@@ -3,17 +3,16 @@
 # 0.30.0 (preview)
 - added `insert-text` command
 - added `set-clipboard` command
-- fix `>` (indent command) will no longer insert indentation to empty lines
+- fix `>` (indent command) will no longer indent empty lines
 - changed search string will *also* be compiled into a pattern if it contains `^` or `$`
 - changed readline input and prompt are now registers `i` and `p` respectively
 - removed `@readline-input()` as the input can now be accessed by `register(i)`
 - added `toggle-comment` which will toggle a prefix comment for each line reached by a cursor
-- fix lsp rename crash when editing files that are not opened in a buffer
 - added a simple indentation fixer on the `=` binding while in normal mode
 - added batch file syntax
 - fixed string syntax for some languages (lua, js, html, css, py)
 - added ruby syntax
-- fix crash when opening and editing the middle of a buffer in a single action (in a macro for example)
+- fix crash when opening and editing the middle of a buffer in a single action (in a macro or through lsp for example)
 - fix `` [aA]` `` was missing
 
 # 0.29.0
