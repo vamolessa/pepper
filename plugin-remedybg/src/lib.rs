@@ -10,6 +10,7 @@ use pepper::{
     editor_utils::{LogKind, to_absolute_path_string},
     events::{EditorEvent, EditorEventIter},
     platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag, IpcTag, IpcReadMode, PlatformIpcHandle},
+    serialization::{Serializer, Deserializer, Serialize, DeserializeError},
     plugin::{Plugin, PluginDefinition, PluginHandle},
     ResourceFile,
 };
@@ -249,6 +250,7 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             return Ok(());
         }
 
+        // TODO: send command instead of spawning a process
         /*
         let mut command = Command::new("remedybg");
         for range in &arg_ranges.buf[..arg_ranges.len as usize] {
@@ -331,6 +333,105 @@ fn on_process_spawned(
 fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, _: u32) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
     remedybg.process_state = ProcessState::NotRunning;
+}
+
+#[derive(Clone, Copy)]
+enum CommandResult {
+    Unknown = 0,
+
+    Ok = 1,
+
+    // Generic failure
+    Fail = 2,
+
+    // Result if the command is aborted due to a specified behavior and
+    // condition including RDBG_IF_DEBUGGING_TARGET_ABORT_COMMAND or
+    // RDBG_IF_SESSION_IS_MODIFIED_ABORT_COMMAND. The result can also be returned
+    // if an unnamed session is saved, prompts for a filename, and the user
+    // cancels this operation.
+    Aborted = 3,
+
+    // Result if the given command buffer given is less than 2 bytes or if the
+    // command is not one of the enumerated commands in rdbg_Command.
+    InvalidCommand = 4,
+
+    // Result if the response generated is too large to fit in the buffer.
+    BufferTooSmall = 5,
+
+    // Result if an opening a file (i.e., a session, text file).
+    FailedOpeningFile = 6,
+
+    // Result if saving a session fails.
+    FailedSavingSession = 7,
+
+    // Result if the given ID is invalid.
+    InvalidId = 8,
+
+    // Result if a command expects the target to be in a particular state (not
+    // debugging, debugging and suspended, or debugging and executing) and is
+    // not.
+    InvalidTargetState = 9,
+
+    // Result if an active configuration does not exist
+    NoActiveConfig = 10,
+
+    // Result if the command does not apply to given breakpoint's kind
+    InvalidBreakpointKind = 11,
+}
+impl fmt::Display for CommandResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let name = match self {
+            Self::Unknown => "unknown",
+            Self::Ok => "ok",
+            Self::Fail => "fail",
+            Self::Aborted => "aborted",
+            Self::InvalidCommand => "invalid command",
+            Self::BufferTooSmall => "buffer too small",
+            Self::FailedOpeningFile => "failed opening file",
+            Self::FailedSavingSession => "failed saving session",
+            Self::InvalidId => "invalid id",
+            Self::InvalidTargetState => "invalid target state",
+            Self::NoActiveConfig => "no active config",
+            Self::InvalidBreakpointKind => "invalid breakpoint kind",
+        };
+        write!(f, "{}", name)
+    }
+}
+impl<'de> Serialize<'de> for CommandResult {
+    fn serialize(&self, serializer: &mut dyn Serializer) {
+        let discriminant = *self as u8;
+        discriminant.serialize(serializer);
+    }
+
+    fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
+        let discriminant = u8::deserialize(deserializer)?;
+        match discriminant {
+            0 => Ok(CommandResult::Unknown),
+            1 => Ok(CommandResult::Ok),
+            2 => Ok(CommandResult::Fail),
+            3 => Ok(CommandResult::Aborted),
+            4 => Ok(CommandResult::InvalidCommand),
+            5 => Ok(CommandResult::BufferTooSmall),
+            6 => Ok(CommandResult::FailedOpeningFile),
+            7 => Ok(CommandResult::FailedSavingSession),
+            8 => Ok(CommandResult::InvalidId),
+            9 => Ok(CommandResult::InvalidTargetState),
+            10 => Ok(CommandResult::NoActiveConfig),
+            11 => Ok(CommandResult::InvalidBreakpointKind),
+            _ => Err(DeserializeError::InvalidData),
+        }
+    }
+}
+
+struct RemedybgStr<'a>(&'a str);
+impl<'de> Serialize<'de> for RemedybgStr<'de> {
+    fn serialize(&self, serializer: &mut dyn Serializer) {
+        todo!()
+    }
+
+    fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
+        todo!()
+    }
 }
 
 fn on_ipc_spawned(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, ipc_handle: PlatformIpcHandle) {

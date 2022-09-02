@@ -14,17 +14,11 @@ use crate::{
 pub struct ClientHandle(pub u8);
 
 impl<'de> Serialize<'de> for ClientHandle {
-    fn serialize<S>(&self, serializer: &mut S)
-    where
-        S: Serializer,
-    {
+    fn serialize(&self, serializer: &mut dyn Serializer) {
         self.0.serialize(serializer);
     }
 
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
-    where
-        D: Deserializer<'de>,
-    {
+    fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
         Ok(Self(u8::deserialize(deserializer)?))
     }
 }
