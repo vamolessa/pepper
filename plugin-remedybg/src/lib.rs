@@ -1,16 +1,15 @@
 use std::{
     fmt,
-    path::Path,
     process::{Command, Stdio},
 };
 
 use pepper::{
     buffer::{BufferBreakpoint, BufferCollection, BufferHandle},
     command::{CommandError, CommandManager, CompletionSource},
-    editor::{Editor, EditorContext},
-    editor_utils::to_absolute_path_string,
+    editor::EditorContext,
+    editor_utils::{LogKind, to_absolute_path_string},
     events::{EditorEvent, EditorEventIter},
-    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag},
+    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag, IpcTag, IpcReadMode, PlatformIpcHandle},
     plugin::{Plugin, PluginDefinition, PluginHandle},
     ResourceFile,
 };
@@ -25,6 +24,10 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
 
             on_process_spawned,
             on_process_exit,
+
+            on_ipc_spawned,
+            on_ipc_output,
+            on_ipc_exit,
 
             ..Default::default()
         })
@@ -46,15 +49,14 @@ impl Default for ProcessState {
     }
 }
 
-const MAIN_PROCESS_ID: u32 = 0;
-const CLEAR_BREAKPOINTS_PROCESS_ID: u32 = 1;
-const ADD_BREAKPOINT_PROCESS_ID: u32 = 2;
-const COMMAND_PROCESS_ID: u32 = 1;
+const CONTROL_PIPE_ID: u32 = 0;
+const EVENT_PIPE_ID: u32 = 1;
 
 #[derive(Default)]
 pub(crate) struct RemedybgPlugin {
     breakpoints_changed: bool,
     process_state: ProcessState,
+    session_name: String,
     pending_breakpoints: Vec<(BufferHandle, BufferBreakpoint)>,
 }
 impl RemedybgPlugin {
@@ -62,13 +64,23 @@ impl RemedybgPlugin {
         &mut self,
         platform: &mut Platform,
         plugin_handle: PluginHandle,
-        mut command: Command,
+        session_name: &str,
+        session_file: Option<&str>,
     ) {
         if !matches!(self.process_state, ProcessState::NotRunning) {
             return;
         }
 
         self.process_state = ProcessState::Spawning;
+        self.session_name.clear();
+        self.session_name.push_str(session_name);
+
+        let mut command = Command::new("remedybg");
+        command.arg("--servername");
+        command.arg(session_name);
+        if let Some(session_file) = session_file {
+            command.arg(session_file);
+        }
 
         command
             .stdin(Stdio::null())
@@ -78,7 +90,7 @@ impl RemedybgPlugin {
         platform.requests.enqueue(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Plugin {
                 plugin_handle,
-                id: MAIN_PROCESS_ID,
+                id: 0,
             },
             command,
             buf_len: 128,
@@ -102,84 +114,7 @@ impl RemedybgPlugin {
             }
         }
 
-        let mut command = Command::new("remedybg");
-        command.arg("remove-all-breakpoints");
-
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
-
-        platform.requests.enqueue(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::Plugin {
-                plugin_handle,
-                id: CLEAR_BREAKPOINTS_PROCESS_ID,
-            },
-            command,
-            buf_len: 128,
-        });
-    }
-
-    fn add_next_breakpoint(
-        &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        plugin_handle: PluginHandle,
-    ) {
-        if !matches!(self.process_state, ProcessState::Running(_)) {
-            return;
-        }
-
-        let (buffer_handle, breakpoint) = match self.pending_breakpoints.pop() {
-            Some(buffer_handle_breakpoint_pair) => buffer_handle_breakpoint_pair,
-            None => return,
-        };
-
-        let mut command = Command::new("remedybg");
-        command.arg("add-breakpoint-at-file");
-
-        {
-            use fmt::Write;
-            let mut arg = editor.string_pool.acquire();
-
-            let current_directory = editor.current_directory.to_str();
-            let buffer = editor.buffers.get(buffer_handle);
-            let path = buffer.path.to_str();
-            if let (Some(current_directory), Some(path)) = (current_directory, path) {
-                if Path::new(path).is_relative() {
-                    arg.push_str(current_directory);
-                    if let Some(false) = current_directory
-                        .chars()
-                        .next_back()
-                        .map(std::path::is_separator)
-                    {
-                        arg.push(std::path::MAIN_SEPARATOR);
-                    }
-                }
-                arg.push_str(path);
-            }
-            command.arg(&arg);
-
-            arg.clear();
-            let _ = write!(arg, "{}", breakpoint.line_index + 1);
-            command.arg(&arg);
-
-            editor.string_pool.release(arg);
-        }
-
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
-
-        platform.requests.enqueue(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::Plugin {
-                plugin_handle,
-                id: ADD_BREAKPOINT_PROCESS_ID,
-            },
-            command,
-            buf_len: 128,
-        });
+        // TODO: finish this
     }
 }
 
@@ -192,14 +127,9 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
         let session_file = io.args.try_next();
         io.args.assert_empty()?;
 
-        let mut command = Command::new("remedybg");
-        if let Some(session_file) = session_file {
-            command.arg(session_file);
-        }
-
         let plugin_handle = io.plugin_handle();
         let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-        remedybg.spawn(&mut ctx.platform, plugin_handle, command);
+        remedybg.spawn(&mut ctx.platform, plugin_handle, &ctx.editor.session_name, session_file);
 
         Ok(())
     });
@@ -319,28 +249,14 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             return Ok(());
         }
 
+        /*
         let mut command = Command::new("remedybg");
         for range in &arg_ranges.buf[..arg_ranges.len as usize] {
             let arg = &args_string[range.0 as usize..range.1 as usize];
             command.arg(arg);
         }
+        */
         ctx.editor.string_pool.release(args_string);
-
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
-
-        ctx.platform
-            .requests
-            .enqueue(PlatformRequest::SpawnProcess {
-                tag: ProcessTag::Plugin {
-                    plugin_handle,
-                    id: COMMAND_PROCESS_ID,
-                },
-                command,
-                buf_len: 128,
-            });
 
         Ok(())
     });
@@ -352,6 +268,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
     let mut events = EditorEventIter::new();
     while let Some(event) = events.next(ctx.editor.events.reader()) {
         match event {
+            // TODO: send breakpoints immediately
             EditorEvent::Idle => {
                 if remedybg.breakpoints_changed {
                     remedybg.breakpoints_changed = false;
@@ -371,29 +288,80 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
 fn on_process_spawned(
     plugin_handle: PluginHandle,
     ctx: &mut EditorContext,
-    id: u32,
+    _: u32,
     process_handle: PlatformProcessHandle,
 ) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-    match id {
-        MAIN_PROCESS_ID => {
-            remedybg.process_state = ProcessState::Running(process_handle);
-            remedybg.breakpoints_changed = true;
-        }
-        _ => (),
+    remedybg.process_state = ProcessState::Running(process_handle);
+    remedybg.breakpoints_changed = true;
+
+    // TODO: connect to ipc
+    let mut control_path_buf = ctx.platform.buf_pool.acquire();
+    let path_write = control_path_buf.write();
+    path_write.extend_from_slice(remedybg.session_name.as_bytes());
+    ctx.platform.requests.enqueue(PlatformRequest::ConnectToIpc {
+        tag: IpcTag {
+            plugin_handle,
+            id: CONTROL_PIPE_ID,
+        },
+        path: control_path_buf,
+        read: true,
+        write: true,
+        read_mode: IpcReadMode::MessageStream,
+        buf_len: 1024,
+    });
+
+    let mut event_path_buf = ctx.platform.buf_pool.acquire();
+    let path_write = event_path_buf.write();
+    path_write.extend_from_slice(remedybg.session_name.as_bytes());
+    path_write.extend_from_slice(b"-events");
+    ctx.platform.requests.enqueue(PlatformRequest::ConnectToIpc {
+        tag: IpcTag {
+            plugin_handle,
+            id: EVENT_PIPE_ID,
+        },
+        path: event_path_buf,
+        read: true,
+        write: false,
+        read_mode: IpcReadMode::MessageStream,
+        buf_len: 1024,
+    });
+}
+
+fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, _: u32) {
+    let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
+    remedybg.process_state = ProcessState::NotRunning;
+}
+
+fn on_ipc_spawned(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, ipc_handle: PlatformIpcHandle) {
+    let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
+    let _ = remedybg;
+    let _ = ipc_handle;
+
+    let ipc_name = match id {
+        CONTROL_PIPE_ID => "control",
+        EVENT_PIPE_ID => "event",
+        _ => unreachable!(),
+    };
+    ctx.editor.logger.write(LogKind::Diagnostic).fmt(format_args!("remedybg: connected to {} ipc", ipc_name));
+}
+
+fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, bytes: &[u8]) {
+    let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
+    let _ = remedybg;
+
+    let mut write = ctx.editor.logger.write(LogKind::Diagnostic);
+    write.fmt(format_args!("remedybg: on ipc output {} with {} bytes", id, bytes.len()));
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        write.str("\n");
+        write.str(text);
     }
 }
 
-fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32) {
+fn on_ipc_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-    match id {
-        MAIN_PROCESS_ID => remedybg.process_state = ProcessState::NotRunning,
-        CLEAR_BREAKPOINTS_PROCESS_ID => {
-            remedybg.add_next_breakpoint(&mut ctx.editor, &mut ctx.platform, plugin_handle)
-        }
-        ADD_BREAKPOINT_PROCESS_ID => {
-            remedybg.add_next_breakpoint(&mut ctx.editor, &mut ctx.platform, plugin_handle)
-        }
-        _ => (),
-    }
+    let _ = remedybg;
+    ctx.editor.logger.write(LogKind::Diagnostic).fmt(format_args!("remedybg: on ipc exit {}", id));
 }
+
+

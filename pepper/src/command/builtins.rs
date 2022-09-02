@@ -612,10 +612,6 @@ pub fn register_commands(commands: &mut CommandManager) {
                     line_content
                 );
             }
-
-            if !buffer.breakpoints().is_empty() {
-                content.push('\n');
-            }
         }
 
         let buffer_handle = ctx

@@ -52,7 +52,7 @@ use winapi::{
         winnls::CP_UTF8,
         winnt::{
             FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, GENERIC_WRITE, HANDLE,
-            MAXIMUM_WAIT_OBJECTS,
+            MAXIMUM_WAIT_OBJECTS, FILE_WRITE_ATTRIBUTES,
         },
         winuser::{
             CloseClipboard, EmptyClipboard, GetClipboardData, MessageBoxW, OpenClipboard,
@@ -174,6 +174,8 @@ pub fn try_attach_debugger() {
     unsafe { DebugBreak() };
 }
 
+const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
+
 pub fn main(mut config: ApplicationConfig) {
     if config.args.session_name.is_empty() {
         use std::fmt::Write;
@@ -188,8 +190,6 @@ pub fn main(mut config: ApplicationConfig) {
         let current_directory_hash = hash_bytes(&current_dir_bytes);
         write!(config.args.session_name, "{:x}", current_directory_hash).unwrap();
     }
-
-    const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
     let mut pipe_path = Vec::new();
     pipe_path.extend(PIPE_PREFIX.encode_utf16());
@@ -1123,6 +1123,10 @@ impl AsyncIpc {
         if write {
             access_mode |= GENERIC_WRITE;
         }
+        if read && !write {
+            access_mode |= FILE_WRITE_ATTRIBUTES;
+        }
+
         let mut mode = match read_mode {
             IpcReadMode::ByteStream => PIPE_READMODE_BYTE,
             IpcReadMode::MessageStream => PIPE_READMODE_MESSAGE,
@@ -1475,7 +1479,9 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
                                     if let Ok(path) = std::str::from_utf8(path.as_bytes()) {
                                         ipc_path_u16.clear();
+                                        ipc_path_u16.extend(PIPE_PREFIX.encode_utf16());
                                         ipc_path_u16.extend(path.encode_utf16());
+                                        ipc_path_u16.push(0);
                                         *ipc = AsyncIpc::connect(
                                             tag,
                                             &ipc_path_u16,
