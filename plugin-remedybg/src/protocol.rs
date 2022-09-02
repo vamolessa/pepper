@@ -3,7 +3,7 @@ use std::fmt;
 use pepper::serialization::{DeserializeError, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Copy)]
-enum RemedybgCommandResult {
+pub enum RemedybgCommandResult {
     Unknown = 0,
 
     Ok = 1,
@@ -109,7 +109,8 @@ impl<'de> Serialize<'de> for RemedybgStr<'de> {
     }
 }
 
-enum RemedybgCommand {
+#[derive(Clone, Copy)]
+pub enum RemedybgCommandKind {
    // Bring the RemedyBG window to the foreground and activate it. No additional
    // arguments follow the command. Returns RDBG_COMMAND_RESULT_OK or
    // RDBG_COMMAND_RESULT_FAIL.
@@ -128,8 +129,8 @@ enum RemedybgCommand {
    // [result :: rdbg_CommandResult (uint16_t)]
    ExitDebugger = 75,
 
-   // Session
    //
+   // Session
 
    // Returns whether the current session is modified, or "dirty".
    //
@@ -679,4 +680,73 @@ enum RemedybgCommand {
    // [result :: rdbg_CommandResult (uint16_t)]
    DeleteAllWatches = 705,
 }
+impl RemedybgCommandKind {
+    pub fn serialize(self, serializer: &mut dyn Serializer) {
+        let discriminant = self as u16;
+        discriminant.serialize(serializer);
+    }
+}
 
+#[derive(Clone, Copy)]
+pub enum RemedybgEventKind {
+   // A target being debugged has exited.
+   //
+   // [kind :: rdbg_DebugEventKind (uint16_t)]
+   // [exit_code :: uint32_t]
+   ExitProcess = 100,
+
+   // A user breakpoint was hit
+   //
+   // [kind :: rdbg_DebugEventKind (uint16_t)]
+   // [bp_id :: rdbg_Id]
+   BreakpointHit = 600,
+
+   // The breakpoint with the given ID has been resolved (has a valid location).
+   // This can happen if the breakpoint was set in module that became loaded,
+   // for instance.
+   //
+   // [kind :: rdbg_DebugEventKind (uint16_t)]
+   // [bp_id :: rdbg_Id]
+   BreakpointResolved = 601,
+
+   // A new user breakpoint was added.
+   //
+   // [kind :: rdbg_DebugEventKind (uint16_t)]
+   // [bp_id :: rdbg_Id]
+   BreakpointAdded = 602,
+
+   // A user breakpoint was modified.
+   //
+   // [kind :: rdbg_DebugEventKind (uint16_t)]
+   // [bp_id :: rdbg_Id]
+   // [enable :: rdbg_Bool]
+   BreakpointModified = 603,
+
+   // A user breakpoint was removed.
+   //
+   // [kind :: rdbg_DebugEventKind (uint16_t)]
+   // [bp_id :: rdbg_Id]
+   BreakpointRemoved = 604,
+
+   // An OutputDebugString was received by the debugger. The given string will
+   // be UTF-8 encoded.
+   //
+   // [kind :: rdbg_DebugEventKind (uint16_t)]
+   // [str :: rdbg_String]
+   OutputDebugString = 800,
+}
+impl RemedybgEventKind {
+    pub fn deserialize<'de>(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
+        let discriminant = u16::deserialize(deserializer)?;
+        match discriminant {
+            100 => Ok(Self::ExitProcess),
+            600 => Ok(Self::BreakpointHit),
+            601 => Ok(Self::BreakpointResolved),
+            602 => Ok(Self::BreakpointAdded),
+            603 => Ok(Self::BreakpointModified),
+            604 => Ok(Self::BreakpointRemoved),
+            800 => Ok(Self::OutputDebugString),
+            _ => Err(DeserializeError::InvalidData),
+        }
+    }
+}
