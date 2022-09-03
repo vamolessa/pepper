@@ -28,9 +28,9 @@ pub struct Plugin {
     pub on_process_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
     pub on_process_exit: fn(PluginHandle, &mut EditorContext, u32),
 
-    pub on_ipc_spawned: fn(PluginHandle, &mut EditorContext, u32, PlatformIpcHandle),
+    pub on_ipc_connected: fn(PluginHandle, &mut EditorContext, u32, PlatformIpcHandle),
     pub on_ipc_output: fn(PluginHandle, &mut EditorContext, u32, &[u8]),
-    pub on_ipc_exit: fn(PluginHandle, &mut EditorContext, u32),
+    pub on_ipc_close: fn(PluginHandle, &mut EditorContext, u32),
 
     pub on_keys: fn(
         PluginHandle,
@@ -51,9 +51,9 @@ impl Default for Plugin {
             on_process_output: |_, _, _, _| (),
             on_process_exit: |_, _, _| (),
 
-            on_ipc_spawned: |_, _, _, _| (),
+            on_ipc_connected: |_, _, _, _| (),
             on_ipc_output: |_, _, _, _| (),
-            on_ipc_exit: |_, _, _| (),
+            on_ipc_close: |_, _, _| (),
 
             on_keys: |_, _, _, _| Some(EditorFlow::Continue),
             on_completion: |_, _, _| false,
@@ -151,7 +151,7 @@ impl PluginCollection {
         ipc_id: u32,
         ipc_handle: PlatformIpcHandle,
     ) {
-        let f = ctx.plugins.plugins[plugin_handle.0 as usize].on_ipc_spawned;
+        let f = ctx.plugins.plugins[plugin_handle.0 as usize].on_ipc_connected;
         f(plugin_handle, ctx, ipc_id, ipc_handle);
     }
 
@@ -166,7 +166,7 @@ impl PluginCollection {
     }
 
     pub(crate) fn on_ipc_close(ctx: &mut EditorContext, plugin_handle: PluginHandle, ipc_id: u32) {
-        let f = ctx.plugins.plugins[plugin_handle.0 as usize].on_ipc_exit;
+        let f = ctx.plugins.plugins[plugin_handle.0 as usize].on_ipc_close;
         f(plugin_handle, ctx, ipc_id);
     }
 }

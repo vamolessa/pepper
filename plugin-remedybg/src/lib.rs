@@ -7,16 +7,23 @@ use pepper::{
     buffer::{BufferBreakpoint, BufferCollection, BufferHandle},
     command::{CommandError, CommandManager, CompletionSource},
     editor::EditorContext,
-    editor_utils::{LogKind, to_absolute_path_string},
+    editor_utils::{to_absolute_path_string, LogKind},
     events::{EditorEvent, EditorEventIter},
-    platform::{Platform, PlatformProcessHandle, PlatformRequest, ProcessTag, IpcTag, IpcReadMode, PlatformIpcHandle},
+    platform::{
+        PooledBuf,
+        IpcReadMode, IpcTag, Platform, PlatformIpcHandle, PlatformProcessHandle, PlatformRequest,
+        ProcessTag,
+    },
     plugin::{Plugin, PluginDefinition, PluginHandle},
+    serialization::Serialize,
     ResourceFile,
 };
 
 mod protocol;
 
-use protocol::{RemedybgEvent, RemedybgCommandKind, RemedybgStr, RemedybgCommandResult};
+use protocol::{
+    RemedybgBool, RemedybgCommandKind, RemedybgCommandResult, RemedybgEvent, RemedybgStr,
+};
 
 pub static DEFINITION: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
@@ -29,9 +36,9 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
             on_process_spawned,
             on_process_exit,
 
-            on_ipc_spawned,
+            on_ipc_connected,
             on_ipc_output,
-            on_ipc_exit,
+            on_ipc_close,
 
             ..Default::default()
         })
@@ -65,7 +72,6 @@ pub(crate) struct RemedybgPlugin {
 
     pending_commands: Vec<RemedybgCommandKind>,
     control_ipc_handle: Option<PlatformIpcHandle>,
-    event_ipc_handle: Option<PlatformIpcHandle>,
 }
 impl RemedybgPlugin {
     pub fn spawn(
@@ -126,6 +132,43 @@ impl RemedybgPlugin {
     }
 }
 
+struct CommandSender {
+    ipc_handle: PlatformIpcHandle,
+    pub buf: PooledBuf,
+}
+impl CommandSender {
+    pub fn send(self, ctx: &mut EditorContext) {
+        ctx.platform.requests.enqueue(PlatformRequest::WriteToIpc {
+            handle: self.ipc_handle,
+            buf: self.buf,
+        })
+    }
+}
+fn begin_send_command(
+    ctx: &mut EditorContext,
+    plugin_handle: PluginHandle,
+    command_kind: RemedybgCommandKind,
+) -> Result<CommandSender, CommandError> {
+    let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
+    match remedybg.control_ipc_handle {
+        Some(ipc_handle) => {
+            remedybg
+                .pending_commands
+                .push(command_kind);
+
+            let mut buf = ctx.platform.buf_pool.acquire();
+            let write = buf.write();
+            command_kind.serialize(write);
+            let sender = CommandSender {
+                ipc_handle,
+                buf,
+            };
+            Ok(sender)
+        }
+        None => Err(CommandError::OtherStatic("remedybg is not running")),
+    }
+}
+
 fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle) {
     let mut r = |name, completions, command_fn| {
         commands.register_command(Some(plugin_handle), name, completions, command_fn);
@@ -137,7 +180,12 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
 
         let plugin_handle = io.plugin_handle();
         let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-        remedybg.spawn(&mut ctx.platform, plugin_handle, &ctx.editor.session_name, session_file);
+        remedybg.spawn(
+            &mut ctx.platform,
+            plugin_handle,
+            &ctx.editor.session_name,
+            session_file,
+        );
 
         Ok(())
     });
@@ -147,14 +195,35 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
         &[CompletionSource::Files],
         |ctx, io| {
             io.args.assert_empty()?;
-
             let plugin_handle = io.plugin_handle();
             let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
             remedybg.begin_sync_breakpoints(&ctx.editor.buffers, &mut ctx.platform, plugin_handle);
-
             Ok(())
         },
     );
+
+    static START_DEBUGGING_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&["paused"])];
+    r("remedybg-start-debugging", START_DEBUGGING_COMPLETIONS, |ctx, io| {
+        let start_paused = match io.args.try_next() {
+            Some("paused") => true,
+            Some(_) => return Err(CommandError::OtherStatic("invalid arg")),
+            None => false,
+        };
+        io.args.assert_empty()?;
+
+        let mut sender = begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StartDebugging)?;
+        let write = sender.buf.write();
+        RemedybgBool(start_paused).serialize(write);
+        sender.send(ctx);
+        Ok(())
+    });
+
+    r("remedybg-stop-debugging", &[], |ctx, io| {
+        io.args.assert_empty()?;
+        let sender = begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StartDebugging)?;
+        sender.send(ctx);
+        Ok(())
+    });
 
     static COMMAND_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&[
         "start",
@@ -304,37 +373,40 @@ fn on_process_spawned(
     remedybg.process_state = ProcessState::Running(process_handle);
     remedybg.breakpoints_changed = true;
 
-    // TODO: connect to ipc
     let mut control_path_buf = ctx.platform.buf_pool.acquire();
     let path_write = control_path_buf.write();
     path_write.extend_from_slice(remedybg.session_name.as_bytes());
-    ctx.platform.requests.enqueue(PlatformRequest::ConnectToIpc {
-        tag: IpcTag {
-            plugin_handle,
-            id: CONTROL_PIPE_ID,
-        },
-        path: control_path_buf,
-        read: true,
-        write: true,
-        read_mode: IpcReadMode::MessageStream,
-        buf_len: 1024,
-    });
+    ctx.platform
+        .requests
+        .enqueue(PlatformRequest::ConnectToIpc {
+            tag: IpcTag {
+                plugin_handle,
+                id: CONTROL_PIPE_ID,
+            },
+            path: control_path_buf,
+            read: true,
+            write: true,
+            read_mode: IpcReadMode::MessageStream,
+            buf_len: 1024,
+        });
 
     let mut event_path_buf = ctx.platform.buf_pool.acquire();
     let path_write = event_path_buf.write();
     path_write.extend_from_slice(remedybg.session_name.as_bytes());
     path_write.extend_from_slice(b"-events");
-    ctx.platform.requests.enqueue(PlatformRequest::ConnectToIpc {
-        tag: IpcTag {
-            plugin_handle,
-            id: EVENT_PIPE_ID,
-        },
-        path: event_path_buf,
-        read: true,
-        write: false,
-        read_mode: IpcReadMode::MessageStream,
-        buf_len: 1024,
-    });
+    ctx.platform
+        .requests
+        .enqueue(PlatformRequest::ConnectToIpc {
+            tag: IpcTag {
+                plugin_handle,
+                id: EVENT_PIPE_ID,
+            },
+            path: event_path_buf,
+            read: true,
+            write: false,
+            read_mode: IpcReadMode::MessageStream,
+            buf_len: 1024,
+        });
 }
 
 fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, _: u32) {
@@ -342,57 +414,86 @@ fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, _: u32)
     remedybg.process_state = ProcessState::NotRunning;
 }
 
-fn on_ipc_spawned(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, ipc_handle: PlatformIpcHandle) {
+fn get_ipc_name(ipc_id: u32) -> &'static str {
+    match ipc_id {
+        CONTROL_PIPE_ID => "control",
+        EVENT_PIPE_ID => "event",
+        _ => "unknown",
+    }
+}
+
+fn on_ipc_connected(
+    plugin_handle: PluginHandle,
+    ctx: &mut EditorContext,
+    id: u32,
+    ipc_handle: PlatformIpcHandle,
+) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
+    if id == CONTROL_PIPE_ID {
+        remedybg.control_ipc_handle = Some(ipc_handle);
+    }
 
-    let ipc_name;
-    match id {
-        CONTROL_PIPE_ID => {
-            remedybg.control_ipc_handle = Some(ipc_handle);
-            ipc_name = "control";
-        }
-        EVENT_PIPE_ID => {
-            remedybg.event_ipc_handle = Some(ipc_handle);
-            ipc_name = "event";
-        }
-        _ => unreachable!(),
-    };
-
-    ctx.editor.logger.write(LogKind::Diagnostic).fmt(format_args!("remedybg: connected to {} ipc", ipc_name));
+    let ipc_name = get_ipc_name(id);
+    ctx.editor
+        .logger
+        .write(LogKind::Diagnostic)
+        .fmt(format_args!("remedybg: connected to {} ipc", ipc_name));
 }
 
 fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, mut bytes: &[u8]) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-    let _ = remedybg;
 
     match id {
         CONTROL_PIPE_ID => {
             let command = match remedybg.pending_commands.pop() {
                 Some(command) => command,
                 None => {
-                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!("remedybg: received response with no pending command"));
+                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
+                        "remedybg: received response with no pending command"
+                    ));
                     return;
                 }
             };
 
-            let mut write = ctx.editor.logger.write(LogKind::Diagnostic);
-            write.fmt(format_args!("remedybg: command {} response:", command as usize));
-            if let Ok(text) = std::str::from_utf8(bytes) {
-                write.str("\n");
-                write.str(text);
+            match RemedybgCommandResult::deserialize(&mut bytes) {
+                Ok(RemedybgCommandResult::Ok) => (),
+                Ok(result) => {
+                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
+                        "remedybg: command {} returned with result: {}",
+                        command as usize, result
+                    ));
+                    return;
+                }
+                Err(_) => {
+                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
+                        "remedybg: could not deserialize command {} result",
+                        command as usize
+                    ));
+                    return;
+                }
+            }
+
+            match command {
+                _ => (),
             }
         }
         EVENT_PIPE_ID => {
             let event = match RemedybgEvent::deserialize(&mut bytes) {
                 Ok(event) => event,
                 Err(_) => {
-                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!("remedybg: could not deserialize debug event"));
+                    ctx.editor
+                        .logger
+                        .write(LogKind::Error)
+                        .fmt(format_args!("remedybg: could not deserialize debug event"));
                     return;
                 }
             };
 
             let mut write = ctx.editor.logger.write(LogKind::Diagnostic);
-            write.fmt(format_args!("remedybg: event {:?} :", std::mem::discriminant(&event)));
+            write.fmt(format_args!(
+                "remedybg: event {:?} :",
+                std::mem::discriminant(&event)
+            ));
             if let Ok(text) = std::str::from_utf8(bytes) {
                 write.str("\n");
                 write.str(text);
@@ -402,10 +503,11 @@ fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, 
     }
 }
 
-fn on_ipc_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32) {
-    let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-    let _ = remedybg;
-    ctx.editor.logger.write(LogKind::Diagnostic).fmt(format_args!("remedybg: on ipc exit {}", id));
+fn on_ipc_close(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32) {
+    let ipc_name = get_ipc_name(id);
+    ctx.editor
+        .logger
+        .write(LogKind::Diagnostic)
+        .fmt(format_args!("remedybg: {} ipc closed", ipc_name));
 }
-
 

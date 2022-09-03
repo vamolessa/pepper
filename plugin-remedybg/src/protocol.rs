@@ -4,46 +4,46 @@ use pepper::serialization::{DeserializeError, Deserializer, Serialize, Serialize
 
 #[derive(Clone, Copy)]
 pub enum RemedybgCommandResult {
-    Unknown = 0,
+    Unknown,
 
-    Ok = 1,
+    Ok,
 
     // Generic failure
-    Fail = 2,
+    Fail,
 
     // Result if the command is aborted due to a specified behavior and
     // condition including RDBG_IF_DEBUGGING_TARGET_ABORT_COMMAND or
     // RDBG_IF_SESSION_IS_MODIFIED_ABORT_COMMAND. The result can also be returned
     // if an unnamed session is saved, prompts for a filename, and the user
     // cancels this operation.
-    Aborted = 3,
+    Aborted,
 
     // Result if the given command buffer given is less than 2 bytes or if the
     // command is not one of the enumerated commands in rdbg_Command.
-    InvalidCommand = 4,
+    InvalidCommand,
 
     // Result if the response generated is too large to fit in the buffer.
-    BufferTooSmall = 5,
+    BufferTooSmall,
 
     // Result if an opening a file (i.e., a session, text file).
-    FailedOpeningFile = 6,
+    FailedOpeningFile,
 
     // Result if saving a session fails.
-    FailedSavingSession = 7,
+    FailedSavingSession,
 
     // Result if the given ID is invalid.
-    InvalidId = 8,
+    InvalidId,
 
     // Result if a command expects the target to be in a particular state (not
     // debugging, debugging and suspended, or debugging and executing) and is
     // not.
-    InvalidTargetState = 9,
+    InvalidTargetState,
 
     // Result if an active configuration does not exist
-    NoActiveConfig = 10,
+    NoActiveConfig,
 
     // Result if the command does not apply to given breakpoint's kind
-    InvalidBreakpointKind = 11,
+    InvalidBreakpointKind,
 }
 impl fmt::Display for RemedybgCommandResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -64,13 +64,8 @@ impl fmt::Display for RemedybgCommandResult {
         write!(f, "{}", name)
     }
 }
-impl<'de> Serialize<'de> for RemedybgCommandResult {
-    fn serialize(&self, serializer: &mut dyn Serializer) {
-        let discriminant = *self as u8;
-        discriminant.serialize(serializer);
-    }
-
-    fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
+impl RemedybgCommandResult {
+    pub fn deserialize(deserializer: &mut dyn Deserializer) -> Result<Self, DeserializeError> {
         let discriminant = u8::deserialize(deserializer)?;
         match discriminant {
             0 => Ok(RemedybgCommandResult::Unknown),
@@ -90,8 +85,32 @@ impl<'de> Serialize<'de> for RemedybgCommandResult {
     }
 }
 
-type RemedybgBool = u8;
-type RemedybgId = u32;
+#[derive(Clone, Copy)]
+pub struct RemedybgBool(pub bool);
+impl<'de> Serialize<'de> for RemedybgBool {
+    fn serialize(&self, serializer: &mut dyn Serializer) {
+        let b = self.0 as u8;
+        b.serialize(serializer);
+    }
+
+    fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
+        let b = u8::deserialize(deserializer)?;
+        Ok(Self(b != 0))
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct RemedybgId(pub u32);
+impl<'de> Serialize<'de> for RemedybgId {
+    fn serialize(&self, serializer: &mut dyn Serializer) {
+        self.0.serialize(serializer);
+    }
+
+    fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
+        let id = Serialize::deserialize(deserializer)?;
+        Ok(Self(id))
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct RemedybgStr<'a>(&'a str);
