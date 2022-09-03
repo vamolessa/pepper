@@ -113,7 +113,7 @@ impl<'de> Serialize<'de> for RemedybgId {
 }
 
 #[derive(Clone, Copy)]
-pub struct RemedybgStr<'a>(&'a str);
+pub struct RemedybgStr<'a>(pub &'a str);
 impl<'de> Serialize<'de> for RemedybgStr<'de> {
     fn serialize(&self, serializer: &mut dyn Serializer) {
         let bytes = self.0.as_bytes();
@@ -131,6 +131,9 @@ impl<'de> Serialize<'de> for RemedybgStr<'de> {
         }
     }
 }
+
+pub const RDBG_IF_DEBUGGING_TARGET_STOP_DEBUGGING: u8 = 1;
+pub const RDBG_IF_DEBUGGING_TARGET_ABORT_COMMAND: u8 = 2;
 
 #[derive(Clone, Copy)]
 pub enum RemedybgCommandKind {
