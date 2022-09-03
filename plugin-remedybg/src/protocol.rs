@@ -90,7 +90,11 @@ impl<'de> Serialize<'de> for RemedybgCommandResult {
     }
 }
 
-struct RemedybgStr<'a>(&'a str);
+type RemedybgBool = u8;
+type RemedybgId = u32;
+
+#[derive(Clone, Copy)]
+pub struct RemedybgStr<'a>(&'a str);
 impl<'de> Serialize<'de> for RemedybgStr<'de> {
     fn serialize(&self, serializer: &mut dyn Serializer) {
         let bytes = self.0.as_bytes();
@@ -688,18 +692,22 @@ impl RemedybgCommandKind {
 }
 
 #[derive(Clone, Copy)]
-pub enum RemedybgEventKind {
+pub enum RemedybgEvent<'a> {
    // A target being debugged has exited.
    //
    // [kind :: rdbg_DebugEventKind (uint16_t)]
    // [exit_code :: uint32_t]
-   ExitProcess = 100,
+   ExitProcess {
+       exit_code: u32,
+   },
 
    // A user breakpoint was hit
    //
    // [kind :: rdbg_DebugEventKind (uint16_t)]
    // [bp_id :: rdbg_Id]
-   BreakpointHit = 600,
+   BreakpointHit {
+       breakpoint_id: RemedybgId,
+   },
 
    // The breakpoint with the given ID has been resolved (has a valid location).
    // This can happen if the breakpoint was set in module that became loaded,
@@ -707,46 +715,80 @@ pub enum RemedybgEventKind {
    //
    // [kind :: rdbg_DebugEventKind (uint16_t)]
    // [bp_id :: rdbg_Id]
-   BreakpointResolved = 601,
+   BreakpointResolved {
+       breakpoint_id: RemedybgId,
+   },
 
    // A new user breakpoint was added.
    //
    // [kind :: rdbg_DebugEventKind (uint16_t)]
    // [bp_id :: rdbg_Id]
-   BreakpointAdded = 602,
+   BreakpointAdded {
+       breakpoint_id: RemedybgId,
+   },
 
    // A user breakpoint was modified.
    //
    // [kind :: rdbg_DebugEventKind (uint16_t)]
    // [bp_id :: rdbg_Id]
    // [enable :: rdbg_Bool]
-   BreakpointModified = 603,
+   BreakpointModified {
+       breakpoint_id: RemedybgId,
+       enabled: RemedybgBool,
+   },
 
    // A user breakpoint was removed.
    //
    // [kind :: rdbg_DebugEventKind (uint16_t)]
    // [bp_id :: rdbg_Id]
-   BreakpointRemoved = 604,
+   BreakpointRemoved {
+       breakpoint_id: RemedybgId,
+   },
 
    // An OutputDebugString was received by the debugger. The given string will
    // be UTF-8 encoded.
    //
    // [kind :: rdbg_DebugEventKind (uint16_t)]
    // [str :: rdbg_String]
-   OutputDebugString = 800,
+   OutputDebugString {
+       string: RemedybgStr<'a>,
+   },
 }
-impl RemedybgEventKind {
-    pub fn deserialize<'de>(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
+impl<'a> RemedybgEvent<'a> {
+    pub fn deserialize(deserializer: &mut dyn Deserializer<'a>) -> Result<Self, DeserializeError> {
         let discriminant = u16::deserialize(deserializer)?;
         match discriminant {
-            100 => Ok(Self::ExitProcess),
-            600 => Ok(Self::BreakpointHit),
-            601 => Ok(Self::BreakpointResolved),
-            602 => Ok(Self::BreakpointAdded),
-            603 => Ok(Self::BreakpointModified),
-            604 => Ok(Self::BreakpointRemoved),
-            800 => Ok(Self::OutputDebugString),
+            100 => {
+                let exit_code = Serialize::deserialize(deserializer)?;
+                Ok(Self::ExitProcess { exit_code })
+            },
+            600 => {
+                let breakpoint_id = Serialize::deserialize(deserializer)?;
+                Ok(Self::BreakpointHit { breakpoint_id })
+            }
+            601 => {
+                let breakpoint_id = Serialize::deserialize(deserializer)?;
+                Ok(Self::BreakpointResolved { breakpoint_id })
+            }
+            602 => {
+                let breakpoint_id = Serialize::deserialize(deserializer)?;
+                Ok(Self::BreakpointAdded { breakpoint_id })
+            }
+            603 => {
+                let breakpoint_id = Serialize::deserialize(deserializer)?;
+                let enabled = Serialize::deserialize(deserializer)?;
+                Ok(Self::BreakpointModified { breakpoint_id, enabled })
+            }
+            604 => {
+                let breakpoint_id = Serialize::deserialize(deserializer)?;
+                Ok(Self::BreakpointRemoved { breakpoint_id })
+            }
+            800 => {
+                let string = Serialize::deserialize(deserializer)?;
+                Ok(Self::OutputDebugString { string })
+            }
             _ => Err(DeserializeError::InvalidData),
         }
     }
 }
+

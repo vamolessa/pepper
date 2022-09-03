@@ -16,6 +16,8 @@ use pepper::{
 
 mod protocol;
 
+use protocol::{RemedybgEvent, RemedybgCommandKind, RemedybgStr, RemedybgCommandResult};
+
 pub static DEFINITION: PluginDefinition = PluginDefinition {
     instantiate: |handle, ctx| {
         register_commands(&mut ctx.editor.commands, handle);
@@ -60,6 +62,10 @@ pub(crate) struct RemedybgPlugin {
     process_state: ProcessState,
     session_name: String,
     pending_breakpoints: Vec<(BufferHandle, BufferBreakpoint)>,
+
+    pending_commands: Vec<RemedybgCommandKind>,
+    control_ipc_handle: Option<PlatformIpcHandle>,
+    event_ipc_handle: Option<PlatformIpcHandle>,
 }
 impl RemedybgPlugin {
     pub fn spawn(
@@ -338,26 +344,61 @@ fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, _: u32)
 
 fn on_ipc_spawned(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, ipc_handle: PlatformIpcHandle) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-    let _ = remedybg;
-    let _ = ipc_handle;
 
-    let ipc_name = match id {
-        CONTROL_PIPE_ID => "control",
-        EVENT_PIPE_ID => "event",
+    let ipc_name;
+    match id {
+        CONTROL_PIPE_ID => {
+            remedybg.control_ipc_handle = Some(ipc_handle);
+            ipc_name = "control";
+        }
+        EVENT_PIPE_ID => {
+            remedybg.event_ipc_handle = Some(ipc_handle);
+            ipc_name = "event";
+        }
         _ => unreachable!(),
     };
+
     ctx.editor.logger.write(LogKind::Diagnostic).fmt(format_args!("remedybg: connected to {} ipc", ipc_name));
 }
 
-fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, bytes: &[u8]) {
+fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, mut bytes: &[u8]) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
     let _ = remedybg;
 
-    let mut write = ctx.editor.logger.write(LogKind::Diagnostic);
-    write.fmt(format_args!("remedybg: on ipc output {} with {} bytes", id, bytes.len()));
-    if let Ok(text) = std::str::from_utf8(bytes) {
-        write.str("\n");
-        write.str(text);
+    match id {
+        CONTROL_PIPE_ID => {
+            let command = match remedybg.pending_commands.pop() {
+                Some(command) => command,
+                None => {
+                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!("remedybg: received response with no pending command"));
+                    return;
+                }
+            };
+
+            let mut write = ctx.editor.logger.write(LogKind::Diagnostic);
+            write.fmt(format_args!("remedybg: command {} response:", command as usize));
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                write.str("\n");
+                write.str(text);
+            }
+        }
+        EVENT_PIPE_ID => {
+            let event = match RemedybgEvent::deserialize(&mut bytes) {
+                Ok(event) => event,
+                Err(_) => {
+                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!("remedybg: could not deserialize debug event"));
+                    return;
+                }
+            };
+
+            let mut write = ctx.editor.logger.write(LogKind::Diagnostic);
+            write.fmt(format_args!("remedybg: event {:?} :", std::mem::discriminant(&event)));
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                write.str("\n");
+                write.str(text);
+            }
+        }
+        _ => unreachable!(),
     }
 }
 

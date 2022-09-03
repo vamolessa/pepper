@@ -13,7 +13,7 @@ use winapi::{
     shared::{
         minwindef::{BOOL, DWORD, FALSE, TRUE},
         ntdef::NULL,
-        winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
+        winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT, ERROR_FILE_NOT_FOUND},
     },
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
@@ -1132,7 +1132,26 @@ impl AsyncIpc {
             IpcReadMode::MessageStream => PIPE_READMODE_MESSAGE,
         };
 
-        let handle = create_file(path, access_mode, 0, FILE_FLAG_OVERLAPPED)?;
+        //let handle = create_file(path, access_mode, 0, FILE_FLAG_OVERLAPPED)?;
+        let mut handle = None;
+        for _ in 0..8 {
+            handle = create_file(path, access_mode, 0, FILE_FLAG_OVERLAPPED);
+            match handle {
+                Some(_) => break,
+                None => match get_last_error() {
+                    ERROR_FILE_NOT_FOUND => std::thread::sleep(Duration::from_millis(100)),
+                    _ => break,
+                }
+            }
+        }
+        let handle = match handle {
+            Some(handle) => handle,
+            None => {
+                eprintln!("could not connect to named pipe: {}", get_last_error());
+                return None;
+            }
+        };
+
         let result = unsafe {
             SetNamedPipeHandleState(
                 handle.0,
