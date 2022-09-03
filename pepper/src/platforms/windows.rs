@@ -13,7 +13,10 @@ use winapi::{
     shared::{
         minwindef::{BOOL, DWORD, FALSE, TRUE},
         ntdef::NULL,
-        winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT, ERROR_FILE_NOT_FOUND},
+        winerror::{
+            ERROR_FILE_NOT_FOUND, ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED,
+            WAIT_TIMEOUT,
+        },
     },
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
@@ -51,8 +54,8 @@ use winapi::{
         },
         winnls::CP_UTF8,
         winnt::{
-            FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, GENERIC_WRITE, HANDLE,
-            MAXIMUM_WAIT_OBJECTS, FILE_WRITE_ATTRIBUTES,
+            FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_ATTRIBUTES, GENERIC_READ, GENERIC_WRITE,
+            HANDLE, MAXIMUM_WAIT_OBJECTS,
         },
         winuser::{
             CloseClipboard, EmptyClipboard, GetClipboardData, MessageBoxW, OpenClipboard,
@@ -1141,7 +1144,7 @@ impl AsyncIpc {
                 None => match get_last_error() {
                     ERROR_FILE_NOT_FOUND => std::thread::sleep(Duration::from_millis(100)),
                     _ => break,
-                }
+                },
             }
         }
         let handle = match handle {

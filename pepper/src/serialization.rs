@@ -23,7 +23,9 @@ macro_rules! impl_serialize_num {
                 serializer.write(&self.to_le_bytes());
             }
 
-            fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
+            fn deserialize(
+                deserializer: &mut dyn Deserializer<'de>,
+            ) -> Result<Self, DeserializeError> {
                 let mut buf = [0; std::mem::size_of::<$type>()];
                 let bytes = deserializer.read(buf.len())?;
                 buf.clone_from_slice(bytes);

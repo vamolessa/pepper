@@ -1,6 +1,6 @@
 use std::{
-    process::{Command, Stdio},
     path::Path,
+    process::{Command, Stdio},
 };
 
 use pepper::{
@@ -10,9 +10,8 @@ use pepper::{
     editor_utils::{to_absolute_path_string, LogKind},
     events::{EditorEvent, EditorEventIter},
     platform::{
-        PooledBuf,
         IpcReadMode, IpcTag, Platform, PlatformIpcHandle, PlatformProcessHandle, PlatformRequest,
-        ProcessTag,
+        PooledBuf, ProcessTag,
     },
     plugin::{Plugin, PluginDefinition, PluginHandle},
     serialization::Serialize,
@@ -117,17 +116,12 @@ impl RemedybgPlugin {
     ) -> Result<CommandSender, CommandError> {
         match self.control_ipc_handle {
             Some(ipc_handle) => {
-                self
-                .pending_commands
-                .push(command_kind);
+                self.pending_commands.push(command_kind);
 
                 let mut buf = platform.buf_pool.acquire();
                 let write = buf.write();
                 command_kind.serialize(write);
-                let sender = CommandSender {
-                    ipc_handle,
-                    buf,
-                };
+                let sender = CommandSender { ipc_handle, buf };
                 Ok(sender)
             }
             None => Err(CommandError::OtherStatic("remedybg is not running")),
@@ -138,11 +132,11 @@ impl RemedybgPlugin {
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        plugin_handle: PluginHandle,
         file_path_buf: &mut String,
     ) -> Result<(), CommandError> {
         {
-            let mut sender = self.begin_send_command(platform, RemedybgCommandKind::DeleteAllBreakpoints)?;
+            let sender =
+                self.begin_send_command(platform, RemedybgCommandKind::DeleteAllBreakpoints)?;
             sender.send(platform);
         }
 
@@ -154,7 +148,10 @@ impl RemedybgPlugin {
             }
 
             for &breakpoint in buffer.breakpoints() {
-                let mut sender = self.begin_send_command(platform, RemedybgCommandKind::AddBreakpointAtFilenameLine)?;
+                let mut sender = self.begin_send_command(
+                    platform,
+                    RemedybgCommandKind::AddBreakpointAtFilenameLine,
+                )?;
                 let write = sender.write();
                 RemedybgStr(&file_path_buf).serialize(write);
                 let line = (breakpoint.line_index + 1) as u32;
@@ -168,7 +165,11 @@ impl RemedybgPlugin {
     }
 }
 
-fn get_absolue_file_path(current_directory: &Path, buffer_path: &Path, file_path: &mut String) -> Result<(), CommandError> {
+fn get_absolue_file_path(
+    current_directory: &Path,
+    buffer_path: &Path,
+    file_path: &mut String,
+) -> Result<(), CommandError> {
     let current_directory = match current_directory.to_str() {
         Some(path) => path,
         None => return Err(CommandError::OtherStatic("current directory is not utf-8")),
@@ -236,31 +237,39 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             let plugin_handle = io.plugin_handle();
             let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
             let mut file_path_buf = ctx.editor.string_pool.acquire();
-            let result = remedybg.sync_breakpoints(&ctx.editor, &mut ctx.platform, plugin_handle, &mut file_path_buf);
+            let result =
+                remedybg.sync_breakpoints(&ctx.editor, &mut ctx.platform, &mut file_path_buf);
             ctx.editor.string_pool.release(file_path_buf);
             result
         },
     );
 
-    static START_DEBUGGING_COMPLETIONS: &[CompletionSource] = &[CompletionSource::Custom(&["paused"])];
-    r("remedybg-start-debugging", START_DEBUGGING_COMPLETIONS, |ctx, io| {
-        let start_paused = match io.args.try_next() {
-            Some("paused") => true,
-            Some(_) => return Err(CommandError::OtherStatic("invalid arg")),
-            None => false,
-        };
-        io.args.assert_empty()?;
+    static START_DEBUGGING_COMPLETIONS: &[CompletionSource] =
+        &[CompletionSource::Custom(&["paused"])];
+    r(
+        "remedybg-start-debugging",
+        START_DEBUGGING_COMPLETIONS,
+        |ctx, io| {
+            let start_paused = match io.args.try_next() {
+                Some("paused") => true,
+                Some(_) => return Err(CommandError::OtherStatic("invalid arg")),
+                None => false,
+            };
+            io.args.assert_empty()?;
 
-        let mut sender = begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StartDebugging)?;
-        let write = sender.write();
-        RemedybgBool(start_paused).serialize(write);
-        sender.send(&mut ctx.platform);
-        Ok(())
-    });
+            let mut sender =
+                begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StartDebugging)?;
+            let write = sender.write();
+            RemedybgBool(start_paused).serialize(write);
+            sender.send(&mut ctx.platform);
+            Ok(())
+        },
+    );
 
     r("remedybg-stop-debugging", &[], |ctx, io| {
         io.args.assert_empty()?;
-        let sender = begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StartDebugging)?;
+        let sender =
+            begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StartDebugging)?;
         sender.send(&mut ctx.platform);
         Ok(())
     });
@@ -271,8 +280,16 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
 
         let process = process_arg.parse::<u32>();
         let mut sender = match process {
-            Ok(_) => begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::AttachToProcessByPid)?,
-            Err(_) => begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::AttachToProcessByName)?,
+            Ok(_) => begin_send_command(
+                ctx,
+                io.plugin_handle(),
+                RemedybgCommandKind::AttachToProcessByPid,
+            )?,
+            Err(_) => begin_send_command(
+                ctx,
+                io.plugin_handle(),
+                RemedybgCommandKind::AttachToProcessByName,
+            )?,
         };
         let write = sender.write();
         match process {
@@ -287,14 +304,16 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
 
     r("remedybg-step-into", &[], |ctx, io| {
         io.args.assert_empty()?;
-        let sender = begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StepIntoByLine)?;
+        let sender =
+            begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StepIntoByLine)?;
         sender.send(&mut ctx.platform);
         Ok(())
     });
 
     r("remedybg-step-over", &[], |ctx, io| {
         io.args.assert_empty()?;
-        let sender = begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StepOverByLine)?;
+        let sender =
+            begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::StepOverByLine)?;
         sender.send(&mut ctx.platform);
         Ok(())
     });
@@ -308,7 +327,11 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
 
     r("remedybg-continue-execution", &[], |ctx, io| {
         io.args.assert_empty()?;
-        let sender = begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::ContinueExecution)?;
+        let sender = begin_send_command(
+            ctx,
+            io.plugin_handle(),
+            RemedybgCommandKind::ContinueExecution,
+        )?;
         sender.send(&mut ctx.platform);
         Ok(())
     });
@@ -330,7 +353,11 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
         let line_number = buffer_view.cursors.main_cursor().position.line_index + 1;
         let line_number = line_number as u32;
 
-        let mut sender = match begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::RunToFileAtLine) {
+        let mut sender = match begin_send_command(
+            ctx,
+            io.plugin_handle(),
+            RemedybgCommandKind::RunToFileAtLine,
+        ) {
             Ok(sender) => sender,
             Err(error) => {
                 ctx.editor.string_pool.release(file_path);
@@ -348,7 +375,8 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
 
     r("remedybg-break-execution", &[], |ctx, io| {
         io.args.assert_empty()?;
-        let sender = begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::BreakExecution)?;
+        let sender =
+            begin_send_command(ctx, io.plugin_handle(), RemedybgCommandKind::BreakExecution)?;
         sender.send(&mut ctx.platform);
         Ok(())
     });
@@ -371,12 +399,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
 
     if breakpoints_changed {
         let mut file_path_buf = ctx.editor.string_pool.acquire();
-        let _ = remedybg.sync_breakpoints(
-            &ctx.editor,
-            &mut ctx.platform,
-            plugin_handle,
-            &mut file_path_buf,
-        );
+        let _ = remedybg.sync_breakpoints(&ctx.editor, &mut ctx.platform, &mut file_path_buf);
         ctx.editor.string_pool.release(file_path_buf);
     }
 }
@@ -528,4 +551,3 @@ fn on_ipc_close(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32) {
         .write(LogKind::Diagnostic)
         .fmt(format_args!("remedybg: {} ipc closed", ipc_name));
 }
-
