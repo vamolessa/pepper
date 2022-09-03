@@ -1,5 +1,4 @@
 use std::{
-    fmt,
     process::{Command, Stdio},
     path::Path,
 };
@@ -150,7 +149,7 @@ impl RemedybgPlugin {
         for buffer in editor.buffers.iter() {
             let current_directory = &editor.current_directory;
             let buffer_path = &buffer.path;
-            if let Err(error) = get_absolue_file_path(current_directory, buffer_path, file_path_buf) {
+            if get_absolue_file_path(current_directory, buffer_path, file_path_buf).is_err() {
                 continue;
             }
 
@@ -179,7 +178,7 @@ fn get_absolue_file_path(current_directory: &Path, buffer_path: &Path, file_path
         None => return Err(CommandError::OtherStatic("buffer path is not utf-8")),
     };
 
-    to_absolute_path_string(current_directory, buffer_path, &mut file_path);
+    to_absolute_path_string(current_directory, buffer_path, file_path);
     Ok(())
 }
 
