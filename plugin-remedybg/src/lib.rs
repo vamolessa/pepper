@@ -130,9 +130,8 @@ impl RemedybgPlugin {
 
     pub fn sync_breakpoints(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
-        file_path_buf: &mut String,
     ) -> Result<(), CommandError> {
         {
             let sender =
@@ -140,10 +139,13 @@ impl RemedybgPlugin {
             sender.send(platform);
         }
 
+        let mut file_path_buf = editor.string_pool.acquire();
         for buffer in editor.buffers.iter() {
             let current_directory = &editor.current_directory;
             let buffer_path = &buffer.path;
-            if get_absolue_file_path(current_directory, buffer_path, file_path_buf).is_err() {
+
+            file_path_buf.clear();
+            if get_absolue_file_path(current_directory, buffer_path, &mut file_path_buf).is_err() {
                 continue;
             }
 
@@ -161,6 +163,7 @@ impl RemedybgPlugin {
             }
         }
 
+        editor.string_pool.release(file_path_buf);
         Ok(())
     }
 }
@@ -236,11 +239,7 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             io.args.assert_empty()?;
             let plugin_handle = io.plugin_handle();
             let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-            let mut file_path_buf = ctx.editor.string_pool.acquire();
-            let result =
-                remedybg.sync_breakpoints(&ctx.editor, &mut ctx.platform, &mut file_path_buf);
-            ctx.editor.string_pool.release(file_path_buf);
-            result
+            remedybg.sync_breakpoints(&mut ctx.editor, &mut ctx.platform)
         },
     );
 
@@ -398,9 +397,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
     }
 
     if breakpoints_changed {
-        let mut file_path_buf = ctx.editor.string_pool.acquire();
-        let _ = remedybg.sync_breakpoints(&ctx.editor, &mut ctx.platform, &mut file_path_buf);
-        ctx.editor.string_pool.release(file_path_buf);
+        let _ = remedybg.sync_breakpoints(&mut ctx.editor, &mut ctx.platform);
     }
 }
 
@@ -472,6 +469,7 @@ fn on_ipc_connected(
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
     if id == CONTROL_PIPE_ID {
         remedybg.control_ipc_handle = Some(ipc_handle);
+        let _ = remedybg.sync_breakpoints(&mut ctx.editor, &mut ctx.platform);
     }
 
     let ipc_name = get_ipc_name(id);
