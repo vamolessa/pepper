@@ -38,6 +38,7 @@ macro_rules! impl_serialize_num {
 impl_serialize_num!(u8);
 impl_serialize_num!(u16);
 impl_serialize_num!(u32);
+impl_serialize_num!(u64);
 
 impl<'de> Serialize<'de> for char {
     fn serialize(&self, serializer: &mut dyn Serializer) {

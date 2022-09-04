@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     path::Path,
     process::{Command, Stdio},
 };
@@ -7,21 +8,21 @@ use pepper::{
     buffer::{BufferBreakpoint, BufferCollection, BufferHandle},
     command::{CommandError, CommandManager, CompletionSource},
     editor::{Editor, EditorContext},
-    editor_utils::{to_absolute_path_string, LogKind},
+    editor_utils::{StringPool, to_absolute_path_string, LogKind},
     events::{EditorEvent, EditorEventIter},
     platform::{
         IpcReadMode, IpcTag, Platform, PlatformIpcHandle, PlatformProcessHandle, PlatformRequest,
         PooledBuf, ProcessTag,
     },
     plugin::{Plugin, PluginDefinition, PluginHandle},
-    serialization::Serialize,
+    serialization::{Serialize, DeserializeError, },
     ResourceFile,
 };
 
 mod protocol;
 
 use protocol::{
-    RemedybgBool, RemedybgCommandKind, RemedybgCommandResult, RemedybgEvent, RemedybgStr,
+    RemedybgBool, RemedybgId, RemedybgCommandKind, RemedybgCommandResult, RemedybgEvent, RemedybgStr, RemedybgBreakpoint,
 };
 
 pub static DEFINITION: PluginDefinition = PluginDefinition {
@@ -59,15 +60,25 @@ impl Default for ProcessState {
     }
 }
 
+enum BreakpointSyncState {
+    Synced,
+    WaitingForRemedybgBreakpoints,
+}
+impl Default for BreakpointSyncState {
+    fn default() -> Self {
+        Self::Synced
+    }
+}
+
 const CONTROL_PIPE_ID: u32 = 0;
 const EVENT_PIPE_ID: u32 = 1;
 
 #[derive(Default)]
 pub(crate) struct RemedybgPlugin {
-    breakpoints_changed: bool,
     process_state: ProcessState,
     session_name: String,
 
+    breakpoint_sync_state: BreakpointSyncState,
     pending_commands: Vec<RemedybgCommandKind>,
     control_ipc_handle: Option<PlatformIpcHandle>,
 }
@@ -128,11 +139,16 @@ impl RemedybgPlugin {
         }
     }
 
-    pub fn sync_breakpoints(
+    pub fn begin_sync_breakpoints(
         &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
     ) -> Result<(), CommandError> {
+        self.breakpoint_sync_state = BreakpointSyncState::WaitingForRemedybgBreakpoints;
+        let sender = self.begin_send_command(platform, RemedybgCommandKind::GetBreakpoints)?;
+        sender.send(platform);
+
+        /*
         {
             let sender =
                 self.begin_send_command(platform, RemedybgCommandKind::DeleteAllBreakpoints)?;
@@ -164,6 +180,7 @@ impl RemedybgPlugin {
         }
 
         editor.string_pool.release(file_path_buf);
+        */
         Ok(())
     }
 }
@@ -239,7 +256,7 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             io.args.assert_empty()?;
             let plugin_handle = io.plugin_handle();
             let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
-            remedybg.sync_breakpoints(&mut ctx.editor, &mut ctx.platform)
+            remedybg.begin_sync_breakpoints(&mut ctx.editor, &mut ctx.platform)
         },
     );
 
@@ -384,20 +401,16 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
 fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
 
-    let mut breakpoints_changed = false;
     let mut events = EditorEventIter::new();
     while let Some(event) = events.next(ctx.editor.events.reader()) {
         match event {
             EditorEvent::BufferBreakpointsChanged { .. } => {
-                breakpoints_changed = true;
+                // TODO: send only breakpoints that changed
+                let _ = remedybg.begin_sync_breakpoints(&mut ctx.editor, &mut ctx.platform);
                 break;
             }
             _ => (),
         }
-    }
-
-    if breakpoints_changed {
-        let _ = remedybg.sync_breakpoints(&mut ctx.editor, &mut ctx.platform);
     }
 }
 
@@ -409,7 +422,6 @@ fn on_process_spawned(
 ) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
     remedybg.process_state = ProcessState::Running(process_handle);
-    remedybg.breakpoints_changed = true;
 
     let mut control_path_buf = ctx.platform.buf_pool.acquire();
     let path_write = control_path_buf.write();
@@ -469,7 +481,7 @@ fn on_ipc_connected(
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
     if id == CONTROL_PIPE_ID {
         remedybg.control_ipc_handle = Some(ipc_handle);
-        let _ = remedybg.sync_breakpoints(&mut ctx.editor, &mut ctx.platform);
+        let _ = remedybg.begin_sync_breakpoints(&mut ctx.editor, &mut ctx.platform);
     }
 
     let ipc_name = get_ipc_name(id);
@@ -479,41 +491,96 @@ fn on_ipc_connected(
         .fmt(format_args!("remedybg: connected to {} ipc", ipc_name));
 }
 
+enum ControlResponseError {
+    DeserializeError(DeserializeError),
+    RemedybgCommandResult(RemedybgCommandResult),
+    CommandError(CommandError),
+}
+impl From<DeserializeError> for ControlResponseError {
+    fn from(other: DeserializeError) -> Self {
+        Self::DeserializeError(other)
+    }
+}
+impl From<CommandError> for ControlResponseError {
+    fn from(other: CommandError) -> Self {
+        Self::CommandError(other)
+    }
+}
+impl fmt::Display for ControlResponseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::DeserializeError(DeserializeError::InvalidData) => f.write_str("deserialize error: invalid data"),
+            Self::DeserializeError(DeserializeError::InsufficientData) => f.write_str("deserialize error: insufficient data"),
+            Self::RemedybgCommandResult(result) => f.write_fmt(format_args!("result: {}", result)),
+            Self::CommandError(error) => error.fmt(f),
+        }
+    }
+}
+
+fn on_control_response(
+    remedybg: &mut RemedybgPlugin,
+    string_pool: &mut StringPool,
+    platform: &mut Platform,
+    command_kind: RemedybgCommandKind,
+    mut bytes: &[u8]
+) -> Result<(), ControlResponseError> {
+    match RemedybgCommandResult::deserialize(&mut bytes) {
+        Ok(RemedybgCommandResult::Ok) => (),
+        Ok(result) => return Err(ControlResponseError::RemedybgCommandResult(result)),
+        Err(error) => return Err(error.into()),
+    }
+
+    match command_kind {
+        RemedybgCommandKind::GetBreakpoints => {
+            if let BreakpointSyncState::WaitingForRemedybgBreakpoints = remedybg.breakpoint_sync_state {
+                remedybg.breakpoint_sync_state = BreakpointSyncState::Synced;
+
+                let breakpoint_count = u16::deserialize(&mut bytes)?;
+                for _ in 0..breakpoint_count {
+                    let id = RemedybgId::deserialize(&mut bytes)?;
+                    let _enabled = RemedybgBool::deserialize(&mut bytes)?;
+                    let _module_name = RemedybgStr::deserialize(&mut bytes)?;
+                    let _condition_expr = RemedybgStr::deserialize(&mut bytes)?;
+                    let breakpoint = RemedybgBreakpoint::deserialize(&mut bytes)?;
+                    if let RemedybgBreakpoint::FilenameLine { filename, line_num } = breakpoint {
+                        let mut sender = remedybg.begin_send_command(platform, RemedybgCommandKind::DeleteBreakpoint)?;
+                        let writer = sender.write();
+                        id.serialize(writer);
+                        sender.send(platform);
+                    }
+                }
+
+                // send editor breakpoints
+            }
+        }
+        _ => (),
+    }
+
+    Ok(())
+}
+
 fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, mut bytes: &[u8]) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
 
     match id {
         CONTROL_PIPE_ID => {
-            let command = match remedybg.pending_commands.pop() {
-                Some(command) => command,
-                None => {
-                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
-                        "remedybg: received response with no pending command"
-                    ));
-                    return;
-                }
-            };
-
-            match RemedybgCommandResult::deserialize(&mut bytes) {
-                Ok(RemedybgCommandResult::Ok) => (),
-                Ok(result) => {
-                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
-                        "remedybg: command {} returned with result: {}",
-                        command as usize, result
-                    ));
-                    return;
-                }
-                Err(_) => {
-                    ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
-                        "remedybg: could not deserialize command {} result",
-                        command as usize
-                    ));
-                    return;
-                }
-            }
-
-            match command {
-                _ => (),
+            match remedybg.pending_commands.pop() {
+                Some(command_kind) => {
+                    if let Err(error) = on_control_response(
+                        remedybg,
+                        &mut ctx.editor.string_pool,
+                        &mut ctx.platform,
+                        command_kind,
+                        bytes,
+                    ) {
+                        ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
+                            "remedybg: error while deserializing command {}: {}", command_kind as usize, error,
+                        ));
+                    }
+                },
+                None => ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
+                    "remedybg: received response with no pending command"
+                )),
             }
         }
         EVENT_PIPE_ID => {
@@ -527,6 +594,22 @@ fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, 
                     return;
                 }
             };
+
+            match event {
+                RemedybgEvent::BreakpointHit { breakpoint_id } => {
+                    //
+                }
+                RemedybgEvent::BreakpointResolved { breakpoint_id } => {
+                    //
+                }
+                RemedybgEvent::BreakpointAdded { breakpoint_id } => {
+                    //
+                }
+                RemedybgEvent::BreakpointRemoved { breakpoint_id } => {
+                    //
+                }
+                _ => (),
+            }
 
             let mut write = ctx.editor.logger.write(LogKind::Diagnostic);
             write.fmt(format_args!(
@@ -542,7 +625,7 @@ fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, 
     }
 }
 
-fn on_ipc_close(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32) {
+fn on_ipc_close(_: PluginHandle, ctx: &mut EditorContext, id: u32) {
     let ipc_name = get_ipc_name(id);
     ctx.editor
         .logger

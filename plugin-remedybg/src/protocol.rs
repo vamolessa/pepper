@@ -132,6 +132,63 @@ impl<'de> Serialize<'de> for RemedybgStr<'de> {
     }
 }
 
+pub enum RemedybgProcessorBreakpointAccessKind {
+    Write,
+    ReadWrite,
+    Execute,
+}
+
+pub enum RemedybgBreakpoint<'a> {
+   FunctionName {
+       function_name: RemedybgStr<'a>,
+       overload_id: u32,
+   },
+   FilenameLine {
+       filename: RemedybgStr<'a>,
+       line_num: u32,
+   },
+   Address {
+       address: u64,
+   },
+   Processor {
+       addr_expression: RemedybgStr<'a>,
+       num_bytes: u8,
+       access_kind: RemedybgProcessorBreakpointAccessKind,
+   },
+}
+impl<'a> RemedybgBreakpoint<'a> {
+    pub fn deserialize(deserializer: &mut dyn Deserializer<'a>) -> Result<Self, DeserializeError> {
+        match u8::deserialize(deserializer)? {
+            1 => {
+                let function_name = Serialize::deserialize(deserializer)?;
+                let overload_id = Serialize::deserialize(deserializer)?;
+                Ok(Self::FunctionName { function_name, overload_id })
+            },
+            2 => {
+                let filename = Serialize::deserialize(deserializer)?;
+                let line_num = Serialize::deserialize(deserializer)?;
+                Ok(Self::FilenameLine { filename, line_num })
+            },
+            3 => {
+                let address = Serialize::deserialize(deserializer)?;
+                Ok(Self::Address { address })
+            }
+            4 => {
+                let addr_expression = Serialize::deserialize(deserializer)?;
+                let num_bytes = Serialize::deserialize(deserializer)?;
+                let access_kind = match u8::deserialize(deserializer)? {
+                    1 => RemedybgProcessorBreakpointAccessKind::Write,
+                    2 => RemedybgProcessorBreakpointAccessKind::ReadWrite,
+                    3 => RemedybgProcessorBreakpointAccessKind::Execute,
+                    _ => return Err(DeserializeError::InvalidData),
+                };
+                Ok(Self::Processor { addr_expression, num_bytes, access_kind })
+            },
+            _ => Err(DeserializeError::InvalidData),
+        }
+    }
+}
+
 pub const RDBG_IF_DEBUGGING_TARGET_STOP_DEBUGGING: u8 = 1;
 pub const RDBG_IF_DEBUGGING_TARGET_ABORT_COMMAND: u8 = 2;
 
