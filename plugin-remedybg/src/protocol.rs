@@ -1,6 +1,39 @@
 use std::fmt;
 
-use pepper::serialization::{DeserializeError, Deserializer, Serialize, Serializer};
+use pepper::{
+    command::CommandError,
+    serialization::{DeserializeError, Deserializer, Serialize, Serializer},
+};
+
+pub enum ProtocolError {
+    DeserializeError(DeserializeError),
+    RemedybgCommandResult(RemedybgCommandResult),
+    CommandError(CommandError),
+}
+impl From<DeserializeError> for ProtocolError {
+    fn from(other: DeserializeError) -> Self {
+        Self::DeserializeError(other)
+    }
+}
+impl From<CommandError> for ProtocolError {
+    fn from(other: CommandError) -> Self {
+        Self::CommandError(other)
+    }
+}
+impl fmt::Display for ProtocolError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::DeserializeError(DeserializeError::InvalidData) => {
+                f.write_str("deserialize error: invalid data")
+            }
+            Self::DeserializeError(DeserializeError::InsufficientData) => {
+                f.write_str("deserialize error: insufficient data")
+            }
+            Self::RemedybgCommandResult(result) => f.write_fmt(format_args!("result: {}", result)),
+            Self::CommandError(error) => error.fmt(f),
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub enum RemedybgCommandResult {
@@ -139,22 +172,22 @@ pub enum RemedybgProcessorBreakpointAccessKind {
 }
 
 pub enum RemedybgBreakpoint<'a> {
-   FunctionName {
-       function_name: RemedybgStr<'a>,
-       overload_id: u32,
-   },
-   FilenameLine {
-       filename: RemedybgStr<'a>,
-       line_num: u32,
-   },
-   Address {
-       address: u64,
-   },
-   Processor {
-       addr_expression: RemedybgStr<'a>,
-       num_bytes: u8,
-       access_kind: RemedybgProcessorBreakpointAccessKind,
-   },
+    FunctionName {
+        function_name: RemedybgStr<'a>,
+        overload_id: u32,
+    },
+    FilenameLine {
+        filename: RemedybgStr<'a>,
+        line_num: u32,
+    },
+    Address {
+        address: u64,
+    },
+    Processor {
+        addr_expression: RemedybgStr<'a>,
+        num_bytes: u8,
+        access_kind: RemedybgProcessorBreakpointAccessKind,
+    },
 }
 impl<'a> RemedybgBreakpoint<'a> {
     pub fn deserialize(deserializer: &mut dyn Deserializer<'a>) -> Result<Self, DeserializeError> {
@@ -162,13 +195,16 @@ impl<'a> RemedybgBreakpoint<'a> {
             1 => {
                 let function_name = Serialize::deserialize(deserializer)?;
                 let overload_id = Serialize::deserialize(deserializer)?;
-                Ok(Self::FunctionName { function_name, overload_id })
-            },
+                Ok(Self::FunctionName {
+                    function_name,
+                    overload_id,
+                })
+            }
             2 => {
                 let filename = Serialize::deserialize(deserializer)?;
                 let line_num = Serialize::deserialize(deserializer)?;
                 Ok(Self::FilenameLine { filename, line_num })
-            },
+            }
             3 => {
                 let address = Serialize::deserialize(deserializer)?;
                 Ok(Self::Address { address })
@@ -182,8 +218,12 @@ impl<'a> RemedybgBreakpoint<'a> {
                     3 => RemedybgProcessorBreakpointAccessKind::Execute,
                     _ => return Err(DeserializeError::InvalidData),
                 };
-                Ok(Self::Processor { addr_expression, num_bytes, access_kind })
-            },
+                Ok(Self::Processor {
+                    addr_expression,
+                    num_bytes,
+                    access_kind,
+                })
+            }
             _ => Err(DeserializeError::InvalidData),
         }
     }
@@ -770,7 +810,6 @@ impl RemedybgCommandKind {
     }
 }
 
-#[derive(Clone, Copy)]
 pub enum RemedybgEvent<'a> {
     // A target being debugged has exited.
     //
@@ -870,6 +909,19 @@ impl<'a> RemedybgEvent<'a> {
                 Ok(Self::OutputDebugString { string })
             }
             _ => Err(DeserializeError::InvalidData),
+        }
+    }
+}
+impl<'a> fmt::Display for RemedybgEvent<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::ExitProcess { .. } => f.write_str("exit process"),
+            Self::BreakpointHit { .. } => f.write_str("breakpoint hit"),
+            Self::BreakpointResolved { .. } => f.write_str("breakpoint resolved"),
+            Self::BreakpointAdded { .. } => f.write_str("breakpoint added"),
+            Self::BreakpointModified { .. } => f.write_str("breakpoint modified"),
+            Self::BreakpointRemoved { .. } => f.write_str("breakpoint removed"),
+            Self::OutputDebugString { .. } => f.write_str("output debug string"),
         }
     }
 }
