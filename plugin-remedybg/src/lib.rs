@@ -492,7 +492,9 @@ fn on_control_response(
 
             editor.string_pool.release(file_path_buf);
         }
-        RemedybgCommandKind::GetBreakpointLocation => {}
+        RemedybgCommandKind::GetBreakpointLocation => {
+            // TODO: implement this
+        }
         _ => (),
     }
 
