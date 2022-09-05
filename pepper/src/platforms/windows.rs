@@ -328,6 +328,7 @@ impl AsyncIO {
 
             if result == FALSE {
                 match get_last_error() {
+                    // TODO: return IoResult::Pending(read_len as _)
                     ERROR_MORE_DATA => {
                         self.event.notify();
                         IoResult::Ok(read_len as _)

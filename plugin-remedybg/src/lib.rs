@@ -60,6 +60,7 @@ impl Default for ProcessState {
     }
 }
 
+const IPC_BUF_SIZE: usize = 8 * 1024;
 const CONTROL_PIPE_ID: u32 = 0;
 const EVENT_PIPE_ID: u32 = 1;
 
@@ -379,7 +380,7 @@ fn on_process_spawned(
             read: true,
             write: true,
             read_mode: IpcReadMode::MessageStream,
-            buf_len: 1024,
+            buf_len: IPC_BUF_SIZE,
         });
 
     let mut event_path_buf = ctx.platform.buf_pool.acquire();
@@ -397,7 +398,7 @@ fn on_process_spawned(
             read: true,
             write: false,
             read_mode: IpcReadMode::MessageStream,
-            buf_len: 1024,
+            buf_len: IPC_BUF_SIZE,
         });
 }
 
@@ -494,6 +495,7 @@ fn on_control_response(
         }
         RemedybgCommandKind::GetBreakpointLocation => {
             // TODO: implement this
+            // here we should place the main cursor on the breakpoint location
         }
         _ => (),
     }
