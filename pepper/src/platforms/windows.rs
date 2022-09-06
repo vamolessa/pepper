@@ -1218,9 +1218,9 @@ impl AsyncIpc {
                         match self.read_mode {
                             IpcReadMode::MessageStream if get_last_error() == ERROR_MORE_DATA => {
                                 if len == 0 {
-                                    OutputDebugStringA("more data with len == 0");
+                                    //OutputDebugStringA("more data with len == 0");
                                 } else {
-                                    OutputDebugStringA("more data with len > 0");
+                                    //OutputDebugStringA("more data with len > 0");
                                 }
                                 self.partial_read_buf.extend_from_slice(write);
                                 self.read_buf = Some(buf);
