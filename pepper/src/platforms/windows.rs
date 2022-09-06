@@ -900,24 +900,22 @@ impl ConnectionToClient {
     }
 
     pub fn write_pending_async(&mut self) -> Result<Option<PooledBuf>, VecDeque<PooledBuf>> {
-        match self.write_buf_queue.get_mut(0) {
-            Some(buf) => match self.writer.write_async(buf.as_bytes()) {
-                IoResult::Waiting => Ok(None),
-                IoResult::Ok(len) => {
-                    buf.drain_start(len);
-                    if buf.as_bytes().is_empty() {
-                        Ok(self.write_buf_queue.pop_front())
-                    } else {
-                        Ok(None)
-                    }
+        let buf = self.write_buf_queue.get_mut(0).unwrap();
+        match self.writer.write_async(buf.as_bytes()) {
+            IoResult::Waiting => Ok(None),
+            IoResult::Ok(len) => {
+                buf.drain_start(len);
+                if buf.as_bytes().is_empty() {
+                    Ok(self.write_buf_queue.pop_front())
+                } else {
+                    Ok(None)
                 }
-                IoResult::Err => {
-                    let mut bufs = VecDeque::new();
-                    std::mem::swap(&mut bufs, &mut self.write_buf_queue);
-                    Err(bufs)
-                }
-            },
-            None => unreachable!(),
+            }
+            IoResult::Err => {
+                let mut bufs = VecDeque::new();
+                std::mem::swap(&mut bufs, &mut self.write_buf_queue);
+                Err(bufs)
+            }
         }
     }
 
@@ -1260,8 +1258,9 @@ impl AsyncIpc {
 
     pub fn write_pending_async(&mut self) -> Result<Option<PooledBuf>, VecDeque<PooledBuf>> {
         match &mut self.writer {
-            Some(writer) => match self.write_buf_queue.get_mut(0) {
-                Some(buf) => match writer.write_async(buf.as_bytes()) {
+            Some(writer) => {
+                let buf = self.write_buf_queue.get_mut(0).unwrap();
+                match writer.write_async(buf.as_bytes()) {
                     IoResult::Waiting => Ok(None),
                     IoResult::Ok(len) => {
                         buf.drain_start(len);
@@ -1276,9 +1275,8 @@ impl AsyncIpc {
                         std::mem::swap(&mut bufs, &mut self.write_buf_queue);
                         Err(bufs)
                     }
-                },
-                None => unreachable!(),
-            },
+                }
+            }
             None => Ok(None),
         }
     }
