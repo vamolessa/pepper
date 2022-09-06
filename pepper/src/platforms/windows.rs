@@ -378,6 +378,8 @@ impl AsyncIO {
     }
 
     pub fn write_async(&mut self, buf: &[u8]) -> IoResult {
+        reset_last_error();
+
         let mut write_len = 0;
         if self.pending_io {
             self.pending_io = false;
