@@ -126,6 +126,7 @@ impl ServerApplication {
                     self.ctx.clients.on_client_joined(handle)
                 }
                 PlatformEvent::ConnectionClose { handle } => {
+                    // TODO: remove old buffer views!!
                     self.ctx.clients.on_client_left(handle);
                     if self.ctx.clients.iter().next().is_none() {
                         self.ctx.platform.requests.enqueue(PlatformRequest::Quit);
