@@ -312,7 +312,7 @@ impl AsyncIO {
         &mut self.overlapped
     }
 
-    pub fn read_async(&mut self, buf: &mut [u8]) -> IoResult {
+    pub fn read_async(&mut self, buf: &mut [u8]) -> PartialIoResult {
         let mut read_len = 0;
         if self.pending_io {
             self.pending_io = false;
@@ -328,16 +328,12 @@ impl AsyncIO {
 
             if result == FALSE {
                 match get_last_error() {
-                    // TODO: return IoResult::Pending(read_len as _)
-                    ERROR_MORE_DATA => {
-                        self.event.notify();
-                        IoResult::Ok(read_len as _)
-                    }
-                    _ => IoResult::Err,
+                    ERROR_MORE_DATA => PartialIoResult::Pending(read_len as _),
+                    _ => PartialIoResult::Err,
                 }
             } else {
                 self.event.notify();
-                IoResult::Ok(read_len as _)
+                PartialIoResult::Ok(read_len as _)
             }
         } else {
             let result = unsafe {
@@ -354,13 +350,30 @@ impl AsyncIO {
                 match get_last_error() {
                     ERROR_IO_PENDING => {
                         self.pending_io = true;
-                        IoResult::Waiting
+                        PartialIoResult::Waiting
                     }
-                    _ => IoResult::Err,
+                    ERROR_MORE_DATA => PartialIoResult::Pending(read_len as _),
+                    _ => PartialIoResult::Err,
                 }
             } else {
                 self.event.notify();
-                IoResult::Ok(read_len as _)
+                PartialIoResult::Ok(read_len as _)
+            }
+        }
+    }
+
+    pub fn read_all_async(&mut self, buf: &mut Vec<u8>, read_block_len: usize) -> IoResult {
+        buf.resize(read_block_len, 0);
+        let mut read_len = 0;
+        loop {
+            match self.read_async(&mut buf[read_len..]) {
+                PartialIoResult::Waiting => break IoResult::Waiting,
+                PartialIoResult::Pending(len) => {
+                    read_len += len;
+                    buf.resize(read_len + read_block_len, 0);
+                }
+                PartialIoResult::Ok(len) => break IoResult::Ok(read_len + len),
+                PartialIoResult::Err => break IoResult::Err,
             }
         }
     }
@@ -448,6 +461,13 @@ fn create_file(
 
 enum IoResult {
     Waiting,
+    Ok(usize),
+    Err,
+}
+
+enum PartialIoResult {
+    Waiting,
+    Pending(usize),
     Ok(usize),
     Err,
 }
@@ -857,9 +877,9 @@ impl ConnectionToClient {
             Some(buf) => buf,
             None => buf_pool.acquire(),
         };
-        let write = buf.write_with_len(buf_len);
+        let write = buf.write();
 
-        match self.reader.read_async(write) {
+        match self.reader.read_all_async(write, buf_len) {
             IoResult::Waiting => {
                 self.read_buf = Some(buf);
                 Ok(None)
@@ -978,15 +998,20 @@ impl ConnectionToClientListener {
     }
 
     pub fn accept(&mut self, pipe_path: &[u16]) -> Option<ConnectionToClient> {
-        match self.reader.read_async(&mut self.buf) {
-            IoResult::Waiting => None,
-            IoResult::Ok(_) => {
+        let result = self.reader.read_async(&mut self.buf);
+        match result {
+            PartialIoResult::Waiting => None,
+            PartialIoResult::Pending(_) | PartialIoResult::Ok(_) => {
+                if matches!(result, PartialIoResult::Pending(_)) {
+                    self.reader.event().notify();
+                }
+
                 let (mut handle, mut reader) = Self::new_listen_reader(pipe_path, self.buf.len());
                 std::mem::swap(&mut handle, &mut self.handle);
                 std::mem::swap(&mut reader, &mut self.reader);
                 Some(ConnectionToClient::new(handle, reader))
             }
-            IoResult::Err => panic!("could not accept connection {}", get_last_error()),
+            PartialIoResult::Err => panic!("could not accept connection {}", get_last_error()),
         }
     }
 }
@@ -1019,9 +1044,9 @@ impl ProcessPipe {
             Some(buf) => buf,
             None => buf_pool.acquire(),
         };
-        let write = buf.write_with_len(self.buf_len);
+        let write = buf.write();
 
-        match self.reader.read_async(write) {
+        match self.reader.read_all_async(write, self.buf_len) {
             IoResult::Waiting => {
                 self.current_buf = Some(buf);
                 Ok(None)
@@ -1206,9 +1231,9 @@ impl AsyncIpc {
                     Some(buf) => buf,
                     None => buf_pool.acquire(),
                 };
-                let write = buf.write_with_len(self.buf_len);
+                let write = buf.write();
 
-                match reader.read_async(write) {
+                match reader.read_all_async(write, self.buf_len) {
                     IoResult::Waiting => {
                         self.read_buf = Some(buf);
                         Ok(None)
@@ -1746,9 +1771,14 @@ impl ConnectionToServer {
 
     pub fn read_async(&mut self) -> Result<&[u8], ()> {
         match self.reader.read_async(&mut self.buf[..]) {
-            IoResult::Waiting => Ok(&[]),
-            IoResult::Ok(0) | IoResult::Err => Err(()),
-            IoResult::Ok(len) => Ok(&self.buf[..len]),
+            PartialIoResult::Waiting => Ok(&[]),
+            PartialIoResult::Pending(0) => Err(()),
+            PartialIoResult::Ok(0) | PartialIoResult::Err => Err(()),
+            PartialIoResult::Pending(len) => {
+                self.reader.event().notify();
+                Ok(&self.buf[..len])
+            }
+            PartialIoResult::Ok(len) => Ok(&self.buf[..len]),
         }
     }
 }

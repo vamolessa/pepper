@@ -51,10 +51,11 @@ A buffer has a set of properties that can be changed when opening it:
 
 It's also possible to change these properties in batch by passing:
 - `text`: will enable all properties
-- `scratch`: will disable all properties
+- `scratch`: will disable all properties except `history`
+- `log`: will disable all properties
 
 Note that the property evaluation order is the same as the order of the arguments.
-That is, calling `open history-enabled scratch my-buffer.txt` will actually open `my-buffer.txt` with undo history disabled!
+That is, calling `open history-enabled log my-buffer.txt` will actually open `my-buffer.txt` with undo history disabled!
 
 - usage: `open [<properties...>] <path>[:<line>[,<column>]]`
 - default alias: `o`

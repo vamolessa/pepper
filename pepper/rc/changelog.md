@@ -14,6 +14,7 @@
 - added ruby syntax
 - fix crash when opening and editing the middle of a buffer in a single action (in a macro or through lsp for example)
 - fix `` [aA]` `` was missing
+- added `log` as a `open` command option which is the same as old `scratch` and now `scratch` enables buffer history by default
 
 # 0.29.0
 - added diagnostic logging to `spawn` command

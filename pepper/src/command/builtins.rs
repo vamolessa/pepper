@@ -103,7 +103,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             .buffer_view_handle_from_path(
                 client_handle,
                 Path::new(&path),
-                BufferProperties::scratch(),
+                BufferProperties::log(),
                 true,
             )
             .map_err(CommandError::BufferReadError)?;
@@ -139,6 +139,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             match path {
                 "text" => properties = BufferProperties::text(),
                 "scratch" => properties = BufferProperties::scratch(),
+                "log" => properties = BufferProperties::log(),
                 "history-enabled" => properties.history_enabled = true,
                 "history-disabled" => properties.history_enabled = false,
                 "saving-enabled" => properties.saving_enabled = true,
@@ -152,11 +153,11 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let client_handle = io.client_handle()?;
         let (path, ranges) = parse_path_and_ranges(path);
+        let path = Path::new(path);
 
-        let path = Path::new(&path);
         let handle = ctx
             .editor
-            .buffer_view_handle_from_path(client_handle, Path::new(path), properties, true)
+            .buffer_view_handle_from_path(client_handle, path, properties, true)
             .map_err(CommandError::BufferReadError)?;
         let client = ctx.clients.get_mut(client_handle);
         client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
@@ -412,30 +413,12 @@ pub fn register_commands(commands: &mut CommandManager) {
 
     r("list-buffer", &[], |ctx, io| {
         io.args.assert_empty()?;
-
         let client_handle = io.client_handle()?;
-        let buffer_view_handle = ctx
-            .editor
-            .buffer_view_handle_from_path(
-                client_handle,
-                Path::new("buffers.refs"),
-                BufferProperties::scratch(),
-                true,
-            )
-            .map_err(CommandError::BufferReadError)?;
-        let buffer_handle = ctx
-            .editor
-            .buffer_views
-            .get(buffer_view_handle)
-            .buffer_handle;
 
         let mut content = ctx.editor.string_pool.acquire();
         for buffer in ctx.editor.buffers.iter() {
             use std::fmt::Write;
 
-            if buffer.handle() == buffer_handle {
-                continue;
-            }
             let buffer_path = match buffer.path.to_str() {
                 Some(path) => path,
                 None => continue,
@@ -475,6 +458,26 @@ pub fn register_commands(commands: &mut CommandManager) {
             content.push('\n');
         }
 
+        let buffer_view_handle = match ctx
+            .editor
+            .buffer_view_handle_from_path(
+                client_handle,
+                Path::new("buffers.refs"),
+                BufferProperties::scratch(),
+                true,
+            ) {
+                Ok(handle) => handle,
+                Err(error) => {
+                    ctx.editor.string_pool.release(content);
+                    return Err(CommandError::BufferReadError(error));
+                }
+            };
+
+        let buffer_handle = ctx
+            .editor
+            .buffer_views
+            .get(buffer_view_handle)
+            .buffer_handle;
         let buffer = ctx.editor.buffers.get_mut(buffer_handle);
         let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
         buffer.delete_range(
@@ -538,10 +541,9 @@ pub fn register_commands(commands: &mut CommandManager) {
                     lint_message
                 );
             }
-
-            if !buffer.lints.all().is_empty() {
-                content.push('\n');
-            }
+        }
+        if content.ends_with('\n') {
+            content.pop();
         }
 
         let buffer_handle = ctx
@@ -612,6 +614,9 @@ pub fn register_commands(commands: &mut CommandManager) {
                     line_content
                 );
             }
+        }
+        if content.ends_with('\n') {
+            content.pop();
         }
 
         let buffer_handle = ctx

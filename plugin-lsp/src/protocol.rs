@@ -633,7 +633,7 @@ impl WorkspaceEdit {
                 Some(handle) => (false, handle),
                 None => {
                     let buffer = editor.buffers.add_new();
-                    buffer.properties = BufferProperties::scratch();
+                    buffer.properties = BufferProperties::log();
                     buffer.properties.saving_enabled = true;
                     buffer.set_path(path);
                     let _ =
@@ -679,7 +679,7 @@ impl WorkspaceEdit {
                         Some(handle) => (false, handle),
                         None => {
                             let buffer = editor.buffers.add_new();
-                            buffer.properties = BufferProperties::scratch();
+                            buffer.properties = BufferProperties::log();
                             buffer.properties.saving_enabled = true;
                             buffer.set_path(path);
                             let _ = buffer

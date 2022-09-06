@@ -1074,6 +1074,15 @@ impl BufferProperties {
 
     pub fn scratch() -> Self {
         Self {
+            history_enabled: true,
+            saving_enabled: false,
+            is_file: true,
+            word_database_enabled: false,
+        }
+    }
+
+    pub fn log() -> Self {
+        Self {
             history_enabled: false,
             saving_enabled: false,
             is_file: true,
