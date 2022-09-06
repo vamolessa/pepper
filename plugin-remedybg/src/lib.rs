@@ -4,7 +4,6 @@ use std::{
 };
 
 use pepper::{
-    buffer::{BufferBreakpoint, BufferCollection, BufferHandle},
     command::{CommandError, CommandManager, CompletionSource},
     editor::{Editor, EditorContext},
     editor_utils::{to_absolute_path_string, LogKind},
@@ -14,7 +13,7 @@ use pepper::{
         PooledBuf, ProcessTag,
     },
     plugin::{Plugin, PluginDefinition, PluginHandle},
-    serialization::{DeserializeError, Serialize},
+    serialization::Serialize,
     ResourceFile,
 };
 
@@ -60,7 +59,8 @@ impl Default for ProcessState {
     }
 }
 
-const IPC_BUF_SIZE: usize = 8 * 1024;
+//const IPC_BUF_SIZE: usize = 8 * 1024;
+const IPC_BUF_SIZE: usize = 1;
 const CONTROL_PIPE_ID: u32 = 0;
 const EVENT_PIPE_ID: u32 = 1;
 
@@ -131,7 +131,7 @@ impl RemedybgPlugin {
 
     pub fn begin_sync_breakpoints(
         &mut self,
-        editor: &mut Editor,
+        editor: &mut Editor, // TODO: remove this
         platform: &mut Platform,
     ) -> Result<(), CommandError> {
         let sender = self.begin_send_command(platform, RemedybgCommandKind::GetBreakpoints)?;
@@ -510,6 +510,8 @@ fn on_event(
     event: &RemedybgEvent,
     mut bytes: &[u8],
 ) -> Result<(), ProtocolError> {
+    editor.logger.write(LogKind::Diagnostic).fmt(format_args!("remedybg: on event: {:?}", std::mem::discriminant(event)));
+
     match event {
         RemedybgEvent::BreakpointHit { breakpoint_id } => {
             let mut sender = remedybg
@@ -519,12 +521,15 @@ fn on_event(
             sender.send(platform);
         }
         RemedybgEvent::BreakpointResolved { breakpoint_id } => {
+            let _ = breakpoint_id;
             //
         }
         RemedybgEvent::BreakpointAdded { breakpoint_id } => {
+            let _ = breakpoint_id;
             //
         }
         RemedybgEvent::BreakpointRemoved { breakpoint_id } => {
+            let _ = breakpoint_id;
             //
         }
         _ => (),

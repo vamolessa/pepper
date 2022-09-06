@@ -35,7 +35,6 @@ impl fmt::Display for ProtocolError {
     }
 }
 
-#[derive(Clone, Copy)]
 pub enum RemedybgCommandResult {
     Unknown,
 

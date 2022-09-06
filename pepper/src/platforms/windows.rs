@@ -13,15 +13,12 @@ use winapi::{
     shared::{
         minwindef::{BOOL, DWORD, FALSE, TRUE},
         ntdef::NULL,
-        winerror::{
-            ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED,
-            WAIT_TIMEOUT,
-        },
+        winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         debugapi::{DebugBreak, IsDebuggerPresent},
-        errhandlingapi::{SetLastError, GetLastError},
+        errhandlingapi::{GetLastError, SetLastError},
         fileapi::{
             CreateFileW, FindClose, FindFirstFileW, GetFileType, ReadFile, WriteFile, OPEN_EXISTING,
         },
@@ -340,7 +337,6 @@ impl AsyncIO {
 
             if result == FALSE {
                 match get_last_error() {
-                    // TODO: return IoResult::Pending(read_len as _)
                     ERROR_MORE_DATA => {
                         self.event.notify();
                         IoResult::Ok(read_len as _)
@@ -367,6 +363,10 @@ impl AsyncIO {
                     ERROR_IO_PENDING => {
                         self.pending_io = true;
                         IoResult::Waiting
+                    }
+                    ERROR_MORE_DATA => {
+                        self.event.notify();
+                        IoResult::Ok(read_len as _)
                     }
                     _ => IoResult::Err,
                 }
@@ -1108,9 +1108,11 @@ struct AsyncIpc {
     tag: IpcTag,
     _handle: Handle,
     buf_len: usize,
+    read_mode: IpcReadMode,
 
     reader: Option<AsyncIO>,
     read_buf: Option<PooledBuf>,
+    partial_read_buf: Vec<u8>,
 
     writer: Option<AsyncIO>,
     write_buf_queue: VecDeque<PooledBuf>,
@@ -1170,9 +1172,11 @@ impl AsyncIpc {
             tag,
             _handle: handle,
             buf_len,
+            read_mode,
 
             reader: read.then(|| AsyncIO::new(raw_handle)),
             read_buf: None,
+            partial_read_buf: Vec::new(),
 
             writer: write.then(|| AsyncIO::new(raw_handle)),
             write_buf_queue: VecDeque::new(),
@@ -1211,9 +1215,29 @@ impl AsyncIpc {
                     }
                     IoResult::Ok(len) => {
                         write.truncate(len);
-                        Ok(Some(buf))
+                        match self.read_mode {
+                            IpcReadMode::MessageStream if get_last_error() == ERROR_MORE_DATA => {
+                                if len == 0 {
+                                    OutputDebugStringA("more data with len == 0");
+                                } else {
+                                    OutputDebugStringA("more data with len > 0");
+                                }
+                                self.partial_read_buf.extend_from_slice(write);
+                                self.read_buf = Some(buf);
+                                Ok(None)
+                            }
+                            _ => {
+                                if !self.partial_read_buf.is_empty() {
+                                    self.partial_read_buf.extend_from_slice(write);
+                                    std::mem::swap(&mut self.partial_read_buf, write);
+                                    self.partial_read_buf.clear();
+                                }
+                                Ok(Some(buf))
+                            }
+                        }
                     }
                     IoResult::Err => {
+                        self.partial_read_buf.clear();
                         buf_pool.release(buf);
                         Err(())
                     }
@@ -2037,3 +2061,4 @@ fn parse_console_events(
         }
     }
 }
+
