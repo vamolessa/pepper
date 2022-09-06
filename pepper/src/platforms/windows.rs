@@ -21,7 +21,7 @@ use winapi::{
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         debugapi::{DebugBreak, IsDebuggerPresent},
-        errhandlingapi::GetLastError,
+        errhandlingapi::{SetLastError, GetLastError},
         fileapi::{
             CreateFileW, FindClose, FindFirstFileW, GetFileType, ReadFile, WriteFile, OPEN_EXISTING,
         },
@@ -227,6 +227,10 @@ pub fn main(mut config: ApplicationConfig) {
     }
 }
 
+fn reset_last_error() {
+    unsafe { SetLastError(0) };
+}
+
 fn get_last_error() -> DWORD {
     unsafe { GetLastError() }
 }
@@ -319,6 +323,8 @@ impl AsyncIO {
     }
 
     pub fn read_async(&mut self, buf: &mut [u8]) -> IoResult {
+        reset_last_error();
+
         let mut read_len = 0;
         if self.pending_io {
             self.pending_io = false;
