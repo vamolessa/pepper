@@ -14,7 +14,7 @@ use winapi::{
         minwindef::{BOOL, DWORD, FALSE, TRUE},
         ntdef::NULL,
         winerror::{
-            ERROR_FILE_NOT_FOUND, ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED,
+            ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED,
             WAIT_TIMEOUT,
         },
     },
@@ -1118,7 +1118,7 @@ struct AsyncIpc {
 impl AsyncIpc {
     pub fn connect(
         tag: IpcTag,
-        path: &[u16],
+        pipe_path: &[u16],
         read: bool,
         write: bool,
         read_mode: IpcReadMode,
@@ -1144,25 +1144,13 @@ impl AsyncIpc {
             IpcReadMode::MessageStream => PIPE_READMODE_MESSAGE,
         };
 
-        //let handle = create_file(path, access_mode, 0, FILE_FLAG_OVERLAPPED)?;
-        let mut handle = None;
         for _ in 0..8 {
-            handle = create_file(path, access_mode, 0, FILE_FLAG_OVERLAPPED);
-            match handle {
-                Some(_) => break,
-                None => match get_last_error() {
-                    ERROR_FILE_NOT_FOUND => std::thread::sleep(Duration::from_millis(100)),
-                    _ => break,
-                },
+            if pipe_exists(&pipe_path) {
+                break;
             }
+            std::thread::sleep(Duration::from_millis(100));
         }
-        let handle = match handle {
-            Some(handle) => handle,
-            None => {
-                eprintln!("could not connect to named pipe: {}", get_last_error());
-                return None;
-            }
-        };
+        let handle = create_file(pipe_path, access_mode, 0, FILE_FLAG_OVERLAPPED)?;
 
         let result = unsafe {
             SetNamedPipeHandleState(
