@@ -13,12 +13,12 @@ use winapi::{
     shared::{
         minwindef::{BOOL, DWORD, FALSE, TRUE},
         ntdef::NULL,
-        winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
+        winerror::{ERROR_IO_PENDING, ERROR_PIPE_LISTENING, ERROR_BROKEN_PIPE, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         debugapi::{DebugBreak, IsDebuggerPresent},
-        errhandlingapi::{GetLastError, SetLastError},
+        errhandlingapi::GetLastError,
         fileapi::{
             CreateFileW, FindClose, FindFirstFileW, GetFileType, ReadFile, WriteFile, OPEN_EXISTING,
         },
@@ -224,10 +224,6 @@ pub fn main(mut config: ApplicationConfig) {
     }
 }
 
-fn reset_last_error() {
-    unsafe { SetLastError(0) };
-}
-
 fn get_last_error() -> DWORD {
     unsafe { GetLastError() }
 }
@@ -299,9 +295,9 @@ struct AsyncIO {
 }
 impl AsyncIO {
     pub fn new(raw_handle: HANDLE) -> Self {
-        let event = Event::manual();
-        event.notify();
+        let event = Event::manual(true);
         let overlapped = Overlapped::with_event(&event);
+        //let overlapped = Overlapped::default();
 
         Self {
             raw_handle,
@@ -319,9 +315,54 @@ impl AsyncIO {
         &mut self.overlapped
     }
 
-    pub fn read_async(&mut self, buf: &mut [u8]) -> IoResult {
-        reset_last_error();
+    pub fn read_async_old(&mut self, buf: &mut [u8]) -> IoResult {
+        let mut read_len = 0;
 
+        let mut pending_io = self.overlapped.0.hEvent != std::ptr::null_mut();
+        if pending_io {
+            let result = unsafe {
+                GetOverlappedResult(
+                    self.raw_handle,
+                    self.overlapped.as_mut_ptr(),
+                    &mut read_len,
+                    FALSE,
+                )
+            };
+            if result == FALSE {
+                match get_last_error() {
+                    ERROR_BROKEN_PIPE => return IoResult::Err,
+                    ERROR_MORE_DATA => (),
+                    error => panic!("error on async read: {}", error),
+                }
+            }
+        }
+
+        self.overlapped.0.hEvent = self.event.0;
+        let result = unsafe {
+            ReadFile(
+                self.raw_handle,
+                buf.as_mut_ptr() as _,
+                buf.len() as _,
+                &mut read_len,
+                self.overlapped.as_mut_ptr(),
+            )
+        };
+        if result == FALSE {
+            match get_last_error() {
+                ERROR_IO_PENDING | ERROR_PIPE_LISTENING => pending_io = true,
+                error => panic!("error on async read: {}", error),
+            }
+        }
+
+        if pending_io {
+            IoResult::Waiting
+        } else {
+            self.event.notify();
+            IoResult::Ok(read_len as _)
+        }
+    }
+
+    pub fn read_async(&mut self, buf: &mut [u8]) -> IoResult {
         let mut read_len = 0;
         if self.pending_io {
             self.pending_io = false;
@@ -378,8 +419,6 @@ impl AsyncIO {
     }
 
     pub fn write_async(&mut self, buf: &[u8]) -> IoResult {
-        reset_last_error();
-
         let mut write_len = 0;
         if self.pending_io {
             self.pending_io = false;
@@ -700,12 +739,12 @@ fn set_event(handle: HANDLE) -> bool {
 
 struct Event(HANDLE);
 impl Event {
-    pub fn automatic() -> Self {
-        Self(create_event(false, false))
+    pub fn automatic(initial_state: bool) -> Self {
+        Self(create_event(false, initial_state))
     }
 
-    pub fn manual() -> Self {
-        Self(create_event(true, false))
+    pub fn manual(initial_state: bool) -> Self {
+        Self(create_event(true, initial_state))
     }
 
     pub fn handle(&self) -> HANDLE {
@@ -747,7 +786,7 @@ impl CtrlCEvent {
     }
 
     pub fn new() -> Self {
-        let event = Event::automatic();
+        let event = Event::automatic(false);
         CTRLC_EVENT_HANDLE.store(event.handle(), Ordering::Relaxed);
         Self(event)
     }
@@ -784,13 +823,18 @@ impl Drop for Clipboard {
 struct Overlapped(OVERLAPPED);
 impl Overlapped {
     pub fn with_event(event: &Event) -> Self {
-        let mut overlapped = unsafe { std::mem::zeroed::<OVERLAPPED>() };
-        overlapped.hEvent = event.handle();
-        Self(overlapped)
+        let mut overlapped = Self::default();
+        overlapped.0.hEvent = event.handle();
+        overlapped
     }
 
     pub fn as_mut_ptr(&mut self) -> *mut OVERLAPPED {
         &mut self.0
+    }
+}
+impl Default for Overlapped {
+    fn default() -> Self {
+        Self(unsafe { std::mem::zeroed::<OVERLAPPED>() })
     }
 }
 
