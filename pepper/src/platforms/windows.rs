@@ -315,7 +315,7 @@ impl AsyncIO {
         &mut self.overlapped
     }
 
-    pub fn read_async_old(&mut self, buf: &mut [u8]) -> IoResult {
+    pub fn read_async_new(&mut self, buf: &mut [u8]) -> IoResult {
         let mut read_len = 0;
 
         let mut pending_io = self.overlapped.0.hEvent != std::ptr::null_mut();
@@ -415,6 +415,53 @@ impl AsyncIO {
                 self.event.notify();
                 IoResult::Ok(read_len as _)
             }
+        }
+    }
+
+    pub fn write_async_new(&mut self, buf: &[u8]) -> IoResult {
+        let mut write_len = 0;
+
+        let mut pending_io = self.overlapped.0.hEvent != std::ptr::null_mut();
+        if pending_io {
+            let result = unsafe {
+                GetOverlappedResult(
+                    self.raw_handle,
+                    self.overlapped.as_mut_ptr(),
+                    &mut write_len,
+                    FALSE,
+                )
+            };
+            if result == FALSE {
+                match get_last_error() {
+                    ERROR_BROKEN_PIPE => return IoResult::Err,
+                    ERROR_MORE_DATA => (),
+                    error => panic!("error on async write: {}", error),
+                }
+            }
+        }
+
+        self.overlapped.0.hEvent = self.event.0;
+        let result = unsafe {
+            WriteFile(
+                self.raw_handle,
+                buf.as_ptr() as _,
+                buf.len() as _,
+                &mut write_len,
+                self.overlapped.as_mut_ptr(),
+            )
+        };
+        if result == FALSE {
+            match get_last_error() {
+                ERROR_IO_PENDING => pending_io = true,
+                error => panic!("error on async write: {}", error),
+            }
+        }
+
+        if pending_io {
+            IoResult::Waiting
+        } else {
+            self.event.notify();
+            IoResult::Ok(write_len as _)
         }
     }
 
