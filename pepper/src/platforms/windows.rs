@@ -13,7 +13,7 @@ use winapi::{
     shared::{
         minwindef::{BOOL, DWORD, FALSE, TRUE},
         ntdef::NULL,
-        winerror::{ERROR_IO_PENDING, ERROR_PIPE_LISTENING, ERROR_BROKEN_PIPE, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
+        winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
@@ -62,6 +62,164 @@ use winapi::{
         },
     },
 };
+
+pub fn main2(_: ApplicationConfig) {
+    const PIPE_BUF_SIZE: usize = 20;
+
+    let mut pipe_path = Vec::new();
+    pipe_path.extend(PIPE_PREFIX.encode_utf16());
+    pipe_path.extend("pepper-pipe".encode_utf16());
+    pipe_path.push(b'\0' as _);
+
+    // server
+    let server_pipe_path = pipe_path.clone();
+    let server_thread = std::thread::Builder::new().name("server".to_string()).spawn(move || {
+        let server_pipe_handle = unsafe {
+            CreateNamedPipeW(
+                server_pipe_path.as_ptr(),
+                PIPE_ACCESS_DUPLEX,
+                winapi::um::winbase::PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | winapi::um::winbase::PIPE_WAIT,
+                PIPE_UNLIMITED_INSTANCES,
+                PIPE_BUF_SIZE as _,
+                PIPE_BUF_SIZE as _,
+                0,
+                std::ptr::null_mut(),
+            )
+        };
+        if server_pipe_handle == INVALID_HANDLE_VALUE {
+            eprintln!("server: could not create named pipe");
+            unsafe { DebugBreak() };
+        }
+
+        eprintln!("server: created named pipe");
+        eprintln!("server: waiting for client");
+
+        if unsafe { ConnectNamedPipe(server_pipe_handle, std::ptr::null_mut()) } == 0 {
+            eprintln!("server: could not accept incomming named pipe connection: {}", get_last_error());
+            unsafe { DebugBreak() };
+        }
+
+        eprintln!("server: connected to client");
+
+        let write_buf = "abcdefghij0123456789";
+        let mut write_len = 0;
+        let result = unsafe {
+            WriteFile(
+                server_pipe_handle,
+                write_buf.as_ptr() as _,
+                write_buf.len() as _,
+                &mut write_len,
+                std::ptr::null_mut(),
+            )
+        };
+        if result == FALSE {
+            eprintln!("server: could not write to named pipe: {}", get_last_error());
+            unsafe { DebugBreak() };
+        }
+        if write_len < write_buf.len() as _ {
+            eprintln!("server: could not write whole buf");
+            unsafe { DebugBreak() };
+        }
+
+        eprintln!("server: sent {} bytes to client", write_len);
+        eprintln!("server: closing");
+    }).unwrap();
+
+    // client
+    let client_pipe_path = pipe_path.clone();
+    let client_thread = std::thread::Builder::new().name("client".to_string()).spawn(move || {
+        for _ in 0..8 {
+            if pipe_exists(&client_pipe_path) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        if !pipe_exists(&client_pipe_path) {
+            eprintln!("client: named pipe not found");
+            unsafe { DebugBreak() };
+        }
+        eprintln!("client: found named pipe");
+
+        let access_mode = GENERIC_READ | GENERIC_WRITE;
+        let client_pipe_handle = match create_file(&client_pipe_path, access_mode, 0, FILE_FLAG_OVERLAPPED) {
+            Some(handle) => handle,
+            None => {
+                eprintln!("client: could not connect to named pipe: {}", get_last_error());
+                unsafe { DebugBreak() };
+                return;
+            }
+        };
+
+        let mut mode = PIPE_READMODE_MESSAGE;
+        let result = unsafe {
+            SetNamedPipeHandleState(
+                client_pipe_handle.0,
+                &mut mode,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if result == FALSE {
+            eprintln!("client: could not set named pipe state: {}", get_last_error());
+            unsafe { DebugBreak() };
+        }
+        eprintln!("client: set named pipe state");
+
+        let mut io = AsyncIO::new(client_pipe_handle.0);
+        let mut read_buf = [0u8; PIPE_BUF_SIZE / 4];
+        let mut read_message = Vec::new();
+
+        eprintln!("client: gonna enter event loop");
+        let wait_handles = [io.event().handle()];
+        loop {
+            match wait_for_multiple_objects(&wait_handles, None) {
+                Some(0) => (),
+                Some(i) => {
+                    eprintln!("client: invalid wait_souce: {}", i);
+                    unsafe { DebugBreak() };
+                }
+                _ => continue,
+            }
+
+            match io.read_async(&mut read_buf) {
+                IoResult::Waiting => eprintln!("client: read status: waiting"),
+                IoResult::Err => {
+                    eprintln!("client: read status: error {}", get_last_error());
+                    break;
+                }
+                IoResult::Ok(0) => {
+                    eprintln!("client: read status: read 0");
+                    //break;
+                }
+                IoResult::Ok(len) => {
+                    eprintln!("client: read status: read {} bytes", len);
+                    read_message.extend_from_slice(&read_buf[..len]);
+                },
+            }
+
+            if read_message.len() == PIPE_BUF_SIZE {
+                eprintln!("client: read all bytes! exiting event loop...");
+                break;
+            }
+        }
+
+        let read_message = match std::str::from_utf8(&read_message) {
+            Ok(message) => message,
+            Err(_) => {
+                eprintln!("client: read_message is not utf8: {}", String::from_utf8_lossy(&read_message));
+                unsafe { DebugBreak() };
+                return;
+            }
+        };
+        eprintln!("client: read message: '{}' ({}/{} bytes)", read_message, read_message.len(), PIPE_BUF_SIZE);
+
+        std::thread::sleep(Duration::from_millis(1000));
+    }).unwrap();
+
+    server_thread.join().unwrap();
+    client_thread.join().unwrap();
+    eprintln!("everything finished");
+}
 
 use crate::{
     application::{
@@ -297,7 +455,6 @@ impl AsyncIO {
     pub fn new(raw_handle: HANDLE) -> Self {
         let event = Event::manual(true);
         let overlapped = Overlapped::with_event(&event);
-        //let overlapped = Overlapped::default();
 
         Self {
             raw_handle,
@@ -313,53 +470,6 @@ impl AsyncIO {
 
     pub fn overlapped(&mut self) -> &mut Overlapped {
         &mut self.overlapped
-    }
-
-    pub fn read_async_new(&mut self, buf: &mut [u8]) -> IoResult {
-        let mut read_len = 0;
-
-        let mut pending_io = self.overlapped.0.hEvent != std::ptr::null_mut();
-        if pending_io {
-            let result = unsafe {
-                GetOverlappedResult(
-                    self.raw_handle,
-                    self.overlapped.as_mut_ptr(),
-                    &mut read_len,
-                    FALSE,
-                )
-            };
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_BROKEN_PIPE => return IoResult::Err,
-                    ERROR_MORE_DATA => (),
-                    error => panic!("error on async read: {}", error),
-                }
-            }
-        }
-
-        self.overlapped.0.hEvent = self.event.0;
-        let result = unsafe {
-            ReadFile(
-                self.raw_handle,
-                buf.as_mut_ptr() as _,
-                buf.len() as _,
-                &mut read_len,
-                self.overlapped.as_mut_ptr(),
-            )
-        };
-        if result == FALSE {
-            match get_last_error() {
-                ERROR_IO_PENDING | ERROR_PIPE_LISTENING => pending_io = true,
-                error => panic!("error on async read: {}", error),
-            }
-        }
-
-        if pending_io {
-            IoResult::Waiting
-        } else {
-            self.event.notify();
-            IoResult::Ok(read_len as _)
-        }
     }
 
     pub fn read_async(&mut self, buf: &mut [u8]) -> IoResult {
@@ -379,13 +489,14 @@ impl AsyncIO {
             if result == FALSE {
                 match get_last_error() {
                     ERROR_MORE_DATA => {
-                        self.event.notify();
+                        eprintln!("more data 1 read_len: {} buf_len: {}", read_len, buf.len());
+                        //self.event.notify();
                         IoResult::Ok(read_len as _)
                     }
                     _ => IoResult::Err,
                 }
             } else {
-                self.event.notify();
+                //self.event.notify();
                 IoResult::Ok(read_len as _)
             }
         } else {
@@ -394,7 +505,8 @@ impl AsyncIO {
                     self.raw_handle,
                     buf.as_mut_ptr() as _,
                     buf.len() as _,
-                    &mut read_len,
+                    //&mut read_len,
+                    std::ptr::null_mut(),
                     self.overlapped.as_mut_ptr(),
                 )
             };
@@ -406,62 +518,35 @@ impl AsyncIO {
                         IoResult::Waiting
                     }
                     ERROR_MORE_DATA => {
-                        self.event.notify();
+                        unsafe {
+                            GetOverlappedResult(
+                                self.raw_handle,
+                                self.overlapped.as_mut_ptr(),
+                                &mut read_len,
+                                FALSE,
+                            );
+                        }
+
+                        eprintln!("more data 2 read_len: {} buf_len: {}", read_len, buf.len());
+
+                        //self.event.notify();
                         IoResult::Ok(read_len as _)
                     }
                     _ => IoResult::Err,
                 }
             } else {
-                self.event.notify();
+                unsafe {
+                    GetOverlappedResult(
+                        self.raw_handle,
+                        self.overlapped.as_mut_ptr(),
+                        &mut read_len,
+                        FALSE,
+                    );
+                }
+
+                //self.event.notify();
                 IoResult::Ok(read_len as _)
             }
-        }
-    }
-
-    pub fn write_async_new(&mut self, buf: &[u8]) -> IoResult {
-        let mut write_len = 0;
-
-        let mut pending_io = self.overlapped.0.hEvent != std::ptr::null_mut();
-        if pending_io {
-            let result = unsafe {
-                GetOverlappedResult(
-                    self.raw_handle,
-                    self.overlapped.as_mut_ptr(),
-                    &mut write_len,
-                    FALSE,
-                )
-            };
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_BROKEN_PIPE => return IoResult::Err,
-                    ERROR_MORE_DATA => (),
-                    error => panic!("error on async write: {}", error),
-                }
-            }
-        }
-
-        self.overlapped.0.hEvent = self.event.0;
-        let result = unsafe {
-            WriteFile(
-                self.raw_handle,
-                buf.as_ptr() as _,
-                buf.len() as _,
-                &mut write_len,
-                self.overlapped.as_mut_ptr(),
-            )
-        };
-        if result == FALSE {
-            match get_last_error() {
-                ERROR_IO_PENDING => pending_io = true,
-                error => panic!("error on async write: {}", error),
-            }
-        }
-
-        if pending_io {
-            IoResult::Waiting
-        } else {
-            self.event.notify();
-            IoResult::Ok(write_len as _)
         }
     }
 
@@ -482,13 +567,13 @@ impl AsyncIO {
             if result == FALSE {
                 match get_last_error() {
                     ERROR_MORE_DATA => {
-                        self.event.notify();
+                        //self.event.notify();
                         IoResult::Ok(write_len as _)
                     }
                     _ => IoResult::Err,
                 }
             } else {
-                self.event.notify();
+                //self.event.notify();
                 IoResult::Ok(write_len as _)
             }
         } else {
@@ -508,10 +593,14 @@ impl AsyncIO {
                         self.pending_io = true;
                         IoResult::Waiting
                     }
+                    ERROR_MORE_DATA => {
+                        //self.event.notify();
+                        IoResult::Ok(write_len as _)
+                    }
                     _ => IoResult::Err,
                 }
             } else {
-                self.event.notify();
+                //self.event.notify();
                 IoResult::Ok(write_len as _)
             }
         }
@@ -1308,17 +1397,14 @@ impl AsyncIpc {
                         write.truncate(len);
                         match self.read_mode {
                             IpcReadMode::MessageStream if get_last_error() == ERROR_MORE_DATA => {
-                                if len == 0 {
-                                    //OutputDebugStringA("more data with len == 0");
-                                } else {
-                                    //OutputDebugStringA("more data with len > 0");
-                                }
+                                eprintln!("ipc read_async with MORE_DATA len: {}", len);
                                 self.partial_read_buf.extend_from_slice(write);
                                 self.read_buf = Some(buf);
                                 Ok(None)
                             }
                             _ => {
                                 if !self.partial_read_buf.is_empty() {
+                                    eprintln!("ipc read_async OK with partial_read_buf len: {}", len);
                                     self.partial_read_buf.extend_from_slice(write);
                                     std::mem::swap(&mut self.partial_read_buf, write);
                                     self.partial_read_buf.clear();
