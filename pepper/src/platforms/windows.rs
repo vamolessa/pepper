@@ -287,14 +287,8 @@ fn read_console_input<'a>(
 
 fn get_overlapped_result(handle: HANDLE, overlapped: &mut Overlapped) -> Option<DWORD> {
     let mut read_len = 0;
-    let result = unsafe {
-        GetOverlappedResult(
-            handle,
-            overlapped.as_mut_ptr(),
-            &mut read_len,
-            FALSE,
-        )
-    };
+    let result =
+        unsafe { GetOverlappedResult(handle, overlapped.as_mut_ptr(), &mut read_len, FALSE) };
     if result != FALSE || get_last_error() == ERROR_MORE_DATA {
         Some(read_len)
     } else {
@@ -355,10 +349,12 @@ impl AsyncIO {
                 );
             }
             match get_last_error() {
-                0 | ERROR_MORE_DATA => match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
-                    Some(len) => IoResult::Ok(len as _),
-                    None => IoResult::Err,
-                },
+                0 | ERROR_MORE_DATA => {
+                    match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                        Some(len) => IoResult::Ok(len as _),
+                        None => IoResult::Err,
+                    }
+                }
                 ERROR_IO_PENDING => {
                     self.pending_io = true;
                     IoResult::Waiting
@@ -388,9 +384,11 @@ impl AsyncIO {
                 );
             }
             match get_last_error() {
-                0 | ERROR_MORE_DATA => match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
-                    Some(len) => IoResult::Ok(len as _),
-                    None => IoResult::Err,
+                0 | ERROR_MORE_DATA => {
+                    match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                        Some(len) => IoResult::Ok(len as _),
+                        None => IoResult::Err,
+                    }
                 }
                 ERROR_IO_PENDING => {
                     self.pending_io = true;
@@ -2031,4 +2029,3 @@ fn parse_console_events(
         }
     }
 }
-

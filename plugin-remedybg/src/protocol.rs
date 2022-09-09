@@ -229,7 +229,7 @@ impl<'a> RemedybgBreakpoint<'a> {
 }
 
 pub const RDBG_IF_DEBUGGING_TARGET_STOP_DEBUGGING: u8 = 1;
-pub const RDBG_IF_DEBUGGING_TARGET_ABORT_COMMAND: u8 = 2;
+//pub const RDBG_IF_DEBUGGING_TARGET_ABORT_COMMAND: u8 = 2;
 
 #[derive(Clone, Copy)]
 pub enum RemedybgCommandKind {
@@ -240,7 +240,7 @@ pub enum RemedybgCommandKind {
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    BringDebuggerToForeground = 50,
+    //BringDebuggerToForeground = 50,
 
     // Exit the RemedyBG application.
     //
@@ -249,7 +249,7 @@ pub enum RemedybgCommandKind {
     // [msb :: rdbg_ModifiedSessionBehavior (uint8_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    ExitDebugger = 75,
+    //ExitDebugger = 75,
 
     //
     // Session
@@ -260,7 +260,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     // [modified :: rdbg_Bool (uint8_t)]
-    GetIsSessionModified = 100,
+    //GetIsSessionModified = 100,
     // Returns the current session's filename. If the filename has not been set
     // for the session then the result will be
     // RDBG_COMMAND_RESULT_UNNAMED_SESSION and the length of |filename| will be
@@ -270,7 +270,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     // [filename :: rdbg_String]
-    GetSessionFilename = 101,
+    //GetSessionFilename = 101,
 
     // Creates a new session. All configurations are cleared and reset.
     //
@@ -279,7 +279,7 @@ pub enum RemedybgCommandKind {
     // [msb :: rdbg_ModifiedSessionBehavior (uint8_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    NewSession = 102,
+    //NewSession = 102,
 
     // Open a session with the given filename.
     //
@@ -289,7 +289,7 @@ pub enum RemedybgCommandKind {
     // [filename :: rdbg_String]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    OpenSession = 103,
+    //OpenSession = 103,
 
     // Save session with its current filename. If the filename is has not been
     // specified for the session the user will be prompted. To save with a
@@ -298,7 +298,7 @@ pub enum RemedybgCommandKind {
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    SaveSession = 104,
+    //SaveSession = 104,
 
     // Save session with a given filename.
     //
@@ -306,7 +306,7 @@ pub enum RemedybgCommandKind {
     // [filename :: rdbg_String]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    SaveAsSession = 105,
+    //SaveAsSession = 105,
 
     // Retrieve a list of configurations for the current session.
     //
@@ -324,7 +324,7 @@ pub enum RemedybgCommandKind {
     //   [break_at_nominal_entry_point :: rdbg_Bool]
     //   [name :: rdbg_String]
     // }
-    GetSessionConfigs = 106,
+    //GetSessionConfigs = 106,
 
     // Add a new session configuration to the current session. All string
     // parameters accept zero length strings. Multiple environment variables
@@ -344,7 +344,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     // [uid :: rdbg_Id]
-    AddSessionConfig = 107,
+    //AddSessionConfig = 107,
 
     // Sets the active configuration for a session by configuration ID. If the
     // ID is not valid for the current session
@@ -354,7 +354,7 @@ pub enum RemedybgCommandKind {
     // [id  :: rdbg_Id]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    SetActiveSessionConfig = 108,
+    //SetActiveSessionConfig = 108,
 
     // Deletes a session configuration by ID. If the ID is not valid for the
     // current session RDBG_COMMAND_REMOVE_SESSION_CONFIG is returned.
@@ -363,14 +363,14 @@ pub enum RemedybgCommandKind {
     // [id  :: rdbg_Id]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    DeleteSessionConfig = 109,
+    //DeleteSessionConfig = 109,
 
     // Deletes all session configurations in the current session.
     //
     // [cmd :: rdbg_Command (uint16_t)
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    DeleteAllSessionConfig = 110,
+    //DeleteAllSessionConfig = 110,
 
     // Source Files
     //
@@ -385,7 +385,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     // [id :: rdbg_Id]
-    GotoFileAtLine = 200,
+    //GotoFileAtLine = 200,
 
     // Close the file with the given ID.
     //
@@ -393,14 +393,14 @@ pub enum RemedybgCommandKind {
     // [id :: rdbg_Id]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    CloseFile = 201,
+    //CloseFile = 201,
 
     // Close all open files
     //
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    CloseAllFiles = 202,
+    //CloseAllFiles = 202,
 
     // Returns the current file. If no file is open, returns a zero ID,
     // zero-length filename, and zero line number.
@@ -411,7 +411,7 @@ pub enum RemedybgCommandKind {
     // [id :: rdbg_Id]
     // [filename :: rdbg_String]
     // [line_num :: uint32_t]
-    GetCurrentFile = 203,
+    //GetCurrentFile = 203,
 
     // Retrieve a list of open files.
     //
@@ -424,7 +424,7 @@ pub enum RemedybgCommandKind {
     //   [filename :: rdbg_String]
     //   [line_num :: uint32_t]
     // }
-    GetOpenFiles = 204,
+    //GetOpenFiles = 204,
 
     //
     // Debugger Control
@@ -435,7 +435,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     // [staste :: rdbg_TargetState (uint16_t)]
-    GetTargetState = 300,
+    //GetTargetState = 300,
 
     // If the target is stopped, i.e., not currently being debugged, then start
     // debugging the active configuration. Setting break_at_entry to true will
@@ -456,7 +456,7 @@ pub enum RemedybgCommandKind {
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    StopDebugging = 302,
+    //StopDebugging = 302,
 
     // Restart debugging if the target is being debugging (either suspended or
     // executing) and the target was not attached to a process. Otherwise,
@@ -465,7 +465,7 @@ pub enum RemedybgCommandKind {
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    RestartDebugging = 303,
+    //RestartDebugging = 303,
 
     // Attach to a process by the given process-id. The value of
     // |continue_execution| indicates whether the process should resume execution
@@ -504,7 +504,7 @@ pub enum RemedybgCommandKind {
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    DetachFromProcess = 306,
+    //DetachFromProcess = 306,
 
     // With the target suspended, step into by line. If a function call occurs,
     // this command will enter the function.
@@ -521,7 +521,7 @@ pub enum RemedybgCommandKind {
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    StepIntoByInstruction = 308,
+    //StepIntoByInstruction = 308,
 
     // With the target suspended, step into by line. If a function call occurs,
     // this command step over that function and not enter it. Can return
@@ -539,7 +539,7 @@ pub enum RemedybgCommandKind {
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    StepOverByInstruction = 310,
+    //StepOverByInstruction = 310,
 
     // With the target suspended, continue running to the call site of the
     // current function, i.e., step out.
@@ -645,7 +645,7 @@ pub enum RemedybgCommandKind {
     //   [overload_id :: rdbg_Id]
     //   [signature :: rdbg_String]
     // }
-    GetFunctionOverloads = 602,
+    //GetFunctionOverloads = 602,
 
     // Request a breakpoint at the given function name and overload. Pass an
     // overload ID of zero to add requested breakpoints for all functions with
@@ -658,7 +658,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     // [bp_id :: rdbg_Id]
-    AddBreakpointAtFunction = 603,
+    //AddBreakpointAtFunction = 603,
 
     // Request a breakpoint at the given source file and line number.
     //
@@ -679,7 +679,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     // [bp_id :: rdbg_Id]
-    AddBreakpointAtAddress = 605,
+    //AddBreakpointAtAddress = 605,
 
     // Add a processor (hardware) breakpoint.
     //
@@ -691,7 +691,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     // [bp_id :: rdbg_Id]
-    AddProcessorBreakpoint = 606,
+    //AddProcessorBreakpoint = 606,
 
     // Sets the conditional expression for the given breakpoint. Can pass in a
     // zero-length string for none.
@@ -701,7 +701,7 @@ pub enum RemedybgCommandKind {
     // [condition_expr :: rdbg_String]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    SetBreakpointCondition = 607,
+    //SetBreakpointCondition = 607,
 
     // Given an existing breakpoint of type RDBG_BREAKPOINT_KIND_FILENAME_LINE,
     // update its line number to the given one-based value.
@@ -711,7 +711,7 @@ pub enum RemedybgCommandKind {
     // [line_num :: uint32_t]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    UpdateBreakpointLine = 608,
+    //UpdateBreakpointLine = 608,
 
     // Enable or disable an existing breakpoint.
     //
@@ -720,7 +720,7 @@ pub enum RemedybgCommandKind {
     // [enable :: rdbg_Bool]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    EnableBreakpoint = 609,
+    //EnableBreakpoint = 609,
 
     // Delete an existing breakpoint.
     //
@@ -729,13 +729,12 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     DeleteBreakpoint = 610,
-
     // Delete all existing breakpoints.
     //
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    DeleteAllBreakpoints = 611,
+    //DeleteAllBreakpoints = 611,
 
     //
     // Watch Window Expressions
@@ -753,7 +752,7 @@ pub enum RemedybgCommandKind {
     //   [expr :: rdbg_String]
     //   [comment :: rdbg_String]
     // }
-    GetWatches = 700,
+    //GetWatches = 700,
 
     // Add a watch expresion to the given, one-based watch window. Presently,
     // only single line comments are supported. Spaces will replace any newlines
@@ -766,7 +765,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     // [uid :: rdbg_Id]
-    AddWatch = 701,
+    //AddWatch = 701,
 
     // Updates the expression for a given watch
     //
@@ -775,7 +774,7 @@ pub enum RemedybgCommandKind {
     // [expr :: rdbg_String]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    UpdateWatchExpression = 702,
+    //UpdateWatchExpression = 702,
 
     // Updates the comment for a given watch
     //
@@ -784,7 +783,7 @@ pub enum RemedybgCommandKind {
     // [comment :: rdbg_String]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    UpdateWatchComment = 703,
+    //UpdateWatchComment = 703,
 
     // Delete the given watch
     //
@@ -792,7 +791,7 @@ pub enum RemedybgCommandKind {
     // [uid :: rdbg_Id]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    DeleteWatch = 704,
+    //DeleteWatch = 704,
 
     // Delete all watches in the given watch window
     //
@@ -800,7 +799,7 @@ pub enum RemedybgCommandKind {
     // [window_num :: uint8_t]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    DeleteAllWatches = 705,
+    //DeleteAllWatches = 705,
 }
 impl RemedybgCommandKind {
     pub fn serialize(self, serializer: &mut dyn Serializer) {

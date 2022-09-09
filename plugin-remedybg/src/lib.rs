@@ -4,7 +4,11 @@ use std::{
 };
 
 use pepper::{
+    buffer::BufferProperties,
+    buffer_position::{BufferPosition, BufferPositionIndex},
+    client::ClientManager,
     command::{CommandError, CommandManager, CompletionSource},
+    cursor::Cursor,
     editor::{Editor, EditorContext},
     editor_utils::{to_absolute_path_string, LogKind},
     events::{EditorEvent, EditorEventIter},
@@ -59,8 +63,7 @@ impl Default for ProcessState {
     }
 }
 
-//const IPC_BUF_SIZE: usize = 8 * 1024;
-const IPC_BUF_SIZE: usize = 1;
+const IPC_BUF_SIZE: usize = 8 * 1024;
 const CONTROL_PIPE_ID: u32 = 0;
 const EVENT_PIPE_ID: u32 = 1;
 
@@ -129,11 +132,7 @@ impl RemedybgPlugin {
         }
     }
 
-    pub fn begin_sync_breakpoints(
-        &mut self,
-        editor: &mut Editor, // TODO: remove this
-        platform: &mut Platform,
-    ) -> Result<(), CommandError> {
+    pub fn begin_sync_breakpoints(&mut self, platform: &mut Platform) -> Result<(), CommandError> {
         let sender = self.begin_send_command(platform, RemedybgCommandKind::GetBreakpoints)?;
         sender.send(platform);
         Ok(())
@@ -349,7 +348,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
     while let Some(event) = events.next(ctx.editor.events.reader()) {
         match event {
             EditorEvent::BufferBreakpointsChanged { .. } => {
-                let _ = remedybg.begin_sync_breakpoints(&mut ctx.editor, &mut ctx.platform);
+                let _ = remedybg.begin_sync_breakpoints(&mut ctx.platform);
                 break;
             }
             _ => (),
@@ -380,7 +379,6 @@ fn on_process_spawned(
             read: true,
             write: true,
             read_mode: IpcReadMode::MessageStream,
-            //read_mode: IpcReadMode::ByteStream,
             buf_len: IPC_BUF_SIZE,
         });
 
@@ -399,7 +397,6 @@ fn on_process_spawned(
             read: true,
             write: false,
             read_mode: IpcReadMode::MessageStream,
-            //read_mode: IpcReadMode::ByteStream,
             buf_len: IPC_BUF_SIZE,
         });
 }
@@ -426,7 +423,7 @@ fn on_ipc_connected(
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
     if id == CONTROL_PIPE_ID {
         remedybg.control_ipc_handle = Some(ipc_handle);
-        let _ = remedybg.begin_sync_breakpoints(&mut ctx.editor, &mut ctx.platform);
+        let _ = remedybg.begin_sync_breakpoints(&mut ctx.platform);
     }
 
     let ipc_name = get_ipc_name(id);
@@ -440,6 +437,7 @@ fn on_control_response(
     remedybg: &mut RemedybgPlugin,
     editor: &mut Editor,
     platform: &mut Platform,
+    clients: &mut ClientManager,
     command_kind: RemedybgCommandKind,
     mut bytes: &[u8],
 ) -> Result<(), ProtocolError> {
@@ -507,12 +505,57 @@ fn on_control_response(
             ));
         }
         RemedybgCommandKind::GetBreakpointLocation => {
-            // TODO: implement this
-            // here we should place the main cursor on the breakpoint location
+            let client_handle = clients.focused_client();
 
+            let location_count = u16::deserialize(&mut bytes)?;
             editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
-                "remedybg: on GetBreakpointLocation response:",
+                "remedybg: on GetBreakpointLocation response: location count: {}",
+                location_count
             ));
+
+            for _ in 0..location_count {
+                let _address = u64::deserialize(&mut bytes)?;
+                let _module_name = RemedybgStr::deserialize(&mut bytes)?;
+                let filename = RemedybgStr::deserialize(&mut bytes)?.0;
+                let line_num = u32::deserialize(&mut bytes)? as BufferPositionIndex;
+
+                let position = BufferPosition::line_col(line_num.saturating_sub(1), 0);
+
+                if let Some(client_handle) = client_handle {
+                    let filename = Path::new(filename);
+                    let buffer_properties = BufferProperties::text();
+                    match editor.buffer_view_handle_from_path(
+                        client_handle,
+                        filename,
+                        buffer_properties,
+                        false,
+                    ) {
+                        Ok(buffer_view_handle) => {
+                            {
+                                let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
+                                let mut cursors = buffer_view.cursors.mut_guard();
+                                cursors.clear();
+                                cursors.add(Cursor {
+                                    anchor: position,
+                                    position,
+                                });
+                            }
+
+                            let client = clients.get_mut(client_handle);
+                            client.set_buffer_view_handle(
+                                Some(buffer_view_handle),
+                                &editor.buffer_views,
+                            );
+                        }
+                        Err(_) => continue,
+                    }
+                }
+
+                editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
+                    "remedybg: on GetBreakpointLocation breakpoint at {}:{}",
+                    filename, line_num,
+                ));
+            }
         }
         _ => (),
     }
@@ -525,7 +568,7 @@ fn on_event(
     editor: &mut Editor,
     platform: &mut Platform,
     event: &RemedybgEvent,
-    mut bytes: &[u8],
+    bytes: &[u8],
 ) -> Result<(), ProtocolError> {
     editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
         "remedybg: on event: {:?} bytes left: {}",
@@ -569,6 +612,7 @@ fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, 
                     remedybg,
                     &mut ctx.editor,
                     &mut ctx.platform,
+                    &mut ctx.clients,
                     command_kind,
                     bytes,
                 ) {
@@ -612,4 +656,3 @@ fn on_ipc_close(_: PluginHandle, ctx: &mut EditorContext, id: u32) {
         .write(LogKind::Diagnostic)
         .fmt(format_args!("remedybg: {} ipc closed", ipc_name));
 }
-

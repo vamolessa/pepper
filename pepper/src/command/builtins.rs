@@ -458,20 +458,18 @@ pub fn register_commands(commands: &mut CommandManager) {
             content.push('\n');
         }
 
-        let buffer_view_handle = match ctx
-            .editor
-            .buffer_view_handle_from_path(
-                client_handle,
-                Path::new("buffers.refs"),
-                BufferProperties::scratch(),
-                true,
-            ) {
-                Ok(handle) => handle,
-                Err(error) => {
-                    ctx.editor.string_pool.release(content);
-                    return Err(CommandError::BufferReadError(error));
-                }
-            };
+        let buffer_view_handle = match ctx.editor.buffer_view_handle_from_path(
+            client_handle,
+            Path::new("buffers.refs"),
+            BufferProperties::scratch(),
+            true,
+        ) {
+            Ok(handle) => handle,
+            Err(error) => {
+                ctx.editor.string_pool.release(content);
+                return Err(CommandError::BufferReadError(error));
+            }
+        };
 
         let buffer_handle = ctx
             .editor
