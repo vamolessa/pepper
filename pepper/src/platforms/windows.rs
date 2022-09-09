@@ -18,7 +18,7 @@ use winapi::{
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         debugapi::{DebugBreak, IsDebuggerPresent},
-        errhandlingapi::GetLastError,
+        errhandlingapi::{GetLastError, SetLastError},
         fileapi::{
             CreateFileW, FindClose, FindFirstFileW, GetFileType, ReadFile, WriteFile, OPEN_EXISTING,
         },
@@ -63,7 +63,7 @@ use winapi::{
     },
 };
 
-pub fn main(_: ApplicationConfig) {
+pub fn main2(_: ApplicationConfig) {
     const PIPE_BUF_SIZE: usize = 20;
     const MESSAGE: &str = "abcdefghij0123456789";
 
@@ -336,7 +336,7 @@ pub fn try_attach_debugger() {
 
 const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
-pub fn main2(mut config: ApplicationConfig) {
+pub fn main(mut config: ApplicationConfig) {
     if config.args.session_name.is_empty() {
         use std::fmt::Write;
 
@@ -382,6 +382,10 @@ pub fn main2(mut config: ApplicationConfig) {
 
         run_client(config.args, &pipe_path);
     }
+}
+
+fn reset_last_error() {
+    unsafe { SetLastError(0) }
 }
 
 fn get_last_error() -> DWORD {
@@ -441,6 +445,23 @@ fn read_console_input<'a>(
     &events[..(event_count as usize)]
 }
 
+fn get_overlapped_result(handle: HANDLE, overlapped: &mut Overlapped) -> Option<DWORD> {
+    let mut read_len = 0;
+    let result = unsafe {
+        GetOverlappedResult(
+            handle,
+            overlapped.as_mut_ptr(),
+            &mut read_len,
+            FALSE,
+        )
+    };
+    if result != FALSE || get_last_error() == ERROR_MORE_DATA {
+        Some(read_len)
+    } else {
+        None
+    }
+}
+
 enum IoResult {
     Waiting,
     Ok(usize),
@@ -475,135 +496,67 @@ impl AsyncIO {
     }
 
     pub fn read_async(&mut self, buf: &mut [u8]) -> IoResult {
-        let mut read_len = 0;
         if self.pending_io {
             self.pending_io = false;
 
-            let result = unsafe {
-                GetOverlappedResult(
-                    self.raw_handle,
-                    self.overlapped.as_mut_ptr(),
-                    &mut read_len,
-                    FALSE,
-                )
-            };
-
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_MORE_DATA => {
-                        eprintln!("more data 1 read_len: {} buf_len: {}", read_len, buf.len());
-                        //self.event.notify();
-                        IoResult::Ok(read_len as _)
-                    }
-                    _ => IoResult::Err,
-                }
-            } else {
-                //self.event.notify();
-                IoResult::Ok(read_len as _)
+            match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                Some(len) => IoResult::Ok(len as _),
+                None => IoResult::Err,
             }
         } else {
-            let result = unsafe {
+            reset_last_error();
+            unsafe {
                 ReadFile(
                     self.raw_handle,
                     buf.as_mut_ptr() as _,
                     buf.len() as _,
-                    //&mut read_len,
                     std::ptr::null_mut(),
                     self.overlapped.as_mut_ptr(),
-                )
-            };
-
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_IO_PENDING => {
-                        self.pending_io = true;
-                        IoResult::Waiting
-                    }
-                    ERROR_MORE_DATA => {
-                        unsafe {
-                            GetOverlappedResult(
-                                self.raw_handle,
-                                self.overlapped.as_mut_ptr(),
-                                &mut read_len,
-                                FALSE,
-                            );
-                        }
-
-                        eprintln!("more data 2 read_len: {} buf_len: {}", read_len, buf.len());
-
-                        //self.event.notify();
-                        IoResult::Ok(read_len as _)
-                    }
-                    _ => IoResult::Err,
+                );
+            }
+            match get_last_error() {
+                0 | ERROR_MORE_DATA => match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                    Some(len) => IoResult::Ok(len as _),
+                    None => IoResult::Err,
+                },
+                ERROR_IO_PENDING => {
+                    self.pending_io = true;
+                    IoResult::Waiting
                 }
-            } else {
-                unsafe {
-                    GetOverlappedResult(
-                        self.raw_handle,
-                        self.overlapped.as_mut_ptr(),
-                        &mut read_len,
-                        FALSE,
-                    );
-                }
-
-                //self.event.notify();
-                IoResult::Ok(read_len as _)
+                _ => IoResult::Err,
             }
         }
     }
 
     pub fn write_async(&mut self, buf: &[u8]) -> IoResult {
-        let mut write_len = 0;
         if self.pending_io {
             self.pending_io = false;
 
-            let result = unsafe {
-                GetOverlappedResult(
-                    self.raw_handle,
-                    self.overlapped.as_mut_ptr(),
-                    &mut write_len,
-                    FALSE,
-                )
-            };
-
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_MORE_DATA => {
-                        //self.event.notify();
-                        IoResult::Ok(write_len as _)
-                    }
-                    _ => IoResult::Err,
-                }
-            } else {
-                //self.event.notify();
-                IoResult::Ok(write_len as _)
+            match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                Some(len) => IoResult::Ok(len as _),
+                None => IoResult::Err,
             }
         } else {
-            let result = unsafe {
+            reset_last_error();
+            unsafe {
                 WriteFile(
                     self.raw_handle,
                     buf.as_ptr() as _,
                     buf.len() as _,
-                    &mut write_len,
+                    std::ptr::null_mut(),
                     self.overlapped.as_mut_ptr(),
-                )
-            };
-
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_IO_PENDING => {
-                        self.pending_io = true;
-                        IoResult::Waiting
-                    }
-                    ERROR_MORE_DATA => {
-                        //self.event.notify();
-                        IoResult::Ok(write_len as _)
-                    }
-                    _ => IoResult::Err,
+                );
+            }
+            match get_last_error() {
+                0 | ERROR_MORE_DATA => match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                    Some(len) => IoResult::Ok(len as _),
+                    None => IoResult::Err,
                 }
-            } else {
-                //self.event.notify();
-                IoResult::Ok(write_len as _)
+                ERROR_IO_PENDING => {
+                    self.pending_io = true;
+                    IoResult::Waiting
+                }
+                _ => IoResult::Err,
             }
         }
     }
