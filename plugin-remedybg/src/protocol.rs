@@ -29,7 +29,7 @@ impl fmt::Display for ProtocolError {
             Self::DeserializeError(DeserializeError::InsufficientData) => {
                 f.write_str("deserialize error: insufficient data")
             }
-            Self::RemedybgCommandResult(result) => f.write_fmt(format_args!("result: {}", result)),
+            Self::RemedybgCommandResult(result) => f.write_fmt(format_args!("remedybg result: {}", result)),
             Self::CommandError(error) => error.fmt(f),
         }
     }
@@ -98,7 +98,7 @@ impl fmt::Display for RemedybgCommandResult {
 }
 impl RemedybgCommandResult {
     pub fn deserialize(deserializer: &mut dyn Deserializer) -> Result<Self, DeserializeError> {
-        let discriminant = u8::deserialize(deserializer)?;
+        let discriminant = u16::deserialize(deserializer)?;
         match discriminant {
             0 => Ok(RemedybgCommandResult::Unknown),
             1 => Ok(RemedybgCommandResult::Ok),

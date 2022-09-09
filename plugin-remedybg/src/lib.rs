@@ -456,6 +456,11 @@ fn on_control_response(
     match command_kind {
         RemedybgCommandKind::GetBreakpoints => {
             let breakpoint_count = u16::deserialize(&mut bytes)?;
+            editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
+                "remedybg: on GetBreakpoints response: breakpoint count {}",
+                breakpoint_count,
+            ));
+
             for _ in 0..breakpoint_count {
                 let id = RemedybgId::deserialize(&mut bytes)?;
                 let _enabled = RemedybgBool::deserialize(&mut bytes)?;
@@ -498,11 +503,6 @@ fn on_control_response(
             }
 
             editor.string_pool.release(file_path_buf);
-
-            editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
-                "remedybg: on GetBreakpoints response: breakpoint count {}",
-                breakpoint_count,
-            ));
         }
         RemedybgCommandKind::GetBreakpointLocation => {
             let client_handle = clients.focused_client();
