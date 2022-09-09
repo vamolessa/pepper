@@ -131,7 +131,7 @@ impl<'de> Serialize<'de> for RemedybgBool {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct RemedybgId(pub u32);
 impl<'de> Serialize<'de> for RemedybgId {
     fn serialize(&self, serializer: &mut dyn Serializer) {
