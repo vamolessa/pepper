@@ -312,6 +312,7 @@ impl BufferBreakpointCollection {
 pub struct BufferBreakpointMutCollection<'a> {
     inner: &'a mut BufferBreakpointCollection,
     buffer_handle: BufferHandle,
+    needs_sorting: bool,
 }
 impl<'a> BufferBreakpointMutCollection<'a> {
     pub fn clear(&mut self, events: &mut EditorEventWriter) {
@@ -323,9 +324,23 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         self.inner.breakpoints.clear();
     }
 
+    pub fn add(&mut self, line_index: BufferPositionIndex) {
+        self.needs_sorting = true;
+
+        let id = self.inner.next_breakpoint_id;
+        self.inner.next_breakpoint_id = self.inner.next_breakpoint_id.wrapping_add(1);
+        self.inner.breakpoints.push(BufferBreakpoint {
+            id,
+            line_index,
+        });
+    }
+
     pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
+        self.sort_if_needed();
+
         let previous_breakpoints_len = self.inner.breakpoints.len();
 
+        // TODO: improve efficiency
         let mut breakpoint_index = self.inner.breakpoints.len().saturating_sub(1);
         'cursors_loop: for cursor in cursors.iter().rev() {
             let range = cursor.to_range();
@@ -359,6 +374,9 @@ impl<'a> BufferBreakpointMutCollection<'a> {
     }
 
     pub fn toggle_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
+        /*
+        self.needs_sorting = true;
+
         let mut previous_line_index = BufferPositionIndex::MAX;
         for cursor in cursors {
             let range = cursor.to_range();
@@ -370,22 +388,11 @@ impl<'a> BufferBreakpointMutCollection<'a> {
             previous_line_index = to_line_index;
 
             for line_index in from_line_index..=to_line_index {
-                let id = self.alloc_breakpoint_id();
-                self.inner.breakpoints.push(BufferBreakpoint { id, line_index });
+                self.add(line_index);
             }
         }
 
-        self.inner
-            .breakpoints
-            .sort_unstable_by_key(|b| b.line_index);
-
-        {
-            let id = self.alloc_breakpoint_id();
-            self.inner.breakpoints.push(BufferBreakpoint {
-                id,
-                line_index: BufferPositionIndex::MAX,
-            });
-        }
+        self.add(BufferPositionIndex::MAX);
 
         let breakpoints = &mut self.inner.breakpoints[..];
         let mut write_needle = 0;
@@ -404,16 +411,23 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         }
 
         self.inner.breakpoints.truncate(write_needle);
+        */
 
         events.enqueue(EditorEvent::BufferBreakpointsChanged {
             handle: self.buffer_handle,
         });
     }
 
-    fn alloc_breakpoint_id(&mut self) -> u32 {
-        let id = self.inner.next_breakpoint_id;
-        self.inner.next_breakpoint_id = self.inner.next_breakpoint_id.wrapping_add(1);
-        id
+    fn sort_if_needed(&mut self) {
+        if self.needs_sorting {
+            self.needs_sorting = false;
+            self.inner.breakpoints.sort_unstable_by_key(|b| b.line_index);
+        }
+    }
+}
+impl<'a> Drop for BufferBreakpointMutCollection<'a> {
+    fn drop(&mut self) {
+        self.sort_if_needed();
     }
 }
 
@@ -1219,6 +1233,7 @@ impl Buffer {
         BufferBreakpointMutCollection {
             inner: &mut self.breakpoints,
             buffer_handle: self.handle,
+            needs_sorting: false,
         }
     }
 

@@ -456,7 +456,7 @@ pub enum RemedybgCommandKind {
     // [cmd :: rdbg_Command (uint16_t)]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    //StopDebugging = 302,
+    StopDebugging = 302,
 
     // Restart debugging if the target is being debugging (either suspended or
     // executing) and the target was not attached to a process. Otherwise,
@@ -923,3 +923,17 @@ impl<'a> fmt::Display for RemedybgEvent<'a> {
         }
     }
 }
+
+pub struct PendingCommandContext {
+    pub command_kind: RemedybgCommandKind,
+    pub id: RemedybgId,
+}
+impl From<RemedybgCommandKind> for PendingCommandContext {
+    fn from(other: RemedybgCommandKind) -> Self {
+        Self {
+            command_kind: other,
+            id: RemedybgId(0),
+        }
+    }
+}
+
