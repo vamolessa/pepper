@@ -170,7 +170,7 @@ pub enum RemedybgProcessorBreakpointAccessKind {
     Execute,
 }
 
-pub enum RemedybgBreakpoint<'a> {
+pub enum RemedybgProtocolBreakpoint<'a> {
     FunctionName {
         function_name: RemedybgStr<'a>,
         overload_id: u32,
@@ -188,7 +188,7 @@ pub enum RemedybgBreakpoint<'a> {
         access_kind: RemedybgProcessorBreakpointAccessKind,
     },
 }
-impl<'a> RemedybgBreakpoint<'a> {
+impl<'a> RemedybgProtocolBreakpoint<'a> {
     pub fn deserialize(deserializer: &mut dyn Deserializer<'a>) -> Result<Self, DeserializeError> {
         match u8::deserialize(deserializer)? {
             1 => {

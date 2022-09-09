@@ -24,7 +24,7 @@ use pepper::{
 mod protocol;
 
 use protocol::{
-    ProtocolError, RemedybgBool, RemedybgBreakpoint, RemedybgCommandKind, RemedybgCommandResult,
+    ProtocolError, RemedybgBool, RemedybgProtocolBreakpoint, RemedybgCommandKind, RemedybgCommandResult,
     RemedybgEvent, RemedybgId, RemedybgStr,
 };
 
@@ -74,6 +74,8 @@ pub(crate) struct RemedybgPlugin {
 
     pending_commands: Vec<RemedybgCommandKind>,
     control_ipc_handle: Option<PlatformIpcHandle>,
+
+    remedybg_breakpoints: RemedybgBreakpointCollection,
 }
 impl RemedybgPlugin {
     pub fn spawn(
@@ -466,8 +468,8 @@ fn on_control_response(
                 let _enabled = RemedybgBool::deserialize(&mut bytes)?;
                 let _module_name = RemedybgStr::deserialize(&mut bytes)?;
                 let _condition_expr = RemedybgStr::deserialize(&mut bytes)?;
-                let breakpoint = RemedybgBreakpoint::deserialize(&mut bytes)?;
-                if let RemedybgBreakpoint::FilenameLine { .. } = breakpoint {
+                let breakpoint = RemedybgProtocolBreakpoint::deserialize(&mut bytes)?;
+                if let RemedybgProtocolBreakpoint::FilenameLine { .. } = breakpoint {
                     let mut sender = remedybg
                         .begin_send_command(platform, RemedybgCommandKind::DeleteBreakpoint)?;
                     let writer = sender.write();
@@ -656,3 +658,32 @@ fn on_ipc_close(_: PluginHandle, ctx: &mut EditorContext, id: u32) {
         .write(LogKind::Diagnostic)
         .fmt(format_args!("remedybg: {} ipc closed", ipc_name));
 }
+
+#[derive(Default)]
+struct RemedybgBreakpoint {
+    filename: String,
+    line_index: BufferPositionIndex,
+}
+#[derive(Default)]
+struct RemedybgBreakpointCollection {
+    len: u32,
+    breakpoints: Vec<RemedybgBreakpoint>,
+}
+impl RemedybgBreakpointCollection {
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    pub fn add_breakpoint_at(&mut self, filename: &str, line_index: BufferPositionIndex) {
+        if self.len as usize == self.breakpoints.len() {
+            self.breakpoints.push(RemedybgBreakpoint::default());
+        }
+        let breakpoint = &mut self.breakpoints[self.len as usize];
+        self.len += 1;
+
+        breakpoint.filename.clear();
+        breakpoint.filename.push_str(filename);
+        breakpoint.line_index = line_index;
+    }
+}
+
