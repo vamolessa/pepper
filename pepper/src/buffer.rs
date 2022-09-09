@@ -243,11 +243,13 @@ impl<'a> Drop for BufferLintCollectionMutGuard<'a> {
 
 #[derive(Clone, Copy)]
 pub struct BufferBreakpoint {
+    pub id: u32,
     pub line_index: BufferPositionIndex,
 }
 
 #[derive(Default)]
 pub struct BufferBreakpointCollection {
+    next_breakpoint_id: u32,
     breakpoints: Vec<BufferBreakpoint>,
 }
 impl BufferBreakpointCollection {
@@ -368,7 +370,8 @@ impl<'a> BufferBreakpointMutCollection<'a> {
             previous_line_index = to_line_index;
 
             for line_index in from_line_index..=to_line_index {
-                self.inner.breakpoints.push(BufferBreakpoint { line_index });
+                let id = self.alloc_breakpoint_id();
+                self.inner.breakpoints.push(BufferBreakpoint { id, line_index });
             }
         }
 
@@ -376,9 +379,14 @@ impl<'a> BufferBreakpointMutCollection<'a> {
             .breakpoints
             .sort_unstable_by_key(|b| b.line_index);
 
-        self.inner.breakpoints.push(BufferBreakpoint {
-            line_index: BufferPositionIndex::MAX,
-        });
+        {
+            let id = self.alloc_breakpoint_id();
+            self.inner.breakpoints.push(BufferBreakpoint {
+                id,
+                line_index: BufferPositionIndex::MAX,
+            });
+        }
+
         let breakpoints = &mut self.inner.breakpoints[..];
         let mut write_needle = 0;
         let mut check_needle = 0;
@@ -400,6 +408,12 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         events.enqueue(EditorEvent::BufferBreakpointsChanged {
             handle: self.buffer_handle,
         });
+    }
+
+    fn alloc_breakpoint_id(&mut self) -> u32 {
+        let id = self.inner.next_breakpoint_id;
+        self.inner.next_breakpoint_id = self.inner.next_breakpoint_id.wrapping_add(1);
+        id
     }
 }
 
