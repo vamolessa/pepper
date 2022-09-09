@@ -63,8 +63,9 @@ use winapi::{
     },
 };
 
-pub fn main2(_: ApplicationConfig) {
+pub fn main(_: ApplicationConfig) {
     const PIPE_BUF_SIZE: usize = 20;
+    const MESSAGE: &str = "abcdefghij0123456789";
 
     let mut pipe_path = Vec::new();
     pipe_path.extend(PIPE_PREFIX.encode_utf16());
@@ -101,7 +102,7 @@ pub fn main2(_: ApplicationConfig) {
 
         eprintln!("server: connected to client");
 
-        let write_buf = "abcdefghij0123456789";
+        let write_buf = MESSAGE;
         let mut write_len = 0;
         let result = unsafe {
             WriteFile(
@@ -212,6 +213,7 @@ pub fn main2(_: ApplicationConfig) {
             }
         };
         eprintln!("client: read message: '{}' ({}/{} bytes)", read_message, read_message.len(), PIPE_BUF_SIZE);
+        eprintln!("client: message ok? {}", read_message == MESSAGE);
 
         std::thread::sleep(Duration::from_millis(1000));
     }).unwrap();
@@ -334,7 +336,7 @@ pub fn try_attach_debugger() {
 
 const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
-pub fn main(mut config: ApplicationConfig) {
+pub fn main2(mut config: ApplicationConfig) {
     if config.args.session_name.is_empty() {
         use std::fmt::Write;
 
