@@ -595,7 +595,7 @@ fn on_control_response(
                         .is_ok()
                     {
                         for breakpoint in buffer.breakpoints() {
-                            let line_index = breakpoint.line_index as u32;
+                            let line_num = (breakpoint.line_index + 1) as u32;
                             let mut sender = remedybg.begin_send_command(
                                 platform,
                                 RemedybgCommandKind::AddBreakpointAtFilenameLine,
@@ -603,7 +603,7 @@ fn on_control_response(
                             )?;
                             let write = sender.write();
                             RemedybgStr(&file_path).serialize(write);
-                            line_index.serialize(write);
+                            line_num.serialize(write);
                             RemedybgStr("").serialize(write);
                             sender.send(platform);
                         }
@@ -627,9 +627,10 @@ fn on_control_response(
             }
 
             editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
-                "remedybg: get breakpoint location [kind: {:?} action: {:?}]: {}:{}",
+                "remedybg: get breakpoint locations [kind: {:?} action: {:?}] (loc count: {}): {}:{}",
                 std::mem::discriminant(&command_context.command_kind),
                 command_context.action.as_ref().map(std::mem::discriminant),
+                location_count,
                 filename,
                 line_index,
             ));
@@ -671,8 +672,14 @@ fn on_control_response(
                         .find_with_path(&editor.current_directory, Path::new(filename));
                     if let Some(buffer_handle) = buffer_handle {
                         let buffer = editor.buffers.get_mut(buffer_handle);
-                        let mut breakpoints = buffer.breakpoints_mut();
-                        breakpoints.add(line_index, editor.events.writer());
+                        let has_breakpoint = buffer
+                            .breakpoints()
+                            .binary_search_by_key(&line_index, |b| b.line_index)
+                            .is_ok();
+                        if !has_breakpoint {
+                            let mut breakpoints = buffer.breakpoints_mut();
+                            breakpoints.add(line_index, editor.events.writer());
+                        }
                     }
                 }
                 Some(PendingCommandAction::RemoveBreakpoint) => {
@@ -683,9 +690,8 @@ fn on_control_response(
                         let buffer = editor.buffers.get_mut(buffer_handle);
                         let breakpoint_index = buffer
                             .breakpoints()
-                            .iter()
-                            .position(|b| b.line_index == line_index);
-                        if let Some(breakpoint_index) = breakpoint_index {
+                            .binary_search_by_key(&line_index, |b| b.line_index);
+                        if let Ok(breakpoint_index) = breakpoint_index {
                             let mut breakpoints = buffer.breakpoints_mut();
                             breakpoints.remove_at(breakpoint_index, editor.events.writer());
                         }
