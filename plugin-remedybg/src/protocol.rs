@@ -29,7 +29,9 @@ impl fmt::Display for ProtocolError {
             Self::DeserializeError(DeserializeError::InsufficientData) => {
                 f.write_str("deserialize error: insufficient data")
             }
-            Self::RemedybgCommandResult(result) => f.write_fmt(format_args!("remedybg result: {}", result)),
+            Self::RemedybgCommandResult(result) => {
+                f.write_fmt(format_args!("remedybg result: {}", result))
+            }
             Self::CommandError(error) => error.fmt(f),
         }
     }
@@ -935,4 +937,3 @@ pub struct PendingCommandContext {
     pub command_kind: RemedybgCommandKind,
     pub action: Option<PendingCommandAction>,
 }
-

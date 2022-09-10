@@ -418,7 +418,9 @@ impl<'a> BufferBreakpointMutCollection<'a> {
     fn sort_if_needed(&mut self) {
         if self.needs_sorting {
             self.needs_sorting = false;
-            self.inner.breakpoints.sort_unstable_by_key(|b| b.line_index);
+            self.inner
+                .breakpoints
+                .sort_unstable_by_key(|b| b.line_index);
         }
     }
 

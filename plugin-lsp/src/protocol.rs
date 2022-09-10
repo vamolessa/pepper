@@ -664,7 +664,13 @@ impl WorkspaceEdit {
                     buffer_properties.saving_enabled = true;
                     let result = editor.buffer_handle_from_path(path, buffer_properties);
 
-                    TextEdit::apply_edits(editor, result.buffer_handle, temp_edits, edit.edits, json);
+                    TextEdit::apply_edits(
+                        editor,
+                        result.buffer_handle,
+                        temp_edits,
+                        edit.edits,
+                        json,
+                    );
 
                     if result.is_new {
                         let _ = editor

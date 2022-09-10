@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCollection, BufferProperties, BufferReadError, BufferHandle},
+    buffer::{BufferCollection, BufferHandle, BufferProperties, BufferReadError},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientHandle, ClientManager},
@@ -362,7 +362,9 @@ impl Editor {
 
                 let mut read_error = None;
                 if buffer.properties.is_file {
-                    if let Err(error) = buffer.read_from_file(&mut self.word_database, self.events.writer()) {
+                    if let Err(error) =
+                        buffer.read_from_file(&mut self.word_database, self.events.writer())
+                    {
                         read_error = Some(error);
                     }
                 }
@@ -391,11 +393,14 @@ impl Editor {
             }
             match error {
                 Some(error) => {
-                    self.buffers.defer_remove(result.buffer_handle, self.events.writer());
+                    self.buffers
+                        .defer_remove(result.buffer_handle, self.events.writer());
                     Err(error)
                 }
                 None => {
-                    let handle = self.buffer_views.add_new(client_handle, result.buffer_handle);
+                    let handle = self
+                        .buffer_views
+                        .add_new(client_handle, result.buffer_handle);
                     Ok(handle)
                 }
             }

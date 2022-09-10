@@ -816,4 +816,3 @@ fn on_ipc_close(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32) {
         .write(LogKind::Diagnostic)
         .fmt(format_args!("remedybg: {} ipc closed", ipc_name));
 }
-
