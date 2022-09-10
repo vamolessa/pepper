@@ -924,16 +924,15 @@ impl<'a> fmt::Display for RemedybgEvent<'a> {
     }
 }
 
+pub enum PendingCommandAction {
+    SyncBreakpoints,
+    SendEditorBreakpoints,
+    GoToLocation,
+    AddBreakpoint,
+    RemoveBreakpoint,
+}
 pub struct PendingCommandContext {
     pub command_kind: RemedybgCommandKind,
-    pub id: RemedybgId,
-}
-impl From<RemedybgCommandKind> for PendingCommandContext {
-    fn from(other: RemedybgCommandKind) -> Self {
-        Self {
-            command_kind: other,
-            id: RemedybgId(0),
-        }
-    }
+    pub action: Option<PendingCommandAction>,
 }
 

@@ -243,13 +243,11 @@ impl<'a> Drop for BufferLintCollectionMutGuard<'a> {
 
 #[derive(Clone, Copy)]
 pub struct BufferBreakpoint {
-    pub id: u32,
     pub line_index: BufferPositionIndex,
 }
 
 #[derive(Default)]
 pub struct BufferBreakpointCollection {
-    next_breakpoint_id: u32,
     breakpoints: Vec<BufferBreakpoint>,
 }
 impl BufferBreakpointCollection {
@@ -313,26 +311,30 @@ pub struct BufferBreakpointMutCollection<'a> {
     inner: &'a mut BufferBreakpointCollection,
     buffer_handle: BufferHandle,
     needs_sorting: bool,
+    enqueued_breakpoints_changed_event: bool,
 }
 impl<'a> BufferBreakpointMutCollection<'a> {
+    pub fn as_slice(&self) -> &[BufferBreakpoint] {
+        &self.inner.breakpoints
+    }
+
     pub fn clear(&mut self, events: &mut EditorEventWriter) {
         if self.inner.breakpoints.len() > 0 {
-            events.enqueue(EditorEvent::BufferBreakpointsChanged {
-                handle: self.buffer_handle,
-            });
+            self.enqueue_breakpoints_changed_event(events);
         }
         self.inner.breakpoints.clear();
     }
 
-    pub fn add(&mut self, line_index: BufferPositionIndex) {
+    pub fn add(&mut self, line_index: BufferPositionIndex, events: &mut EditorEventWriter) {
         self.needs_sorting = true;
+        self.inner.breakpoints.push(BufferBreakpoint { line_index });
+        self.enqueue_breakpoints_changed_event(events);
+    }
 
-        let id = self.inner.next_breakpoint_id;
-        self.inner.next_breakpoint_id = self.inner.next_breakpoint_id.wrapping_add(1);
-        self.inner.breakpoints.push(BufferBreakpoint {
-            id,
-            line_index,
-        });
+    pub fn remove_at(&mut self, index: usize, events: &mut EditorEventWriter) {
+        self.needs_sorting = true;
+        self.inner.breakpoints.swap_remove(index);
+        self.enqueue_breakpoints_changed_event(events);
     }
 
     pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
@@ -367,13 +369,12 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         }
 
         if self.inner.breakpoints.len() < previous_breakpoints_len {
-            events.enqueue(EditorEvent::BufferBreakpointsChanged {
-                handle: self.buffer_handle,
-            });
+            self.enqueue_breakpoints_changed_event(events);
         }
     }
 
     pub fn toggle_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
+        // TODO: implement
         /*
         self.needs_sorting = true;
 
@@ -388,11 +389,11 @@ impl<'a> BufferBreakpointMutCollection<'a> {
             previous_line_index = to_line_index;
 
             for line_index in from_line_index..=to_line_index {
-                self.add(line_index);
+                self.add(line_index, events);
             }
         }
 
-        self.add(BufferPositionIndex::MAX);
+        self.add(BufferPositionIndex::MAX, events);
 
         let breakpoints = &mut self.inner.breakpoints[..];
         let mut write_needle = 0;
@@ -412,10 +413,6 @@ impl<'a> BufferBreakpointMutCollection<'a> {
 
         self.inner.breakpoints.truncate(write_needle);
         */
-
-        events.enqueue(EditorEvent::BufferBreakpointsChanged {
-            handle: self.buffer_handle,
-        });
     }
 
     fn sort_if_needed(&mut self) {
@@ -424,10 +421,20 @@ impl<'a> BufferBreakpointMutCollection<'a> {
             self.inner.breakpoints.sort_unstable_by_key(|b| b.line_index);
         }
     }
+
+    fn enqueue_breakpoints_changed_event(&mut self, events: &mut EditorEventWriter) {
+        if !self.enqueued_breakpoints_changed_event {
+            self.enqueued_breakpoints_changed_event = true;
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
+                handle: self.buffer_handle,
+            });
+        }
+    }
 }
 impl<'a> Drop for BufferBreakpointMutCollection<'a> {
     fn drop(&mut self) {
         self.sort_if_needed();
+        // TODO: remove duplicates!
     }
 }
 
@@ -1234,6 +1241,7 @@ impl Buffer {
             inner: &mut self.breakpoints,
             buffer_handle: self.handle,
             needs_sorting: false,
+            enqueued_breakpoints_changed_event: false,
         }
     }
 
