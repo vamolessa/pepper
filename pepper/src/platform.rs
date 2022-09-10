@@ -240,6 +240,10 @@ impl PooledBuf {
         buf
     }
 
+    pub fn write_no_clear(&mut self) -> &mut Vec<u8> {
+        &mut self.0
+    }
+
     pub fn write_with_len(&mut self, len: usize) -> &mut Vec<u8> {
         let buf = &mut self.0;
         buf.resize(len, 0);

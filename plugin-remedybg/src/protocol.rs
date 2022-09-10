@@ -628,7 +628,7 @@ pub enum RemedybgCommandKind {
     //   [filename :: rdbg_String]
     //   [actual_line_num :: uint32_t]
     // }
-    GetBreakpointLocation = 601,
+    GetBreakpointLocations = 601,
 
     // Return a list of function overloads for the given function name. If the
     // target is being debugged (suspended or executing) then returns a list of
