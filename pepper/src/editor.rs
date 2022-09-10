@@ -361,7 +361,7 @@ impl Editor {
                 buffer.properties = properties;
 
                 let mut read_error = None;
-                if buffer.properties.is_file {
+                if buffer.properties.file_backed_enabled {
                     if let Err(error) =
                         buffer.read_from_file(&mut self.word_database, self.events.writer())
                     {

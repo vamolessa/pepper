@@ -47,6 +47,7 @@ Also, if `<path>` ends with `:<line>[,<column>]`, it will be opened at that loca
 A buffer has a set of properties that can be changed when opening it:
 - `history-enabled`, `history-disabled`: enables/disables undo history (enabled by default)
 - `saving-enabled`, `saving-disabled`: enables/disables saving (enabled by default)
+- `file-backed-enabled`, `file-backed-disabled`: enabled/disables being file backed (enabled by default)
 - `word-database-enabled`, `word-database-disabled`: enables/disables contributing words for the word database (builtin autocomplete) (enabled by default)
 
 It's also possible to change these properties in batch by passing:

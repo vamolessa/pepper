@@ -1096,7 +1096,7 @@ impl From<io::Error> for BufferWriteError {
 pub struct BufferProperties {
     pub history_enabled: bool,
     pub saving_enabled: bool,
-    pub is_file: bool,
+    pub file_backed_enabled: bool,
     pub word_database_enabled: bool,
 }
 impl BufferProperties {
@@ -1104,7 +1104,7 @@ impl BufferProperties {
         Self {
             history_enabled: true,
             saving_enabled: true,
-            is_file: true,
+            file_backed_enabled: true,
             word_database_enabled: true,
         }
     }
@@ -1113,7 +1113,7 @@ impl BufferProperties {
         Self {
             history_enabled: true,
             saving_enabled: false,
-            is_file: true,
+            file_backed_enabled: false,
             word_database_enabled: false,
         }
     }
@@ -1122,7 +1122,7 @@ impl BufferProperties {
         Self {
             history_enabled: false,
             saving_enabled: false,
-            is_file: true,
+            file_backed_enabled: false,
             word_database_enabled: false,
         }
     }
@@ -1623,7 +1623,7 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if !self.path.starts_with(help::HELP_PREFIX) && !self.properties.is_file {
+        if !self.path.starts_with(help::HELP_PREFIX) && !self.properties.file_backed_enabled {
             return Ok(());
         }
 
@@ -1668,7 +1668,7 @@ impl Buffer {
         let new_path = match new_path {
             Some(path) => {
                 self.properties.saving_enabled = true;
-                self.properties.is_file = true;
+                self.properties.file_backed_enabled = true;
                 self.set_path(path);
                 true
             }
@@ -1679,7 +1679,7 @@ impl Buffer {
             return Err(BufferWriteError::SavingDisabled);
         }
 
-        if self.properties.is_file {
+        if self.properties.file_backed_enabled {
             let file = File::create(&self.path)?;
             self.content.write(&mut io::BufWriter::new(file))?;
         }

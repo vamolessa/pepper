@@ -144,6 +144,8 @@ pub fn register_commands(commands: &mut CommandManager) {
                 "history-disabled" => properties.history_enabled = false,
                 "saving-enabled" => properties.saving_enabled = true,
                 "saving-disabled" => properties.saving_enabled = false,
+                "file-backed-enabled" => properties.file_backed_enabled = true,
+                "file-backed-disabled" => properties.file_backed_enabled = false,
                 "word-database-enabled" => properties.word_database_enabled = true,
                 "word-database-disabled" => properties.word_database_enabled = false,
                 _ => return Err(CommandError::NoSuchBufferProperty),
@@ -430,7 +432,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             let props = &buffer.properties;
             if !props.history_enabled
                 || !props.saving_enabled
-                || !props.is_file
+                || !props.file_backed_enabled
                 || !props.word_database_enabled
             {
                 content.push_str(" (");
@@ -440,8 +442,8 @@ pub fn register_commands(commands: &mut CommandManager) {
                 if !props.saving_enabled {
                     content.push_str("saving-disabled, ");
                 }
-                if !props.is_file {
-                    content.push_str("not-a-file, ");
+                if !props.file_backed_enabled {
+                    content.push_str("file-backed-disabled, ");
                 }
                 if !props.word_database_enabled {
                     content.push_str("word-database-disabled, ");

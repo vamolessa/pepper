@@ -158,7 +158,7 @@ impl Client {
                 editor.string_pool.release(path);
 
                 buffer.properties = BufferProperties::text();
-                buffer.properties.is_file = false;
+                buffer.properties.file_backed_enabled = false;
 
                 let buffer_view_handle =
                     editor.buffer_views.add_new(self.handle(), buffer.handle());
