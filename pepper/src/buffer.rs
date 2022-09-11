@@ -2629,4 +2629,3 @@ mod tests {
         assert_eq!("        second", buffer.content().lines()[1].as_str());
     }
 }
-
