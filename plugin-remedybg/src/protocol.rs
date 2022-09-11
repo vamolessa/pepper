@@ -141,8 +141,10 @@ impl<'de> Serialize<'de> for RemedybgId {
     }
 
     fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
-        let id = Serialize::deserialize(deserializer)?;
-        Ok(Self(id))
+        match Serialize::deserialize(deserializer)? {
+            0 => Err(DeserializeError::InvalidData),
+            id => Ok(Self(id)),
+        }
     }
 }
 

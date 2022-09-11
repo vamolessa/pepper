@@ -185,6 +185,9 @@ impl CommandSender {
     }
 
     pub fn send(self, platform: &mut Platform) {
+        let len = self.buf.as_bytes().len();
+        let bytes = self.buf.as_bytes().as_ptr();
+
         platform.requests.enqueue(PlatformRequest::WriteToIpc {
             handle: self.ipc_handle,
             buf: self.buf,
@@ -508,6 +511,9 @@ fn on_control_response(
     command_context: PendingCommandContext,
     mut bytes: &[u8],
 ) -> Result<(), ProtocolError> {
+    let b = bytes.as_ptr();
+    let l = bytes.len();
+
     match RemedybgCommandResult::deserialize(&mut bytes) {
         Ok(RemedybgCommandResult::Ok) => (),
         Ok(result) => return Err(ProtocolError::RemedybgCommandResult(result)),
