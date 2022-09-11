@@ -247,7 +247,7 @@ impl EditorContext {
                         for client in self.clients.iter_mut() {
                             client.on_buffer_close(&mut self.editor, handle);
                         }
-                        self.editor.buffer_views.remove_buffer_views(handle);
+                        self.editor.buffer_views.remove_buffer_views_with_buffer(handle);
                     }
                     EditorEvent::FixCursors { handle, cursors } => {
                         let event_reader = self.editor.events.reader();

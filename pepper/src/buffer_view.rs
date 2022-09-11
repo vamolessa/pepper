@@ -602,7 +602,15 @@ impl BufferViewCollection {
         handle
     }
 
-    pub fn remove_buffer_views(&mut self, buffer_handle: BufferHandle) {
+    pub fn remove_buffer_views_with_client(&mut self, client_handle: ClientHandle) {
+        for view in &mut self.buffer_views {
+            if view.alive && view.client_handle == client_handle {
+                view.alive = false;
+            }
+        }
+    }
+
+    pub fn remove_buffer_views_with_buffer(&mut self, buffer_handle: BufferHandle) {
         for view in &mut self.buffer_views {
             if view.alive && view.buffer_handle == buffer_handle {
                 view.alive = false;
