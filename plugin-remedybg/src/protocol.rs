@@ -133,7 +133,7 @@ impl<'de> Serialize<'de> for RemedybgBool {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RemedybgId(pub u32);
 impl<'de> Serialize<'de> for RemedybgId {
     fn serialize(&self, serializer: &mut dyn Serializer) {
@@ -927,13 +927,13 @@ impl<'a> fmt::Display for RemedybgEvent<'a> {
 }
 
 pub enum PendingCommandAction {
+    None,
     SyncBreakpoints,
     SendEditorBreakpoints,
-    GoToLocation,
-    AddBreakpoint,
-    RemoveBreakpoint,
+    GoToLocation(RemedybgId),
+    AddBreakpoint(RemedybgId),
 }
 pub struct PendingCommandContext {
     pub command_kind: RemedybgCommandKind,
-    pub action: Option<PendingCommandAction>,
+    pub action: PendingCommandAction,
 }
