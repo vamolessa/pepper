@@ -255,6 +255,7 @@ impl BufferBreakpointCollection {
         self.breakpoints.clear();
     }
 
+    // TODO: fix BufferBreakpointCollection::insert_range
     fn insert_range(&mut self, range: BufferRange) -> bool {
         let line_count = range.to.line_index - range.from.line_index;
         if line_count == 0 {
@@ -274,6 +275,7 @@ impl BufferBreakpointCollection {
         return changed;
     }
 
+    // TODO: fix BufferBreakpointCollection::delete_range
     fn delete_range(&mut self, range: BufferRange) -> bool {
         let line_count = range.to.line_index - range.from.line_index;
         if line_count == 0 {
@@ -338,11 +340,8 @@ impl<'a> BufferBreakpointMutCollection<'a> {
     }
 
     pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
-        self.sort_if_needed();
-
         let previous_breakpoints_len = self.inner.breakpoints.len();
 
-        // TODO: improve efficiency
         let mut breakpoint_index = self.inner.breakpoints.len().saturating_sub(1);
         'cursors_loop: for cursor in cursors.iter().rev() {
             let range = cursor.to_range();
@@ -369,15 +368,12 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         }
 
         if self.inner.breakpoints.len() < previous_breakpoints_len {
+            self.needs_sorting = true;
             self.enqueue_breakpoints_changed_event(events);
         }
     }
 
     pub fn toggle_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
-        // TODO: implement
-        /*
-        self.needs_sorting = true;
-
         let mut previous_line_index = BufferPositionIndex::MAX;
         for cursor in cursors {
             let range = cursor.to_range();
@@ -389,11 +385,16 @@ impl<'a> BufferBreakpointMutCollection<'a> {
             previous_line_index = to_line_index;
 
             for line_index in from_line_index..=to_line_index {
-                self.add(line_index, events);
+                self.inner.breakpoints.push(BufferBreakpoint { line_index });
             }
         }
 
-        self.add(BufferPositionIndex::MAX, events);
+        self.needs_sorting = true;
+        self.sort_if_needed();
+
+        self.inner.breakpoints.push(BufferBreakpoint {
+            line_index: BufferPositionIndex::MAX,
+        });
 
         let breakpoints = &mut self.inner.breakpoints[..];
         let mut write_needle = 0;
@@ -412,7 +413,7 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         }
 
         self.inner.breakpoints.truncate(write_needle);
-        */
+        self.enqueue_breakpoints_changed_event(events);
     }
 
     fn sort_if_needed(&mut self) {
@@ -436,7 +437,7 @@ impl<'a> BufferBreakpointMutCollection<'a> {
 impl<'a> Drop for BufferBreakpointMutCollection<'a> {
     fn drop(&mut self) {
         self.sort_if_needed();
-        // TODO: remove duplicates!
+        self.inner.breakpoints.dedup_by_key(|b| b.line_index);
     }
 }
 
@@ -2628,3 +2629,4 @@ mod tests {
         assert_eq!("        second", buffer.content().lines()[1].as_str());
     }
 }
+
