@@ -18,6 +18,7 @@
 - added `file-backed` as a `open` command option which affects open and reopen commands
 - added `to-lowercase` and `to-uppercase` commands
 - fix buffer views would not be removed when their clients closed
+- fix breakpoints locations on text edits
 
 # 0.29.0
 - added diagnostic logging to `spawn` command

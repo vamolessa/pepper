@@ -255,7 +255,6 @@ impl BufferBreakpointCollection {
         self.breakpoints.clear();
     }
 
-    // TODO: fix BufferBreakpointCollection::insert_range
     fn insert_range(&mut self, range: BufferRange) -> bool {
         let line_count = range.to.line_index - range.from.line_index;
         if line_count == 0 {
@@ -264,7 +263,10 @@ impl BufferBreakpointCollection {
 
         let mut changed = false;
         for breakpoint in &mut self.breakpoints {
-            if range.from.line_index < breakpoint.line_index {
+            let from = range.from;
+            if from.line_index < breakpoint.line_index
+                || from.line_index == breakpoint.line_index && from.column_byte_index == 0
+            {
                 breakpoint.line_index += line_count;
                 changed = true;
             } else {
@@ -275,7 +277,6 @@ impl BufferBreakpointCollection {
         return changed;
     }
 
-    // TODO: fix BufferBreakpointCollection::delete_range
     fn delete_range(&mut self, range: BufferRange) -> bool {
         let line_count = range.to.line_index - range.from.line_index;
         if line_count == 0 {
@@ -286,13 +287,11 @@ impl BufferBreakpointCollection {
         let mut removed_breakpoint = false;
         for i in (0..self.breakpoints.len()).rev() {
             let breakpoint_line_index = self.breakpoints[i].line_index;
-            if range.to.line_index < breakpoint_line_index {
+
+            if range.to.line_index <= breakpoint_line_index {
                 changed = true;
                 self.breakpoints[i].line_index -= line_count;
-            } else if range.from.line_index < breakpoint_line_index
-                || range.from.line_index == breakpoint_line_index
-                    && range.from.column_byte_index == 0
-            {
+            } else if range.from.line_index < breakpoint_line_index {
                 self.breakpoints.swap_remove(i);
                 changed = true;
                 removed_breakpoint = true;
@@ -2629,3 +2628,4 @@ mod tests {
         assert_eq!("        second", buffer.content().lines()[1].as_str());
     }
 }
+
