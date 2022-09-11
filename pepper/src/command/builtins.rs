@@ -4,10 +4,10 @@ use crate::{
     buffer::{BufferProperties, BufferReadError, BufferWriteError},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ViewAnchor,
-    command::{CommandError, CommandManager, CompletionSource},
+    command::{CommandError, CommandIO, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
-    editor::EditorFlow,
+    editor::{EditorContext, EditorFlow},
     editor_utils::{
         parse_path_and_ranges, parse_process_command, validate_process_command, LogKind,
         RegisterKey, REGISTER_READLINE_INPUT,
@@ -702,8 +702,86 @@ pub fn register_commands(commands: &mut CommandManager) {
             ctx.editor.events.writer(),
         );
 
+        ctx.editor
+            .buffers
+            .get_mut(buffer_view.buffer_handle)
+            .commit_edits();
         Ok(())
     });
+
+    fn change_case(
+        ctx: &mut EditorContext,
+        io: &mut CommandIO,
+        to_lower: bool,
+    ) -> Result<(), CommandError> {
+        io.args.assert_empty()?;
+
+        let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
+        let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+        let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
+
+        let mut cursor_texts = ctx.editor.string_pool.acquire();
+
+        {
+            let mut events = ctx
+                .editor
+                .events
+                .writer()
+                .buffer_range_deletes_mut_guard(buffer.handle());
+            for cursor in buffer_view.cursors[..].iter().rev() {
+                let range = cursor.to_range();
+                for text in buffer.content().text_range(range) {
+                    cursor_texts.push_str(text);
+                }
+                cursor_texts.push('\0');
+                buffer.delete_range(&mut ctx.editor.word_database, range, &mut events);
+            }
+        }
+
+        if to_lower {
+            cursor_texts.make_ascii_lowercase();
+        } else {
+            cursor_texts.make_ascii_uppercase();
+        }
+
+        {
+            let mut cursor_texts_splits = cursor_texts.split_terminator('\0').rev();
+            let mut events = ctx
+                .editor
+                .events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle());
+            for cursor in buffer_view.cursors[..].iter() {
+                let range = cursor.to_range();
+                let cursor_text = cursor_texts_splits.next().unwrap();
+                buffer.insert_text(
+                    &mut ctx.editor.word_database,
+                    range.from,
+                    cursor_text,
+                    &mut events,
+                );
+            }
+        }
+
+        ctx.editor.string_pool.release(cursor_texts);
+        buffer.commit_edits();
+
+        {
+            let mut events = ctx
+                .editor
+                .events
+                .writer()
+                .fix_cursors_mut_guard(buffer_view_handle);
+            for &cursor in buffer_view.cursors[..].iter() {
+                events.add(cursor);
+            }
+        }
+
+        Ok(())
+    }
+
+    r("to-lowercase", &[], |ctx, io| change_case(ctx, io, true));
+    r("to-uppercase", &[], |ctx, io| change_case(ctx, io, false));
 
     r("toggle-comment", &[], |ctx, io| {
         let comment_prefix = io.args.next()?;

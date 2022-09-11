@@ -53,7 +53,7 @@ A buffer has a set of properties that can be changed when opening it:
 It's also possible to change these properties in batch by passing:
 - `text`: will enable all properties
 - `scratch`: will disable all properties except `history`
-- `log`: will disable all properties
+- `log`: will disable all properties except `file-backed`
 
 Note that the property evaluation order is the same as the order of the arguments.
 That is, calling `open history-enabled log my-buffer.txt` will actually open `my-buffer.txt` with undo history disabled!
@@ -198,6 +198,14 @@ Enqueue keys as if they were typed in the current client.
 Deletes text inside all cursor ranges. Then inserts `<text>` at each cursor.
 Equivalent to `enqueue-keys i<text><enter>` however more performant since the text insertion happens at once instead of char by char.
 - usage: `insert-text <text>`
+
+## `to-lowercase`
+Makes all selected text lowercase (ascii only).
+- usage: `to-lowercase`
+
+## `to-uppercase`
+Makes all selected text uppercase (ascii only).
+- usage: `to-uppercase`
 
 ## `toggle-comment`
 For each line, toggles its `<comment-prefix>` starting text.

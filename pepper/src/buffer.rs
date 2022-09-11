@@ -1122,7 +1122,7 @@ impl BufferProperties {
         Self {
             history_enabled: false,
             saving_enabled: false,
-            file_backed_enabled: false,
+            file_backed_enabled: true,
             word_database_enabled: false,
         }
     }
