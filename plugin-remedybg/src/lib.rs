@@ -53,6 +53,7 @@ pub static DEFINITION: PluginDefinition = PluginDefinition {
     }],
 };
 
+const SESSION_PREFIX: &str = "remedybg-";
 const IPC_BUF_SIZE: usize = 8 * 1024;
 const CONTROL_PIPE_ID: u32 = 0;
 const EVENT_PIPE_ID: u32 = 1;
@@ -89,7 +90,7 @@ impl RemedybgPlugin {
         &mut self,
         platform: &mut Platform,
         plugin_handle: PluginHandle,
-        session_name: &str,
+        editor_session_name: &str,
         session_file: Option<&str>,
     ) {
         if !matches!(self.process_state, ProcessState::NotRunning) {
@@ -98,11 +99,12 @@ impl RemedybgPlugin {
 
         self.process_state = ProcessState::Spawning;
         self.session_name.clear();
-        self.session_name.push_str(session_name);
+        self.session_name.push_str(SESSION_PREFIX);
+        self.session_name.push_str(editor_session_name);
 
         let mut command = Command::new("remedybg");
         command.arg("--servername");
-        command.arg(session_name);
+        command.arg(&self.session_name);
         if let Some(session_file) = session_file {
             command.arg(session_file);
         }
