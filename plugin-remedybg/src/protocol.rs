@@ -933,7 +933,7 @@ pub enum PendingCommandAction {
     SyncBreakpoints,
     SendEditorBreakpoints,
     GoToLocation(RemedybgId),
-    AddBreakpoint(RemedybgId),
+    UpdateBreakpoint(RemedybgId),
 }
 pub struct PendingCommandContext {
     pub command_kind: RemedybgCommandKind,
