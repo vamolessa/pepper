@@ -774,6 +774,11 @@ fn on_control_response(
                     }
                 }
                 PendingCommandAction::UpdateBreakpoint(breakpoint_id) => {
+                    editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
+                        "remedybg: update breakpoint: {} to {}:{}",
+                        breakpoint_id.0, filename, line_index,
+                    ));
+
                     if let Some(breakpoint) = remedybg.breakpoints.get(&breakpoint_id) {
                         let buffer = editor.buffers.get_mut(breakpoint.buffer_handle);
                         let breakpoint_index = buffer
@@ -842,6 +847,11 @@ fn on_event(
             sender.send(platform);
         }
         &RemedybgEvent::BreakpointResolved { breakpoint_id } => {
+            editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
+                "remedybg: breakpoint resolved: {}",
+                breakpoint_id.0
+            ));
+
             let mut sender = remedybg.begin_send_command(
                 platform,
                 RemedybgCommandKind::GetBreakpointLocations,
@@ -852,6 +862,11 @@ fn on_event(
             sender.send(platform);
         }
         &RemedybgEvent::BreakpointAdded { breakpoint_id } => {
+            editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
+                "remedybg: breakpoint added: {}",
+                breakpoint_id.0
+            ));
+
             if !remedybg.breakpoints.contains_key(&breakpoint_id) {
                 let mut sender = remedybg.begin_send_command(
                     platform,
@@ -863,7 +878,27 @@ fn on_event(
                 sender.send(platform);
             }
         }
+        &RemedybgEvent::BreakpointModified { breakpoint_id, .. } => {
+            editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
+                "remedybg: breakpoint modified: {}",
+                breakpoint_id.0
+            ));
+
+            let mut sender = remedybg.begin_send_command(
+                platform,
+                RemedybgCommandKind::GetBreakpointLocations,
+                PendingCommandAction::UpdateBreakpoint(breakpoint_id),
+            )?;
+            let write = sender.write();
+            breakpoint_id.serialize(write);
+            sender.send(platform);
+        }
         &RemedybgEvent::BreakpointRemoved { breakpoint_id } => {
+            editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
+                "remedybg: breakpoint removed: {}",
+                breakpoint_id.0
+            ));
+
             if let Some(breakpoint) = remedybg.breakpoints.remove(&breakpoint_id) {
                 let buffer = editor.buffers.get_mut(breakpoint.buffer_handle);
                 let breakpoint_index = buffer
@@ -883,6 +918,7 @@ fn on_event(
 
 fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, mut bytes: &[u8]) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
+    let message_bytes = bytes;
 
     match id {
         CONTROL_PIPE_ID => match remedybg.pending_command_contexts.pop() {
@@ -897,8 +933,8 @@ fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, 
                     bytes,
                 ) {
                     ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
-                        "remedybg: error while deserializing command result {}: {}",
-                        command_kind as usize, error,
+                        "remedybg: error while deserializing command result {}: {}\nmessage:\n{:?}",
+                        command_kind as usize, error, message_bytes
                     ));
                 }
             }
@@ -912,16 +948,16 @@ fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, 
                     on_event(remedybg, &mut ctx.editor, &mut ctx.platform, &event, bytes)
                 {
                     ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
-                        "remedybg: error while deserializing event {}: {}",
-                        event, error,
+                        "remedybg: error while deserializing event {}: {}\nmessage:\n{:?}",
+                        event, error, message_bytes
                     ));
                 }
             }
             Err(_) => {
-                ctx.editor
-                    .logger
-                    .write(LogKind::Error)
-                    .fmt(format_args!("remedybg: could not deserialize debug event"));
+                ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
+                    "remedybg: could not deserialize debug event\nmessage:\n{:?}",
+                    message_bytes
+                ));
                 return;
             }
         },
