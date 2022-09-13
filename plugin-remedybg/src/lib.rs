@@ -18,15 +18,16 @@ use pepper::{
         PooledBuf, ProcessTag,
     },
     plugin::{Plugin, PluginDefinition, PluginHandle},
-    serialization::{Serialize, DeserializeError},
+    serialization::{DeserializeError, Serialize},
     ResourceFile,
 };
 
 mod protocol;
 
 use protocol::{
-    PendingCommandAction, PendingCommandContext, ProtocolError, RemedybgBool, RemedybgCommandKind,
-    RemedybgCommandResult, RemedybgEvent, RemedybgId, RemedybgProtocolBreakpoint, RemedybgStr,
+    deserialize_remedybg_bytes, PendingCommandAction, PendingCommandContext, ProtocolError,
+    RemedybgBool, RemedybgCommandKind, RemedybgCommandResult, RemedybgEvent, RemedybgId,
+    RemedybgProtocolBreakpoint, RemedybgStr,
 };
 
 pub static DEFINITION: PluginDefinition = PluginDefinition {
@@ -84,6 +85,7 @@ pub(crate) struct RemedybgPlugin {
 
     breakpoints: HashMap<RemedybgId, BreakpointLocation>,
     new_breakpoint_locations: Vec<BreakpointLocation>,
+    new_serialized_breakpoints: Vec<SerializedBreakpoint>,
 }
 impl RemedybgPlugin {
     pub fn spawn(
@@ -124,28 +126,28 @@ impl RemedybgPlugin {
         });
     }
 
+    fn control_ipc_handle(&self) -> Result<PlatformIpcHandle, CommandError> {
+        match self.control_ipc_handle {
+            Some(handle) => Ok(handle),
+            None => Err(CommandError::OtherStatic("remedybg is not running")),
+        }
+    }
+
     fn begin_send_command(
         &mut self,
         platform: &mut Platform,
         command_kind: RemedybgCommandKind,
         action: PendingCommandAction,
     ) -> Result<CommandSender, CommandError> {
-        match self.control_ipc_handle {
-            Some(ipc_handle) => {
-                self.pending_command_contexts.push(PendingCommandContext {
-                    command_kind,
-                    action,
-                });
-
-                let mut buf = platform.buf_pool.acquire();
-                let write = buf.write();
-                command_kind.serialize(write);
-                let sender = CommandSender { ipc_handle, buf };
-
-                Ok(sender)
-            }
-            None => Err(CommandError::OtherStatic("remedybg is not running")),
-        }
+        let ipc_handle = self.control_ipc_handle()?;
+        let sender = begin_send_command_raw(
+            platform,
+            ipc_handle,
+            command_kind,
+            action,
+            &mut self.pending_command_contexts,
+        );
+        Ok(sender)
     }
 
     pub fn begin_sync_breakpoints(&mut self, platform: &mut Platform) -> Result<(), CommandError> {
@@ -156,6 +158,61 @@ impl RemedybgPlugin {
         )?;
         sender.send(platform);
         Ok(())
+    }
+
+    pub fn send_editor_breakpoints(
+        &mut self,
+        editor: &mut Editor,
+        platform: &mut Platform,
+    ) -> Result<(), CommandError> {
+        let ipc_handle = self.control_ipc_handle()?;
+        for &breakpoint_id in self.breakpoints.keys() {
+            let mut sender = begin_send_command_raw(
+                platform,
+                ipc_handle,
+                RemedybgCommandKind::DeleteBreakpoint,
+                PendingCommandAction::None,
+                &mut self.pending_command_contexts,
+            );
+            let write = sender.write();
+            breakpoint_id.serialize(write);
+            sender.send(platform);
+        }
+        self.breakpoints.clear();
+
+        let current_directory = &editor.current_directory;
+        let mut error = None;
+        let mut file_path = editor.string_pool.acquire();
+        for buffer in editor.buffers.iter() {
+            file_path.clear();
+            if get_absolue_file_path(current_directory, &buffer.path, &mut file_path).is_ok() {
+                for breakpoint in buffer.breakpoints() {
+                    let file_path = RemedybgStr(file_path.as_bytes());
+                    let line_num = (breakpoint.line_index + 1) as u32;
+                    let condition_expr = RemedybgStr(b"");
+                    match self.begin_send_command(
+                        platform,
+                        RemedybgCommandKind::AddBreakpointAtFilenameLine,
+                        PendingCommandAction::None,
+                    ) {
+                        Ok(mut sender) => {
+                            let write = sender.write();
+                            file_path.serialize(write);
+                            line_num.serialize(write);
+                            condition_expr.serialize(write);
+                            sender.send(platform);
+                        }
+                        Err(e) => error = Some(e),
+                    }
+                }
+            }
+        }
+        editor.string_pool.release(file_path);
+
+        match error {
+            Some(error) => Err(error.into()),
+            None => Ok(()),
+        }
     }
 }
 
@@ -204,6 +261,23 @@ fn begin_send_command(
 ) -> Result<CommandSender, CommandError> {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
     remedybg.begin_send_command(&mut ctx.platform, command_kind, action)
+}
+fn begin_send_command_raw(
+    platform: &mut Platform,
+    ipc_handle: PlatformIpcHandle,
+    command_kind: RemedybgCommandKind,
+    action: PendingCommandAction,
+    pending_command_contexts: &mut Vec<PendingCommandContext>,
+) -> CommandSender {
+    pending_command_contexts.push(PendingCommandContext {
+        command_kind,
+        action,
+    });
+
+    let mut buf = platform.buf_pool.acquire();
+    let write = buf.write();
+    command_kind.serialize(write);
+    CommandSender { ipc_handle, buf }
 }
 
 fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle) {
@@ -385,7 +459,7 @@ fn register_commands(commands: &mut CommandManager, plugin_handle: PluginHandle)
             }
         };
         let write = sender.write();
-        RemedybgStr(&file_path).serialize(write);
+        RemedybgStr(file_path.as_bytes()).serialize(write);
         line_number.serialize(write);
         sender.send(&mut ctx.platform);
 
@@ -420,13 +494,13 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 if !handled_breakpoints_changed {
                     handled_breakpoints_changed = true;
 
-                    let sender = remedybg.begin_send_command(
-                        &mut ctx.platform,
-                        RemedybgCommandKind::GetBreakpoints,
-                        PendingCommandAction::SendEditorBreakpoints,
-                    );
-                    if let Ok(sender) = sender {
-                        sender.send(&mut ctx.platform);
+                    if let Err(error) =
+                        remedybg.send_editor_breakpoints(&mut ctx.editor, &mut ctx.platform)
+                    {
+                        ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
+                            "remedybg: error while sending editor breakpoints: {}",
+                            error
+                        ));
                     }
                 }
             }
@@ -512,54 +586,48 @@ fn on_ipc_connected(
         .fmt(format_args!("remedybg: connected to {} ipc", ipc_name));
 }
 
-struct SerializedBreakpoint<'a> {
+struct SerializedBreakpoint {
     id: RemedybgId,
-    filename: &'a str,
+    filename_range: (u32, u32),
     line_index: u32,
 }
-struct SerializedBreakpointIter<'a> {
-    bytes: &'a [u8],
-    breakpoint_count: u16,
-}
-impl<'a> SerializedBreakpointIter<'a> {
-    pub fn new(mut bytes: &'a [u8]) -> Result<Self, DeserializeError> {
-        let breakpoint_count = u16::deserialize(&mut bytes)?;
-        Ok(Self { bytes, breakpoint_count })
-    }
-
-    fn try_next(&mut self) -> Result<Option<SerializedBreakpoint<'a>>, DeserializeError> {
-        while self.breakpoint_count > 0 {
-            self.breakpoint_count -= 1;
-
-            let id = RemedybgId::deserialize(&mut self.bytes)?;
-            let _enabled = RemedybgBool::deserialize(&mut self.bytes)?;
-            let _module_name = RemedybgStr::deserialize(&mut self.bytes)?;
-            let _condition_expr = RemedybgStr::deserialize(&mut self.bytes)?;
-            let breakpoint = RemedybgProtocolBreakpoint::deserialize(&mut self.bytes)?;
-            if let RemedybgProtocolBreakpoint::FilenameLine { filename, line_num } = breakpoint {
-                let filename = filename.0;
-                let line_index = line_num.saturating_sub(1);
-                let breakpoint = SerializedBreakpoint {
-                    id, filename, line_index,
-                };
-                return Ok(Some(breakpoint));
-            }
-        }
-        Ok(None)
-    }
-}
-impl<'a> Iterator for SerializedBreakpointIter<'a> {
-    type Item = Result<SerializedBreakpoint<'a>, DeserializeError>;
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.try_next() {
-            Ok(None) => None,
-            Ok(Some(breakpoint)) => Some(Ok(breakpoint)),
-            Err(error) => {
-                self.breakpoint_count = 0;
-                Some(Err(error))
-            }
+impl SerializedBreakpoint {
+    pub fn filename<'de>(&self, bytes: &'de [u8]) -> Result<&'de str, DeserializeError> {
+        let (from, to) = self.filename_range;
+        let filename = &bytes[from as usize..to as usize];
+        match std::str::from_utf8(filename) {
+            Ok(s) => Ok(s),
+            Err(_) => Err(DeserializeError::InvalidData),
         }
     }
+}
+
+fn get_all_breakpoints<'bytes>(
+    mut bytes: &'bytes [u8],
+    breakpoints: &mut Vec<SerializedBreakpoint>,
+) -> Result<&'bytes [u8], DeserializeError> {
+    breakpoints.clear();
+    let breakpoint_bytes = bytes;
+    let bytes_ptr = breakpoint_bytes.as_ptr() as usize;
+    let breakpoint_count = u16::deserialize(&mut bytes)?;
+    for _ in 0..breakpoint_count {
+        let id = RemedybgId::deserialize(&mut bytes)?;
+        let _enabled = RemedybgBool::deserialize(&mut bytes)?;
+        let _module_name = deserialize_remedybg_bytes(&mut bytes)?;
+        let _condition_expr = deserialize_remedybg_bytes(&mut bytes)?;
+        let breakpoint = RemedybgProtocolBreakpoint::deserialize(&mut bytes)?;
+        if let RemedybgProtocolBreakpoint::FilenameLine { filename, line_num } = breakpoint {
+            let filename_from = filename.0.as_ptr() as usize - bytes_ptr;
+            let filename_to = filename_from + filename.0.len();
+            let line_index = line_num.saturating_sub(1);
+            breakpoints.push(SerializedBreakpoint {
+                id,
+                filename_range: (filename_from as _, filename_to as _),
+                line_index,
+            });
+        }
+    }
+    Ok(breakpoint_bytes)
 }
 
 fn on_control_response(
@@ -592,10 +660,16 @@ fn on_control_response(
                 remedybg.breakpoints.clear();
                 remedybg.new_breakpoint_locations.clear();
 
-                for breakpoint in SerializedBreakpointIter::new(bytes)? {
-                    let breakpoint = breakpoint?;
+                let breakpoint_bytes =
+                    get_all_breakpoints(bytes, &mut remedybg.new_serialized_breakpoints)?;
+                for breakpoint in &remedybg.new_serialized_breakpoints {
+                    let filename = match breakpoint.filename(breakpoint_bytes) {
+                        Ok(filename) => filename,
+                        Err(_) => continue,
+                    };
+
                     let result = editor
-                        .buffer_handle_from_path(Path::new(breakpoint.filename), BufferProperties::text());
+                        .buffer_handle_from_path(Path::new(filename), BufferProperties::text());
                     let events = editor.events.writer();
                     match result.read_error {
                         Some(_) => editor.buffers.defer_remove(result.buffer_handle, events),
@@ -661,9 +735,9 @@ fn on_control_response(
                                 }
                             }
 
-                            let file_path = RemedybgStr(&file_path);
+                            let file_path = RemedybgStr(file_path.as_bytes());
                             let line_num = (breakpoint.line_index + 1) as u32;
-                            let condition_expr = RemedybgStr("");
+                            let condition_expr = RemedybgStr(b"");
                             match remedybg.begin_send_command(
                                 platform,
                                 RemedybgCommandKind::AddBreakpointAtFilenameLine,
@@ -694,66 +768,19 @@ fn on_control_response(
                     return Err(error.into());
                 }
             }
-            PendingCommandAction::SendEditorBreakpoints => {
-                remedybg.breakpoints.clear();
-
-                for breakpoint in SerializedBreakpointIter::new(bytes)? {
-                    let breakpoint = breakpoint?;
-                    let mut sender = remedybg.begin_send_command(
-                        platform,
-                        RemedybgCommandKind::DeleteBreakpoint,
-                        PendingCommandAction::None,
-                    )?;
-                    let write = sender.write();
-                    breakpoint.id.serialize(write);
-                    sender.send(platform);
-                }
-
-                let current_directory = &editor.current_directory;
-                let mut error = None;
-                let mut file_path = editor.string_pool.acquire();
-                for buffer in editor.buffers.iter() {
-                    file_path.clear();
-                    if get_absolue_file_path(current_directory, &buffer.path, &mut file_path)
-                        .is_ok()
-                    {
-                        for breakpoint in buffer.breakpoints() {
-                            let file_path = RemedybgStr(&file_path);
-                            let line_num = (breakpoint.line_index + 1) as u32;
-                            let condition_expr = RemedybgStr("");
-                            match remedybg.begin_send_command(
-                                platform,
-                                RemedybgCommandKind::AddBreakpointAtFilenameLine,
-                                PendingCommandAction::None,
-                            ) {
-                                Ok(mut sender) => {
-                                    let write = sender.write();
-                                    file_path.serialize(write);
-                                    line_num.serialize(write);
-                                    condition_expr.serialize(write);
-                                    sender.send(platform);
-                                }
-                                Err(e) => error = Some(e),
-                            }
-                        }
-                    }
-                }
-                editor.string_pool.release(file_path);
-                if let Some(error) = error {
-                    return Err(error.into());
-                }
-            }
             PendingCommandAction::GoToLocation(breakpoint_id) => {
                 if let Some(client_handle) = clients.focused_client() {
-                    for breakpoint in SerializedBreakpointIter::new(bytes)? {
-                        let breakpoint = breakpoint?;
+                    let breakpoint_bytes =
+                        get_all_breakpoints(bytes, &mut remedybg.new_serialized_breakpoints)?;
+                    for breakpoint in &remedybg.new_serialized_breakpoints {
                         if breakpoint.id != breakpoint_id {
                             continue;
                         }
+                        let filename = breakpoint.filename(breakpoint_bytes)?;
 
                         let buffer_view_handle = editor.buffer_view_handle_from_path(
                             client_handle,
-                            Path::new(breakpoint.filename),
+                            Path::new(filename),
                             BufferProperties::text(),
                             false,
                         );
@@ -793,28 +820,30 @@ fn on_control_response(
                 if let Some(breakpoint) = remedybg.breakpoints.get(&breakpoint_id) {
                     let buffer = editor.buffers.get_mut(breakpoint.buffer_handle);
                     let breakpoint_index = buffer
-                    .breakpoints()
-                    .binary_search_by_key(&breakpoint.line_index, |b| b.line_index);
+                        .breakpoints()
+                        .binary_search_by_key(&breakpoint.line_index, |b| b.line_index);
                     if let Ok(breakpoint_index) = breakpoint_index {
                         let mut breakpoints = buffer.breakpoints_mut();
                         breakpoints.remove_at(breakpoint_index, editor.events.writer());
                     }
                 }
 
-                for breakpoint in SerializedBreakpointIter::new(bytes)? {
-                    let breakpoint = breakpoint?;
+                let breakpoint_bytes =
+                    get_all_breakpoints(bytes, &mut remedybg.new_serialized_breakpoints)?;
+                for breakpoint in &remedybg.new_serialized_breakpoints {
                     if breakpoint.id != breakpoint_id {
                         continue;
                     }
+                    let filename = breakpoint.filename(breakpoint_bytes)?;
 
                     editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
                         "remedybg: update breakpoint: {} to {}:{}",
-                        breakpoint_id.0, breakpoint.filename, breakpoint.line_index,
+                        breakpoint_id.0, filename, breakpoint.line_index,
                     ));
 
                     let buffer_handle = editor
-                    .buffers
-                    .find_with_path(&editor.current_directory, Path::new(breakpoint.filename));
+                        .buffers
+                        .find_with_path(&editor.current_directory, Path::new(filename));
                     if let Some(buffer_handle) = buffer_handle {
                         remedybg.breakpoints.insert(
                             breakpoint_id,
@@ -826,9 +855,9 @@ fn on_control_response(
 
                         let buffer = editor.buffers.get_mut(buffer_handle);
                         let has_breakpoint = buffer
-                        .breakpoints()
-                        .binary_search_by_key(&breakpoint.line_index, |b| b.line_index)
-                        .is_ok();
+                            .breakpoints()
+                            .binary_search_by_key(&breakpoint.line_index, |b| b.line_index)
+                            .is_ok();
                         if !has_breakpoint {
                             let mut breakpoints = buffer.breakpoints_mut();
                             breakpoints.add(breakpoint.line_index, editor.events.writer());

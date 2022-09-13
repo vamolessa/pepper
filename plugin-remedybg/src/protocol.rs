@@ -148,23 +148,27 @@ impl<'de> Serialize<'de> for RemedybgId {
     }
 }
 
+pub fn deserialize_remedybg_bytes<'de>(
+    deserializer: &mut dyn Deserializer<'de>,
+) -> Result<&'de [u8], DeserializeError> {
+    let len = u16::deserialize(deserializer)?;
+    let bytes = deserializer.read(len as _)?;
+    Ok(bytes)
+}
+
 #[derive(Clone, Copy)]
-pub struct RemedybgStr<'a>(pub &'a str);
+pub struct RemedybgStr<'a>(pub &'a [u8]);
 impl<'de> Serialize<'de> for RemedybgStr<'de> {
     fn serialize(&self, serializer: &mut dyn Serializer) {
-        let bytes = self.0.as_bytes();
-        let len = bytes.len() as u16;
+        let len = self.0.len() as u16;
         len.serialize(serializer);
-        serializer.write(bytes);
+        serializer.write(self.0);
     }
 
     fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
         let len = u16::deserialize(deserializer)?;
         let bytes = deserializer.read(len as _)?;
-        match std::str::from_utf8(bytes) {
-            Ok(s) => Ok(Self(s)),
-            Err(_) => Err(DeserializeError::InvalidData),
-        }
+        Ok(Self(bytes))
     }
 }
 
@@ -931,7 +935,6 @@ impl<'a> fmt::Display for RemedybgEvent<'a> {
 pub enum PendingCommandAction {
     None,
     SyncBreakpoints,
-    SendEditorBreakpoints,
     GoToLocation(RemedybgId),
     UpdateBreakpoint(RemedybgId),
 }
