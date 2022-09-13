@@ -39,10 +39,18 @@ pub fn register_commands(commands: &mut CommandManager) {
         let mut buffer_path = ctx.editor.string_pool.acquire();
         buffer_path.push_str(help::HELP_PREFIX);
         buffer_path.push_str(path);
+
+        let buffer_properties = BufferProperties {
+            history_enabled: false,
+            saving_enabled: false,
+            file_backed_enabled: true,
+            word_database_enabled: false,
+        };
+
         let result = ctx.editor.buffer_view_handle_from_path(
             client_handle,
             Path::new(&buffer_path),
-            BufferProperties::scratch(),
+            buffer_properties,
             true,
         );
         ctx.editor.string_pool.release(buffer_path);
@@ -140,6 +148,7 @@ pub fn register_commands(commands: &mut CommandManager) {
                 "text" => properties = BufferProperties::text(),
                 "scratch" => properties = BufferProperties::scratch(),
                 "log" => properties = BufferProperties::log(),
+                "output" => properties = BufferProperties::output(),
                 "history-enabled" => properties.history_enabled = true,
                 "history-disabled" => properties.history_enabled = false,
                 "saving-enabled" => properties.saving_enabled = true,

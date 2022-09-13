@@ -5,12 +5,12 @@ map normal <space>t :<space>test<enter>
 
 if @platform() == windows @{
     command build @{
-        open scratch "log"
+        open output "log"
         enqueue-keys aad
         replace-with-output "cmd /c cargo build 2>&1"
     }
     command test @{
-        open scratch "log"
+        open output "log"
         enqueue-keys aad
         replace-with-output "cmd /c cargo test --workspace 2>&1"
     }
@@ -18,12 +18,12 @@ if @platform() == windows @{
 
 if @platform() == linux @{
     command build @{
-        open scratch "log"
+        open output "log"
         enqueue-keys aad
         replace-with-output "sh -c 'cargo build 2>&1'"
     }
     command test @{
-        open scratch "log"
+        open output "log"
         enqueue-keys aad
         replace-with-output "sh -c 'cargo test --workspace 2>&1'"
     }

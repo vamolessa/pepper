@@ -665,10 +665,7 @@ impl BufferContent {
         )
     }
 
-    pub fn read<R>(&mut self, read: &mut R) -> io::Result<()>
-    where
-        R: io::BufRead,
-    {
+    pub fn read(&mut self, read: &mut dyn io::BufRead) -> io::Result<()> {
         for line in self.lines.drain(..) {
             self.line_pool.release(line);
         }
@@ -722,10 +719,7 @@ impl BufferContent {
         Ok(())
     }
 
-    pub fn write<W>(&self, write: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    pub fn write(&self, write: &mut dyn io::Write) -> io::Result<()> {
         for line in &self.lines {
             write!(write, "{}\n", line.as_str())?;
         }
@@ -1123,6 +1117,15 @@ impl BufferProperties {
             history_enabled: false,
             saving_enabled: false,
             file_backed_enabled: true,
+            word_database_enabled: false,
+        }
+    }
+
+    pub fn output() -> Self {
+        Self {
+            history_enabled: false,
+            saving_enabled: false,
+            file_backed_enabled: false,
             word_database_enabled: false,
         }
     }

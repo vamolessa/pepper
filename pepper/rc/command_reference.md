@@ -54,6 +54,7 @@ It's also possible to change these properties in batch by passing:
 - `text`: will enable all properties
 - `scratch`: will disable all properties except `history`
 - `log`: will disable all properties except `file-backed`
+- `output`: will disable all properties
 
 Note that the property evaluation order is the same as the order of the arguments.
 That is, calling `open history-enabled log my-buffer.txt` will actually open `my-buffer.txt` with undo history disabled!
