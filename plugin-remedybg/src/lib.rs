@@ -991,9 +991,13 @@ fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, 
                 }
             }
             Err(_) => {
+                let first_u16 = match message_bytes {
+                    [b0, b1, ..] => u16::from_le_bytes([*b0, *b1]),
+                    _ => 0,
+                }; 
                 ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
-                    "remedybg: could not deserialize debug event\nmessage:\n{:?}",
-                    message_bytes
+                    "remedybg: could not deserialize debug event\nmessage:\n{:?}\nfirst u16: {}",
+                    message_bytes, first_u16,
                 ));
                 return;
             }
