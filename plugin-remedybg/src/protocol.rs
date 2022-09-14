@@ -821,17 +821,13 @@ pub enum RemedybgEvent<'a> {
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [exit_code :: uint32_t]
-    ExitProcess {
-        exit_code: u32,
-    },
+    ExitProcess { exit_code: u32 },
 
     // A user breakpoint was hit
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    BreakpointHit {
-        breakpoint_id: RemedybgId,
-    },
+    BreakpointHit { breakpoint_id: RemedybgId },
 
     // The breakpoint with the given ID has been resolved (has a valid location).
     // This can happen if the breakpoint was set in module that became loaded,
@@ -839,44 +835,32 @@ pub enum RemedybgEvent<'a> {
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    BreakpointResolved {
-        breakpoint_id: RemedybgId,
-    },
+    BreakpointResolved { breakpoint_id: RemedybgId },
 
     // A new user breakpoint was added.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    BreakpointAdded {
-        breakpoint_id: RemedybgId,
-    },
+    BreakpointAdded { breakpoint_id: RemedybgId },
 
     // A user breakpoint was modified.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    // [enable :: rdbg_Bool]
-    BreakpointModified {
-        breakpoint_id: RemedybgId,
-        enabled: RemedybgBool,
-    },
+    BreakpointModified { breakpoint_id: RemedybgId },
 
     // A user breakpoint was removed.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    BreakpointRemoved {
-        breakpoint_id: RemedybgId,
-    },
+    BreakpointRemoved { breakpoint_id: RemedybgId },
 
     // An OutputDebugString was received by the debugger. The given string will
     // be UTF-8 encoded.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [str :: rdbg_String]
-    OutputDebugString {
-        string: RemedybgStr<'a>,
-    },
+    OutputDebugString { string: RemedybgStr<'a> },
 }
 impl<'a> RemedybgEvent<'a> {
     pub fn deserialize(deserializer: &mut dyn Deserializer<'a>) -> Result<Self, DeserializeError> {
@@ -900,11 +884,7 @@ impl<'a> RemedybgEvent<'a> {
             }
             603 => {
                 let breakpoint_id = Serialize::deserialize(deserializer)?;
-                let enabled = Serialize::deserialize(deserializer)?;
-                Ok(Self::BreakpointModified {
-                    breakpoint_id,
-                    enabled,
-                })
+                Ok(Self::BreakpointModified { breakpoint_id })
             }
             604 => {
                 let breakpoint_id = Serialize::deserialize(deserializer)?;
@@ -942,3 +922,4 @@ pub struct PendingCommandContext {
     pub command_kind: RemedybgCommandKind,
     pub action: PendingCommandAction,
 }
+

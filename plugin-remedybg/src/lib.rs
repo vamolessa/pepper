@@ -559,6 +559,7 @@ fn on_process_spawned(
 fn on_process_exit(plugin_handle: PluginHandle, ctx: &mut EditorContext, _: u32) {
     let remedybg = ctx.plugins.get_as::<RemedybgPlugin>(plugin_handle);
     remedybg.process_state = ProcessState::NotRunning;
+    remedybg.breakpoints.clear();
 }
 
 fn get_ipc_name(ipc_id: u32) -> &'static str {
@@ -906,16 +907,14 @@ fn on_event(
                 breakpoint_id.0
             ));
 
-            if !remedybg.breakpoints.contains_key(&breakpoint_id) {
-                let mut sender = remedybg.begin_send_command(
-                    platform,
-                    RemedybgCommandKind::GetBreakpoints,
-                    PendingCommandAction::UpdateBreakpoint(breakpoint_id),
-                )?;
-                let write = sender.write();
-                breakpoint_id.serialize(write);
-                sender.send(platform);
-            }
+            let mut sender = remedybg.begin_send_command(
+                platform,
+                RemedybgCommandKind::GetBreakpoints,
+                PendingCommandAction::UpdateBreakpoint(breakpoint_id),
+            )?;
+            let write = sender.write();
+            breakpoint_id.serialize(write);
+            sender.send(platform);
         }
         &RemedybgEvent::BreakpointModified { breakpoint_id, .. } => {
             editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
