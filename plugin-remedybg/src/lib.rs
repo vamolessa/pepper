@@ -494,13 +494,15 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                 if !handled_breakpoints_changed {
                     handled_breakpoints_changed = true;
 
-                    if let Err(error) =
-                        remedybg.send_editor_breakpoints(&mut ctx.editor, &mut ctx.platform)
-                    {
-                        ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
-                            "remedybg: error while sending editor breakpoints: {}",
-                            error
-                        ));
+                    if remedybg.control_ipc_handle.is_some() {
+                        if let Err(error) =
+                            remedybg.send_editor_breakpoints(&mut ctx.editor, &mut ctx.platform)
+                        {
+                            ctx.editor.logger.write(LogKind::Error).fmt(format_args!(
+                                "remedybg: error while sending editor breakpoints: {}",
+                                error
+                            ));
+                        }
                     }
                 }
             }

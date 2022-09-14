@@ -363,12 +363,10 @@ impl Editor {
                 buffer.properties = properties;
 
                 let mut read_error = None;
-                if buffer.properties.file_backed_enabled {
-                    if let Err(error) =
-                        buffer.read_from_file(&mut self.word_database, self.events.writer())
-                    {
-                        read_error = Some(error);
-                    }
+                if let Err(error) =
+                    buffer.read_from_file(&mut self.word_database, self.events.writer())
+                {
+                    read_error = Some(error);
                 }
 
                 BufferHandleFromPathResult {
