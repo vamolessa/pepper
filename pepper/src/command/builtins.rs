@@ -214,12 +214,17 @@ pub fn register_commands(commands: &mut CommandManager) {
         io.args.assert_empty()?;
 
         let mut count = 0;
+        let mut maybe_error = None;
         for buffer in ctx.editor.buffers.iter_mut() {
             match buffer.write_to_file(None, ctx.editor.events.writer()) {
                 Ok(()) => count += 1,
                 Err(BufferWriteError::SavingDisabled) => (),
-                Err(error) => return Err(CommandError::BufferWriteError(error)),
+                Err(error) => maybe_error = Some(CommandError::BufferWriteError(error)),
             }
+        }
+
+        if let Some(error) = maybe_error {
+            return Err(error);
         }
 
         ctx.editor
@@ -253,14 +258,18 @@ pub fn register_commands(commands: &mut CommandManager) {
         io.assert_can_discard_all_buffers(ctx)?;
         let mut count = 0;
         let mut all_files_found = true;
+        let mut maybe_error = None;
         for buffer in ctx.editor.buffers.iter_mut() {
             match buffer.read_from_file(&mut ctx.editor.word_database, ctx.editor.events.writer()) {
                 Ok(()) => count += 1,
                 Err(BufferReadError::FileNotFound) => all_files_found = true,
-                Err(error) => return Err(CommandError::BufferReadError(error)),
+                Err(error) => maybe_error = Some(CommandError::BufferReadError(error)),
             }
         }
 
+        if let Some(error) = maybe_error {
+            return Err(error);
+        }
         if count == 0 && all_files_found {
             return Err(CommandError::BufferReadError(BufferReadError::FileNotFound));
         }

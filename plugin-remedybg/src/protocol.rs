@@ -922,4 +922,3 @@ pub struct PendingCommandContext {
     pub command_kind: RemedybgCommandKind,
     pub action: PendingCommandAction,
 }
-

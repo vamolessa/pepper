@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::Path,
     process::{Command, Stdio},
 };
@@ -80,7 +80,7 @@ pub(crate) struct RemedybgPlugin {
     process_state: ProcessState,
     session_name: String,
 
-    pending_command_contexts: Vec<PendingCommandContext>,
+    pending_command_contexts: VecDeque<PendingCommandContext>,
     control_ipc_handle: Option<PlatformIpcHandle>,
 
     breakpoints: HashMap<RemedybgId, BreakpointLocation>,
@@ -267,9 +267,9 @@ fn begin_send_command_raw(
     ipc_handle: PlatformIpcHandle,
     command_kind: RemedybgCommandKind,
     action: PendingCommandAction,
-    pending_command_contexts: &mut Vec<PendingCommandContext>,
+    pending_command_contexts: &mut VecDeque<PendingCommandContext>,
 ) -> CommandSender {
-    pending_command_contexts.push(PendingCommandContext {
+    pending_command_contexts.push_back(PendingCommandContext {
         command_kind,
         action,
     });
@@ -959,7 +959,7 @@ fn on_ipc_output(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32, 
     let message_bytes = bytes;
 
     match id {
-        CONTROL_PIPE_ID => match remedybg.pending_command_contexts.pop() {
+        CONTROL_PIPE_ID => match remedybg.pending_command_contexts.pop_front() {
             Some(command_context) => {
                 let command_kind = command_context.command_kind;
                 if let Err(error) = on_control_response(
