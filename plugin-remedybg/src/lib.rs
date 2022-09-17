@@ -654,6 +654,13 @@ fn get_all_breakpoints<'bytes>(
     Ok(breakpoint_bytes)
 }
 
+fn log_filename_invaid_utf8(editor: &mut Editor, bytes: &[u8]) {
+    editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
+        "remedybg: serialized breakpoint has invalid utf-8 filename: {}",
+        String::from_utf8_lossy(bytes),
+    ));
+}
+
 fn on_control_response(
     remedybg: &mut RemedybgPlugin,
     editor: &mut Editor,
@@ -755,10 +762,7 @@ fn on_control_response(
                     let filename = match breakpoint.filename(breakpoint_bytes) {
                         Ok(filename) => filename,
                         Err(bytes) => {
-                            editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
-                                "remedybg: serialized breakpoint has invalid utf-8 filename: {}",
-                                String::from_utf8_lossy(bytes),
-                            ));
+                            log_filename_invaid_utf8(editor, bytes);
                             continue;
                         }
                     };
@@ -833,9 +837,13 @@ fn on_control_response(
                         if breakpoint.id != breakpoint_id {
                             continue;
                         }
-                        // TODO: fix
-                        //let filename = breakpoint.filename(breakpoint_bytes)?;
-                        let filename = "";
+                        let filename = match breakpoint.filename(breakpoint_bytes) {
+                            Ok(filename) => filename,
+                            Err(_) => {
+                                log_filename_invaid_utf8(editor, bytes);
+                                continue;
+                            }
+                        };
 
                         let buffer_view_handle = editor.buffer_view_handle_from_path(
                             client_handle,
@@ -893,9 +901,13 @@ fn on_control_response(
                     if breakpoint.id != breakpoint_id {
                         continue;
                     }
-                    // TODO: fix
-                    //let filename = breakpoint.filename(breakpoint_bytes)?;
-                    let filename = "";
+                    let filename = match breakpoint.filename(breakpoint_bytes) {
+                        Ok(filename) => filename,
+                        Err(_) => {
+                            log_filename_invaid_utf8(editor, bytes);
+                            continue;
+                        }
+                    };
 
                     editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
                         "remedybg: update breakpoint: {} to {}:{}",
