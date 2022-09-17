@@ -515,7 +515,7 @@ fn on_editor_events(plugin_handle: PluginHandle, ctx: &mut EditorContext) {
                     handled_breakpoints_changed = true;
 
                     if remedybg.control_ipc_handle.is_some() {
-                        // TODO: check if this is correct
+                        // TODO: finish checking this
                         if let Err(error) =
                             remedybg.send_editor_breakpoints(&mut ctx.editor, &mut ctx.platform)
                         {
@@ -818,7 +818,8 @@ fn on_control_response(
                     let mut breakpoints = buffer.breakpoints_mut();
                     let events = editor.events.writer();
                     for new_buffer_breakpoint in new_buffer_breakpoints {
-                        let breakpoint = breakpoints.add(new_buffer_breakpoint.line_index as _, events);
+                        let breakpoint =
+                            breakpoints.add(new_buffer_breakpoint.line_index as _, events);
                         let key = EditorToRemedybgBreakpointMapKey {
                             buffer_handle,
                             breakpoint_id: breakpoint.id,
@@ -861,14 +862,6 @@ fn on_control_response(
                                     anchor: position,
                                     position,
                                 });
-
-                                remedybg.breakpoints.insert(
-                                    breakpoint_id,
-                                    BreakpointLocation {
-                                        buffer_handle: buffer_view.buffer_handle,
-                                        line_index: breakpoint.line_index,
-                                    },
-                                );
                             }
 
                             {
@@ -884,17 +877,25 @@ fn on_control_response(
                 }
             }
             PendingCommandAction::UpdateBreakpoint(breakpoint_id) => {
-                if let Some(breakpoint) = remedybg.breakpoints.get(&breakpoint_id) {
-                    let buffer = editor.buffers.get_mut(breakpoint.buffer_handle);
+                if let Some(breakpoint) = remedybg.breakpoints.remove(&breakpoint_id) {
+                    let buffer_handle = breakpoint.buffer_handle;
+                    let buffer = editor.buffers.get_mut(buffer_handle);
                     let breakpoint_index = buffer
                         .breakpoints()
                         .binary_search_by_key(&breakpoint.line_index, |b| b.line_index);
                     if let Ok(breakpoint_index) = breakpoint_index {
                         let mut breakpoints = buffer.breakpoints_mut();
-                        breakpoints.remove_at(breakpoint_index, editor.events.writer());
+                        let breakpoint =
+                            breakpoints.remove_at(breakpoint_index, editor.events.writer());
+                        let key = EditorToRemedybgBreakpointMapKey {
+                            buffer_handle,
+                            breakpoint_id: breakpoint.id,
+                        };
+                        remedybg.editor_to_remedybg_breakpoint_map.remove(&key);
                     }
                 }
 
+                // TODO: finish checking this
                 let breakpoint_bytes =
                     get_all_breakpoints(bytes, &mut remedybg.new_serialized_breakpoints)?;
                 for breakpoint in &remedybg.new_serialized_breakpoints {
@@ -927,14 +928,22 @@ fn on_control_response(
                         );
 
                         let buffer = editor.buffers.get_mut(buffer_handle);
-                        let has_breakpoint = buffer
+                        let breakpoint_index = buffer
                             .breakpoints()
-                            .binary_search_by_key(&breakpoint.line_index, |b| b.line_index)
-                            .is_ok();
-                        if !has_breakpoint {
-                            let mut breakpoints = buffer.breakpoints_mut();
-                            breakpoints.add(breakpoint.line_index, editor.events.writer());
-                        }
+                            .binary_search_by_key(&breakpoint.line_index, |b| b.line_index);
+                        let breakpoint = match breakpoint_index {
+                            Ok(i) => buffer.breakpoints()[i],
+                            Err(_) => buffer
+                                .breakpoints_mut()
+                                .add(breakpoint.line_index, editor.events.writer()),
+                        };
+                        let key = EditorToRemedybgBreakpointMapKey {
+                            buffer_handle,
+                            breakpoint_id: breakpoint.id,
+                        };
+                        remedybg
+                            .editor_to_remedybg_breakpoint_map
+                            .insert(key, breakpoint_id);
                     }
                     break;
                 }
@@ -1089,4 +1098,3 @@ fn on_ipc_close(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32) {
         .write(LogKind::Diagnostic)
         .fmt(format_args!("remedybg: {} ipc closed", ipc_name));
 }
-

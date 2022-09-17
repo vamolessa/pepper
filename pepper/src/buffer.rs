@@ -331,19 +331,24 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         self.inner.breakpoints.clear();
     }
 
-    pub fn add(&mut self, line_index: BufferPositionIndex, events: &mut EditorEventWriter) -> BufferBreakpoint {
+    pub fn add(
+        &mut self,
+        line_index: BufferPositionIndex,
+        events: &mut EditorEventWriter,
+    ) -> BufferBreakpoint {
         self.needs_sorting = true;
         let id = self.alloc_breakpoint_id();
         let breakpoint = BufferBreakpoint { id, line_index };
-        self.inner.breakpoints.push(breakpoint );
+        self.inner.breakpoints.push(breakpoint);
         self.enqueue_breakpoints_changed_event(events);
         breakpoint
     }
 
-    pub fn remove_at(&mut self, index: usize, events: &mut EditorEventWriter) {
+    pub fn remove_at(&mut self, index: usize, events: &mut EditorEventWriter) -> BufferBreakpoint {
         self.needs_sorting = true;
-        self.inner.breakpoints.swap_remove(index);
+        let breakpoint = self.inner.breakpoints.swap_remove(index);
         self.enqueue_breakpoints_changed_event(events);
+        breakpoint
     }
 
     pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
@@ -393,7 +398,9 @@ impl<'a> BufferBreakpointMutCollection<'a> {
 
             for line_index in from_line_index..=to_line_index {
                 let id = self.alloc_breakpoint_id();
-                self.inner.breakpoints.push(BufferBreakpoint { id, line_index });
+                self.inner
+                    .breakpoints
+                    .push(BufferBreakpoint { id, line_index });
             }
         }
 
@@ -2650,4 +2657,3 @@ mod tests {
         assert_eq!("        second", buffer.content().lines()[1].as_str());
     }
 }
-
