@@ -21,6 +21,7 @@
 - fix buffer views would not be removed when their clients closed
 - fix breakpoints locations on text edits
 - changed `save-all` and `reopen-all` to only report an error at the end and always try to process all buffers
+- added `BufferBreakpointId` to `BufferBreakpoint` which is a buffer scoped monotonically increasing breakpoint id
 
 # 0.29.0
 - added diagnostic logging to `spawn` command

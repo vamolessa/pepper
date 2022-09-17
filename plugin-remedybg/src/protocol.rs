@@ -133,6 +133,7 @@ impl<'de> Serialize<'de> for RemedybgBool {
     }
 }
 
+// TODO: check if we really need PartialEq, Eq and Hash
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RemedybgId(pub u32);
 impl<'de> Serialize<'de> for RemedybgId {
