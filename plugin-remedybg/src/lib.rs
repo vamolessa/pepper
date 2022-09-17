@@ -291,7 +291,8 @@ impl RemedybgPlugin {
                 sender.send(platform);
             }
         }
-        self.editor_to_remedybg_breakpoint_map.retain(|_, v| !v.marked_for_deletion);
+        self.editor_to_remedybg_breakpoint_map
+            .retain(|_, v| !v.marked_for_deletion);
     }
 }
 
@@ -1154,4 +1155,3 @@ fn on_ipc_close(plugin_handle: PluginHandle, ctx: &mut EditorContext, id: u32) {
         .write(LogKind::Diagnostic)
         .fmt(format_args!("remedybg: {} ipc closed", ipc_name));
 }
-
