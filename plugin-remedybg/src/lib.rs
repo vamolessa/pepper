@@ -195,16 +195,9 @@ impl RemedybgPlugin {
         platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
-        const ERROR_PREFIX: &str = "error while sending editor breakpoints: ";
         let ipc_handle = match self.control_ipc_handle() {
             Ok(handle) => handle,
-            Err(error) => {
-                editor
-                    .logger
-                    .write(LogKind::Error)
-                    .fmt(format_args!("remedybg: {}{}", ERROR_PREFIX, error));
-                return;
-            }
+            Err(_) => return,
         };
 
         for (key, value) in self.editor_to_remedybg_breakpoint_map.iter_mut() {
@@ -267,10 +260,10 @@ impl RemedybgPlugin {
                             condition_expr.serialize(write);
                             sender.send(platform);
                         }
-                        Err(error) => editor
-                            .logger
-                            .write(LogKind::Error)
-                            .fmt(format_args!("remedybg: {}{}", ERROR_PREFIX, error)),
+                        Err(error) => editor.logger.write(LogKind::Error).fmt(format_args!(
+                            "remedybg: error while sending editor breakpoints: {}",
+                            error
+                        )),
                     }
                 }
             }
@@ -279,6 +272,8 @@ impl RemedybgPlugin {
 
         for value in self.editor_to_remedybg_breakpoint_map.values() {
             if value.marked_for_deletion {
+                self.breakpoints.remove(&value.breakpoint_id);
+
                 let mut sender = begin_send_command_raw(
                     platform,
                     ipc_handle,
@@ -1082,6 +1077,10 @@ fn on_event(
                     let mut breakpoints = buffer.breakpoints_mut();
                     breakpoints.remove_at(breakpoint_index, editor.events.writer());
                 }
+
+                remedybg
+                    .editor_to_remedybg_breakpoint_map
+                    .retain(|_, v| v.breakpoint_id.0 != breakpoint_id.0);
             }
         }
         _ => (),
