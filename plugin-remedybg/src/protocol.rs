@@ -133,7 +133,6 @@ impl<'de> Serialize<'de> for RemedybgBool {
     }
 }
 
-// TODO: check if we really need PartialEq, Eq and Hash
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RemedybgId(pub u32);
 impl<'de> Serialize<'de> for RemedybgId {
@@ -720,7 +719,7 @@ pub enum RemedybgCommandKind {
     // [line_num :: uint32_t]
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
-    //UpdateBreakpointLine = 608,
+    UpdateBreakpointLine = 608,
 
     // Enable or disable an existing breakpoint.
     //
