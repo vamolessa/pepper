@@ -22,12 +22,14 @@
 - fix breakpoints locations on text edits
 - changed `save-all` and `reopen-all` to only report an error at the end and always try to process all buffers
 - added `BufferBreakpointId` to `BufferBreakpoint` which is a buffer scoped monotonically increasing breakpoint id
+- changed `open-log` to always refreshes the log buffer's content
+- changed `plugin-remedybg` to make use of the new IPC driver api which enables better integration
 
 # 0.29.0
 - added diagnostic logging to `spawn` command
 - added diagnostic logging to `replace-with-output` command
 - fix pattern bad optimization outupt when nonascii codepoints
-- fix remedybg-plugin breakpoint sync on spawn
+- fix `remedybg-plugin` breakpoint sync on spawn
 - changed default value of `indent_with_tabs` to false
 - removed `xa` binding that used to list all breakpoints in a buffer
 - added `buffer-list` command that lists all buffers in a new buffer

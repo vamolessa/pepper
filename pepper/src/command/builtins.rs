@@ -105,17 +105,32 @@ pub fn register_commands(commands: &mut CommandManager) {
             .log_file_path()
             .ok_or(CommandError::EditorNotLogging)?;
 
-        let path = ctx.editor.string_pool.acquire_with(path);
-        let buffer_view_handle = ctx
+        let buffer_handle = ctx
             .editor
-            .buffer_view_handle_from_path(
-                client_handle,
-                Path::new(&path),
-                BufferProperties::log(),
-                true,
-            )
-            .map_err(CommandError::BufferReadError)?;
-        ctx.editor.string_pool.release(path);
+            .buffers
+            .find_with_path(&ctx.editor.current_directory, Path::new(path));
+        let buffer_view_handle = match buffer_handle {
+            Some(buffer_handle) => {
+                let buffer = ctx.editor.buffers.get_mut(buffer_handle);
+                buffer
+                    .read_from_file(&mut ctx.editor.word_database, ctx.editor.events.writer())
+                    .map_err(CommandError::BufferReadError)?;
+                ctx.editor
+                    .buffer_views
+                    .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle)
+            }
+            None => {
+                let path = ctx.editor.string_pool.acquire_with(path);
+                let result = ctx.editor.buffer_view_handle_from_path(
+                    client_handle,
+                    Path::new(&path),
+                    BufferProperties::log(),
+                    true,
+                );
+                ctx.editor.string_pool.release(path);
+                result.map_err(CommandError::BufferReadError)?
+            }
+        };
 
         let client = ctx.clients.get_mut(client_handle);
         client.set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
