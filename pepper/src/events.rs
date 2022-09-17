@@ -664,10 +664,7 @@ impl fmt::Display for Key {
     }
 }
 
-fn serialize_key<S>(key: Key, serializer: &mut S)
-where
-    S: Serializer,
-{
+fn serialize_key(key: Key, serializer: &mut dyn Serializer) {
     let mut flags = 0u8;
     flags |= (key.shift as u8) << 0;
     flags |= (key.control as u8) << 1;
@@ -698,10 +695,7 @@ where
     }
 }
 
-fn deserialize_key<'de, D>(deserializer: &mut D) -> Result<Key, DeserializeError>
-where
-    D: Deserializer<'de>,
-{
+fn deserialize_key<'de>(deserializer: &mut dyn Deserializer<'de>) -> Result<Key, DeserializeError> {
     let flags = u8::deserialize(deserializer)?;
     let shift = (flags & 0b001) != 0;
     let control = (flags & 0b010) != 0;
@@ -762,10 +756,7 @@ impl<'a> ServerEvent<'a> {
     }
 }
 impl<'de> Serialize<'de> for ServerEvent<'de> {
-    fn serialize<S>(&self, serializer: &mut S)
-    where
-        S: Serializer,
-    {
+    fn serialize(&self, serializer: &mut dyn Serializer) {
         match self {
             Self::Display(display) => {
                 0u8.serialize(serializer);
@@ -779,10 +770,7 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
         }
     }
 
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
-    where
-        D: Deserializer<'de>,
-    {
+    fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
         let discriminant = u8::deserialize(deserializer)?;
         match discriminant {
             0 => {
@@ -805,20 +793,14 @@ pub enum TargetClient {
     Focused,
 }
 impl<'de> Serialize<'de> for TargetClient {
-    fn serialize<S>(&self, serializer: &mut S)
-    where
-        S: Serializer,
-    {
+    fn serialize(&self, serializer: &mut dyn Serializer) {
         match self {
             Self::Sender => 0u8.serialize(serializer),
             Self::Focused => 1u8.serialize(serializer),
         }
     }
 
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
-    where
-        D: Deserializer<'de>,
-    {
+    fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
         let discriminant = u8::deserialize(deserializer)?;
         match discriminant {
             0 => Ok(Self::Sender),
@@ -835,10 +817,7 @@ pub enum ClientEvent<'a> {
     StdinInput(TargetClient, &'a [u8]),
 }
 impl<'de> Serialize<'de> for ClientEvent<'de> {
-    fn serialize<S>(&self, serializer: &mut S)
-    where
-        S: Serializer,
-    {
+    fn serialize(&self, serializer: &mut dyn Serializer) {
         match self {
             Self::Key(target, key) => {
                 0u8.serialize(serializer);
@@ -863,10 +842,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         }
     }
 
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
-    where
-        D: Deserializer<'de>,
-    {
+    fn deserialize(deserializer: &mut dyn Deserializer<'de>) -> Result<Self, DeserializeError> {
         let discriminant = u8::deserialize(deserializer)?;
         match discriminant {
             0 => {

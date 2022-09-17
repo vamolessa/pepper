@@ -1,5 +1,7 @@
 ## commands
 
+TODO: update docs!
+
 ### `remedybg-spawn`
 Spawns a RemedyBG instance optionally opening a `<session>` file
 - usage: `remedybg-spawn [<session>]`

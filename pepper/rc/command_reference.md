@@ -47,14 +47,17 @@ Also, if `<path>` ends with `:<line>[,<column>]`, it will be opened at that loca
 A buffer has a set of properties that can be changed when opening it:
 - `history-enabled`, `history-disabled`: enables/disables undo history (enabled by default)
 - `saving-enabled`, `saving-disabled`: enables/disables saving (enabled by default)
+- `file-backed-enabled`, `file-backed-disabled`: enabled/disables being file backed (enabled by default)
 - `word-database-enabled`, `word-database-disabled`: enables/disables contributing words for the word database (builtin autocomplete) (enabled by default)
 
 It's also possible to change these properties in batch by passing:
 - `text`: will enable all properties
-- `scratch`: will disable all properties
+- `scratch`: will disable all properties except `history`
+- `log`: will disable all properties except `file-backed`
+- `output`: will disable all properties
 
 Note that the property evaluation order is the same as the order of the arguments.
-That is, calling `open history-enabled scratch my-buffer.txt` will actually open `my-buffer.txt` with undo history disabled!
+That is, calling `open history-enabled log my-buffer.txt` will actually open `my-buffer.txt` with undo history disabled!
 
 - usage: `open [<properties...>] <path>[:<line>[,<column>]]`
 - default alias: `o`
@@ -196,6 +199,14 @@ Enqueue keys as if they were typed in the current client.
 Deletes text inside all cursor ranges. Then inserts `<text>` at each cursor.
 Equivalent to `enqueue-keys i<text><enter>` however more performant since the text insertion happens at once instead of char by char.
 - usage: `insert-text <text>`
+
+## `to-lowercase`
+Makes all selected text lowercase (ascii only).
+- usage: `to-lowercase`
+
+## `to-uppercase`
+Makes all selected text uppercase (ascii only).
+- usage: `to-uppercase`
 
 ## `toggle-comment`
 For each line, toggles its `<comment-prefix>` starting text.

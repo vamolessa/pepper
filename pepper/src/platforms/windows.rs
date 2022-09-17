@@ -18,7 +18,7 @@ use winapi::{
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         debugapi::{DebugBreak, IsDebuggerPresent},
-        errhandlingapi::GetLastError,
+        errhandlingapi::{GetLastError, SetLastError},
         fileapi::{
             CreateFileW, FindClose, FindFirstFileW, GetFileType, ReadFile, WriteFile, OPEN_EXISTING,
         },
@@ -51,8 +51,8 @@ use winapi::{
         },
         winnls::CP_UTF8,
         winnt::{
-            FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, GENERIC_WRITE, HANDLE,
-            MAXIMUM_WAIT_OBJECTS,
+            FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_ATTRIBUTES, GENERIC_READ, GENERIC_WRITE,
+            HANDLE, MAXIMUM_WAIT_OBJECTS,
         },
         winuser::{
             CloseClipboard, EmptyClipboard, GetClipboardData, MessageBoxW, OpenClipboard,
@@ -161,7 +161,7 @@ pub fn try_attach_debugger() {
         }
 
         let debuggers = [
-            "remedybg.exe attach-to-process-by-id",
+            //"remedybg.exe attach-to-process-by-id",
             "vsjitdebugger.exe -p",
         ];
         for debugger in debuggers {
@@ -173,6 +173,8 @@ pub fn try_attach_debugger() {
 
     unsafe { DebugBreak() };
 }
+
+const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
 pub fn main(mut config: ApplicationConfig) {
     if config.args.session_name.is_empty() {
@@ -188,8 +190,6 @@ pub fn main(mut config: ApplicationConfig) {
         let current_directory_hash = hash_bytes(&current_dir_bytes);
         write!(config.args.session_name, "{:x}", current_directory_hash).unwrap();
     }
-
-    const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
     let mut pipe_path = Vec::new();
     pipe_path.extend(PIPE_PREFIX.encode_utf16());
@@ -222,6 +222,10 @@ pub fn main(mut config: ApplicationConfig) {
 
         run_client(config.args, &pipe_path);
     }
+}
+
+fn reset_last_error() {
+    unsafe { SetLastError(0) }
 }
 
 fn get_last_error() -> DWORD {
@@ -281,6 +285,23 @@ fn read_console_input<'a>(
     &events[..(event_count as usize)]
 }
 
+fn get_overlapped_result(handle: HANDLE, overlapped: &mut Overlapped) -> Option<DWORD> {
+    let mut read_len = 0;
+    let result =
+        unsafe { GetOverlappedResult(handle, overlapped.as_mut_ptr(), &mut read_len, FALSE) };
+    if result != FALSE || get_last_error() == ERROR_MORE_DATA {
+        Some(read_len)
+    } else {
+        None
+    }
+}
+
+enum IoResult {
+    Waiting,
+    Ok(usize),
+    Err,
+}
+
 struct AsyncIO {
     raw_handle: HANDLE,
     event: Event,
@@ -289,8 +310,7 @@ struct AsyncIO {
 }
 impl AsyncIO {
     pub fn new(raw_handle: HANDLE) -> Self {
-        let event = Event::manual();
-        event.notify();
+        let event = Event::manual(true);
         let overlapped = Overlapped::with_event(&event);
 
         Self {
@@ -310,105 +330,71 @@ impl AsyncIO {
     }
 
     pub fn read_async(&mut self, buf: &mut [u8]) -> IoResult {
-        let mut read_len = 0;
         if self.pending_io {
             self.pending_io = false;
 
-            let result = unsafe {
-                GetOverlappedResult(
-                    self.raw_handle,
-                    self.overlapped.as_mut_ptr(),
-                    &mut read_len,
-                    FALSE,
-                )
-            };
-
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_MORE_DATA => {
-                        self.event.notify();
-                        IoResult::Ok(read_len as _)
-                    }
-                    _ => IoResult::Err,
-                }
-            } else {
-                self.event.notify();
-                IoResult::Ok(read_len as _)
+            match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                Some(len) => IoResult::Ok(len as _),
+                None => IoResult::Err,
             }
         } else {
-            let result = unsafe {
+            reset_last_error();
+            unsafe {
                 ReadFile(
                     self.raw_handle,
                     buf.as_mut_ptr() as _,
                     buf.len() as _,
-                    &mut read_len,
+                    std::ptr::null_mut(),
                     self.overlapped.as_mut_ptr(),
-                )
-            };
-
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_IO_PENDING => {
-                        self.pending_io = true;
-                        IoResult::Waiting
+                );
+            }
+            match get_last_error() {
+                0 | ERROR_MORE_DATA => {
+                    match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                        Some(len) => IoResult::Ok(len as _),
+                        None => IoResult::Err,
                     }
-                    _ => IoResult::Err,
                 }
-            } else {
-                self.event.notify();
-                IoResult::Ok(read_len as _)
+                ERROR_IO_PENDING => {
+                    self.pending_io = true;
+                    IoResult::Waiting
+                }
+                _ => IoResult::Err,
             }
         }
     }
 
     pub fn write_async(&mut self, buf: &[u8]) -> IoResult {
-        let mut write_len = 0;
         if self.pending_io {
             self.pending_io = false;
 
-            let result = unsafe {
-                GetOverlappedResult(
-                    self.raw_handle,
-                    self.overlapped.as_mut_ptr(),
-                    &mut write_len,
-                    FALSE,
-                )
-            };
-
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_MORE_DATA => {
-                        self.event.notify();
-                        IoResult::Ok(write_len as _)
-                    }
-                    _ => IoResult::Err,
-                }
-            } else {
-                self.event.notify();
-                IoResult::Ok(write_len as _)
+            match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                Some(len) => IoResult::Ok(len as _),
+                None => IoResult::Err,
             }
         } else {
-            let result = unsafe {
+            reset_last_error();
+            unsafe {
                 WriteFile(
                     self.raw_handle,
                     buf.as_ptr() as _,
                     buf.len() as _,
-                    &mut write_len,
+                    std::ptr::null_mut(),
                     self.overlapped.as_mut_ptr(),
-                )
-            };
-
-            if result == FALSE {
-                match get_last_error() {
-                    ERROR_IO_PENDING => {
-                        self.pending_io = true;
-                        IoResult::Waiting
+                );
+            }
+            match get_last_error() {
+                0 | ERROR_MORE_DATA => {
+                    match get_overlapped_result(self.raw_handle, &mut self.overlapped) {
+                        Some(len) => IoResult::Ok(len as _),
+                        None => IoResult::Err,
                     }
-                    _ => IoResult::Err,
                 }
-            } else {
-                self.event.notify();
-                IoResult::Ok(write_len as _)
+                ERROR_IO_PENDING => {
+                    self.pending_io = true;
+                    IoResult::Waiting
+                }
+                _ => IoResult::Err,
             }
         }
     }
@@ -440,12 +426,6 @@ fn create_file(
         NULL | INVALID_HANDLE_VALUE => None,
         _ => Some(Handle(handle)),
     }
-}
-
-enum IoResult {
-    Waiting,
-    Ok(usize),
-    Err,
 }
 
 fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
@@ -688,12 +668,12 @@ fn set_event(handle: HANDLE) -> bool {
 
 struct Event(HANDLE);
 impl Event {
-    pub fn automatic() -> Self {
-        Self(create_event(false, false))
+    pub fn automatic(initial_state: bool) -> Self {
+        Self(create_event(false, initial_state))
     }
 
-    pub fn manual() -> Self {
-        Self(create_event(true, false))
+    pub fn manual(initial_state: bool) -> Self {
+        Self(create_event(true, initial_state))
     }
 
     pub fn handle(&self) -> HANDLE {
@@ -735,7 +715,7 @@ impl CtrlCEvent {
     }
 
     pub fn new() -> Self {
-        let event = Event::automatic();
+        let event = Event::automatic(false);
         CTRLC_EVENT_HANDLE.store(event.handle(), Ordering::Relaxed);
         Self(event)
     }
@@ -772,13 +752,18 @@ impl Drop for Clipboard {
 struct Overlapped(OVERLAPPED);
 impl Overlapped {
     pub fn with_event(event: &Event) -> Self {
-        let mut overlapped = unsafe { std::mem::zeroed::<OVERLAPPED>() };
-        overlapped.hEvent = event.handle();
-        Self(overlapped)
+        let mut overlapped = Self::default();
+        overlapped.0.hEvent = event.handle();
+        overlapped
     }
 
     pub fn as_mut_ptr(&mut self) -> *mut OVERLAPPED {
         &mut self.0
+    }
+}
+impl Default for Overlapped {
+    fn default() -> Self {
+        Self(unsafe { std::mem::zeroed::<OVERLAPPED>() })
     }
 }
 
@@ -1096,9 +1081,11 @@ struct AsyncIpc {
     tag: IpcTag,
     _handle: Handle,
     buf_len: usize,
+    read_mode: IpcReadMode,
 
     reader: Option<AsyncIO>,
     read_buf: Option<PooledBuf>,
+    partial_read_buf: Vec<u8>,
 
     writer: Option<AsyncIO>,
     write_buf_queue: VecDeque<PooledBuf>,
@@ -1106,7 +1093,7 @@ struct AsyncIpc {
 impl AsyncIpc {
     pub fn connect(
         tag: IpcTag,
-        path: &[u16],
+        pipe_path: &[u16],
         read: bool,
         write: bool,
         read_mode: IpcReadMode,
@@ -1123,12 +1110,23 @@ impl AsyncIpc {
         if write {
             access_mode |= GENERIC_WRITE;
         }
+        if read && !write {
+            access_mode |= FILE_WRITE_ATTRIBUTES;
+        }
+
         let mut mode = match read_mode {
             IpcReadMode::ByteStream => PIPE_READMODE_BYTE,
             IpcReadMode::MessageStream => PIPE_READMODE_MESSAGE,
         };
 
-        let handle = create_file(path, access_mode, 0, FILE_FLAG_OVERLAPPED)?;
+        for _ in 0..8 {
+            if pipe_exists(&pipe_path) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let handle = create_file(pipe_path, access_mode, 0, FILE_FLAG_OVERLAPPED)?;
+
         let result = unsafe {
             SetNamedPipeHandleState(
                 handle.0,
@@ -1147,9 +1145,11 @@ impl AsyncIpc {
             tag,
             _handle: handle,
             buf_len,
+            read_mode,
 
             reader: read.then(|| AsyncIO::new(raw_handle)),
             read_buf: None,
+            partial_read_buf: Vec::new(),
 
             writer: write.then(|| AsyncIO::new(raw_handle)),
             write_buf_queue: VecDeque::new(),
@@ -1188,9 +1188,24 @@ impl AsyncIpc {
                     }
                     IoResult::Ok(len) => {
                         write.truncate(len);
-                        Ok(Some(buf))
+                        match self.read_mode {
+                            IpcReadMode::MessageStream if get_last_error() == ERROR_MORE_DATA => {
+                                self.partial_read_buf.extend_from_slice(write);
+                                self.read_buf = Some(buf);
+                                Ok(None)
+                            }
+                            _ => {
+                                if !self.partial_read_buf.is_empty() {
+                                    self.partial_read_buf.extend_from_slice(write);
+                                    std::mem::swap(&mut self.partial_read_buf, write);
+                                    self.partial_read_buf.clear();
+                                }
+                                Ok(Some(buf))
+                            }
+                        }
                     }
                     IoResult::Err => {
+                        self.partial_read_buf.clear();
                         buf_pool.release(buf);
                         Err(())
                     }
@@ -1475,7 +1490,9 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
 
                                     if let Ok(path) = std::str::from_utf8(path.as_bytes()) {
                                         ipc_path_u16.clear();
+                                        ipc_path_u16.extend(PIPE_PREFIX.encode_utf16());
                                         ipc_path_u16.extend(path.encode_utf16());
+                                        ipc_path_u16.push(0);
                                         *ipc = AsyncIpc::connect(
                                             tag,
                                             &ipc_path_u16,

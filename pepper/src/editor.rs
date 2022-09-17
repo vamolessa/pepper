@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCollection, BufferProperties, BufferReadError},
+    buffer::{BufferCollection, BufferHandle, BufferProperties, BufferReadError},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientHandle, ClientManager},
@@ -247,7 +247,9 @@ impl EditorContext {
                         for client in self.clients.iter_mut() {
                             client.on_buffer_close(&mut self.editor, handle);
                         }
-                        self.editor.buffer_views.remove_buffer_views(handle);
+                        self.editor
+                            .buffer_views
+                            .remove_buffer_views_with_buffer(handle);
                     }
                     EditorEvent::FixCursors { handle, cursors } => {
                         let event_reader = self.editor.events.reader();
@@ -262,11 +264,18 @@ impl EditorContext {
                             view_cursors.add(cursor);
                         }
                     }
-                    EditorEvent::BufferBreakpointsChanged { .. } => {}
+                    EditorEvent::BufferBreakpointsChanged { .. } => (),
                 }
             }
         }
     }
+}
+
+#[must_use]
+pub struct BufferHandleFromPathResult {
+    pub buffer_handle: BufferHandle,
+    pub read_error: Option<BufferReadError>,
+    pub is_new: bool,
 }
 
 pub struct Editor {
@@ -335,6 +344,40 @@ impl Editor {
         }
     }
 
+    pub fn buffer_handle_from_path(
+        &mut self,
+        path: &Path,
+        properties: BufferProperties,
+    ) -> BufferHandleFromPathResult {
+        match self.buffers.find_with_path(&self.current_directory, path) {
+            Some(buffer_handle) => BufferHandleFromPathResult {
+                buffer_handle,
+                read_error: None,
+                is_new: false,
+            },
+            None => {
+                let path = path.strip_prefix(&self.current_directory).unwrap_or(path);
+                let buffer = self.buffers.add_new();
+                let buffer_handle = buffer.handle();
+                buffer.set_path(path);
+                buffer.properties = properties;
+
+                let mut read_error = None;
+                if let Err(error) =
+                    buffer.read_from_file(&mut self.word_database, self.events.writer())
+                {
+                    read_error = Some(error);
+                }
+
+                BufferHandleFromPathResult {
+                    buffer_handle,
+                    read_error,
+                    is_new: true,
+                }
+            }
+        }
+    }
+
     pub fn buffer_view_handle_from_path(
         &mut self,
         client_handle: ClientHandle,
@@ -342,32 +385,30 @@ impl Editor {
         properties: BufferProperties,
         create_if_not_found: bool,
     ) -> Result<BufferViewHandle, BufferReadError> {
-        if let Some(buffer_handle) = self.buffers.find_with_path(&self.current_directory, path) {
-            let handle = self
-                .buffer_views
-                .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
-            Ok(handle)
-        } else {
-            let path = path.strip_prefix(&self.current_directory).unwrap_or(path);
-            let buffer = self.buffers.add_new();
-            buffer.set_path(path);
-            buffer.properties = properties;
-
-            match buffer.read_from_file(&mut self.word_database, self.events.writer()) {
-                Ok(()) => {
-                    let handle = self.buffer_views.add_new(client_handle, buffer.handle());
-                    Ok(handle)
-                }
-                Err(BufferReadError::FileNotFound) if create_if_not_found => {
-                    let handle = self.buffer_views.add_new(client_handle, buffer.handle());
-                    Ok(handle)
-                }
-                Err(error) => {
-                    let handle = buffer.handle();
-                    self.buffers.defer_remove(handle, self.events.writer());
+        let result = self.buffer_handle_from_path(path, properties);
+        if result.is_new {
+            let mut error = result.read_error;
+            if matches!(error, Some(BufferReadError::FileNotFound)) && create_if_not_found {
+                error = None;
+            }
+            match error {
+                Some(error) => {
+                    self.buffers
+                        .defer_remove(result.buffer_handle, self.events.writer());
                     Err(error)
                 }
+                None => {
+                    let handle = self
+                        .buffer_views
+                        .add_new(client_handle, result.buffer_handle);
+                    Ok(handle)
+                }
             }
+        } else {
+            let handle = self
+                .buffer_views
+                .buffer_view_handle_from_buffer_handle(client_handle, result.buffer_handle);
+            Ok(handle)
         }
     }
 

@@ -241,14 +241,19 @@ impl<'a> Drop for BufferLintCollectionMutGuard<'a> {
     }
 }
 
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub struct BufferBreakpointId(pub u32);
+
 #[derive(Clone, Copy)]
 pub struct BufferBreakpoint {
+    pub id: BufferBreakpointId,
     pub line_index: BufferPositionIndex,
 }
 
 #[derive(Default)]
 pub struct BufferBreakpointCollection {
     breakpoints: Vec<BufferBreakpoint>,
+    next_breakpoint_id: BufferBreakpointId,
 }
 impl BufferBreakpointCollection {
     fn clear(&mut self) {
@@ -263,7 +268,10 @@ impl BufferBreakpointCollection {
 
         let mut changed = false;
         for breakpoint in &mut self.breakpoints {
-            if range.from.line_index < breakpoint.line_index {
+            let from = range.from;
+            if from.line_index < breakpoint.line_index
+                || from.line_index == breakpoint.line_index && from.column_byte_index == 0
+            {
                 breakpoint.line_index += line_count;
                 changed = true;
             } else {
@@ -284,13 +292,11 @@ impl BufferBreakpointCollection {
         let mut removed_breakpoint = false;
         for i in (0..self.breakpoints.len()).rev() {
             let breakpoint_line_index = self.breakpoints[i].line_index;
-            if range.to.line_index < breakpoint_line_index {
+
+            if range.to.line_index <= breakpoint_line_index {
                 changed = true;
                 self.breakpoints[i].line_index -= line_count;
-            } else if range.from.line_index < breakpoint_line_index
-                || range.from.line_index == breakpoint_line_index
-                    && range.from.column_byte_index == 0
-            {
+            } else if range.from.line_index < breakpoint_line_index {
                 self.breakpoints.swap_remove(i);
                 changed = true;
                 removed_breakpoint = true;
@@ -310,15 +316,39 @@ impl BufferBreakpointCollection {
 pub struct BufferBreakpointMutCollection<'a> {
     inner: &'a mut BufferBreakpointCollection,
     buffer_handle: BufferHandle,
+    needs_sorting: bool,
+    enqueued_breakpoints_changed_event: bool,
 }
 impl<'a> BufferBreakpointMutCollection<'a> {
+    pub fn as_slice(&self) -> &[BufferBreakpoint] {
+        &self.inner.breakpoints
+    }
+
     pub fn clear(&mut self, events: &mut EditorEventWriter) {
         if self.inner.breakpoints.len() > 0 {
-            events.enqueue(EditorEvent::BufferBreakpointsChanged {
-                handle: self.buffer_handle,
-            });
+            self.enqueue_breakpoints_changed_event(events);
         }
         self.inner.breakpoints.clear();
+    }
+
+    pub fn add(
+        &mut self,
+        line_index: BufferPositionIndex,
+        events: &mut EditorEventWriter,
+    ) -> BufferBreakpoint {
+        self.needs_sorting = true;
+        let id = self.alloc_breakpoint_id();
+        let breakpoint = BufferBreakpoint { id, line_index };
+        self.inner.breakpoints.push(breakpoint);
+        self.enqueue_breakpoints_changed_event(events);
+        breakpoint
+    }
+
+    pub fn remove_at(&mut self, index: usize, events: &mut EditorEventWriter) -> BufferBreakpoint {
+        self.needs_sorting = true;
+        let breakpoint = self.inner.breakpoints.swap_remove(index);
+        self.enqueue_breakpoints_changed_event(events);
+        breakpoint
     }
 
     pub fn remove_under_cursors(&mut self, cursors: &[Cursor], events: &mut EditorEventWriter) {
@@ -350,9 +380,8 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         }
 
         if self.inner.breakpoints.len() < previous_breakpoints_len {
-            events.enqueue(EditorEvent::BufferBreakpointsChanged {
-                handle: self.buffer_handle,
-            });
+            self.needs_sorting = true;
+            self.enqueue_breakpoints_changed_event(events);
         }
     }
 
@@ -368,17 +397,24 @@ impl<'a> BufferBreakpointMutCollection<'a> {
             previous_line_index = to_line_index;
 
             for line_index in from_line_index..=to_line_index {
-                self.inner.breakpoints.push(BufferBreakpoint { line_index });
+                let id = self.alloc_breakpoint_id();
+                self.inner
+                    .breakpoints
+                    .push(BufferBreakpoint { id, line_index });
             }
         }
 
-        self.inner
-            .breakpoints
-            .sort_unstable_by_key(|b| b.line_index);
+        self.needs_sorting = true;
+        self.sort_if_needed();
 
-        self.inner.breakpoints.push(BufferBreakpoint {
-            line_index: BufferPositionIndex::MAX,
-        });
+        {
+            let id = self.alloc_breakpoint_id();
+            self.inner.breakpoints.push(BufferBreakpoint {
+                id,
+                line_index: BufferPositionIndex::MAX,
+            });
+        }
+
         let breakpoints = &mut self.inner.breakpoints[..];
         let mut write_needle = 0;
         let mut check_needle = 0;
@@ -396,10 +432,37 @@ impl<'a> BufferBreakpointMutCollection<'a> {
         }
 
         self.inner.breakpoints.truncate(write_needle);
+        self.enqueue_breakpoints_changed_event(events);
+    }
 
-        events.enqueue(EditorEvent::BufferBreakpointsChanged {
-            handle: self.buffer_handle,
-        });
+    fn alloc_breakpoint_id(&mut self) -> BufferBreakpointId {
+        let id = self.inner.next_breakpoint_id;
+        self.inner.next_breakpoint_id.0 = self.inner.next_breakpoint_id.0.wrapping_add(1);
+        id
+    }
+
+    fn sort_if_needed(&mut self) {
+        if self.needs_sorting {
+            self.needs_sorting = false;
+            self.inner
+                .breakpoints
+                .sort_unstable_by_key(|b| b.line_index);
+        }
+    }
+
+    fn enqueue_breakpoints_changed_event(&mut self, events: &mut EditorEventWriter) {
+        if !self.enqueued_breakpoints_changed_event {
+            self.enqueued_breakpoints_changed_event = true;
+            events.enqueue(EditorEvent::BufferBreakpointsChanged {
+                handle: self.buffer_handle,
+            });
+        }
+    }
+}
+impl<'a> Drop for BufferBreakpointMutCollection<'a> {
+    fn drop(&mut self) {
+        self.sort_if_needed();
+        self.inner.breakpoints.dedup_by_key(|b| b.line_index);
     }
 }
 
@@ -628,10 +691,7 @@ impl BufferContent {
         )
     }
 
-    pub fn read<R>(&mut self, read: &mut R) -> io::Result<()>
-    where
-        R: io::BufRead,
-    {
+    pub fn read(&mut self, read: &mut dyn io::BufRead) -> io::Result<()> {
         for line in self.lines.drain(..) {
             self.line_pool.release(line);
         }
@@ -685,10 +745,7 @@ impl BufferContent {
         Ok(())
     }
 
-    pub fn write<W>(&self, write: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    pub fn write(&self, write: &mut dyn io::Write) -> io::Result<()> {
         for line in &self.lines {
             write!(write, "{}\n", line.as_str())?;
         }
@@ -1059,7 +1116,7 @@ impl From<io::Error> for BufferWriteError {
 pub struct BufferProperties {
     pub history_enabled: bool,
     pub saving_enabled: bool,
-    pub is_file: bool,
+    pub file_backed_enabled: bool,
     pub word_database_enabled: bool,
 }
 impl BufferProperties {
@@ -1067,16 +1124,34 @@ impl BufferProperties {
         Self {
             history_enabled: true,
             saving_enabled: true,
-            is_file: true,
+            file_backed_enabled: true,
             word_database_enabled: true,
         }
     }
 
     pub fn scratch() -> Self {
         Self {
+            history_enabled: true,
+            saving_enabled: false,
+            file_backed_enabled: false,
+            word_database_enabled: false,
+        }
+    }
+
+    pub fn log() -> Self {
+        Self {
             history_enabled: false,
             saving_enabled: false,
-            is_file: true,
+            file_backed_enabled: true,
+            word_database_enabled: false,
+        }
+    }
+
+    pub fn output() -> Self {
+        Self {
+            history_enabled: false,
+            saving_enabled: false,
+            file_backed_enabled: false,
             word_database_enabled: false,
         }
     }
@@ -1196,6 +1271,8 @@ impl Buffer {
         BufferBreakpointMutCollection {
             inner: &mut self.breakpoints,
             buffer_handle: self.handle,
+            needs_sorting: false,
+            enqueued_breakpoints_changed_event: false,
         }
     }
 
@@ -1575,7 +1652,7 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if !self.path.starts_with(help::HELP_PREFIX) && !self.properties.is_file {
+        if !self.path.starts_with(help::HELP_PREFIX) && !self.properties.file_backed_enabled {
             return Ok(());
         }
 
@@ -1620,7 +1697,7 @@ impl Buffer {
         let new_path = match new_path {
             Some(path) => {
                 self.properties.saving_enabled = true;
-                self.properties.is_file = true;
+                self.properties.file_backed_enabled = true;
                 self.set_path(path);
                 true
             }
@@ -1631,7 +1708,7 @@ impl Buffer {
             return Err(BufferWriteError::SavingDisabled);
         }
 
-        if self.properties.is_file {
+        if self.properties.file_backed_enabled {
             let file = File::create(&self.path)?;
             self.content.write(&mut io::BufWriter::new(file))?;
         }

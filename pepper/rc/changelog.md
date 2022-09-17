@@ -14,6 +14,14 @@
 - added ruby syntax
 - fix crash when opening and editing the middle of a buffer in a single action (in a macro or through lsp for example)
 - fix `` [aA]` `` was missing
+- added `log` as a `open` command option which is the same as old `scratch` and now `scratch` enables buffer history by default
+- added `file-backed` as a `open` command option which affects open and reopen commands
+- added `output` as a `open` command option which disables all buffer prorperties (suitable for process outputs)
+- added `to-lowercase` and `to-uppercase` commands
+- fix buffer views would not be removed when their clients closed
+- fix breakpoints locations on text edits
+- changed `save-all` and `reopen-all` to only report an error at the end and always try to process all buffers
+- added `BufferBreakpointId` to `BufferBreakpoint` which is a buffer scoped monotonically increasing breakpoint id
 
 # 0.29.0
 - added diagnostic logging to `spawn` command

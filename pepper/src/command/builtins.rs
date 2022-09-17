@@ -4,10 +4,10 @@ use crate::{
     buffer::{BufferProperties, BufferReadError, BufferWriteError},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
     client::ViewAnchor,
-    command::{CommandError, CommandManager, CompletionSource},
+    command::{CommandError, CommandIO, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
-    editor::EditorFlow,
+    editor::{EditorContext, EditorFlow},
     editor_utils::{
         parse_path_and_ranges, parse_process_command, validate_process_command, LogKind,
         RegisterKey, REGISTER_READLINE_INPUT,
@@ -39,10 +39,18 @@ pub fn register_commands(commands: &mut CommandManager) {
         let mut buffer_path = ctx.editor.string_pool.acquire();
         buffer_path.push_str(help::HELP_PREFIX);
         buffer_path.push_str(path);
+
+        let buffer_properties = BufferProperties {
+            history_enabled: false,
+            saving_enabled: false,
+            file_backed_enabled: true,
+            word_database_enabled: false,
+        };
+
         let result = ctx.editor.buffer_view_handle_from_path(
             client_handle,
             Path::new(&buffer_path),
-            BufferProperties::scratch(),
+            buffer_properties,
             true,
         );
         ctx.editor.string_pool.release(buffer_path);
@@ -103,7 +111,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             .buffer_view_handle_from_path(
                 client_handle,
                 Path::new(&path),
-                BufferProperties::scratch(),
+                BufferProperties::log(),
                 true,
             )
             .map_err(CommandError::BufferReadError)?;
@@ -139,10 +147,14 @@ pub fn register_commands(commands: &mut CommandManager) {
             match path {
                 "text" => properties = BufferProperties::text(),
                 "scratch" => properties = BufferProperties::scratch(),
+                "log" => properties = BufferProperties::log(),
+                "output" => properties = BufferProperties::output(),
                 "history-enabled" => properties.history_enabled = true,
                 "history-disabled" => properties.history_enabled = false,
                 "saving-enabled" => properties.saving_enabled = true,
                 "saving-disabled" => properties.saving_enabled = false,
+                "file-backed-enabled" => properties.file_backed_enabled = true,
+                "file-backed-disabled" => properties.file_backed_enabled = false,
                 "word-database-enabled" => properties.word_database_enabled = true,
                 "word-database-disabled" => properties.word_database_enabled = false,
                 _ => return Err(CommandError::NoSuchBufferProperty),
@@ -152,11 +164,11 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let client_handle = io.client_handle()?;
         let (path, ranges) = parse_path_and_ranges(path);
+        let path = Path::new(path);
 
-        let path = Path::new(&path);
         let handle = ctx
             .editor
-            .buffer_view_handle_from_path(client_handle, Path::new(path), properties, true)
+            .buffer_view_handle_from_path(client_handle, path, properties, true)
             .map_err(CommandError::BufferReadError)?;
         let client = ctx.clients.get_mut(client_handle);
         client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
@@ -202,12 +214,17 @@ pub fn register_commands(commands: &mut CommandManager) {
         io.args.assert_empty()?;
 
         let mut count = 0;
+        let mut maybe_error = None;
         for buffer in ctx.editor.buffers.iter_mut() {
             match buffer.write_to_file(None, ctx.editor.events.writer()) {
                 Ok(()) => count += 1,
                 Err(BufferWriteError::SavingDisabled) => (),
-                Err(error) => return Err(CommandError::BufferWriteError(error)),
+                Err(error) => maybe_error = Some(CommandError::BufferWriteError(error)),
             }
+        }
+
+        if let Some(error) = maybe_error {
+            return Err(error);
         }
 
         ctx.editor
@@ -241,14 +258,18 @@ pub fn register_commands(commands: &mut CommandManager) {
         io.assert_can_discard_all_buffers(ctx)?;
         let mut count = 0;
         let mut all_files_found = true;
+        let mut maybe_error = None;
         for buffer in ctx.editor.buffers.iter_mut() {
             match buffer.read_from_file(&mut ctx.editor.word_database, ctx.editor.events.writer()) {
                 Ok(()) => count += 1,
                 Err(BufferReadError::FileNotFound) => all_files_found = true,
-                Err(error) => return Err(CommandError::BufferReadError(error)),
+                Err(error) => maybe_error = Some(CommandError::BufferReadError(error)),
             }
         }
 
+        if let Some(error) = maybe_error {
+            return Err(error);
+        }
         if count == 0 && all_files_found {
             return Err(CommandError::BufferReadError(BufferReadError::FileNotFound));
         }
@@ -412,30 +433,12 @@ pub fn register_commands(commands: &mut CommandManager) {
 
     r("list-buffer", &[], |ctx, io| {
         io.args.assert_empty()?;
-
         let client_handle = io.client_handle()?;
-        let buffer_view_handle = ctx
-            .editor
-            .buffer_view_handle_from_path(
-                client_handle,
-                Path::new("buffers.refs"),
-                BufferProperties::scratch(),
-                true,
-            )
-            .map_err(CommandError::BufferReadError)?;
-        let buffer_handle = ctx
-            .editor
-            .buffer_views
-            .get(buffer_view_handle)
-            .buffer_handle;
 
         let mut content = ctx.editor.string_pool.acquire();
         for buffer in ctx.editor.buffers.iter() {
             use std::fmt::Write;
 
-            if buffer.handle() == buffer_handle {
-                continue;
-            }
             let buffer_path = match buffer.path.to_str() {
                 Some(path) => path,
                 None => continue,
@@ -447,7 +450,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             let props = &buffer.properties;
             if !props.history_enabled
                 || !props.saving_enabled
-                || !props.is_file
+                || !props.file_backed_enabled
                 || !props.word_database_enabled
             {
                 content.push_str(" (");
@@ -457,8 +460,8 @@ pub fn register_commands(commands: &mut CommandManager) {
                 if !props.saving_enabled {
                     content.push_str("saving-disabled, ");
                 }
-                if !props.is_file {
-                    content.push_str("not-a-file, ");
+                if !props.file_backed_enabled {
+                    content.push_str("file-backed-disabled, ");
                 }
                 if !props.word_database_enabled {
                     content.push_str("word-database-disabled, ");
@@ -475,6 +478,24 @@ pub fn register_commands(commands: &mut CommandManager) {
             content.push('\n');
         }
 
+        let buffer_view_handle = match ctx.editor.buffer_view_handle_from_path(
+            client_handle,
+            Path::new("buffers.refs"),
+            BufferProperties::scratch(),
+            true,
+        ) {
+            Ok(handle) => handle,
+            Err(error) => {
+                ctx.editor.string_pool.release(content);
+                return Err(CommandError::BufferReadError(error));
+            }
+        };
+
+        let buffer_handle = ctx
+            .editor
+            .buffer_views
+            .get(buffer_view_handle)
+            .buffer_handle;
         let buffer = ctx.editor.buffers.get_mut(buffer_handle);
         let range = BufferRange::between(BufferPosition::zero(), buffer.content().end());
         buffer.delete_range(
@@ -538,10 +559,9 @@ pub fn register_commands(commands: &mut CommandManager) {
                     lint_message
                 );
             }
-
-            if !buffer.lints.all().is_empty() {
-                content.push('\n');
-            }
+        }
+        if content.ends_with('\n') {
+            content.pop();
         }
 
         let buffer_handle = ctx
@@ -612,10 +632,9 @@ pub fn register_commands(commands: &mut CommandManager) {
                     line_content
                 );
             }
-
-            if !buffer.breakpoints().is_empty() {
-                content.push('\n');
-            }
+        }
+        if content.ends_with('\n') {
+            content.pop();
         }
 
         let buffer_handle = ctx
@@ -701,8 +720,86 @@ pub fn register_commands(commands: &mut CommandManager) {
             ctx.editor.events.writer(),
         );
 
+        ctx.editor
+            .buffers
+            .get_mut(buffer_view.buffer_handle)
+            .commit_edits();
         Ok(())
     });
+
+    fn change_case(
+        ctx: &mut EditorContext,
+        io: &mut CommandIO,
+        to_lower: bool,
+    ) -> Result<(), CommandError> {
+        io.args.assert_empty()?;
+
+        let buffer_view_handle = io.current_buffer_view_handle(ctx)?;
+        let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle);
+        let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
+
+        let mut cursor_texts = ctx.editor.string_pool.acquire();
+
+        {
+            let mut events = ctx
+                .editor
+                .events
+                .writer()
+                .buffer_range_deletes_mut_guard(buffer.handle());
+            for cursor in buffer_view.cursors[..].iter().rev() {
+                let range = cursor.to_range();
+                for text in buffer.content().text_range(range) {
+                    cursor_texts.push_str(text);
+                }
+                cursor_texts.push('\0');
+                buffer.delete_range(&mut ctx.editor.word_database, range, &mut events);
+            }
+        }
+
+        if to_lower {
+            cursor_texts.make_ascii_lowercase();
+        } else {
+            cursor_texts.make_ascii_uppercase();
+        }
+
+        {
+            let mut cursor_texts_splits = cursor_texts.split_terminator('\0').rev();
+            let mut events = ctx
+                .editor
+                .events
+                .writer()
+                .buffer_text_inserts_mut_guard(buffer.handle());
+            for cursor in buffer_view.cursors[..].iter() {
+                let range = cursor.to_range();
+                let cursor_text = cursor_texts_splits.next().unwrap();
+                buffer.insert_text(
+                    &mut ctx.editor.word_database,
+                    range.from,
+                    cursor_text,
+                    &mut events,
+                );
+            }
+        }
+
+        ctx.editor.string_pool.release(cursor_texts);
+        buffer.commit_edits();
+
+        {
+            let mut events = ctx
+                .editor
+                .events
+                .writer()
+                .fix_cursors_mut_guard(buffer_view_handle);
+            for &cursor in buffer_view.cursors[..].iter() {
+                events.add(cursor);
+            }
+        }
+
+        Ok(())
+    }
+
+    r("to-lowercase", &[], |ctx, io| change_case(ctx, io, true));
+    r("to-uppercase", &[], |ctx, io| change_case(ctx, io, false));
 
     r("toggle-comment", &[], |ctx, io| {
         let comment_prefix = io.args.next()?;
