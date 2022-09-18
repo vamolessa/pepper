@@ -79,26 +79,20 @@ pub(crate) fn help_page_names() -> impl Iterator<Item = &'static str> {
 
 #[derive(Default)]
 pub(crate) struct HelpPageName<'a>(&'a str);
-impl<'a> HelpPageName<'a> {
-    pub fn as_str(&self) -> &'a str {
-        self.0
-    }
-}
-
 pub(crate) fn parse_help_page_name(page_name: &str) -> Option<HelpPageName> {
     let page_name = page_name.strip_prefix(HELP_PREFIX)?;
     Some(HelpPageName(page_name))
 }
 
-pub(crate) fn open(page_name: HelpPageName) -> impl io::BufRead {
+pub(crate) fn open(page_name: HelpPageName) -> (&'static str, impl io::BufRead) {
     let page_name = page_name.0;
     for page in HelpPageIterator::new() {
         if page_name == page.name {
-            return io::Cursor::new(page.content);
+            return (page.name, io::Cursor::new(page.content));
         }
     }
-    let main_page_content = MAIN_HELP_PAGES.pages[0].content;
-    io::Cursor::new(main_page_content)
+    let main_page = &MAIN_HELP_PAGES.pages[0];
+    (main_page.name, io::Cursor::new(main_page.content))
 }
 
 struct HelpPageIterator {

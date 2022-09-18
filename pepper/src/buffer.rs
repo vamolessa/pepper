@@ -1657,11 +1657,18 @@ impl Buffer {
             return Ok(());
         }
 
-        let help_reader = help_page_name.map(help::open);
+        let help_page = help_page_name.map(help::open);
 
-        if let Some(mut reader) = help_reader {
+        if let Some((name, mut reader)) = help_page {
             clear_buffer(self, word_database);
             self.content.read(&mut reader)?;
+
+            let path = std::mem::take(&mut self.path);
+            let mut path = path.into_os_string();
+            path.clear();
+            path.push(help::HELP_PREFIX);
+            path.push(name);
+            self.path = path.into();
         } else if self.path.as_os_str().is_empty() {
             return Err(BufferReadError::FileNotFound);
         } else {

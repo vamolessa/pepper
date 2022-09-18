@@ -27,18 +27,14 @@ pub fn register_commands(commands: &mut CommandManager) {
     };
 
     r("help", &[CompletionSource::HelpPages], |ctx, io| {
-        let help_page_name = io.args.try_next();
+        let help_page_name = io.args.try_next().unwrap_or("");
         io.args.assert_empty()?;
 
         let client_handle = io.client_handle()?;
-        let help_page_name = match help_page_name.and_then(help::parse_help_page_name) {
-            Some(name) => name,
-            None => Default::default(),
-        };
 
         let mut buffer_path = ctx.editor.string_pool.acquire();
         buffer_path.push_str(help::HELP_PREFIX);
-        buffer_path.push_str(help_page_name.as_str());
+        buffer_path.push_str(help_page_name);
 
         let buffer_properties = BufferProperties {
             history_enabled: false,
