@@ -80,8 +80,8 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `cn`, `cp` | set next/previous cursor as main cursor |
 | `cs` | search inside selections and only keep those ranges |
 | `cS`, `CS` | search inside selections and remove those ranges |
-| `cf` | filter selections and keep the ones that contains the search |
-| `cF`, `CF` | search inside selections and remove those ranges |
+| `cf` | filter selections and keep the ones that contain the search |
+| `cF`, `CF` | filter selections and keep the ones that do not contain the search |
 
 | binding | expands to | action |
 | --- | --- | --- |
