@@ -1652,15 +1652,18 @@ impl Buffer {
             handle: self.handle,
         });
 
-        if !self.path.starts_with(help::HELP_PREFIX) && !self.properties.file_backed_enabled {
+        let help_page_name = self.path.to_str().and_then(help::parse_help_page_name);
+        if help_page_name.is_none() && !self.properties.file_backed_enabled {
             return Ok(());
         }
 
-        if self.path.as_os_str().is_empty() {
-            return Err(BufferReadError::FileNotFound);
-        } else if let Some(mut reader) = help::open(&self.path) {
+        let help_reader = help_page_name.map(help::open);
+
+        if let Some(mut reader) = help_reader {
             clear_buffer(self, word_database);
             self.content.read(&mut reader)?;
+        } else if self.path.as_os_str().is_empty() {
+            return Err(BufferReadError::FileNotFound);
         } else {
             match File::open(&self.path) {
                 Ok(file) => {

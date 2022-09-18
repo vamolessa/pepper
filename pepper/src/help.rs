@@ -1,10 +1,9 @@
 use std::{
     io,
-    path::Path,
     sync::atomic::{AtomicPtr, Ordering},
 };
 
-use crate::{buffer_position::BufferPosition, ResourceFile};
+use crate::ResourceFile;
 
 pub const HELP_PREFIX: &str = "help://";
 
@@ -22,6 +21,10 @@ impl HelpPages {
 }
 
 static MAIN_HELP_PAGES: HelpPages = HelpPages::new(&[
+    ResourceFile {
+        name: "help.md",
+        content: include_str!("../rc/help.md"),
+    },
     ResourceFile {
         name: "changelog.md",
         content: include_str!("../rc/changelog.md"),
@@ -48,10 +51,6 @@ static MAIN_HELP_PAGES: HelpPages = HelpPages::new(&[
     },
     crate::DEFAULT_CONFIGS,
     crate::DEFAULT_SYNTAXES,
-    ResourceFile {
-        name: "help.md",
-        content: include_str!("../rc/help.md"),
-    },
 ]);
 
 pub(crate) fn add_help_pages(pages: &'static [ResourceFile]) {
@@ -74,49 +73,32 @@ pub(crate) fn add_help_pages(pages: &'static [ResourceFile]) {
     }
 }
 
-pub(crate) fn main_help_name() -> &'static str {
-    MAIN_HELP_PAGES.pages[MAIN_HELP_PAGES.pages.len() - 1].name
+pub(crate) fn help_page_names() -> impl Iterator<Item = &'static str> {
+    HelpPageIterator::new().map(|r| r.name)
 }
 
-pub(crate) fn open(path: &Path) -> Option<impl io::BufRead> {
-    let path = path.to_str()?;
-    let path = match path.strip_prefix(HELP_PREFIX) {
-        Some(path) => path,
-        None => path,
-    };
-    for page in HelpPageIterator::new() {
-        if path == page.name {
-            return Some(io::Cursor::new(page.content));
-        }
+#[derive(Default)]
+pub(crate) struct HelpPageName<'a>(&'a str);
+impl<'a> HelpPageName<'a> {
+    pub fn as_str(&self) -> &'a str {
+        self.0
     }
-    None
 }
 
-pub(crate) fn search(keyword: &str) -> Option<(&'static str, BufferPosition)> {
-    let mut last_match = None;
+pub(crate) fn parse_help_page_name(page_name: &str) -> Option<HelpPageName> {
+    let page_name = page_name.strip_prefix(HELP_PREFIX)?;
+    Some(HelpPageName(page_name))
+}
+
+pub(crate) fn open(page_name: HelpPageName) -> impl io::BufRead {
+    let page_name = page_name.0;
     for page in HelpPageIterator::new() {
-        let page_name = match page.name.strip_suffix(".md") {
-            Some(name) => name,
-            None => page.name,
-        };
-
-        if keyword == page_name {
-            return Some((page.name, BufferPosition::zero()));
-        }
-
-        for (line_index, line) in page.content.lines().enumerate() {
-            if let Some(column_index) = line.find(keyword) {
-                let position = BufferPosition::line_col(line_index as _, column_index as _);
-                if line.starts_with('#') {
-                    return Some((page.name, position));
-                } else {
-                    last_match = Some((page.name, position));
-                }
-            }
+        if page_name == page.name {
+            return io::Cursor::new(page.content);
         }
     }
-
-    last_match
+    let main_page_content = MAIN_HELP_PAGES.pages[0].content;
+    io::Cursor::new(main_page_content)
 }
 
 struct HelpPageIterator {

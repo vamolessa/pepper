@@ -26,19 +26,19 @@ pub fn register_commands(commands: &mut CommandManager) {
         commands.register_command(None, name, completions, command_fn);
     };
 
-    r("help", &[CompletionSource::Commands], |ctx, io| {
-        let keyword = io.args.try_next();
+    r("help", &[CompletionSource::HelpPages], |ctx, io| {
+        let help_page_name = io.args.try_next();
         io.args.assert_empty()?;
 
         let client_handle = io.client_handle()?;
-        let (path, position) = match keyword.and_then(help::search) {
-            Some((path, position)) => (path, position),
-            None => (help::main_help_name(), BufferPosition::zero()),
+        let help_page_name = match help_page_name.and_then(help::parse_help_page_name) {
+            Some(name) => name,
+            None => Default::default(),
         };
 
         let mut buffer_path = ctx.editor.string_pool.acquire();
         buffer_path.push_str(help::HELP_PREFIX);
-        buffer_path.push_str(path);
+        buffer_path.push_str(help_page_name.as_str());
 
         let buffer_properties = BufferProperties {
             history_enabled: false,
@@ -62,10 +62,6 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
         cursors.clear();
-        cursors.add(Cursor {
-            anchor: position,
-            position,
-        });
 
         Ok(())
     });

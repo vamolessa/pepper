@@ -119,6 +119,7 @@ pub enum CompletionSource {
     Expansions,
     Buffers,
     Files,
+    HelpPages,
     Custom(&'static [&'static str]),
 }
 

@@ -24,6 +24,7 @@
 - added `BufferBreakpointId` to `BufferBreakpoint` which is a buffer scoped monotonically increasing breakpoint id
 - changed `open-log` to always refreshes the log buffer's content
 - changed `plugin-remedybg` to make use of the new IPC driver api which enables better integration
+- changed `help` command to autocomplete on help page names and always open help pages
 
 # 0.29.0
 - added diagnostic logging to `spawn` command

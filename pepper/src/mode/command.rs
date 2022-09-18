@@ -7,6 +7,7 @@ use crate::{
     editor_utils::{
         hash_bytes, readline_poll, ReadLinePoll, REGISTER_READLINE_INPUT, REGISTER_READLINE_PROMPT,
     },
+    help,
     mode::{ModeKind, ModeState},
     picker::Picker,
     platform::{Key, KeyCode},
@@ -241,6 +242,11 @@ fn update_autocomplete_entries(ctx: &mut EditorContext) {
                     if let Some(path) = buffer.path.to_str() {
                         ctx.editor.picker.add_custom_entry(path);
                     }
+                }
+            }
+            CompletionSource::HelpPages => {
+                for help_page_name in help::help_page_names() {
+                    ctx.editor.picker.add_custom_entry(help_page_name);
                 }
             }
             CompletionSource::Custom(completions) => {
