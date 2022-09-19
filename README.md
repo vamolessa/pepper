@@ -88,8 +88,9 @@ cursors can move past last line character and text is always inserted to its lef
 In the spirit of [Handmade](https://handmade.network/),
 all features are coded from scratch using simple stable Rust code.
 These are the only external crates being used in the project:
-- `winapi` (windows-only): needed to implement windows platform layer
-- `libc` (unix-only): needed to implement unix platform layer
+- `winapi` (windows-only): needed to implement the windows platform layer
+- `libc` (unix-only): needed to implement the unix platform layer
+- `wasm-bindgen` (web-only): needed to implement the web platform layer
 
 # modal editing
 
