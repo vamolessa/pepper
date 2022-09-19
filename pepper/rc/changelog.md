@@ -25,6 +25,7 @@
 - changed `open-log` to always refreshes the log buffer's content
 - changed `plugin-remedybg` to make use of the new IPC driver api which enables better integration
 - changed `help` command to autocomplete on help page names and always open help pages
+- fix web version not working because it would try to create a log file
 
 # 0.29.0
 - added diagnostic logging to `spawn` command

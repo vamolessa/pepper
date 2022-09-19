@@ -1,4 +1,4 @@
-use std::{fmt, fs, io, path::Path, process::Command};
+use std::{env, fmt, fs, io, path::Path, process::Command};
 
 use crate::{
     buffer::char_display_len,
@@ -249,12 +249,32 @@ pub struct Logger {
     log_writer: Option<io::BufWriter<fs::File>>,
 }
 impl Logger {
-    pub fn new(log_file_path: String, log_file: Option<fs::File>) -> Self {
+    pub fn new() -> Self {
         Self {
             current_kind: LogKind::Info,
             status_bar_message: String::new(),
-            log_file_path,
-            log_writer: log_file.map(io::BufWriter::new),
+            log_file_path: String::new(),
+            log_writer: None,
+        }
+    }
+
+    pub fn open_log_file(&mut self, session_name: &str) {
+        let mut temp_dir = env::temp_dir();
+        temp_dir.push(env!("CARGO_PKG_NAME"));
+        let _ = fs::create_dir(&temp_dir);
+
+        self.log_file_path.clear();
+        if let Ok(temp_dir) = temp_dir.into_os_string().into_string() {
+            self.log_file_path = temp_dir;
+            self.log_file_path.push(std::path::MAIN_SEPARATOR);
+            self.log_file_path.push_str(&session_name);
+            self.log_file_path.push_str(".txt");
+            let log_file = fs::File::create(&self.log_file_path).ok();
+            self.log_writer = log_file.map(io::BufWriter::new)
+        }
+
+        if self.log_writer.is_none() {
+            self.log_file_path.clear();
         }
     }
 

@@ -1,6 +1,5 @@
 use std::{
     fmt,
-    fs::File,
     path::{Path, PathBuf},
 };
 
@@ -307,12 +306,7 @@ pub struct Editor {
     pub(crate) picker_entries_process_buf: PickerEntriesProcessBuf,
 }
 impl Editor {
-    pub fn new(
-        current_directory: PathBuf,
-        session_name: String,
-        log_file_path: String,
-        log_file: Option<File>,
-    ) -> Self {
+    pub fn new(current_directory: PathBuf, session_name: String) -> Self {
         Self {
             current_directory,
             session_name,
@@ -334,7 +328,7 @@ impl Editor {
             picker: Picker::default(),
             string_pool: StringPool::default(),
 
-            logger: Logger::new(log_file_path, log_file),
+            logger: Logger::new(),
             aux_pattern: Pattern::new(),
 
             commands: CommandManager::new(),

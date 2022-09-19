@@ -200,6 +200,11 @@ fn run_server(config: ApplicationConfig, listener: UnixListener) {
         Some(application) => application,
         None => return,
     };
+    application
+        .ctx
+        .editor
+        .logger
+        .open_log_file(&application.ctx.editor.session_name);
 
     let mut client_connections: Vec<Option<UnixStream>> = Vec::new();
     let mut client_write_queue: Vec<VecDeque<PooledBuf>> = Vec::new();

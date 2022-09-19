@@ -1307,6 +1307,11 @@ fn run_server(config: ApplicationConfig, pipe_path: &[u16]) {
         Some(application) => application,
         None => return,
     };
+    application
+        .ctx
+        .editor
+        .logger
+        .open_log_file(&application.ctx.editor.session_name);
 
     application
         .ctx
