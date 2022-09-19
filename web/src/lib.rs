@@ -1,5 +1,6 @@
-use js_sys::Uint8Array;
+//use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 use pepper::{
     application::{ApplicationConfig, ClientApplication, ServerApplication},
@@ -8,13 +9,54 @@ use pepper::{
     Args,
 };
 
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
 #[wasm_bindgen]
 extern "C" {
     pub fn alert(s: &str);
+
+    #[wasm_bindgen(js_namespace = console)]
+    fn error(msg: String);
+
+    type Error;
+
+    #[wasm_bindgen(constructor)]
+    fn new() -> Error;
+
+    #[wasm_bindgen(structural, method, getter)]
+    fn stack(error: &Error) -> String;
+
+    #[wasm_bindgen(typescript_type = "object")]
+    #[derive(Clone, Debug)]
+    pub type Object;
+
+    #[wasm_bindgen(static_method_of = Object)]
+    pub fn is(value_1: &JsValue, value_2: &JsValue) -> bool;
+
+    #[wasm_bindgen(js_namespace = WebAssembly, extends = Object, typescript_type = "WebAssembly.Memory")]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub type Memory;
+
+    #[wasm_bindgen(method, getter, js_namespace = WebAssembly)]
+    pub fn buffer(this: &Memory) -> JsValue;
+
+    #[wasm_bindgen(extends = Object, typescript_type = Uint8Aray)]
+    #[derive(Clone, Debug)]
+    pub type Uint8Array;
+
+    #[wasm_bindgen(constructor)]
+    pub fn new_with_byte_offset_and_length(
+        buffer: &JsValue,
+        byte_offset: u32,
+        length: u32,
+    ) -> Uint8Array;
 }
+
+impl PartialEq for Object {
+    #[inline]
+    fn eq(&self, other: &Object) -> bool {
+        Object::is(self.as_ref(), other.as_ref())
+    }
+}
+impl Eq for Object {}
 
 pub struct Application {
     server: ServerApplication,
@@ -24,9 +66,31 @@ pub struct Application {
 
 const CLIENT_HANDLE: ClientHandle = ClientHandle(0);
 
+impl Uint8Array {
+    pub unsafe fn view(rust: &[u8]) -> Self {
+        let buf = wasm_bindgen::memory();
+        let mem = buf.unchecked_ref::<Memory>();
+        Uint8Array::new_with_byte_offset_and_length(
+            &mem.buffer(),
+            rust.as_ptr() as u32,
+            rust.len() as u32,
+        )
+    }
+}
+
+fn console_hook(info: &std::panic::PanicInfo) {
+    let mut msg = info.to_string();
+    msg.push_str("\n\nstack:\n\n");
+    let e = Error::new();
+    let stack = e.stack();
+    msg.push_str(&stack);
+    msg.push_str("\n\n");
+    error(msg);
+}
+
 #[wasm_bindgen]
 pub fn pepper_new_application() -> *mut Application {
-    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    std::panic::set_hook(Box::new(console_hook));
 
     let config = ApplicationConfig::default();
     let server = ServerApplication::new(config).unwrap();
