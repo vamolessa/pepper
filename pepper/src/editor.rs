@@ -121,7 +121,7 @@ impl EditorContext {
 
             let (status_bar_display, margin_bottom) = if has_focus {
                 let width = c.viewport_size.0.saturating_sub(1);
-                let max_height = self.editor.config.status_bar_max_height.get();
+                let max_height = self.editor.config.status_bar_max_height;
                 let max_height = c.viewport_size.1.min(max_height as _) as _;
 
                 let status_bar_display = self
@@ -137,7 +137,12 @@ impl EditorContext {
                 (LoggerStatusBarDisplay::default(), 0)
             };
 
-            c.scroll_to_main_cursor(&self.editor, margin_bottom);
+            let scroll = c.scroll_to_main_cursor(
+                &mut self.editor.buffer_views,
+                &self.editor.buffers,
+                self.editor.config.tab_size,
+                margin_bottom,
+            );
 
             let mut buf = self.platform.buf_pool.acquire();
             let write = buf.write_with_len(ServerEvent::bytes_variant_header_len());
@@ -145,7 +150,7 @@ impl EditorContext {
                 editor: &self.editor,
                 status_bar_display: &status_bar_display,
                 viewport_size: c.viewport_size,
-                scroll: c.scroll,
+                scroll,
                 has_focus,
             };
             ui::draw(&ctx, c.buffer_view_handle(), write);

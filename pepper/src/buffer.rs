@@ -2,7 +2,6 @@ use std::{
     fmt,
     fs::File,
     io,
-    num::NonZeroU8,
     ops::{Add, Range, RangeBounds, Sub},
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
@@ -1160,7 +1159,7 @@ impl BufferProperties {
 #[derive(Clone, Copy)]
 pub struct BufferIndentationConfig {
     pub indent_with_tabs: bool,
-    pub tab_size: NonZeroU8,
+    pub tab_size: u8,
 }
 
 pub struct Buffer {
@@ -1449,6 +1448,10 @@ impl Buffer {
         line_index: BufferPositionIndex,
         events: &mut BufferEditMutGuard,
     ) {
+        if indentation_config.tab_size == 0 {
+            return;
+        }
+
         let mut previous_line_text = "";
         for line in self.content.lines[..line_index as usize].iter().rev() {
             previous_line_text = line.as_str();
@@ -1471,7 +1474,7 @@ impl Buffer {
                         pending_spaces -= 1;
                     } else {
                         indentation += 1;
-                        pending_spaces = indentation_config.tab_size.get() - 1;
+                        pending_spaces = indentation_config.tab_size - 1;
                     }
                 }
                 _ => break,
@@ -1517,8 +1520,7 @@ impl Buffer {
             let (insert_byte, insert_len) = if indentation_config.indent_with_tabs {
                 (b'\t', indentation)
             } else {
-                let tab_size = indentation_config.tab_size.get() as usize;
-                (b' ', indentation * tab_size)
+                (b' ', indentation * indentation_config.tab_size as usize)
             };
 
             let line_vec = unsafe { line.0.as_mut_vec() };
@@ -2553,7 +2555,7 @@ mod tests {
         let mut events = BufferEditMutGuard::new(events.writer(), BufferHandle(0));
 
         let indentation_config = BufferIndentationConfig {
-            tab_size: NonZeroU8::new(4).unwrap(),
+            tab_size: 4,
             indent_with_tabs: true,
         };
 
@@ -2646,7 +2648,7 @@ mod tests {
         assert_eq!("\tsecond", buffer.content().lines()[2].as_str());
 
         let indentation_config = BufferIndentationConfig {
-            tab_size: NonZeroU8::new(4).unwrap(),
+            tab_size: 4,
             indent_with_tabs: false,
         };
 

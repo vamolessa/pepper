@@ -1,9 +1,9 @@
 use std::{fmt, path::Path};
 
 use crate::{
-    buffer::{BufferHandle, BufferProperties, CharDisplayDistances},
+    buffer::{BufferCollection, BufferHandle, BufferProperties, CharDisplayDistances},
     buffer_position::BufferPositionIndex,
-    buffer_view::{BufferViewCollection, BufferViewHandle},
+    buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
     editor::Editor,
     editor_utils::ResidualStrBytes,
     navigation_history::{NavigationHistory, NavigationMovement},
@@ -34,7 +34,6 @@ pub struct Client {
     handle: ClientHandle,
 
     pub viewport_size: (u16, u16),
-    pub(crate) scroll: BufferPositionIndex,
 
     pub(crate) navigation_history: NavigationHistory,
 
@@ -50,7 +49,6 @@ impl Client {
             handle: ClientHandle(0),
 
             viewport_size: (0, 0),
-            scroll: 0,
 
             navigation_history: NavigationHistory::default(),
 
@@ -64,7 +62,6 @@ impl Client {
         self.active = false;
 
         self.viewport_size = (0, 0);
-        self.scroll = 0;
 
         self.navigation_history.clear();
 
@@ -102,42 +99,65 @@ impl Client {
         self.viewport_size.0 != 0 && self.viewport_size.1 != 0
     }
 
-    pub fn set_view_anchor(&mut self, editor: &Editor, anchor: ViewAnchor) {
+    pub fn set_view_anchor(&self, editor: &mut Editor, anchor: ViewAnchor) {
         if !self.has_ui() {
             return;
         }
 
-        let height = self.viewport_size.1.saturating_sub(1) as usize;
-        let height_offset = match anchor {
-            ViewAnchor::Top => 0,
-            ViewAnchor::Center => height / 2,
-            ViewAnchor::Bottom => height.saturating_sub(1),
-        };
+        if let Some(buffer_view_handle) = self.buffer_view_handle {
+            let height = self.viewport_size.1.saturating_sub(1) as usize;
+            let height_offset = match anchor {
+                ViewAnchor::Top => 0,
+                ViewAnchor::Center => height / 2,
+                ViewAnchor::Bottom => height.saturating_sub(1),
+            };
 
-        let main_cursor_padding_top = self.find_main_cursor_padding_top(editor);
-        self.scroll = main_cursor_padding_top.saturating_sub(height_offset) as _;
+            let buffer_view = editor.buffer_views.get_mut(buffer_view_handle);
+            let main_cursor_padding_top = self.find_main_cursor_padding_top(
+                buffer_view,
+                &editor.buffers,
+                editor.config.tab_size,
+            );
+            buffer_view.scroll = main_cursor_padding_top.saturating_sub(height_offset) as _;
+        }
     }
 
-    pub(crate) fn scroll_to_main_cursor(&mut self, editor: &Editor, margin_bottom: usize) {
+    pub(crate) fn scroll_to_main_cursor(
+        &self,
+        buffer_views: &mut BufferViewCollection,
+        buffers: &BufferCollection,
+        tab_size: u8,
+        margin_bottom: usize,
+    ) -> BufferPositionIndex {
         if !self.has_ui() {
-            return;
+            return 0;
         }
 
         let height = self.viewport_size.1.saturating_sub(1) as usize;
         let height = height.saturating_sub(margin_bottom);
         let half_height = height / 2;
 
-        let main_cursor_padding_top = self.find_main_cursor_padding_top(editor);
+        match self.buffer_view_handle {
+            Some(buffer_view_handle) => {
+                let buffer_view = buffer_views.get_mut(buffer_view_handle);
+                let main_cursor_padding_top =
+                    self.find_main_cursor_padding_top(buffer_view, buffers, tab_size);
 
-        let scroll = self.scroll as usize;
-        if main_cursor_padding_top < scroll.saturating_sub(half_height) {
-            self.scroll = main_cursor_padding_top.saturating_sub(half_height) as _;
-        } else if main_cursor_padding_top < scroll {
-            self.scroll = main_cursor_padding_top as _;
-        } else if main_cursor_padding_top >= scroll + height + half_height {
-            self.scroll = (main_cursor_padding_top + 1 - half_height) as _;
-        } else if main_cursor_padding_top >= scroll + height {
-            self.scroll = (main_cursor_padding_top + 1 - height) as _;
+                let mut scroll = buffer_view.scroll as usize;
+                if main_cursor_padding_top < scroll.saturating_sub(half_height) {
+                    scroll = main_cursor_padding_top.saturating_sub(half_height) as _;
+                } else if main_cursor_padding_top < scroll {
+                    scroll = main_cursor_padding_top as _;
+                } else if main_cursor_padding_top >= scroll + height + half_height {
+                    scroll = (main_cursor_padding_top + 1 - half_height) as _;
+                } else if main_cursor_padding_top >= scroll + height {
+                    scroll = (main_cursor_padding_top + 1 - height) as _;
+                }
+                let scroll = scroll as _;
+                buffer_view.scroll = scroll;
+                scroll
+            }
+            None => 0,
         }
     }
 
@@ -198,17 +218,15 @@ impl Client {
         }
     }
 
-    fn find_main_cursor_padding_top(&mut self, editor: &Editor) -> usize {
-        let buffer_view_handle = match self.buffer_view_handle() {
-            Some(handle) => handle,
-            None => return 0,
-        };
-
-        let tab_size = editor.config.tab_size.get();
+    fn find_main_cursor_padding_top(
+        &self,
+        buffer_view: &BufferView,
+        buffers: &BufferCollection,
+        tab_size: u8,
+    ) -> usize {
         let width = self.viewport_size.0 as usize;
 
-        let buffer_view = editor.buffer_views.get(buffer_view_handle);
-        let buffer = editor.buffers.get(buffer_view.buffer_handle).content();
+        let buffer = buffers.get(buffer_view.buffer_handle).content();
         let position = buffer_view.cursors.main_cursor().position;
 
         let mut height = position.line_index as usize;

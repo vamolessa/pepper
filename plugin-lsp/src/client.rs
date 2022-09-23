@@ -1023,7 +1023,7 @@ impl Client {
         let mut options = JsonObject::default();
         options.set(
             "tabSize".into(),
-            JsonValue::Integer(editor.config.tab_size.get() as _),
+            JsonValue::Integer(editor.config.tab_size as _),
             &mut self.json,
         );
         options.set(

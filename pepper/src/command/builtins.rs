@@ -3,7 +3,6 @@ use std::{env, path::Path, process::Stdio};
 use crate::{
     buffer::{BufferProperties, BufferReadError, BufferWriteError},
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
-    client::ViewAnchor,
     command::{CommandError, CommandIO, CommandManager, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::Cursor,
@@ -54,7 +53,6 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let client = ctx.clients.get_mut(client_handle);
         client.set_buffer_view_handle(Some(handle), &ctx.editor.buffer_views);
-        client.set_view_anchor(&ctx.editor, ViewAnchor::Center);
 
         let mut cursors = ctx.editor.buffer_views.get_mut(handle).cursors.mut_guard();
         cursors.clear();
@@ -1103,4 +1101,3 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
-

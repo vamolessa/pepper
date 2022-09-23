@@ -160,7 +160,7 @@ fn draw_buffer_view(
     let cursors = &buffer_view.cursors[..];
     let active_line_index = buffer_view.cursors.main_cursor().position.line_index as usize;
 
-    let tab_size = ctx.editor.config.tab_size.get();
+    let tab_size = ctx.editor.config.tab_size.max(1);
 
     let draw_width = ctx.viewport_size.0 as usize;
     let draw_height = ctx.viewport_size.1.saturating_sub(1);

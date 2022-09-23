@@ -28,6 +28,7 @@
 - fix web version not working because it would try to create a log file
 - changed cursor list format from "path:1,3-1,4;2,3-2,4" to "path:1:3-1:4,2:3-2:4"
 - added support for `cc` and `hh` file extensions for the c++ language
+- changed view scroll is now saved for each buffer view instead of client which makes up for a more consistent ux
 
 # 0.29.0
 - added diagnostic logging to `spawn` command

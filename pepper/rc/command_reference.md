@@ -105,7 +105,7 @@ Otherwise, it returns its current value.
 
 key | type | doc
 --- | --- | ---
-`tab_size` | `integer` | size of a tab relative to space (non zero)
+`tab_size` | `integer` | size of a tab relative to space
 `indent_with_tabs` | `bool` | if false, the editor will indent with `tab_size` spaces
 `visual_empty` | `char` | the character that will be drawn to indicate end of buffer
 `visual_space` | `char` | the character that will be drawn in place of spaces
@@ -113,7 +113,7 @@ key | type | doc
 `visual_tab_repeat` | `char` | the character that will be drawn repeatedly in place of a tab until we read a tab stop
 `completion_min_len` | `integer` | min number of bytes before auto completion is triggered
 `picker_max_height` | `integer` | max number of lines that are shown at a time when a picker ui is opened
-`status_bar_max_height` | `integer` | max number of lines that the status bar can occupy (non zero)
+`status_bar_max_height` | `integer` | max number of lines that the status bar can occupy
 
 ## `color`
 If `<value>` is present, it sets the editor theme color `<key>` to that color.

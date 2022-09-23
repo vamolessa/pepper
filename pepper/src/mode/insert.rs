@@ -112,7 +112,7 @@ impl ModeState for State {
                     &ctx.editor.buffers,
                     CursorMovement::LinesForward {
                         count: 1,
-                        tab_size: ctx.editor.config.tab_size.get(),
+                        tab_size: ctx.editor.config.tab_size,
                     },
                     CursorMovementKind::PositionAndAnchor,
                 );
@@ -124,7 +124,7 @@ impl ModeState for State {
                     &ctx.editor.buffers,
                     CursorMovement::LinesBackward {
                         count: 1,
-                        tab_size: ctx.editor.config.tab_size.get(),
+                        tab_size: ctx.editor.config.tab_size,
                     },
                     CursorMovementKind::PositionAndAnchor,
                 );
@@ -145,7 +145,7 @@ impl ModeState for State {
                 let text = if ctx.editor.config.indent_with_tabs {
                     "\t"
                 } else {
-                    let len = ctx.editor.config.tab_size.get() as usize;
+                    let len = ctx.editor.config.tab_size as usize;
                     unsafe { std::str::from_utf8_unchecked(&SPACES_BUF[..len]) }
                 };
 

@@ -104,7 +104,7 @@ impl State {
                 &ctx.editor.buffers,
                 CursorMovement::LinesForward {
                     count: state.count.max(1) as _,
-                    tab_size: ctx.editor.config.tab_size.get(),
+                    tab_size: ctx.editor.config.tab_size,
                 },
                 state.movement_kind,
             ),
@@ -117,7 +117,7 @@ impl State {
                 &ctx.editor.buffers,
                 CursorMovement::LinesBackward {
                     count: state.count.max(1) as _,
-                    tab_size: ctx.editor.config.tab_size.get(),
+                    tab_size: ctx.editor.config.tab_size,
                 },
                 state.movement_kind,
             ),
@@ -1009,7 +1009,7 @@ impl State {
                 alt: false,
                 ..
             } => {
-                let client = ctx.clients.get_mut(client_handle);
+                let client = ctx.clients.get(client_handle);
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key {
                         code: KeyCode::None,
@@ -1020,19 +1020,19 @@ impl State {
                         control: false,
                         alt: false,
                         ..
-                    } => client.set_view_anchor(&ctx.editor, ViewAnchor::Center),
+                    } => client.set_view_anchor(&mut ctx.editor, ViewAnchor::Center),
                     Key {
                         code: KeyCode::Char('j'),
                         control: false,
                         alt: false,
                         ..
-                    } => client.set_view_anchor(&ctx.editor, ViewAnchor::Bottom),
+                    } => client.set_view_anchor(&mut ctx.editor, ViewAnchor::Bottom),
                     Key {
                         code: KeyCode::Char('k'),
                         control: false,
                         alt: false,
                         ..
-                    } => client.set_view_anchor(&ctx.editor, ViewAnchor::Top),
+                    } => client.set_view_anchor(&mut ctx.editor, ViewAnchor::Top),
                     _ => (),
                 }
             }
@@ -1136,7 +1136,7 @@ impl State {
                     &ctx.editor.buffers,
                     CursorMovement::LinesForward {
                         count: half_height as usize * state.count.max(1) as usize,
-                        tab_size: ctx.editor.config.tab_size.get(),
+                        tab_size: ctx.editor.config.tab_size,
                     },
                     state.movement_kind,
                 );
@@ -1153,7 +1153,7 @@ impl State {
                     &ctx.editor.buffers,
                     CursorMovement::LinesBackward {
                         count: half_height as usize * state.count.max(1) as usize,
-                        tab_size: ctx.editor.config.tab_size.get(),
+                        tab_size: ctx.editor.config.tab_size,
                     },
                     state.movement_kind,
                 );
@@ -1203,7 +1203,7 @@ impl State {
                 control: false,
                 alt: false,
                 ..
-            } => {
+            } if ctx.editor.config.tab_size > 0 => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle);
                 let count = state.count.max(1);
@@ -1233,7 +1233,7 @@ impl State {
                                 Some((i, c @ '\t')) => i + c.len_utf8(),
                                 Some((i, c @ ' ')) => {
                                     match chars
-                                        .take(ctx.editor.config.tab_size.get() as usize - 1)
+                                        .take(ctx.editor.config.tab_size as usize - 1)
                                         .take_while(|(_, c)| *c == ' ')
                                         .last()
                                     {
@@ -1262,12 +1262,12 @@ impl State {
                 control: false,
                 alt: false,
                 ..
-            } => {
+            } if ctx.editor.config.tab_size > 0 => {
                 let extender = if ctx.editor.config.indent_with_tabs {
                     let count = state.count.max(1) as _;
                     std::iter::repeat('\t').take(count)
                 } else {
-                    let tab_size = ctx.editor.config.tab_size.get() as usize;
+                    let tab_size = ctx.editor.config.tab_size as usize;
                     let count = state.count.max(1) as usize * tab_size;
                     std::iter::repeat(' ').take(count)
                 };
@@ -1331,7 +1331,7 @@ impl State {
                 control: false,
                 alt: false,
                 ..
-            } => {
+            } if ctx.editor.config.tab_size > 0 => {
                 let buffer_view = ctx.editor.buffer_views.get(handle);
                 let indentation_config = BufferIndentationConfig {
                     indent_with_tabs: ctx.editor.config.indent_with_tabs,

@@ -1,4 +1,4 @@
-use std::{fmt, num::NonZeroU8};
+use std::fmt;
 
 pub enum ParseConfigError {
     NoSuchConfig,
@@ -66,7 +66,7 @@ macro_rules! config_values {
 }
 
 config_values! {
-    tab_size: NonZeroU8 = NonZeroU8::new(4).unwrap(),
+    tab_size: u8 = 4,
     indent_with_tabs: bool = false,
 
     visual_empty: char = '~',
@@ -76,5 +76,5 @@ config_values! {
 
     completion_min_len: u8 = 3,
     picker_max_height: u8 = 8,
-    status_bar_max_height: NonZeroU8 = NonZeroU8::new(8).unwrap(),
+    status_bar_max_height: u8 = 8,
 }
