@@ -1019,4 +1019,3 @@ mod tests {
         assert_eq!(None, ranges.next());
     }
 }
-

@@ -27,6 +27,7 @@
 - changed `help` command to autocomplete on help page names and always open help pages
 - fix web version not working because it would try to create a log file
 - changed cursor list format from "path:1,3-1,4;2,3-2,4" to "path:1:3-1:4,2:3-2:4"
+- added support for `cc` and `hh` file extensions for the c++ language
 
 # 0.29.0
 - added diagnostic logging to `spawn` command
