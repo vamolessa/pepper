@@ -635,13 +635,7 @@ pub(crate) fn on_response(
 
                 use fmt::Write;
                 let position = location.range.start.into_buffer_position();
-                let _ = writeln!(
-                    text,
-                    "{}:{},{}",
-                    path,
-                    position.line_index + 1,
-                    position.column_byte_index + 1,
-                );
+                let _ = writeln!(text, "{}:{}", path, position,);
 
                 if context_len > 0 {
                     if last_path != path {
@@ -1096,12 +1090,9 @@ fn goto_definition(
                 };
 
                 let position = location.range.start.into_buffer_position();
-                ctx.editor.picker.add_custom_entry_fmt(format_args!(
-                    "{}:{},{}",
-                    path,
-                    position.line_index + 1,
-                    position.column_byte_index + 1
-                ));
+                ctx.editor
+                    .picker
+                    .add_custom_entry_fmt(format_args!("{}:{}", path, position,));
             }
 
             picker::enter_definition_mode(ctx, plugin_handle, client);
@@ -1110,3 +1101,4 @@ fn goto_definition(
         DefinitionLocation::Invalid => Ok(()),
     }
 }
+

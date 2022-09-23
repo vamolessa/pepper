@@ -37,6 +37,7 @@ pub struct BufferView {
     pub client_handle: ClientHandle,
     pub buffer_handle: BufferHandle,
     pub cursors: CursorCollection,
+    //pub(crate) scroll: BufferPositionIndex,
 }
 
 impl BufferView {

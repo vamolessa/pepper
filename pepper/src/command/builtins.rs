@@ -559,11 +559,8 @@ pub fn register_commands(commands: &mut CommandManager) {
                 let lint_message = lint.message(&buffer.lints);
                 let _ = write!(
                     content,
-                    "{}:{},{}:{}\n",
-                    buffer_path,
-                    lint.range.from.line_index + 1,
-                    lint.range.from.column_byte_index + 1,
-                    lint_message
+                    "{}:{}:{}\n",
+                    buffer_path, lint.range.from, lint_message
                 );
             }
         }
@@ -1106,3 +1103,4 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
+
