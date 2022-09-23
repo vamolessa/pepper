@@ -1,8 +1,7 @@
 syntax "**/*.refs"
-syntax keywords "^{%a}:[/\\]{%w[/\\]%._-!:}|^{%w[/\\]%._-!:}"
-syntax symbols ","
+syntax keywords "^{%a}:[/\\]{%w/\\%._-!:}|^{%w/\\%._-!:}"
+syntax symbols ":,-"
 syntax literals "%d{%d}"
-syntax texts "{%w_-}"
 
 syntax "**/*.pepper"
 syntax keywords "command|config|eval|if|map|syntax"

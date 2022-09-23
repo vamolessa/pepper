@@ -763,7 +763,7 @@ pub fn find_path_and_ranges_at(text: &str, index: usize) -> (&str, BufferRangesP
         None => 0,
     };
     let to = match right.find(|c: char| {
-        c.is_ascii_whitespace() || matches!(c, ':' | '(' | ')' | '[' | ']' | '{' | '}' | '"' | '\'')
+        c.is_ascii_whitespace() || matches!(c, '(' | ')' | '[' | ']' | '{' | '}' | '"' | '\'')
     }) {
         Some(i) => {
             if index + i - from == 1 {
@@ -807,7 +807,7 @@ pub fn parse_process_command(command: &str) -> Option<Command> {
 mod tests {
     use super::*;
 
-    use crate::buffer_position::BufferPositionIndex;
+    use crate::buffer_position::{BufferPosition, BufferPositionIndex};
 
     #[test]
     fn is_char_boundary_test() {
@@ -981,7 +981,7 @@ mod tests {
         assert_eq!((path, Some((3, 0))), find_at(text, 2),);
         assert_eq!((path, Some((3, 0))), find_at(text, 3),);
 
-        let text = "xx c:/absolute/path/file:4,5xx";
+        let text = "xx c:/absolute/path/file:4:5xx";
         let path = "c:/absolute/path/file";
         assert_eq!((path, Some((3, 4))), find_at(text, 3),);
         assert_eq!((path, Some((3, 4))), find_at(text, 4),);
@@ -997,5 +997,26 @@ mod tests {
         assert_eq!((path, Some((3, 0))), find_at(text, 1),);
         assert_eq!((path, Some((3, 0))), find_at(text, 2),);
         assert_eq!((path, Some((3, 0))), find_at(text, 3),);
+
+        fn r(
+            from: (BufferPositionIndex, BufferPositionIndex),
+            to: (BufferPositionIndex, BufferPositionIndex),
+        ) -> (BufferPosition, BufferPosition) {
+            let from = BufferPosition::line_col(from.0, from.1);
+            let to = BufferPosition::line_col(to.0, to.1);
+            (from, to)
+        }
+
+        let text = "c:/absolute/path/file:4:xxx";
+        let (_, mut ranges) = find_path_and_ranges_at(text, 0);
+        assert_eq!(Some(r((3, 0), (3, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let text = "c:/absolute/path/file:4-5,6-7:xxx";
+        let (_, mut ranges) = find_path_and_ranges_at(text, 0);
+        assert_eq!(Some(r((3, 0), (4, 0))), ranges.next());
+        assert_eq!(Some(r((5, 0), (6, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
     }
 }
+

@@ -1656,7 +1656,7 @@ impl State {
                             register.push_str(path);
                             register.push(':');
                             for cursor in &buffer_view.cursors[..] {
-                                let _ = write!(register, "{};", cursor);
+                                let _ = write!(register, "{},", cursor);
                             }
                         }
 
