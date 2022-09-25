@@ -36,6 +36,15 @@ syntax literals "true|false|this|nullptr|'{(\\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{
 syntax strings '"{(\\\\)(\\")!".}'
 syntax comments "//{.}|/*{!(*/).$}"
 
+# https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-appendix-keywords
+syntax "**/*.hlsl"
+syntax keywords asm|asm_fragment|break|case|class|column_major|compile|compile_fragment|const|continue|default|discard|do|double|dword|else|export|extern|for|fxgroup|groupshared|half|if|in|inline|inout|interface|linear|namespace|nointerpolation|noperspective|out|packoffset|pass|precise|return|register|row_major|shared|static|struct|switch|technique|technique10|technique11|typedef|uniform|volatile|while
+syntax types "bool|cbuffer|centroid|float%dx%d|float%d|float|int|lineadj|line|matrix|min16float|min10float|min16int|min12int|min16uint|pixelfragment|point|sample|sampler|snorm|stateblock|stateblock_state|string|tbuffer|texture|triangleadj|triangle|uint|unorm|unsigned|vector|vertexfragment|void|%u{%w_}"
+syntax symbols "%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|~|?|&|%||@"
+syntax literals "true|false|NULL|'{(\\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{ }{%a}"
+syntax strings '"{(\\\\)(\\")!".}'
+syntax comments "//{.}|/*{!(*/).$}"
+
 # https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/
 syntax "**/*.cs"
 syntax keywords abstract|as|base|break|case|catch|checked|class|const|continue|default|delegate|do|else|enum|event|explicit|extern|finally|fixed|foreach|for|goto|if|implicit|in|interface|internal|is|lock|namespace|new|operator|out|override|params|private|protected|public|readonly|ref|return|sealed|sizeof|stackalloc|static|struct|switch|throw|try|typeof|unchecked|unsafe|using|virtual|volatile|while|add|alias|ascending|async|await|by|descending|dynamic|equals|from|get|global|group|into|join|let|nameof|not|on|orderby|partial|remove|select|set|unmanaged|value|var|when|where|yield
@@ -105,7 +114,7 @@ syntax comments "<%!--{!(-->).$}"
 syntax texts "{%w_-}"
 
 syntax "**/*.{bat,cmd}"
-syntax keywords "call|defined|do|echo%.|echo|else|exit|for|if|not|setlocal|set"
+syntax keywords "call|defined|do|echo%.|echo|else|exit|for|goto|if|not|setlocal|set"
 syntax types "%%%u{!%%%u%d_}|%%%u{!:%u%d_}{!%%.}"
 syntax symbols "%(|%)|<|>|=|~|*|&|%%|%!|%||@"
 syntax literals "-%w{%w_-}|/%w{%w_-}|%d{%w}"
