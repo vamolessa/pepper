@@ -38,8 +38,8 @@ syntax comments "//{.}|/*{!(*/).$}"
 
 # https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-appendix-keywords
 syntax "**/*.hlsl"
-syntax keywords asm|asm_fragment|break|case|class|column_major|compile|compile_fragment|const|continue|default|discard|do|double|dword|else|export|extern|for|fxgroup|groupshared|half|if|in|inline|inout|interface|linear|namespace|nointerpolation|noperspective|out|packoffset|pass|precise|return|register|row_major|shared|static|struct|switch|technique|technique10|technique11|typedef|uniform|volatile|while
-syntax types "bool|cbuffer|centroid|float%dx%d|float%d|float|int|lineadj|line|matrix|min16float|min10float|min16int|min12int|min16uint|pixelfragment|point|sample|sampler|snorm|stateblock|stateblock_state|string|tbuffer|texture|triangleadj|triangle|uint|unorm|unsigned|vector|vertexfragment|void|%u{%w_}"
+syntax keywords asm|asm_fragment|break|case|class|column_major|compile|compile_fragment|const|continue|default|discard|do|double|dword|else|export|extern|for|fxgroup|groupshared|if|in|inline|inout|interface|linear|namespace|nointerpolation|noperspective|out|packoffset|pass|precise|return|register|row_major|shared|static|struct|switch|technique|technique10|technique11|typedef|uniform|volatile|while
+syntax types "bool|cbuffer|centroid|float%dx%d|float%d|float|half|int|lineadj|line|matrix|min16float|min10float|min16int|min12int|min16uint|pixelfragment|point|sample|sampler|snorm|stateblock|stateblock_state|string|tbuffer|texture|triangleadj|triangle|uint|unorm|unsigned|vector|vertexfragment|void|%u{%w_}"
 syntax symbols "%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|~|?|&|%||@"
 syntax literals "true|false|NULL|'{(\\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{ }{%a}"
 syntax strings '"{(\\\\)(\\")!".}'
