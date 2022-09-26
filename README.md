@@ -54,7 +54,7 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 - small, however orthogonal, set of editing primitives
 - mnemonic and easy to reach default keybindings (assuming a qwerty keyboard)
-- cross-plaftorm (Windows, Linux, BSD, Mac and even [Web](https://vamolessa.github.io/pepper/web))
+- cross-platform (Windows, Linux, BSD, Mac and even [Web](https://vamolessa.github.io/pepper/web))
 - extensible through external cli tools
 - be as fast and reponsive as possible
 - zero runtime dependencies (besides platform libs)
