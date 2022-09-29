@@ -1,6 +1,8 @@
 # changelog
 
-# 0.30.0 (preview)
+# 0.31.0 (preview)
+
+# 0.30.0
 - added `insert-text` command
 - added `set-clipboard` command
 - fix `>` (indent command) will no longer indent empty lines
