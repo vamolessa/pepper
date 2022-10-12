@@ -1,6 +1,7 @@
 # changelog
 
 # 0.31.0 (preview)
+- changed `plugin-remedybg` to add support for new version `0.3.8.4` which enables several plugin code simplifications
 
 # 0.30.0
 - added `insert-text` command

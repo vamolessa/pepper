@@ -5,6 +5,9 @@ use pepper::{
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
+// Remedybg's protocol
+// https://gist.github.com/x13pixels/d1f0f99b108f34b6c461be9f9249e8e8
+
 pub enum ProtocolError {
     DeserializeError(DeserializeError),
     RemedybgCommandResult(RemedybgCommandResult),
@@ -737,6 +740,7 @@ pub enum RemedybgCommandKind {
     // ->
     // [result :: rdbg_CommandResult (uint16_t)]
     DeleteBreakpoint = 610,
+
     // Delete all existing breakpoints.
     //
     // [cmd :: rdbg_Command (uint16_t)]
@@ -744,6 +748,34 @@ pub enum RemedybgCommandKind {
     // [result :: rdbg_CommandResult (uint16_t)]
     //DeleteAllBreakpoints = 611,
 
+    // Return information about a specific user requested breakpoint.
+    //
+    //  * Presently, module name is not used and will always be a zero length
+    //  string.
+    //
+    // [cmd :: rdbg_Command (uint16_t)]
+    // [bp_id :: rdbg_Id]
+    // =>
+    // [uid :: rdbg_Id]
+    // [enabled :: rdbg_Bool]
+    // [module_name :: rdbg_String]
+    // [condition_expr :: rdbg_String]
+    // [kind :: rdbg_BreakpointKind (uint8_t)]
+    // .SWITCH(kind) {
+    //   .CASE(BreakpointKind_FunctionName):
+    //     [function_name :: rdbg_String]
+    //     [overload_id :: uint32_t]
+    //   .CASE(BreakpointKind_FilenameLine):
+    //     [filename :: rdbg_String]
+    //     [line_num :: uint32_t]
+    //   .CASE(BreakpointKind_Address):
+    //     [address :: uint64_t]
+    //   .CASE(BreakpointKind_Processor):
+    //     [addr_expression :: rdbg_String]
+    //     [num_bytes :: uint8_t]
+    //     [access_kind :: rdbg_ProcessorBreakpointAccessKind (uint8_t)]
+    // }
+    GetBreakpoint = 612,
     //
     // Watch Window Expressions
 
@@ -816,18 +848,74 @@ impl RemedybgCommandKind {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum RemedybgSourceLocationChangedReason {
+    Unspecified = 0,
+    ByCommandLine = 1, // An open-file from the command-line updated the source location
+    ByDriver = 2, // A RDBG_COMMAND_GOTO_FILE_AT_LINE from a named-pipes driver updated the source location
+    BreakpointSelected = 3, // A selection of a breakpoint in breakpoints pane updated the source location
+    CurrentFrameChanged = 4, // The current stack frame was changed in the callstack pane and updated the source location
+    ActiveThreadChanged = 5, // The active thread was changed in the threads pane and updated the source location
+
+    // The process was suspended and updated the source location
+    BreakpointHit = 6,
+    ExceptionHit = 7,
+    StepOver = 8,
+    StepIn = 9,
+    StepOut = 10,
+    NonUserBreakpoint = 11,
+    DebugBreak = 12,
+}
+impl RemedybgSourceLocationChangedReason {
+    pub fn deserialize(deserializer: &mut dyn Deserializer) -> Result<Self, DeserializeError> {
+        let discriminant = u16::deserialize(deserializer)?;
+        match discriminant {
+            0 => Ok(Self::Unspecified),
+            1 => Ok(Self::ByCommandLine),
+            2 => Ok(Self::ByDriver),
+            3 => Ok(Self::BreakpointSelected),
+            4 => Ok(Self::CurrentFrameChanged),
+            5 => Ok(Self::ActiveThreadChanged),
+            6 => Ok(Self::BreakpointHit),
+            7 => Ok(Self::ExceptionHit),
+            8 => Ok(Self::StepOver),
+            9 => Ok(Self::StepIn),
+            10 => Ok(Self::StepOut),
+            11 => Ok(Self::NonUserBreakpoint),
+            12 => Ok(Self::DebugBreak),
+            _ => Err(DeserializeError::InvalidData),
+        }
+    }
+}
+
 pub enum RemedybgEvent<'a> {
     // A target being debugged has exited.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [exit_code :: uint32_t]
-    ExitProcess { exit_code: u32 },
+    ExitProcess {
+        exit_code: u32,
+    },
+
+    // The source location changed due to an event in the debugger.
+    //
+    // [kind :: rdbg_DebugEventKind (uint16_t)]
+    // [filename :: rdbg_String]
+    // [line_num :: uint32_t]
+    // [reason :: rdbg_SourceLocChangedReason (uint16_t) ]
+    SourceLocationChanged {
+        filename: RemedybgStr<'a>,
+        line_num: u32,
+        reason: RemedybgSourceLocationChangedReason,
+    },
 
     // A user breakpoint was hit
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    BreakpointHit { breakpoint_id: RemedybgId },
+    BreakpointHit {
+        breakpoint_id: RemedybgId,
+    },
 
     // The breakpoint with the given ID has been resolved (has a valid location).
     // This can happen if the breakpoint was set in module that became loaded,
@@ -835,32 +923,42 @@ pub enum RemedybgEvent<'a> {
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    BreakpointResolved { breakpoint_id: RemedybgId },
+    BreakpointResolved {
+        breakpoint_id: RemedybgId,
+    },
 
     // A new user breakpoint was added.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    BreakpointAdded { breakpoint_id: RemedybgId },
+    BreakpointAdded {
+        breakpoint_id: RemedybgId,
+    },
 
     // A user breakpoint was modified.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    BreakpointModified { breakpoint_id: RemedybgId },
+    BreakpointModified {
+        breakpoint_id: RemedybgId,
+    },
 
     // A user breakpoint was removed.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [bp_id :: rdbg_Id]
-    BreakpointRemoved { breakpoint_id: RemedybgId },
+    BreakpointRemoved {
+        breakpoint_id: RemedybgId,
+    },
 
     // An OutputDebugString was received by the debugger. The given string will
     // be UTF-8 encoded.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [str :: rdbg_String]
-    OutputDebugString { string: RemedybgStr<'a> },
+    OutputDebugString {
+        string: RemedybgStr<'a>,
+    },
 }
 impl<'a> RemedybgEvent<'a> {
     pub fn deserialize(deserializer: &mut dyn Deserializer<'a>) -> Result<Self, DeserializeError> {
@@ -869,6 +967,16 @@ impl<'a> RemedybgEvent<'a> {
             100 => {
                 let exit_code = Serialize::deserialize(deserializer)?;
                 Ok(Self::ExitProcess { exit_code })
+            }
+            200 => {
+                let filename = Serialize::deserialize(deserializer)?;
+                let line_num = Serialize::deserialize(deserializer)?;
+                let reason = RemedybgSourceLocationChangedReason::deserialize(deserializer)?;
+                Ok(Self::SourceLocationChanged {
+                    filename,
+                    line_num,
+                    reason,
+                })
             }
             600 => {
                 let breakpoint_id = Serialize::deserialize(deserializer)?;
@@ -902,6 +1010,7 @@ impl<'a> fmt::Display for RemedybgEvent<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::ExitProcess { .. } => f.write_str("exit process"),
+            Self::SourceLocationChanged { .. } => f.write_str("source location changed"),
             Self::BreakpointHit { .. } => f.write_str("breakpoint hit"),
             Self::BreakpointResolved { .. } => f.write_str("breakpoint resolved"),
             Self::BreakpointAdded { .. } => f.write_str("breakpoint added"),
@@ -910,15 +1019,4 @@ impl<'a> fmt::Display for RemedybgEvent<'a> {
             Self::OutputDebugString { .. } => f.write_str("output debug string"),
         }
     }
-}
-
-pub enum PendingCommandAction {
-    None,
-    SyncBreakpoints,
-    GoToLocation(RemedybgId),
-    UpdateBreakpoint(RemedybgId),
-}
-pub struct PendingCommandContext {
-    pub command_kind: RemedybgCommandKind,
-    pub action: PendingCommandAction,
 }
