@@ -615,6 +615,10 @@ impl BufferLine {
     }
 
     pub fn push_text(&mut self, display_len: &mut DisplayLen, text: &str) {
+        let text = match text.strip_suffix('\r') {
+            Some(text) => text,
+            None => text,
+        };
         self.0.push_str(text);
         *display_len = *display_len + DisplayLen::from(text);
     }
@@ -784,7 +788,7 @@ impl BufferContent {
     }
 
     pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
-        if !text.contains(&['\n', '\r'][..]) {
+        if !text.contains(&['\n', '\r']) {
             let line = &mut self.lines[position.line_index as usize];
             let display_len = &mut self.line_display_lens[position.line_index as usize];
 
