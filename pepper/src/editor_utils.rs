@@ -722,7 +722,7 @@ pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Opti
     None
 }
 
-fn split_prefix(path: &str) -> (&str, &str) {
+fn split_path_prefix(path: &str) -> (&str, &str) {
     let mut chars = path.chars();
     loop {
         match chars.next() {
@@ -746,8 +746,8 @@ fn split_prefix(path: &str) -> (&str, &str) {
 
 pub fn parse_path_and_ranges(text: &str) -> (&str, BufferRangesParser) {
     let text = text.trim();
-    let (prefix, rest) = split_prefix(text);
-    let (i, ranges) = match rest.find(':') {
+    let (prefix, rest) = split_path_prefix(text);
+    let (i, ranges) = match rest.find(&[':', '(']) {
         Some(i) => (i, BufferRangesParser(&rest[i + 1..])),
         None => (rest.len(), BufferRangesParser("")),
     };
@@ -763,7 +763,7 @@ pub fn find_path_and_ranges_at(text: &str, index: usize) -> (&str, BufferRangesP
         None => 0,
     };
     let to = match right.find(|c: char| {
-        c.is_ascii_whitespace() || matches!(c, '(' | ')' | '[' | ']' | '{' | '}' | '"' | '\'')
+        c.is_ascii_whitespace() || matches!(c, ')' | '[' | ']' | '{' | '}' | '"' | '\'')
     }) {
         Some(i) => {
             if index + i - from == 1 {
@@ -775,8 +775,8 @@ pub fn find_path_and_ranges_at(text: &str, index: usize) -> (&str, BufferRangesP
         None => text.len(),
     };
     let path = &text[from..to];
-    let (prefix, rest) = split_prefix(path);
-    match rest.find(':') {
+    let (prefix, rest) = split_path_prefix(path);
+    match rest.find(&[':', '(']) {
         Some(i) => {
             let i = prefix.len() + i;
             (&path[..i], BufferRangesParser(&path[i + 1..]))
@@ -900,6 +900,15 @@ mod tests {
         assert_eq!(None, find_delimiter_pair_at(text, 11, '|'));
     }
 
+    fn r(
+        from: (BufferPositionIndex, BufferPositionIndex),
+        to: (BufferPositionIndex, BufferPositionIndex),
+    ) -> (BufferPosition, BufferPosition) {
+        let from = BufferPosition::line_col(from.0, from.1);
+        let to = BufferPosition::line_col(to.0, to.1);
+        (from, to)
+    }
+
     #[test]
     fn test_parse_path() {
         fn parse(text: &str) -> &str {
@@ -921,6 +930,16 @@ mod tests {
             "abcd:/dir/path.ex.ext",
             parse("abcd:/dir/path.ex.ext:23:45:67")
         );
+
+        let (path, mut ranges) = parse_path_and_ranges("c:/dir/path.ext(23)");
+        assert_eq!("c:/dir/path.ext", path);
+        assert_eq!(Some(r((22, 0), (22, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
+
+        let (path, mut ranges) = parse_path_and_ranges("c:/dir/path.ext(23");
+        assert_eq!("c:/dir/path.ext", path);
+        assert_eq!(Some(r((22, 0), (22, 0))), ranges.next());
+        assert_eq!(None, ranges.next());
     }
 
     #[test]
@@ -937,75 +956,66 @@ mod tests {
         }
 
         let text = "file.ext:12";
-        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 0),);
-        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 3),);
-        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 4),);
-        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 5),);
-        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 8),);
+        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 0));
+        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 3));
+        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 4));
+        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 5));
+        assert_eq!(("file.ext", Some((11, 0))), find_at(text, 8));
 
         let text = "/path/file:45";
-        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 0),);
-        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 1),);
-        assert_eq!(("/path/file", Some((44, 0))), find_at(text, text.len()),);
-        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 3),);
-        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 8),);
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 0));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 1));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, text.len()));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 3));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 8));
 
         let text = "xx /path/file:";
         assert_eq!(("xx", None), find_at(text, 0));
         assert_eq!(("xx", None), find_at(text, 1));
         assert_eq!(("xx", None), find_at(text, 2));
         assert_eq!(("/path/file", None), find_at(text, 3));
-        assert_eq!(("/path/file", None), find_at(text, text.len() - 1),);
-        assert_eq!(("/path/file", None), find_at(text, text.len()),);
+        assert_eq!(("/path/file", None), find_at(text, text.len() - 1));
+        assert_eq!(("/path/file", None), find_at(text, text.len()));
 
         let text = "xx /path/file:3xx";
-        assert_eq!(("/path/file", Some((2, 0))), find_at(text, 3),);
-        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 5),);
-        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 4),);
-        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 3),);
-        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 2),);
-        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 1),);
-        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len()),);
+        assert_eq!(("/path/file", Some((2, 0))), find_at(text, 3));
+        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 5));
+        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 4));
+        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 3));
+        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 2));
+        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len() - 1));
+        assert_eq!(("/path/file", Some((2, 0))), find_at(text, text.len()));
 
         let text = "c:/absolute/path/file";
         assert_eq!((text, None), find_at(text, 0));
         assert_eq!((text, None), find_at(text, 1));
         assert_eq!((text, None), find_at(text, 2));
-        assert_eq!((text, None), find_at(text, text.len() - 1),);
-        assert_eq!((text, None), find_at(text, text.len() - 2),);
+        assert_eq!((text, None), find_at(text, text.len() - 1));
+        assert_eq!((text, None), find_at(text, text.len() - 2));
 
         let text = "c:/absolute/path/file:4";
         let path = "c:/absolute/path/file";
-        assert_eq!((path, Some((3, 0))), find_at(text, 0),);
-        assert_eq!((path, Some((3, 0))), find_at(text, 1),);
-        assert_eq!((path, Some((3, 0))), find_at(text, 2),);
-        assert_eq!((path, Some((3, 0))), find_at(text, 3),);
+        assert_eq!((path, Some((3, 0))), find_at(text, 0));
+        assert_eq!((path, Some((3, 0))), find_at(text, 1));
+        assert_eq!((path, Some((3, 0))), find_at(text, 2));
+        assert_eq!((path, Some((3, 0))), find_at(text, 3));
 
         let text = "xx c:/absolute/path/file:4:5xx";
         let path = "c:/absolute/path/file";
-        assert_eq!((path, Some((3, 4))), find_at(text, 3),);
-        assert_eq!((path, Some((3, 4))), find_at(text, 4),);
-        assert_eq!((path, Some((3, 4))), find_at(text, 5),);
-        assert_eq!((path, Some((3, 4))), find_at(text, 24),);
-        assert_eq!((path, Some((3, 4))), find_at(text, 25),);
-        assert_eq!((path, Some((3, 4))), find_at(text, 26),);
-        assert_eq!((path, Some((3, 4))), find_at(text, 27),);
+        assert_eq!((path, Some((3, 4))), find_at(text, 3));
+        assert_eq!((path, Some((3, 4))), find_at(text, 4));
+        assert_eq!((path, Some((3, 4))), find_at(text, 5));
+        assert_eq!((path, Some((3, 4))), find_at(text, 24));
+        assert_eq!((path, Some((3, 4))), find_at(text, 25));
+        assert_eq!((path, Some((3, 4))), find_at(text, 26));
+        assert_eq!((path, Some((3, 4))), find_at(text, 27));
 
         let text = "c:/absolute/path/file:4:xxx";
         let path = "c:/absolute/path/file";
-        assert_eq!((path, Some((3, 0))), find_at(text, 0),);
-        assert_eq!((path, Some((3, 0))), find_at(text, 1),);
-        assert_eq!((path, Some((3, 0))), find_at(text, 2),);
-        assert_eq!((path, Some((3, 0))), find_at(text, 3),);
-
-        fn r(
-            from: (BufferPositionIndex, BufferPositionIndex),
-            to: (BufferPositionIndex, BufferPositionIndex),
-        ) -> (BufferPosition, BufferPosition) {
-            let from = BufferPosition::line_col(from.0, from.1);
-            let to = BufferPosition::line_col(to.0, to.1);
-            (from, to)
-        }
+        assert_eq!((path, Some((3, 0))), find_at(text, 0));
+        assert_eq!((path, Some((3, 0))), find_at(text, 1));
+        assert_eq!((path, Some((3, 0))), find_at(text, 2));
+        assert_eq!((path, Some((3, 0))), find_at(text, 3));
 
         let text = "c:/absolute/path/file:4:xxx";
         let (_, mut ranges) = find_path_and_ranges_at(text, 0);
@@ -1017,5 +1027,26 @@ mod tests {
         assert_eq!(Some(r((3, 0), (4, 0))), ranges.next());
         assert_eq!(Some(r((5, 0), (6, 0))), ranges.next());
         assert_eq!(None, ranges.next());
+
+        let text = "/path/file(45)";
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 0));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 1));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, text.find('(').unwrap()));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 3));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 8));
+
+        let text = "(/path/file:45)";
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 1));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 2));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, text.find(')').unwrap()));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 3));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 8));
+
+        let text = "(/path/file(45)";
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 1));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 2));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, text[1..].find('(').unwrap()));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 3));
+        assert_eq!(("/path/file", Some((44, 0))), find_at(text, 8));
     }
 }
