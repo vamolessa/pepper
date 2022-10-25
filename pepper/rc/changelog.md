@@ -4,6 +4,7 @@
 - changed `plugin-remedybg` to add support for new version `0.3.8.4` which enables several plugin code simplifications
 - fixed buffer insert processes would sometimes insert lines ending with a sigle `\r` which would screw some buffer invariants
 - added support for msvc style path + line parsing
+- added `<` and `>` as path delimiters when using `gf`
 
 # 0.30.0
 - added `insert-text` command
