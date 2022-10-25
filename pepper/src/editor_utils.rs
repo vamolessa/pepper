@@ -1031,21 +1031,30 @@ mod tests {
         let text = "/path/file(45)";
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 0));
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 1));
-        assert_eq!(("/path/file", Some((44, 0))), find_at(text, text.find('(').unwrap()));
+        assert_eq!(
+            ("/path/file", Some((44, 0))),
+            find_at(text, text.find('(').unwrap())
+        );
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 3));
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 8));
 
         let text = "(/path/file:45)";
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 1));
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 2));
-        assert_eq!(("/path/file", Some((44, 0))), find_at(text, text.find(')').unwrap()));
+        assert_eq!(
+            ("/path/file", Some((44, 0))),
+            find_at(text, text.find(')').unwrap())
+        );
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 3));
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 8));
 
         let text = "(/path/file(45)";
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 1));
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 2));
-        assert_eq!(("/path/file", Some((44, 0))), find_at(text, text[1..].find('(').unwrap()));
+        assert_eq!(
+            ("/path/file", Some((44, 0))),
+            find_at(text, text[1..].find('(').unwrap())
+        );
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 3));
         assert_eq!(("/path/file", Some((44, 0))), find_at(text, 8));
     }
