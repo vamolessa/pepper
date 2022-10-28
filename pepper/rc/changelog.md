@@ -2,9 +2,10 @@
 
 # 0.31.0 (preview)
 - changed `plugin-remedybg` to add support for new version `0.3.8.4` which enables several plugin code simplifications
-- fixed buffer insert processes would sometimes insert lines ending with a sigle `\r` which would screw some buffer invariants
+- fix buffer insert processes would sometimes insert lines ending with a sigle `\r` which would screw some buffer invariants
 - added support for msvc style path + line parsing
 - added `<` and `>` as path delimiters when using `gf`
+- fix "flickering" on unix caused by a forgotten `eprintln` in its platform layer
 
 # 0.30.0
 - added `insert-text` command
@@ -16,7 +17,7 @@
 - added `toggle-comment` which will toggle a prefix comment for each line reached by a cursor
 - added a simple indentation fixer on the `=` binding while in normal mode
 - added batch file syntax
-- fixed string syntax for some languages (lua, js, html, css, py)
+- fix string syntax for some languages (lua, js, html, css, py)
 - added ruby syntax
 - fix crash when opening and editing the middle of a buffer in a single action (in a macro or through lsp for example)
 - fix `` [aA]` `` was missing
@@ -49,9 +50,9 @@
 - added `breakpoint-list` command that lists all lints in a buffer
 - fix breakpoint was not rendering if it was on the first line of the view
 - added proper error flow handling in some builtin commands that either tried to open a file or parse process command
-- fixed undo on a buffer with `history-disabled` would move the cursor to the top
-- fixed would not open a buffer with `saving-disabled` and invalid chars in its path
-- fixed `gf` would not open file when it's relative to the root and the current buffer's path parent exists
+- fix undo on a buffer with `history-disabled` would move the cursor to the top
+- fix would not open a buffer with `saving-disabled` and invalid chars in its path
+- fix `gf` would not open file when it's relative to the root and the current buffer's path parent exists
 - added support for parsing multiple cursors when using (`m_`, `gf`, etc)
 - added main cursor range display in status bar when its anchor is different from its position
 - added `@cursor-anchor()` and `@cursor-position()` expansions which expand with the format `line,col`
