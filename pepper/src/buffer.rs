@@ -26,6 +26,7 @@ use crate::{
 };
 
 // TODO: parse unicode database and implement this
+// reference algorithm: https://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c
 pub fn char_display_len(_: char) -> u8 {
     1
 }
