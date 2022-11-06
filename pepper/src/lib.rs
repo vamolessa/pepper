@@ -69,7 +69,7 @@ fn print_help() {
     println!("usage: pepper [<options...>] [<files...>]");
     println!();
     println!("  files: file paths to open as a buffer (clients only)");
-    println!("         you can append ':<line>[,<column>]' to open it at that position");
+    println!("         you can append ':<line>[:<column>]' to open it at that position");
     println!();
     println!("options:");
     println!();

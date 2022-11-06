@@ -6,6 +6,8 @@
 - added support for msvc style path + line parsing
 - added `<` and `>` as path delimiters when using `gf`
 - fix "flickering" on unix caused by a forgotten `eprintln` in its platform layer
+- fix old buffer position and cursor formatting in help texts
+- fix `open` now errors when trying to open a buffer with an empty path
 
 # 0.30.0
 - added `insert-text` command

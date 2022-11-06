@@ -166,6 +166,9 @@ pub fn register_commands(commands: &mut CommandManager) {
             }
             path = arg;
         }
+        if path.is_empty() {
+            return Err(CommandError::InvalidBufferPath);
+        }
 
         let client_handle = io.client_handle()?;
         let (path, ranges) = parse_path_and_ranges(path);
@@ -1038,8 +1041,8 @@ pub fn register_commands(commands: &mut CommandManager) {
                 .logger
                 .write(LogKind::Diagnostic)
                 .fmt(format_args!(
-                    "replace-with-output '{}' {:?} {}:{}",
-                    command_text, &path, cursor.anchor, cursor.position
+                    "replace-with-output '{}' {:?} {}",
+                    command_text, &path, cursor,
                 ));
         }
 
@@ -1101,3 +1104,4 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 }
+
