@@ -2031,6 +2031,7 @@ impl BufferCollection {
             let insert_range = buffer.insert_text(word_database, position, text, &mut events);
             position = position.insert(insert_range);
         }
+        buffer.commit_edits();
     }
 
     pub(crate) fn on_process_exit(

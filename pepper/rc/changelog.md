@@ -8,6 +8,7 @@
 - fix "flickering" on unix caused by a forgotten `eprintln` in its platform layer
 - fix old buffer position and cursor formatting in help texts
 - fix `open` now errors when trying to open a buffer with an empty path
+- fix possible crash when trying to undo/redo after a `replace-with-output`
 
 # 0.30.0
 - added `insert-text` command
