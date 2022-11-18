@@ -411,7 +411,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         let pattern = match pattern {
             Some(pattern) => pattern,
-            None => match ctx.editor.syntaxes.set_current_from_glob(arg) {
+            None => match ctx.editor.syntaxes.add_from_glob(arg) {
                 Ok(()) => return Ok(()),
                 Err(error) => return Err(CommandError::InvalidGlob(error)),
             },
@@ -431,7 +431,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         match ctx
             .editor
             .syntaxes
-            .get_current()
+            .get_last()
             .set_rule(token_kind, pattern)
         {
             Ok(()) => Ok(()),

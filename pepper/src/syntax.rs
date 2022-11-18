@@ -3,7 +3,6 @@ use std::str::FromStr;
 use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPosition, BufferPositionIndex, BufferRange},
-    editor_utils::hash_bytes,
     glob::{Glob, InvalidGlobError},
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
@@ -75,7 +74,6 @@ impl Default for LineParseState {
 }
 
 pub struct Syntax {
-    glob_hash: u64,
     glob: Glob,
     rules: [Pattern; 7],
 }
@@ -85,7 +83,6 @@ impl Syntax {
         let mut text_pattern = Pattern::new();
         let _ = text_pattern.compile("%a{%w_}|_{%w_}");
         Self {
-            glob_hash: 0,
             glob: Glob::default(),
             rules: [
                 Pattern::new(),
@@ -99,14 +96,7 @@ impl Syntax {
         }
     }
 
-    fn clear_rules(&mut self) {
-        for r in &mut self.rules {
-            r.clear();
-        }
-    }
-
-    fn set_glob(&mut self, glob: &str, glob_hash: u64) -> Result<(), InvalidGlobError> {
-        self.glob_hash = glob_hash;
+    fn set_glob(&mut self, glob: &str) -> Result<(), InvalidGlobError> {
         self.glob.compile(glob)
     }
 
@@ -225,21 +215,17 @@ pub struct SyntaxHandle(u32);
 
 pub struct SyntaxCollection {
     syntaxes: Vec<Syntax>,
-    current_syntax_index: u32,
 }
 
 impl SyntaxCollection {
     pub fn new() -> Self {
         Self {
             syntaxes: vec![Syntax::new()],
-            current_syntax_index: 0,
         }
     }
 
     pub fn find_handle_by_path(&self, path: &str) -> Option<SyntaxHandle> {
-        let mut iter = self.syntaxes.iter().enumerate();
-        iter.next();
-        for (i, syntax) in iter {
+        for (i, syntax) in self.syntaxes.iter().enumerate().rev() {
             if syntax.glob.matches(path) {
                 return Some(SyntaxHandle(i as _));
             }
@@ -248,25 +234,15 @@ impl SyntaxCollection {
         None
     }
 
-    pub fn set_current_from_glob(&mut self, glob: &str) -> Result<(), InvalidGlobError> {
-        let glob_hash = hash_bytes(glob.as_bytes());
-        for (i, s) in self.syntaxes.iter_mut().enumerate() {
-            if s.glob_hash == glob_hash {
-                s.clear_rules();
-                self.current_syntax_index = i as _;
-                return Ok(());
-            }
-        }
-
-        self.current_syntax_index = self.syntaxes.len() as _;
+    pub(crate) fn add_from_glob(&mut self, glob: &str) -> Result<(), InvalidGlobError> {
         let mut syntax = Syntax::new();
-        syntax.set_glob(glob, glob_hash)?;
+        syntax.set_glob(glob)?;
         self.syntaxes.push(syntax);
         Ok(())
     }
 
-    pub fn get_current(&mut self) -> &mut Syntax {
-        &mut self.syntaxes[self.current_syntax_index as usize]
+    pub(crate) fn get_last(&mut self) -> &mut Syntax {
+        self.syntaxes.last_mut().unwrap()
     }
 
     pub fn get(&self, handle: SyntaxHandle) -> &Syntax {
