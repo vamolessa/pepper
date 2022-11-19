@@ -754,9 +754,11 @@ impl BufferContent {
     }
 
     pub fn write(&self, write: &mut dyn io::Write) -> io::Result<()> {
-        for line in &self.lines {
+        let end_index = self.lines.len() - 1;
+        for line in &self.lines[..end_index] {
             write!(write, "{}\n", line.as_str())?;
         }
+        write!(write, "{}", self.lines[end_index].as_str())?;
         Ok(())
     }
 
