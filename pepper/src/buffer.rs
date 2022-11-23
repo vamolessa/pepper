@@ -701,15 +701,24 @@ impl BufferContent {
         }
         self.line_display_lens.clear();
 
+        let mut push_empty = true;
         loop {
             let mut line = self.line_pool.acquire();
             match read.read_line(&mut line.0) {
                 Ok(0) => {
-                    self.line_pool.release(line);
+                    if push_empty {
+                        self.lines.push(line);
+                        self.line_display_lens.push(DisplayLen::zero());
+                    } else {
+                        self.line_pool.release(line);
+                    }
                     break;
                 }
                 Ok(_) => {
+                    push_empty = false;
+
                     if line.0.ends_with('\n') {
+                        push_empty = true;
                         line.0.pop();
                     }
                     if line.0.ends_with('\r') {
@@ -732,11 +741,6 @@ impl BufferContent {
             }
         }
 
-        if self.lines.is_empty() {
-            self.lines.push(self.line_pool.acquire());
-            self.line_display_lens.push(DisplayLen::zero());
-        }
-
         let byte_order_mark = b"\xef\xbb\xbf";
         if self.lines[0]
             .as_str()
@@ -750,9 +754,11 @@ impl BufferContent {
     }
 
     pub fn write(&self, write: &mut dyn io::Write) -> io::Result<()> {
-        for line in &self.lines {
+        let end_index = self.lines.len() - 1;
+        for line in &self.lines[..end_index] {
             write!(write, "{}\n", line.as_str())?;
         }
+        write!(write, "{}", self.lines[end_index].as_str())?;
         Ok(())
     }
 
