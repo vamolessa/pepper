@@ -439,7 +439,7 @@ pub fn register_commands(commands: &mut CommandManager) {
         }
     });
 
-    r("list-buffer", &[], |ctx, io| {
+    r("list-buffers", &[], |ctx, io| {
         io.args.assert_empty()?;
         let client_handle = io.client_handle()?;
 

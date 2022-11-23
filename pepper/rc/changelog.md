@@ -10,6 +10,7 @@
 - fix `open` now errors when trying to open a buffer with an empty path
 - fix possible crash when trying to undo/redo after a `replace-with-output`
 - changed syntax collection is now append only and when matching it against a path, the most recent ones are tried first
+- changed `list-buffer` command name to `list-buffers`
 
 # 0.30.0
 - added `insert-text` command

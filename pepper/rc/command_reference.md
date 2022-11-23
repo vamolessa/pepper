@@ -153,7 +153,7 @@ or sets the pattern for tokens of kind `<token-kind>` for the previously defined
 
 Read more about [language syntax definitions](language_syntax_definitions.md).
 
-## `list-buffer`
+## `list-buffers`
 Lists all buffers together with their properties in a `buffers.refs` buffer.
 - usage: `list-buffers`
 
