@@ -1,6 +1,6 @@
 syntax "**/*.refs"
 syntax keywords "^{%a}:[/\\]{%w/\\%._-!:}|^{%w/\\%._-!:}"
-syntax symbols ":,-"
+syntax symbols ":|,|-"
 syntax literals "%d{%d}"
 
 syntax "**/*.pepper"
