@@ -12,6 +12,7 @@
 - changed syntax collection is now append only and when matching it against a path, the most recent ones are tried first
 - changed `list-buffer` command name to `list-buffers`
 - changed `**/*.refs` syntax by simplifying it a little
+- removed `:` suffix when listing currently opened buffers
 
 # 0.30.0
 - added `insert-text` command
