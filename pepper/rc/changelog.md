@@ -13,6 +13,7 @@
 - changed `list-buffer` command name to `list-buffers`
 - changed `**/*.refs` syntax by simplifying it a little
 - removed `:` suffix when listing currently opened buffers
+- added syntax for `.sh` shell files
 
 # 0.30.0
 - added `insert-text` command

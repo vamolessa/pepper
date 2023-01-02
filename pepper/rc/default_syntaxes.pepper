@@ -113,6 +113,15 @@ syntax strings {'{(\\)(\')!'.}|"{(\\)(\")!".}}
 syntax comments "<%!--{!(-->).$}"
 syntax texts "{%w_-}"
 
+syntax "**/*.sh"
+syntax keywords "done|do|echo|elif|else|exit|for|fi|function|if|return|then"
+syntax types "%$%w{%w_}|%$%{{!%}.}"
+syntax symbols "%(|%)|%[|%]|%{|%}|<|>|=|~|*|&|%!|%||@|;"
+syntax literals "-%w{%w_-}|/%w{%w_-}|%d{%w}"
+syntax strings {'{(\\)(\')!'.}|"{(\\)(\")!".}}
+syntax comments "#{.}"
+syntax texts "{%w_-%.}"
+
 syntax "**/*.{bat,cmd}"
 syntax keywords "call|defined|do|echo%.|echo|else|exit|for|goto|if|not|setlocal|set"
 syntax types "%%%u{!%%%u%d_}|%%%u{!:%u%d_}{!%%.}"
