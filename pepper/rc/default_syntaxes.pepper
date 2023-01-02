@@ -116,7 +116,7 @@ syntax texts "{%w_-}"
 syntax "**/*.sh"
 syntax keywords "done|do|echo|elif|else|exit|for|fi|function|if|return|then"
 syntax types "%$%w{%w_}|%$%{{!%}.}"
-syntax symbols "%(|%)|%[|%]|%{|%}|<|>|=|~|*|&|%!|%||@|;"
+syntax symbols "%(|%)|%[|%]|%{|%}|<|>|=|~|*|&|%!|%||@|;|%$"
 syntax literals "-%w{%w_-}|/%w{%w_-}|%d{%w}"
 syntax strings {'{(\\)(\')!'.}|"{(\\)(\")!".}}
 syntax comments "#{.}"
