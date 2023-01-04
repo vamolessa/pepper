@@ -206,7 +206,7 @@ pub fn register_expansions(commands: &mut CommandManager) {
 
     r("output", |_, io| {
         let mut command =
-            parse_process_command(io.args).ok_or(ExpansionError::InvalidRegisterKey)?;
+            parse_process_command(io.args).ok_or(ExpansionError::InvalidProcessCommand)?;
         command.stdin(Stdio::null());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::null());
