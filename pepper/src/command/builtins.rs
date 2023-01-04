@@ -428,12 +428,7 @@ pub fn register_commands(commands: &mut CommandManager) {
             _ => return Err(CommandError::InvalidTokenKind),
         };
 
-        match ctx
-            .editor
-            .syntaxes
-            .get_last()
-            .set_rule(token_kind, pattern)
-        {
+        match ctx.editor.syntaxes.get_last().set_rule(token_kind, pattern) {
             Ok(()) => Ok(()),
             Err(error) => Err(CommandError::PatternError(error)),
         }
@@ -1064,6 +1059,12 @@ pub fn register_commands(commands: &mut CommandManager) {
     r("eval", &[], |ctx, io| {
         let continuation = io.args.next()?;
         io.args.assert_empty()?;
+
+        ctx.editor
+            .logger
+            .write(LogKind::Diagnostic)
+            .fmt(format_args!("eval:\n{}\n", continuation));
+
         match CommandManager::eval(ctx, io.client_handle, "eval", continuation) {
             Ok(flow) => {
                 io.flow = flow;

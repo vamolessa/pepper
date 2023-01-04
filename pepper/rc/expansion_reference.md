@@ -89,11 +89,6 @@ Note that there are some registers that contain internal state:
 
 - usage: `@register(<key>)`
 
-## `env`
-The environment variable of name `<name>`.
-If there is no such environment variable, it results in an empty expansion.
-- usage: `@env(<name>)`
-
 ## `session-name`
 The editor session name.
 Either the value passed to the `--session` flag when invoking the editor, or a hash of the current directory when invoked.
@@ -115,3 +110,13 @@ Can evaluate to one of:
 ## `pid`
 The process id of the server.
 - usage: `@pid()`
+
+## `env`
+The environment variable of name `<name>`.
+If there is no such environment variable, it results in an empty expansion.
+- usage: `@env(<name>)`
+
+## `output`
+The stdout of external `<command>` (spawned with stdin closed).
+Will result in an emtpy expansion if the command fails.
+- usage: `@output(<command>)`

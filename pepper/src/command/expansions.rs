@@ -1,9 +1,9 @@
-use std::{env, fmt};
+use std::{env, fmt, process::Stdio};
 
 use crate::{
     buffer::BufferHandle,
     command::{CommandManager, ExpansionError},
-    editor_utils::{to_absolute_path_string, RegisterKey},
+    editor_utils::{parse_process_command, to_absolute_path_string, RegisterKey},
 };
 
 pub fn register_expansions(commands: &mut CommandManager) {
@@ -153,13 +153,6 @@ pub fn register_expansions(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("env", |_, io| {
-        if let Ok(env_var) = env::var(io.args) {
-            io.output.push_str(&env_var);
-        }
-        Ok(())
-    });
-
     r("session-name", |ctx, io| {
         io.assert_empty_args()?;
         io.output.push_str(&ctx.editor.session_name);
@@ -201,6 +194,27 @@ pub fn register_expansions(commands: &mut CommandManager) {
     r("pid", |_, io| {
         io.assert_empty_args()?;
         let _ = write!(io.output, "{}", std::process::id());
+        Ok(())
+    });
+
+    r("env", |_, io| {
+        if let Ok(env_var) = env::var(io.args) {
+            io.output.push_str(&env_var);
+        }
+        Ok(())
+    });
+
+    r("output", |_, io| {
+        let mut command =
+            parse_process_command(io.args).ok_or(ExpansionError::InvalidRegisterKey)?;
+        command.stdin(Stdio::null());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::null());
+        if let Ok(output) = command.output() {
+            if let Ok(output) = String::from_utf8(output.stdout) {
+                io.output.push_str(&output);
+            }
+        }
         Ok(())
     });
 }

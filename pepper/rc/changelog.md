@@ -14,6 +14,7 @@
 - changed `**/*.refs` syntax by simplifying it a little
 - removed `:` suffix when listing currently opened buffers
 - added syntax for `.sh` shell files
+- added `@output()` expansion which expands into an external command stdout
 
 # 0.30.0
 - added `insert-text` command

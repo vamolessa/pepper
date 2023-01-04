@@ -96,6 +96,7 @@ pub enum ExpansionError {
     InvalidBufferId,
     InvalidCursorIndex,
     InvalidRegisterKey,
+    InvalidProcessCommand,
     OtherStatic(&'static str),
     OtherOwned(String),
 }
@@ -109,6 +110,7 @@ impl fmt::Display for ExpansionError {
             Self::InvalidBufferId => f.write_str("invalid buffer id"),
             Self::InvalidCursorIndex => f.write_str("invalid cursor index"),
             Self::InvalidRegisterKey => f.write_str("invalid register key"),
+            Self::InvalidProcessCommand => f.write_str("invalid process command"),
             Self::OtherStatic(error) => f.write_str(error),
             Self::OtherOwned(error) => f.write_str(&error),
         }
