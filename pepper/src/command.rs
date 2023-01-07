@@ -729,12 +729,14 @@ impl CommandManager {
         bang: bool,
     ) -> Result<EditorFlow, CommandError> {
         for command in CommandIter(source) {
+            let mut aux = ctx.editor.string_pool.acquire();
             let mut expanded = ctx.editor.string_pool.acquire();
             let result =
-                match expand_variables(ctx, client_handle, args, bang, command, &mut expanded) {
+                match expand_variables(ctx, client_handle, args, bang, command, &mut aux, &mut expanded) {
                     Ok(()) => Self::eval_single(ctx, client_handle, &expanded),
                     Err(error) => Err(CommandError::ExpansionError(error)),
                 };
+            ctx.editor.string_pool.release(aux);
             ctx.editor.string_pool.release(expanded);
 
             match result {
@@ -810,6 +812,7 @@ fn expand_variables<'a>(
     args: &str,
     bang: bool,
     text: &str,
+    aux: &mut String,
     output: &mut String,
 ) -> Result<(), ExpansionError> {
     fn write_variable_expansion(
@@ -916,6 +919,8 @@ fn expand_variables<'a>(
         }
     }
 
+    let aux_prev_len = aux.len();
+
     'tokens: for token in CommandTokenizer(text) {
         if !token.can_expand_variables {
             write_escaped(token.slice, token.has_escaping, output);
@@ -983,6 +988,7 @@ fn expand_variables<'a>(
         output.push('\0');
     }
 
+    aux.truncate(aux_prev_len);
     Ok(())
 }
 
@@ -1317,27 +1323,32 @@ mod tests {
             .set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
 
         fn assert_expansion(expected_expanded: &str, ctx: &EditorContext, text: &str) {
+            let mut aux = String::new();
             let mut expanded = String::new();
             let result =
-                expand_variables(ctx, Some(ClientHandle(0)), "", false, text, &mut expanded);
+                expand_variables(ctx, Some(ClientHandle(0)), "", false, text, &mut aux, &mut expanded);
             if let Err(error) = result {
                 panic!("expansion error: {}", error);
             }
             assert_eq!(expected_expanded, &expanded);
         }
 
+        let mut aux = String::new();
         let mut expanded = String::new();
-        let r = expand_variables(&ctx, Some(ClientHandle(0)), "", false, "  ", &mut expanded);
+
+        expanded.clear();
+        let r = expand_variables(&ctx, Some(ClientHandle(0)), "", false, "  ", &mut aux, &mut expanded);
         assert!(r.is_ok());
         assert_eq!("", &expanded);
 
-        let mut expanded = String::new();
+        expanded.clear();
         let r = expand_variables(
             &ctx,
             Some(ClientHandle(0)),
             "",
             false,
             "two args",
+            &mut aux,
             &mut expanded,
         );
         assert!(r.is_ok());
@@ -1357,7 +1368,6 @@ mod tests {
             "{@register(s) @register(l)}",
         );
 
-        let mut expanded = String::new();
         expanded.clear();
         let r = expand_variables(
             &ctx,
@@ -1365,6 +1375,7 @@ mod tests {
             "",
             false,
             "@register()",
+            &mut aux,
             &mut expanded,
         );
         assert!(matches!(r, Err(ExpansionError::InvalidRegisterKey)));
@@ -1375,6 +1386,7 @@ mod tests {
             "",
             false,
             "@register(xx)",
+            &mut aux,
             &mut expanded,
         );
         assert!(matches!(r, Err(ExpansionError::InvalidRegisterKey)));
@@ -1397,8 +1409,6 @@ mod tests {
         assert_expansion("\\}\0", &ctx, "{\\}}");
         assert_expansion("\\\0", &ctx, "'\\\\'");
 
-        let mut expanded = String::new();
-
         expanded.clear();
         let r = expand_variables(
             &ctx,
@@ -1406,6 +1416,7 @@ mod tests {
             "arg0\0arg1\0arg2\0",
             false,
             "@arg(*)",
+            &mut aux,
             &mut expanded,
         );
         assert!(r.is_ok());
@@ -1418,6 +1429,7 @@ mod tests {
             "",
             false,
             "@arg(*)",
+            &mut aux,
             &mut expanded,
         );
         assert!(r.is_ok());
@@ -1430,6 +1442,7 @@ mod tests {
             "arg0\0arg1\0arg2\0",
             false,
             "@arg(0)",
+            &mut aux,
             &mut expanded,
         );
         assert!(r.is_ok());
@@ -1442,6 +1455,7 @@ mod tests {
             "arg0\0arg1\0arg2\0",
             false,
             "@arg(1)",
+            &mut aux,
             &mut expanded,
         );
         assert!(r.is_ok());
@@ -1454,6 +1468,7 @@ mod tests {
             "arg0\0arg1\0arg2\0",
             false,
             "@arg(2)",
+            &mut aux,
             &mut expanded,
         );
         assert!(r.is_ok());
@@ -1466,6 +1481,7 @@ mod tests {
             "arg0\0arg1\0arg2\0",
             false,
             "@arg(3)",
+            &mut aux,
             &mut expanded,
         );
         assert!(r.is_ok());
