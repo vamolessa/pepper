@@ -49,6 +49,11 @@ If there is no such buffer, it results in an empty expansion.
 Lines are always separated by `\n`.
 - usage: `@buffer-content()` `@buffer-content(<id>)`
 
+## `command-source`
+The evaluated source of command `<command-name>`.
+Will only work for macro commands and not for builtins.
+- usage: `@command-source(<command-name>)`
+
 ## `cursor-anchor-column`
 The column byte number (one-based) of the anchor of the current cursor or of the cursor of index `<index>`.
 If there is no such cursor, it results in an empty expansion.

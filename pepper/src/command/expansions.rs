@@ -88,6 +88,15 @@ pub fn register_expansions(commands: &mut CommandManager) {
         Ok(())
     });
 
+    r("command-source", |ctx, io| {
+        let command_name = io.args.next()?;
+        io.args.assert_empty()?;
+
+        let source = ctx.editor.commands.macros.find(command_name).ok_or(ExpansionError::NoSuchCommand)?;
+        io.output.push_str(source);
+        Ok(())
+    });
+
     r("cursor-anchor", |ctx, io| {
         let cursor = io.args.try_next().unwrap_or("");
         io.args.assert_empty()?;
