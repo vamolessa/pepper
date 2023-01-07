@@ -289,11 +289,11 @@ fn get_absolue_file_path(
 ) -> Result<(), CommandError> {
     let current_directory = match current_directory.to_str() {
         Some(path) => path,
-        None => return Err(CommandError::OtherStatic("current directory is not utf-8")),
+        None => return Err(CommandError::OtherStatic("current directory is not valid utf-8")),
     };
     let buffer_path = match buffer_path.to_str() {
         Some(path) => path,
-        None => return Err(CommandError::OtherStatic("buffer path is not utf-8")),
+        None => return Err(CommandError::OtherStatic("buffer path is not valid utf-8")),
     };
 
     to_absolute_path_string(current_directory, buffer_path, file_path);

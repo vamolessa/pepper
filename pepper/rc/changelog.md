@@ -16,6 +16,7 @@
 - added syntax for `.sh` shell files
 - added `@output()` expansion which expands into an external command stdout
 - added support for recursive variable expansions (that is, it's possible to have a `@var(...)` inside a `@var(...)`)
+- changed parsing of expansion arguments to be more robust like command parsing
 
 # 0.30.0
 - added `insert-text` command

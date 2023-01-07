@@ -23,8 +23,7 @@ pub enum CommandError {
     InvalidMacroName,
     ExpansionError(ExpansionError),
     NoSuchCommand,
-    TooManyArguments,
-    TooFewArguments,
+    CommandArgsError(CommandArgsError),
     NoTargetClient,
     InvalidLogKind,
     EditorNotLogging,
@@ -57,8 +56,7 @@ impl fmt::Display for CommandError {
             Self::InvalidMacroName => f.write_str("invalid command name"),
             Self::ExpansionError(error) => write!(f, "expansion error: {}", error),
             Self::NoSuchCommand => f.write_str("no such command"),
-            Self::TooManyArguments => f.write_str("too many arguments"),
-            Self::TooFewArguments => f.write_str("too few arguments"),
+            Self::CommandArgsError(error) => write!(f, "args error: {}", error),
             Self::NoTargetClient => f.write_str("no target client"),
             Self::InvalidLogKind => f.write_str("invalid log kind"),
             Self::EditorNotLogging => f.write_str("editor is not logging"),
@@ -87,16 +85,20 @@ impl fmt::Display for CommandError {
         }
     }
 }
+impl From<CommandArgsError> for CommandError {
+    fn from(other: CommandArgsError) -> Self {
+        Self::CommandArgsError(other)
+    }
+}
 
 pub enum ExpansionError {
     NoSuchExpansion,
     IgnoreExpansion,
-    ArgumentNotEmpty,
+    CommandArgsError(CommandArgsError),
     InvalidArgIndex,
     InvalidBufferId,
     InvalidCursorIndex,
     InvalidRegisterKey,
-    InvalidProcessCommand,
     OtherStatic(&'static str),
     OtherOwned(String),
 }
@@ -105,15 +107,19 @@ impl fmt::Display for ExpansionError {
         match self {
             Self::NoSuchExpansion => f.write_str("no such expansion"),
             Self::IgnoreExpansion => f.write_str("invalid use of @arg(*)"),
-            Self::ArgumentNotEmpty => f.write_str("argument not empty"),
+            Self::CommandArgsError(error) => write!(f, "args error: {}", error),
             Self::InvalidArgIndex => f.write_str("invalid arg index"),
             Self::InvalidBufferId => f.write_str("invalid buffer id"),
             Self::InvalidCursorIndex => f.write_str("invalid cursor index"),
             Self::InvalidRegisterKey => f.write_str("invalid register key"),
-            Self::InvalidProcessCommand => f.write_str("invalid process command"),
             Self::OtherStatic(error) => f.write_str(error),
             Self::OtherOwned(error) => f.write_str(&error),
         }
+    }
+}
+impl From<CommandArgsError> for ExpansionError {
+    fn from(other: CommandArgsError) -> Self {
+        Self::CommandArgsError(other)
     }
 }
 
@@ -127,6 +133,20 @@ pub enum CompletionSource {
     Custom(&'static [&'static str]),
 }
 
+pub enum CommandArgsError {
+    TooFewArguments,
+    TooManyArguments,
+}
+impl fmt::Display for CommandArgsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::TooFewArguments => f.write_str("too few arguments"),
+            Self::TooManyArguments => f.write_str("too many arguments"),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct CommandArgs<'command>(pub(crate) &'command str);
 impl<'command> CommandArgs<'command> {
     pub fn try_next(&mut self) -> Option<&'command str> {
@@ -136,16 +156,16 @@ impl<'command> CommandArgs<'command> {
         Some(next)
     }
 
-    pub fn next(&mut self) -> Result<&'command str, CommandError> {
+    pub fn next(&mut self) -> Result<&'command str, CommandArgsError> {
         match self.try_next() {
             Some(value) => Ok(value),
-            None => Err(CommandError::TooFewArguments),
+            None => Err(CommandArgsError::TooFewArguments),
         }
     }
 
-    pub fn assert_empty(&mut self) -> Result<(), CommandError> {
+    pub fn assert_empty(&mut self) -> Result<(), CommandArgsError> {
         match self.try_next() {
-            Some(_) => Err(CommandError::TooManyArguments),
+            Some(_) => Err(CommandArgsError::TooManyArguments),
             None => Ok(()),
         }
     }
@@ -422,20 +442,13 @@ impl Macro {
 pub struct ExpansionIO<'a> {
     pub client_handle: Option<ClientHandle>,
     plugin_handle: Option<PluginHandle>,
-    pub args: &'a str,
+
+    pub args: CommandArgs<'a>,
     pub output: &'a mut String,
 }
 impl<'a> ExpansionIO<'a> {
     pub fn plugin_handle(&self) -> PluginHandle {
         self.plugin_handle.unwrap()
-    }
-
-    pub fn assert_empty_args(&self) -> Result<(), ExpansionError> {
-        if self.args.is_empty() {
-            Ok(())
-        } else {
-            Err(ExpansionError::ArgumentNotEmpty)
-        }
     }
 
     pub fn current_buffer_view<'ctx>(&self, ctx: &'ctx EditorContext) -> Option<&'ctx BufferView> {
@@ -451,15 +464,15 @@ impl<'a> ExpansionIO<'a> {
         Some(buffer)
     }
 
-    pub fn cursor(&self, ctx: &EditorContext) -> Result<Option<Cursor>, ExpansionError> {
+    pub fn parse_cursor(&self, ctx: &EditorContext, text: &str) -> Result<Option<Cursor>, ExpansionError> {
         let cursors = match self.current_buffer_view(ctx) {
             Some(view) => &view.cursors,
             None => return Ok(None),
         };
-        let index = if self.args.is_empty() {
+        let index = if text.is_empty() {
             cursors.main_cursor_index()
         } else {
-            self.args
+            text
                 .parse()
                 .map_err(|_| ExpansionError::InvalidCursorIndex)?
         };
@@ -832,26 +845,30 @@ fn expand_variables<'a>(
         args: &str,
         output: &mut String,
     ) -> Result<(), ExpansionError> {
+        let mut args = CommandArgs(args);
         if name == "arg" {
-            match args {
+            let arg = args.next()?;
+            args.assert_empty()?;
+
+            match arg {
                 "!" => {
                     if command_bang {
                         output.push('!');
                     }
                 }
                 "*" => {
-                    let args = match command_args.0.strip_suffix('\0') {
-                        Some(args) => args,
+                    let command_args = match command_args.0.strip_suffix('\0') {
+                        Some(command_args) => command_args,
                         None => return Err(ExpansionError::IgnoreExpansion),
                     };
-                    output.push_str(args);
+                    output.push_str(command_args);
                 }
                 _ => {
                     let mut index: usize =
-                        args.parse().map_err(|_| ExpansionError::InvalidArgIndex)?;
-                    while let Some(arg) = command_args.try_next() {
+                        arg.parse().map_err(|_| ExpansionError::InvalidArgIndex)?;
+                    while let Some(command_arg) = command_args.try_next() {
                         if index == 0 {
-                            output.push_str(arg);
+                            output.push_str(command_arg);
                             break;
                         }
                         index -= 1;
@@ -992,7 +1009,6 @@ fn expand_variables<'a>(
             let aux_len = aux.len();
             expand_variables(ctx, client_handle, args, bang, variable_args, output, aux)?;
             let variable_args = &aux[aux_len..];
-            let variable_args = variable_args.strip_suffix('\0').unwrap_or(variable_args);
 
             let result = write_variable_expansion(
                 ctx,
@@ -1436,7 +1452,7 @@ mod tests {
             &mut aux,
             &mut expanded,
         );
-        assert!(matches!(r, Err(ExpansionError::InvalidRegisterKey)));
+        assert!(matches!(r, Err(ExpansionError::CommandArgsError(CommandArgsError::TooFewArguments))));
         expanded.clear();
         let r = expand_variables(
             &mut ctx,
@@ -1477,6 +1493,9 @@ mod tests {
             &mut aux,
             &mut expanded,
         );
+        if let Err(e) = &r {
+            eprintln!("aaaaaa ---------------------------- {}", e);
+        }
         assert!(r.is_ok());
         assert_eq!("arg0\0arg1\0arg2\0", &expanded);
 
