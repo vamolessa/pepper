@@ -15,6 +15,7 @@
 - removed `:` suffix when listing currently opened buffers
 - added syntax for `.sh` shell files
 - added `@output()` expansion which expands into an external command stdout
+- added support for recursive variable expansions (that is, it's possible to have a `@var(...)` inside a `@var(...)`)
 
 # 0.30.0
 - added `insert-text` command

@@ -104,7 +104,7 @@ impl fmt::Display for ExpansionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::NoSuchExpansion => f.write_str("no such expansion"),
-            Self::IgnoreExpansion => unreachable!(),
+            Self::IgnoreExpansion => f.write_str("invalid use of @arg(*)"),
             Self::ArgumentNotEmpty => f.write_str("argument not empty"),
             Self::InvalidArgIndex => f.write_str("invalid arg index"),
             Self::InvalidBufferId => f.write_str("invalid buffer id"),
@@ -886,8 +886,25 @@ fn expand_variables<'a>(
     }
 
     fn parse_variable_args(text: &str) -> Option<&str> {
-        let i = text.find(')')?;
-        Some(&text[..i])
+        let mut chars = text.chars();
+        let mut balance = 1;
+        loop {
+            match chars.next()? {
+                '(' => balance += 1,
+                ')' => {
+                    balance -= 1;
+                    if balance == 0 {
+                        let rest = chars.as_str();
+                        let len = rest.as_ptr() as usize - text.as_ptr() as usize - 1;
+                        break Some(&text[..len]);
+                    }
+                }
+                '\\' => {
+                    chars.next();
+                }
+                _ => (),
+            }
+        }
     }
 
     fn write_escaped(mut slice: &str, has_escaping: bool, output: &mut String) {
@@ -962,8 +979,20 @@ fn expand_variables<'a>(
                     continue;
                 }
             };
-
             rest = &rest[args_skip + variable_args.len() + 1..];
+
+            let aux_len = aux.len();
+            expand_variables(
+                ctx,
+                client_handle,
+                args,
+                bang,
+                variable_args,
+                output,
+                aux,
+            )?;
+            let variable_args = &aux[aux_len..];
+            let variable_args = variable_args.strip_suffix('\0').unwrap_or(variable_args);
 
             let result = write_variable_expansion(
                 ctx,
@@ -1304,6 +1333,20 @@ mod tests {
         register.clear();
         register.push_str("short");
 
+        let register = ctx
+            .editor
+            .registers
+            .get_mut(RegisterKey::from_char('r').unwrap());
+        register.clear();
+        register.push_str("x");
+
+        let register = ctx
+            .editor
+            .registers
+            .get_mut(RegisterKey::from_char('t').unwrap());
+        register.clear();
+        register.push_str("r");
+
         let buffer = ctx.editor.buffers.add_new();
         assert_eq!(0, buffer.handle().0);
         buffer.set_path(Path::new("buffer/path0"));
@@ -1486,5 +1529,8 @@ mod tests {
         );
         assert!(r.is_ok());
         assert_eq!("\0", &expanded);
+
+        assert_expansion("my register contents\0", &ctx, "@register(@register(r))");
+        assert_expansion("my register contents\0", &ctx, "@register(@register(@register(t)))");
     }
 }
