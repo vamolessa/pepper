@@ -1,5 +1,3 @@
-lsp-start "rust-analyzer"
-
 map normal <space>b :<space>build<enter>
 map normal <space>t :<space>test<enter>
 
@@ -28,4 +26,3 @@ if @platform() == linux @{
         replace-with-output "sh -c 'cargo test --workspace 2>&1'"
     }
 }
-
