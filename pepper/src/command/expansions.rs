@@ -3,7 +3,7 @@ use std::{env, fmt, process::Stdio};
 use crate::{
     buffer::BufferHandle,
     command::{CommandManager, ExpansionError},
-    editor_utils::{parse_process_command, to_absolute_path_string, RegisterKey},
+    editor_utils::{parse_process_command, to_absolute_path_string, LogKind, RegisterKey},
 };
 
 pub fn register_expansions(commands: &mut CommandManager) {
@@ -204,7 +204,7 @@ pub fn register_expansions(commands: &mut CommandManager) {
         Ok(())
     });
 
-    r("output", |_, io| {
+    r("output", |ctx, io| {
         let mut command =
             parse_process_command(io.args).ok_or(ExpansionError::InvalidProcessCommand)?;
         command.stdin(Stdio::null());
@@ -215,6 +215,12 @@ pub fn register_expansions(commands: &mut CommandManager) {
                 io.output.push_str(&output);
             }
         }
+
+        ctx.editor
+            .logger
+            .write(LogKind::Diagnostic)
+            .fmt(format_args!("@output({})", io.args));
+
         Ok(())
     });
 }

@@ -467,7 +467,8 @@ impl<'a> ExpansionIO<'a> {
     }
 }
 
-pub type ExpansionFn = fn(ctx: &EditorContext, io: &mut ExpansionIO) -> Result<(), ExpansionError>;
+pub type ExpansionFn =
+    fn(ctx: &mut EditorContext, io: &mut ExpansionIO) -> Result<(), ExpansionError>;
 
 pub struct Expansion {
     plugin_handle: Option<PluginHandle>,
@@ -731,11 +732,18 @@ impl CommandManager {
         for command in CommandIter(source) {
             let mut aux = ctx.editor.string_pool.acquire();
             let mut expanded = ctx.editor.string_pool.acquire();
-            let result =
-                match expand_variables(ctx, client_handle, args, bang, command, &mut aux, &mut expanded) {
-                    Ok(()) => Self::eval_single(ctx, client_handle, &expanded),
-                    Err(error) => Err(CommandError::ExpansionError(error)),
-                };
+            let result = match expand_variables(
+                ctx,
+                client_handle,
+                args,
+                bang,
+                command,
+                &mut aux,
+                &mut expanded,
+            ) {
+                Ok(()) => Self::eval_single(ctx, client_handle, &expanded),
+                Err(error) => Err(CommandError::ExpansionError(error)),
+            };
             ctx.editor.string_pool.release(aux);
             ctx.editor.string_pool.release(expanded);
 
@@ -807,7 +815,7 @@ impl CommandManager {
 }
 
 fn expand_variables<'a>(
-    ctx: &EditorContext,
+    ctx: &mut EditorContext,
     client_handle: Option<ClientHandle>,
     args: &str,
     bang: bool,
@@ -816,7 +824,7 @@ fn expand_variables<'a>(
     output: &mut String,
 ) -> Result<(), ExpansionError> {
     fn write_variable_expansion(
-        ctx: &EditorContext,
+        ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         mut command_args: CommandArgs,
         command_bang: bool,
@@ -982,15 +990,7 @@ fn expand_variables<'a>(
             rest = &rest[args_skip + variable_args.len() + 1..];
 
             let aux_len = aux.len();
-            expand_variables(
-                ctx,
-                client_handle,
-                args,
-                bang,
-                variable_args,
-                output,
-                aux,
-            )?;
+            expand_variables(ctx, client_handle, args, bang, variable_args, output, aux)?;
             let variable_args = &aux[aux_len..];
             let variable_args = variable_args.strip_suffix('\0').unwrap_or(variable_args);
 
@@ -1365,11 +1365,18 @@ mod tests {
             .get_mut(client_handle)
             .set_buffer_view_handle(Some(buffer_view_handle), &ctx.editor.buffer_views);
 
-        fn assert_expansion(expected_expanded: &str, ctx: &EditorContext, text: &str) {
+        fn assert_expansion(expected_expanded: &str, ctx: &mut EditorContext, text: &str) {
             let mut aux = String::new();
             let mut expanded = String::new();
-            let result =
-                expand_variables(ctx, Some(ClientHandle(0)), "", false, text, &mut aux, &mut expanded);
+            let result = expand_variables(
+                ctx,
+                Some(ClientHandle(0)),
+                "",
+                false,
+                text,
+                &mut aux,
+                &mut expanded,
+            );
             if let Err(error) = result {
                 panic!("expansion error: {}", error);
             }
@@ -1380,13 +1387,21 @@ mod tests {
         let mut expanded = String::new();
 
         expanded.clear();
-        let r = expand_variables(&ctx, Some(ClientHandle(0)), "", false, "  ", &mut aux, &mut expanded);
+        let r = expand_variables(
+            &mut ctx,
+            Some(ClientHandle(0)),
+            "",
+            false,
+            "  ",
+            &mut aux,
+            &mut expanded,
+        );
         assert!(r.is_ok());
         assert_eq!("", &expanded);
 
         expanded.clear();
         let r = expand_variables(
-            &ctx,
+            &mut ctx,
             Some(ClientHandle(0)),
             "",
             false,
@@ -1397,23 +1412,23 @@ mod tests {
         assert!(r.is_ok());
         assert_eq!("two\0args\0", &expanded);
 
-        assert_expansion("cmd\0", &ctx, "cmd");
+        assert_expansion("cmd\0", &mut ctx, "cmd");
 
-        assert_expansion("my register contents\0", &ctx, "@register(x)");
+        assert_expansion("my register contents\0", &mut ctx, "@register(x)");
         assert_expansion(
             "very long register contents short\0",
-            &ctx,
+            &mut ctx,
             "{@register(l) @register(s)}",
         );
         assert_expansion(
             "short very long register contents\0",
-            &ctx,
+            &mut ctx,
             "{@register(s) @register(l)}",
         );
 
         expanded.clear();
         let r = expand_variables(
-            &ctx,
+            &mut ctx,
             Some(ClientHandle(0)),
             "",
             false,
@@ -1424,7 +1439,7 @@ mod tests {
         assert!(matches!(r, Err(ExpansionError::InvalidRegisterKey)));
         expanded.clear();
         let r = expand_variables(
-            &ctx,
+            &mut ctx,
             Some(ClientHandle(0)),
             "",
             false,
@@ -1434,27 +1449,27 @@ mod tests {
         );
         assert!(matches!(r, Err(ExpansionError::InvalidRegisterKey)));
 
-        assert_expansion("buffer/path0\0", &ctx, "@buffer-path()");
+        assert_expansion("buffer/path0\0", &mut ctx, "@buffer-path()");
         assert_expansion(
             "cmd\0buffer/path0\0asd\0buffer/path0\0",
-            &ctx,
+            &mut ctx,
             "cmd @buffer-path() asd @buffer-path()",
         );
 
         assert_expansion(
             "cmd\0buffer/path0\0asd\0buffer/veryverylong/path1\0fgh\0\0",
-            &ctx,
+            &mut ctx,
             "cmd @buffer-path(0) asd @buffer-path(1) fgh @buffer-path(2)",
         );
 
-        assert_expansion("\"\0", &ctx, "\"\\\"\"");
-        assert_expansion("'\0", &ctx, "'\\''");
-        assert_expansion("\\}\0", &ctx, "{\\}}");
-        assert_expansion("\\\0", &ctx, "'\\\\'");
+        assert_expansion("\"\0", &mut ctx, "\"\\\"\"");
+        assert_expansion("'\0", &mut ctx, "'\\''");
+        assert_expansion("\\}\0", &mut ctx, "{\\}}");
+        assert_expansion("\\\0", &mut ctx, "'\\\\'");
 
         expanded.clear();
         let r = expand_variables(
-            &ctx,
+            &mut ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
             false,
@@ -1467,7 +1482,7 @@ mod tests {
 
         expanded.clear();
         let r = expand_variables(
-            &ctx,
+            &mut ctx,
             Some(ClientHandle(0)),
             "",
             false,
@@ -1480,7 +1495,7 @@ mod tests {
 
         expanded.clear();
         let r = expand_variables(
-            &ctx,
+            &mut ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
             false,
@@ -1493,7 +1508,7 @@ mod tests {
 
         expanded.clear();
         let r = expand_variables(
-            &ctx,
+            &mut ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
             false,
@@ -1506,7 +1521,7 @@ mod tests {
 
         expanded.clear();
         let r = expand_variables(
-            &ctx,
+            &mut ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
             false,
@@ -1519,7 +1534,7 @@ mod tests {
 
         expanded.clear();
         let r = expand_variables(
-            &ctx,
+            &mut ctx,
             Some(ClientHandle(0)),
             "arg0\0arg1\0arg2\0",
             false,
@@ -1530,7 +1545,15 @@ mod tests {
         assert!(r.is_ok());
         assert_eq!("\0", &expanded);
 
-        assert_expansion("my register contents\0", &ctx, "@register(@register(r))");
-        assert_expansion("my register contents\0", &ctx, "@register(@register(@register(t)))");
+        assert_expansion(
+            "my register contents\0",
+            &mut ctx,
+            "@register(@register(r))",
+        );
+        assert_expansion(
+            "my register contents\0",
+            &mut ctx,
+            "@register(@register(@register(t)))",
+        );
     }
 }
