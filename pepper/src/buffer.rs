@@ -2377,7 +2377,8 @@ mod tests {
         );
         assert_eq!(assert_range, insert_range);
 
-        buffer.undo(&mut word_database, &mut events.writer());
+        let ranges = buffer.undo(&mut word_database, &mut events.writer());
+        for _ in ranges {}
     }
 
     #[test]

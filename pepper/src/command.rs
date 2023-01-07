@@ -717,10 +717,10 @@ impl CommandManager {
         name: &str,
         source: &str,
     ) -> Result<EditorFlow, CommandError> {
-        Self::eval_reentrant(ctx, client_handle, name, source, "", false)
+        Self::eval_recursive(ctx, client_handle, name, source, "", false)
     }
 
-    fn eval_reentrant(
+    fn eval_recursive(
         ctx: &mut EditorContext,
         client_handle: Option<ClientHandle>,
         name: &str,
@@ -788,7 +788,7 @@ impl CommandManager {
 
         if let Some(macro_source) = ctx.editor.commands.macros.find(command_name) {
             let macro_source = ctx.editor.string_pool.acquire_with(macro_source);
-            let result = Self::eval_reentrant(
+            let result = Self::eval_recursive(
                 ctx,
                 client_handle,
                 command_name,
