@@ -897,12 +897,42 @@ pub enum RemedybgEvent<'a> {
         exit_code: u32,
     },
 
+    // The target for the active configuration is now being debugged.
+    //
+    // [kind :: rdbg_DebugEventKind (uint16_t)]
+    // [process_id :: uint32_t]
+    TargetStarted {
+        process_id: u32,
+    },
+
+    // The debugger has attached to a target process.
+    //
+    // [kind :: rdbg_DebugEventKind (uint16_t)]
+    // [process_id :: uint32_t]
+    TargetAttached {
+        process_id: u32,
+    },
+
+    // The debugger has detached from a target process.
+    //
+    // [kind :: rdbg_DebugEventKind (uint16_t)]
+    // [process_id :: uint32_t]
+    TargetDetached {
+        process_id: u32,
+    },
+
+    // The debugger has transitioned from suspended to executing.
+    //
+    // [kind :: rdbg_DebugEventKind (uint16_t)]
+    // [process_id :: uint32_t]
+    TargetContinued,
+
     // The source location changed due to an event in the debugger.
     //
     // [kind :: rdbg_DebugEventKind (uint16_t)]
     // [filename :: rdbg_String]
     // [line_num :: uint32_t]
-    // [reason :: rdbg_SourceLocChangedReason (uint16_t) ]
+    // [reason :: rdbg_SourceLocChangedReason (uint16_t)]
     SourceLocationChanged {
         filename: RemedybgStr<'a>,
         line_num: u32,
@@ -968,6 +998,19 @@ impl<'a> RemedybgEvent<'a> {
                 let exit_code = Serialize::deserialize(deserializer)?;
                 Ok(Self::ExitProcess { exit_code })
             }
+            101 => {
+                let process_id = Serialize::deserialize(deserializer)?;
+                Ok(Self::TargetStarted { process_id })
+            }
+            102 => {
+                let process_id = Serialize::deserialize(deserializer)?;
+                Ok(Self::TargetAttached { process_id })
+            }
+            103 => {
+                let process_id = Serialize::deserialize(deserializer)?;
+                Ok(Self::TargetDetached { process_id })
+            }
+            104 => Ok(Self::TargetContinued),
             200 => {
                 let filename = Serialize::deserialize(deserializer)?;
                 let line_num = Serialize::deserialize(deserializer)?;
@@ -1010,6 +1053,10 @@ impl<'a> fmt::Display for RemedybgEvent<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::ExitProcess { .. } => f.write_str("exit process"),
+            Self::TargetStarted { .. } => f.write_str("target started"),
+            Self::TargetAttached { .. } => f.write_str("target attached"),
+            Self::TargetDetached { .. } => f.write_str("target detached"),
+            Self::TargetContinued => f.write_str("target continued"),
             Self::SourceLocationChanged { .. } => f.write_str("source location changed"),
             Self::BreakpointHit { .. } => f.write_str("breakpoint hit"),
             Self::BreakpointResolved { .. } => f.write_str("breakpoint resolved"),

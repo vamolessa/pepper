@@ -919,8 +919,8 @@ fn on_event(
     bytes: &[u8],
 ) -> Result<(), ProtocolError> {
     editor.logger.write(LogKind::Diagnostic).fmt(format_args!(
-        "remedybg: on event: {:?} bytes left: {}",
-        std::mem::discriminant(event),
+        "remedybg: on event: {} bytes left: {}",
+        event,
         bytes.len(),
     ));
 
