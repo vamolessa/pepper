@@ -19,6 +19,7 @@
 - changed parsing of expansion arguments to be more robust like command parsing
 - added `@command-source()` expansion which expands into a macro command's source
 - changed `remedybg-plugin` to support newer events from version `0.3.8.6`
+- fix c/cpp syntax ordering
 
 # 0.30.0
 - added `insert-text` command
