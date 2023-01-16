@@ -124,7 +124,7 @@ That is, the cursor is not a one-char selection but only a visual cue to indicat
 
 # keybindings at a glance
 
-![keybindings](https://vamolessa.github.io/pepper/.github/images/keybindings.png)
+![keybindings](https://github.com/vamolessa/pepper/raw/master/.github/images/keybindings.png)
 Also at [keyboard-layout-editor](http://www.keyboard-layout-editor.com/#/gists/175ca15e15b350e1a2a808fe0b5eecb5).
 
 # development thread
