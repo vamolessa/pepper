@@ -1,6 +1,8 @@
 # changelog
 
-# 0.31.0 (preview)
+# 0.32.0 (preview)
+
+# 0.31.0
 - changed `plugin-remedybg` to add support for new version `0.3.8.4` which enables several plugin code simplifications
 - fix buffer insert processes would sometimes insert lines ending with a sigle `\r` which would screw some buffer invariants
 - added support for msvc style path + line parsing
