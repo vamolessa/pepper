@@ -3,9 +3,9 @@
 
 ### A simple and opinionated modal code editor for your terminal
 
-![main screenshot](https://vamolessa.github.io/pepper/.github/screenshots/main.png)
+![main screenshot](https://vamolessa.github.io/pepper/screenshots/main.png)
 
-[more screenshots](https://vamolessa.github.io/pepper/.github/screenshots/)
+[more screenshots](https://vamolessa.github.io/pepper/screenshots/)
 
 Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
