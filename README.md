@@ -3,9 +3,9 @@
 
 ### A simple and opinionated modal code editor for your terminal
 
-![main screenshot](https://vamolessa.github.io/pepper/_github/screenshots/main.png)
+![main screenshot](https://vamolessa.github.io/pepper/_content/screenshots/main.png)
 
-[more screenshots](https://vamolessa.github.io/pepper/_github/screenshots/)
+[more screenshots](https://vamolessa.github.io/pepper/_content/screenshots/)
 
 Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
@@ -124,7 +124,7 @@ That is, the cursor is not a one-char selection but only a visual cue to indicat
 
 # keybindings at a glance
 
-![keybindings](https://vamolessa.github.io/pepper/_github/images/keybindings.png)
+![keybindings](https://vamolessa.github.io/pepper/_content/images/keybindings.png)
 Also at [keyboard-layout-editor](http://www.keyboard-layout-editor.com/#/gists/175ca15e15b350e1a2a808fe0b5eecb5).
 
 # development thread
