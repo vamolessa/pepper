@@ -5,8 +5,8 @@ members = [
     "plugin-remedybg",
     "mine",
 ]
-exclude = ["web"]
 default-members = ["mine"]
+exclude = ["web"]
 
 [profile.release]
 debug = true
