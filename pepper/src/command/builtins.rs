@@ -363,6 +363,7 @@ pub fn register_commands(commands: &mut CommandManager) {
 
         match value {
             Some(value) => {
+                let value = value.strip_prefix("0x").ok_or(CommandError::InvalidColorValue)?;
                 let encoded =
                     u32::from_str_radix(value, 16).map_err(|_| CommandError::InvalidColorValue)?;
                 *color = Color::from_u32(encoded);

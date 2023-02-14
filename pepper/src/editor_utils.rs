@@ -88,13 +88,12 @@ impl KeyMapCollection {
             return MatchResult::None;
         }
 
-        let maps = &self.maps[mode as usize];
-
         let mut has_prefix = false;
-        for map in maps {
+        for map in &self.maps[mode as usize] {
             if map.from.iter().zip(keys.iter()).all(|(a, b)| a == b) {
-                has_prefix = true;
-                if map.from.len() == keys.len() {
+                if map.from.len() > keys.len() {
+                    has_prefix = true;
+                } else if map.from.len() == keys.len() {
                     return MatchResult::ReplaceWith(&map.to);
                 }
             }

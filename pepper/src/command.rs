@@ -1495,9 +1495,6 @@ mod tests {
             &mut aux,
             &mut expanded,
         );
-        if let Err(e) = &r {
-            eprintln!("aaaaaa ---------------------------- {}", e);
-        }
         assert!(r.is_ok());
         assert_eq!("arg0\0arg1\0arg2\0", &expanded);
 
