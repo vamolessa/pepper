@@ -4,8 +4,8 @@ members = [
     "plugin-lsp",
     "plugin-remedybg",
     "mine",
-    "web",
 ]
+exclude = ["web"]
 default-members = ["mine"]
 
 [profile.release]

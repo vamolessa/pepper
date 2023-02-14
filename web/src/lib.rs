@@ -1,6 +1,3 @@
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
-
 use pepper::{
     application::{ApplicationConfig, ClientApplication, ServerApplication},
     client::ClientHandle,
@@ -8,54 +5,9 @@ use pepper::{
     Args,
 };
 
-#[wasm_bindgen]
 extern "C" {
-    pub fn alert(s: &str);
-
-    #[wasm_bindgen(js_namespace = console)]
-    fn error(msg: String);
-
-    type Error;
-
-    #[wasm_bindgen(constructor)]
-    fn new() -> Error;
-
-    #[wasm_bindgen(structural, method, getter)]
-    fn stack(error: &Error) -> String;
-
-    #[wasm_bindgen(typescript_type = "object")]
-    #[derive(Clone, Debug)]
-    pub type Object;
-
-    #[wasm_bindgen(static_method_of = Object)]
-    pub fn is(value_1: &JsValue, value_2: &JsValue) -> bool;
-
-    #[wasm_bindgen(js_namespace = WebAssembly, extends = Object, typescript_type = "WebAssembly.Memory")]
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub type Memory;
-
-    #[wasm_bindgen(method, getter, js_namespace = WebAssembly)]
-    pub fn buffer(this: &Memory) -> JsValue;
-
-    #[wasm_bindgen(extends = Object, typescript_type = Uint8Aray)]
-    #[derive(Clone, Debug)]
-    pub type Uint8Array;
-
-    #[wasm_bindgen(constructor)]
-    pub fn new_with_byte_offset_and_length(
-        buffer: &JsValue,
-        byte_offset: u32,
-        length: u32,
-    ) -> Uint8Array;
+    fn console_error(message_ptr: *const u8, message_len: usize);
 }
-
-impl PartialEq for Object {
-    #[inline]
-    fn eq(&self, other: &Object) -> bool {
-        Object::is(self.as_ref(), other.as_ref())
-    }
-}
-impl Eq for Object {}
 
 pub struct Application {
     server: ServerApplication,
@@ -63,33 +15,18 @@ pub struct Application {
     events: Vec<PlatformEvent>,
 }
 
-const CLIENT_HANDLE: ClientHandle = ClientHandle(0);
+fn panic_hook(info: &std::panic::PanicInfo) {
+    let mut msg = info.to_string();
+    msg.push_str("\n\n");
 
-impl Uint8Array {
-    pub unsafe fn view(rust: &[u8]) -> Self {
-        let buf = wasm_bindgen::memory();
-        let mem = buf.unchecked_ref::<Memory>();
-        Uint8Array::new_with_byte_offset_and_length(
-            &mem.buffer(),
-            rust.as_ptr() as u32,
-            rust.len() as u32,
-        )
+    unsafe {
+        console_error(msg.as_ptr(), msg.len());
     }
 }
 
-fn console_hook(info: &std::panic::PanicInfo) {
-    let mut msg = info.to_string();
-    msg.push_str("\n\nstack:\n\n");
-    let e = Error::new();
-    let stack = e.stack();
-    msg.push_str(&stack);
-    msg.push_str("\n\n");
-    error(msg);
-}
-
-#[wasm_bindgen]
-pub fn pepper_new_application() -> *mut Application {
-    std::panic::set_hook(Box::new(console_hook));
+#[no_mangle]
+pub extern "C" fn pepper_init(terminal_width: u16, terminal_height: u16) -> *mut Application {
+    std::panic::set_hook(Box::new(panic_hook));
 
     let config = ApplicationConfig::default();
     let server = ServerApplication::new(config).unwrap();
@@ -101,12 +38,8 @@ pub fn pepper_new_application() -> *mut Application {
         client,
         events: Vec::new(),
     };
-    Box::into_raw(Box::new(app))
-}
+    let mut app = Box::new(app);
 
-#[wasm_bindgen]
-pub fn pepper_init(app: *mut Application, terminal_width: u16, terminal_height: u16) -> Uint8Array {
-    let app = unsafe { &mut *app };
     if let Some(output) = &mut app.client.output {
         output.clear();
     }
@@ -128,32 +61,80 @@ pub fn pepper_init(app: *mut Application, terminal_width: u16, terminal_height: 
     let buf = app.server.ctx.platform.buf_pool.acquire();
     enqueue_client_bytes(&mut app.events, buf, bytes);
 
-    process_requests(app);
+    process_requests(&mut app);
 
-    unsafe { Uint8Array::view(app.client.output.as_ref().unwrap()) }
+    Box::into_raw(app)
 }
 
-#[wasm_bindgen]
-pub fn pepper_on_event(
+const CLIENT_HANDLE: ClientHandle = ClientHandle(0);
+
+#[no_mangle]
+pub extern "C" fn pepper_output_ptr(app: *const Application) -> *const u8 {
+    static EMPTY_OUTPUT: [u8; 0] = [];
+
+    let app = unsafe { &*app };
+    match &app.client.output {
+        Some(output) => output.as_ptr(),
+        None => EMPTY_OUTPUT.as_ptr(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn pepper_output_len(app: *const Application) -> usize {
+    let app = unsafe { &*app };
+    match &app.client.output {
+        Some(output) => output.len(),
+        None => 0,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn pepper_on_event(
     app: *mut Application,
-    key_name: &str,
+    key_kind: u32,
+    key_value: u32,
     key_ctrl: bool,
     key_alt: bool,
-) -> Uint8Array {
+) {
     let app = unsafe { &mut *app };
     if let Some(output) = &mut app.client.output {
         output.clear();
     }
 
-    let key = parse_key(key_name, key_ctrl, key_alt);
-    if key.code != KeyCode::None {
+    let key_code = match key_kind {
+        1 => KeyCode::Char(char::from_u32(key_value).unwrap()),
+        2 => KeyCode::Backspace,
+        3 => KeyCode::Left,
+        4 => KeyCode::Right,
+        5 => KeyCode::Up,
+        6 => KeyCode::Down,
+        7 => KeyCode::Home,
+        8 => KeyCode::End,
+        9 => KeyCode::PageUp,
+        10 => KeyCode::PageDown,
+        11 => KeyCode::Delete,
+        12 => KeyCode::F(key_value as _),
+        13 => KeyCode::Esc,
+        _ => KeyCode::None,
+    };
+
+    if key_code != KeyCode::None {
+        let key_shift = match key_code {
+            KeyCode::Char(c) => c.is_ascii_uppercase(),
+            _ => false,
+        };
+        let key = Key {
+            code: key_code,
+            shift: key_shift,
+            control: key_ctrl,
+            alt: key_alt,
+        };
+
         let (_, bytes) = app.client.update(None, &[key], None, &[]);
         let buf = app.server.ctx.platform.buf_pool.acquire();
         enqueue_client_bytes(&mut app.events, buf, bytes);
         process_requests(app);
     }
-
-    unsafe { Uint8Array::view(app.client.output.as_ref().unwrap()) }
 }
 
 fn enqueue_client_bytes(events: &mut Vec<PlatformEvent>, mut buf: PooledBuf, bytes: &[u8]) {
@@ -194,57 +175,5 @@ fn process_requests(app: &mut Application) {
                 PlatformRequest::CloseIpc { .. } => (),
             }
         }
-    }
-}
-
-fn parse_key(name: &str, has_ctrl: bool, has_alt: bool) -> Key {
-    let code = match name {
-        "" => KeyCode::None,
-        "Backspace" => KeyCode::Backspace,
-        "Enter" => KeyCode::Char('\n'),
-        "ArrowLeft" => KeyCode::Left,
-        "ArrowRight" => KeyCode::Right,
-        "ArrowUp" => KeyCode::Up,
-        "ArrowDown" => KeyCode::Down,
-        "Home" => KeyCode::Home,
-        "End" => KeyCode::End,
-        "PageUp" => KeyCode::PageUp,
-        "PageDown" => KeyCode::PageDown,
-        "Tab" => KeyCode::Char('\t'),
-        "Delete" => KeyCode::Delete,
-        "F1" => KeyCode::F(1),
-        "F2" => KeyCode::F(2),
-        "F3" => KeyCode::F(3),
-        "F4" => KeyCode::F(4),
-        "F5" => KeyCode::F(5),
-        "F6" => KeyCode::F(6),
-        "F7" => KeyCode::F(7),
-        "F8" => KeyCode::F(8),
-        "F9" => KeyCode::F(9),
-        "F10" => KeyCode::F(10),
-        "F11" => KeyCode::F(11),
-        "F12" => KeyCode::F(12),
-        "Escape" => KeyCode::Esc,
-        _ => {
-            let mut chars = name.chars();
-            match chars.next() {
-                Some(c) => match chars.next() {
-                    Some(_) => KeyCode::None,
-                    None => KeyCode::Char(c),
-                },
-                None => KeyCode::None,
-            }
-        }
-    };
-
-    let shift = match code {
-        KeyCode::Char(c) => c.is_ascii_uppercase(),
-        _ => false,
-    };
-    Key {
-        code,
-        shift,
-        control: has_ctrl,
-        alt: has_alt,
     }
 }
