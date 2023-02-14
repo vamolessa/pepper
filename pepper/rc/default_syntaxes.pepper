@@ -45,6 +45,18 @@ syntax literals "true|false|NULL|'{(\\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{ }{%a}"
 syntax strings '"{(\\\\)(\\")!".}'
 syntax comments "//{.}|/*{!(*/).$}"
 
+# https://www.khronos.org/opengl/wiki/Core_Language_(GLSL)
+# https://www.khronos.org/opengl/wiki/Type_Qualifier_(GLSL)
+# https://www.khronos.org/opengl/wiki/Data_Type_(GLSL)
+# https://www.khronos.org/opengl/wiki/Sampler_(GLSL)
+syntax "**/*.glsl"
+syntax keywords "attribute|buffer|centroid|coherent|const|discard|flat|for|highp|if|invariant|in|out|layout|lowp|mediump|noperspective|precise|readonly|restrict|sample|shared|smooth|struct|uniform|varying|volatile|while|writeonly|gl_{%w}"
+syntax types "bool|double|float|int|mat%dx%d|mat%d|uint|vec%d|[bdiu]vec%d|void|sampler{%w}|[iu]sampler{%w}|image{%w}[iu]image{%w}"
+syntax symbols "%(|%)|%[|%]|%{|%}|%.|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|~|?|&|%||@"
+syntax literals "true|false|NULL|'{(\\')!'.}|%d{%d_}%.%w{%w_}|%d{%w_}|#{ }{%a}"
+syntax strings '"{(\\\\)(\\")!".}'
+syntax comments "//{.}|/*{!(*/).$}"
+
 # https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/
 syntax "**/*.cs"
 syntax keywords abstract|as|base|break|case|catch|checked|class|const|continue|default|delegate|do|else|enum|event|explicit|extern|finally|fixed|foreach|for|goto|if|implicit|in|interface|internal|is|lock|namespace|new|operator|out|override|params|private|protected|public|readonly|ref|return|sealed|sizeof|stackalloc|static|struct|switch|throw|try|typeof|unchecked|unsafe|using|virtual|volatile|while|add|alias|ascending|async|await|by|descending|dynamic|equals|from|get|global|group|into|join|let|nameof|not|on|orderby|partial|remove|select|set|unmanaged|value|var|when|where|yield
