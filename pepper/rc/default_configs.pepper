@@ -1,5 +1,6 @@
 map normal <esc> CDCVs<esc>
 map normal <c-c> CDCVs<esc>
+map normal ; :
 
 map normal . Qa
 
@@ -128,4 +129,3 @@ if @platform() == macos @{
         }
     }
 }
-

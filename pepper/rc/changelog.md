@@ -5,6 +5,7 @@
 - changed `color <color-ident> <value>` command to correctly parse hex colors of the form `0xdddddd` where `d` are digits
 - fix key bindings making input reading stuck after mapping to a key chord prefix
 - added `**/*.glsl` syntax
+- added `map normal ; :` to `default_configs.pepper`
 
 # 0.31.0
 - changed `plugin-remedybg` to add support for new version `0.3.8.4` which enables several plugin code simplifications
