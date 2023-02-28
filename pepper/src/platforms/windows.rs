@@ -47,7 +47,7 @@ use winapi::{
         },
         wincontypes::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
-            RIGHT_CTRL_PRESSED, SHIFT_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
+            RIGHT_CTRL_PRESSED, SHIFT_PRESSED, WINDOW_BUFFER_SIZE_EVENT, FOCUS_EVENT,
         },
         winnls::CP_UTF8,
         winnt::{
@@ -2030,6 +2030,7 @@ fn parse_console_events(
                 let size = unsafe { event.Event.WindowBufferSizeEvent().dwSize };
                 *resize = Some((size.X as _, size.Y as _));
             }
+            FOCUS_EVENT => keys.push(Key::default()),
             _ => (),
         }
     }

@@ -6,6 +6,7 @@
 - fix key bindings making input reading stuck after mapping to a key chord prefix
 - added `**/*.glsl` syntax
 - added `map normal ; :` to `default_configs.pepper`
+- added focus detection on windows
 
 # 0.31.0
 - changed `plugin-remedybg` to add support for new version `0.3.8.4` which enables several plugin code simplifications
