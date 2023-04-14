@@ -76,7 +76,7 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | `cd` | remove main cursor if there's more than one cursor |
 | `cD`, `CD` | clear all extra cursors and keep only the main cursor |
 | `cl` | splits all selection in lines |
-| `cj`, `ck` | add a new cursor to the line bellow/above the bottom/top cursor |
+| `cj`, `ck` | add a new cursor to the line below/above the bottom/top cursor |
 | `cn`, `cp` | set next/previous cursor as main cursor |
 | `cs` | search inside selections and only keep those ranges |
 | `cS`, `CS` | search inside selections and remove those ranges |
@@ -106,8 +106,8 @@ It's also from where you do most of code navigation and seleciton manipulation.
 | --- | --- | --- |
 | `I`, `<c-i>` | `dgii`, `dgli` | move cursors to first non-blank/last column and enter insert mode |
 | `ci` | `cvcCglccgii` | delete all lines touching a selection and enter insert mode |
-| `o`, `O` | `dgli<enter>`, `dgii<enter><up>` | create an empty line bellow/above each cursor and enter insert mode |
-| `J` | `djgivkgli<space><esc>` | join one line bellow each cursor |
+| `o`, `O` | `dgli<enter>`, `dgii<enter><up>` | create an empty line below/above each cursor and enter insert mode |
+| `J` | `djgivkgli<space><esc>` | join one line below each cursor |
 | `!` | `:<space>-spawn<enter>` | execute a command line (with closed stdin and ignoring its output) |
 | <code>&#124;</code> | `:<space>-replace-with-output<enter>` | pass each selection as stdin to a command line and substitute each for its stdout |
 

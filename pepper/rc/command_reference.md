@@ -40,7 +40,7 @@ With '!' will discard any unsaved changes.
 - default alias: `qa`
 
 ## `open`
-Opens buffer up for editting.
+Opens buffer up for editing.
 If file `<path>` exists, it will be loaded into the buffer's content.
 Also, if `<path>` ends with `:<line>[,<column>]`, it will be opened at that location.
 

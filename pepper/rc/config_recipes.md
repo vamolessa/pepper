@@ -19,7 +19,7 @@ put inside the `.pepper` file in your home directory.
 This way you're in control over from where pepper fetches its config files.
 
 ### per project config
-It's also posssible to setup configs that are per project.
+It's also possible to setup configs that are per project.
 Place a config file (`.pepper` in this example) in the root directory of your project then change your alias like this:
 
 ```
