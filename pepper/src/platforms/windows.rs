@@ -924,7 +924,7 @@ impl ConnectionToClientListener {
         let mut reader = AsyncIO::new(handle.0);
 
         if unsafe { ConnectNamedPipe(handle.0, reader.overlapped().as_mut_ptr()) } != FALSE {
-            panic!("could not accept incomming connection");
+            panic!("could not accept incoming connection");
         }
 
         reader.pending_io = match get_last_error() {
@@ -933,7 +933,7 @@ impl ConnectionToClientListener {
                 reader.event.notify();
                 false
             }
-            _ => panic!("could not accept incomming connection"),
+            _ => panic!("could not accept incoming connection"),
         };
         reader.overlapped = Overlapped::with_event(reader.event());
 

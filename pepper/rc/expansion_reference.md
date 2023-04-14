@@ -11,7 +11,7 @@ That is: `@"..."`, `@'...'` or `@{...}`.
 # expansions
 
 ## `arg`
-When used inside a command declared using the `command` command, expands to the `<index>`th argument it received whell called.
+When used inside a command declared using the `command` command, expands to the `<index>`th argument it received when called.
 If instead of a zero-based index, its argument is `!`, it expands to `!` if the command was called with a bang
 (that is, `command! ...`) and to ` ` (empty) otherwise.
 Also, this expansion's argument can be `*` which will make it expand to all arguments passed to the called command.
@@ -123,5 +123,5 @@ If there is no such environment variable, it results in an empty expansion.
 
 ## `output`
 The stdout of external `<command>` (spawned with stdin closed).
-Will result in an emtpy expansion if the command fails.
+Will result in an empty expansion if the command fails.
 - usage: `@output(<command>)`

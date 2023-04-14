@@ -10,7 +10,7 @@
 
 # 0.31.0
 - changed `plugin-remedybg` to add support for new version `0.3.8.4` which enables several plugin code simplifications
-- fix buffer insert processes would sometimes insert lines ending with a sigle `\r` which would screw some buffer invariants
+- fix buffer insert processes would sometimes insert lines ending with a single `\r` which would screw some buffer invariants
 - added support for msvc style path + line parsing
 - added `<` and `>` as path delimiters when using `gf`
 - fix "flickering" on unix caused by a forgotten `eprintln` in its platform layer
@@ -63,7 +63,7 @@
 # 0.29.0
 - added diagnostic logging to `spawn` command
 - added diagnostic logging to `replace-with-output` command
-- fix pattern bad optimization outupt when nonascii codepoints
+- fix pattern bad optimization output when nonascii codepoints
 - fix `remedybg-plugin` breakpoint sync on spawn
 - changed default value of `indent_with_tabs` to false
 - removed `xa` binding that used to list all breakpoints in a buffer
@@ -114,7 +114,7 @@
 - fix `gf` (and `GF`) that could open a duplicate of an already opened buffer if trying to open the same path but absolute
 - fix `reopen-all` would fail if there was a scratch buffer with a path that does not exist
 - changed `spawn` command to use a piped stdout in order to detect when the process exits
-- changed `cursor-<anchor/position>-<column/line>` expansions to be one based (instead of zero based) for easier interoperability with other softwares
+- changed `cursor-<anchor/position>-<column/line>` expansions to be one based (instead of zero based) for easier interoperability with other software
 
 ## 0.26.1
 - improved `find_path_and_position_at` to account for paths followed by `:`
