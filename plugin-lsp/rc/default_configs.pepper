@@ -1,8 +1,0 @@
-map normal K :<space>lsp-hover<enter>
-map normal gd :<space>lsp-definition<enter>
-map normal gr :<space>lsp-references<enter>
-map normal gs :<space>lsp-document-symbols<enter>
-map normal rr :<space>lsp-rename<enter>
-map normal ra :<space>lsp-code-action<enter>
-map normal rf :<space>lsp-format<enter>
-

@@ -1,4 +1,0 @@
-theme: jekyll-theme-minimal
-markdown: kramdown
-include:
-  - .github
